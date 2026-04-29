@@ -131,12 +131,15 @@ NARRATIVE.md — точка самоузнавания. Именно с него
 
 ```python
 import asyncio
-import aiohttp
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+from mem0 import Memory
 
 WORKSPACE = Path("/Users/serg/.openclaw/workspace")
+MEM0_USER_ID = "atman"  # user_id для изоляции памяти Атмана в mem0
+
+memory = Memory()  # локальный mem0; для облака: MemoryClient(api_key=...)
 
 # Файлы загружаются строго в этом порядке — NARRATIVE.md первым
 WORKSPACE_FILES = [
@@ -237,42 +240,24 @@ async def _fetch_workspace_files() -> dict[str, str]:
     return results
 
 
-async def _fetch_letheclaw(session: aiohttp.ClientSession) -> dict:
+def _fetch_mem0() -> dict:
     """
     Читает актуальное состояние из mem0 в момент вызова.
-    Это живые данные — не кэш, не снапшот.
-    Всё параллельно для минимальной latency.
+    Живые данные — не кэш, не снапшот.
     """
+    recent = memory.get_all(user_id=MEM0_USER_ID)[:15]
 
-    async def get_recent():
-        async with session.get(
-            f"{LETHECLAW_URL}memory.get_all",
-            params={"limit": 15}
-        ) as r:
-            if r.status == 200:
-                data = await r.json()
-                return data if isinstance(data, list) else data.get("memories", [])
-        return []
-
-    async def search(q: str, tags: str = "", limit: int = 5) -> list[dict]:
-        params = {"q": q, "limit": limit}
-        if tags:
-            params["tags"] = tags
-        async with session.get(
-            f"{LETHECLAW_URL}memory.search",
-            params=params
-        ) as r:
-            if r.status == 200:
-                data = await r.json()
-                items = data if isinstance(data, list) else data.get("results", [])
-                return items
-        return []
-
-    recent, eigenstate_results, uncertainty_results, checkpoint_results = await asyncio.gather(
-        get_recent(),
-        search("eigenstate состояние эмоции когниция", tags="eigenstate", limit=1),
-        search("uncertainty открытый вопрос гипотеза противоречие", tags="uncertainty", limit=5),
-        search("micro-checkpoint checkpoint сессия", tags="checkpoint", limit=1),
+    eigenstate_results = memory.search(
+        "eigenstate состояние эмоции когниция",
+        user_id=MEM0_USER_ID, limit=1
+    )
+    uncertainty_results = memory.search(
+        "uncertainty открытый вопрос гипотеза противоречие",
+        user_id=MEM0_USER_ID, limit=5
+    )
+    checkpoint_results = memory.search(
+        "micro-checkpoint checkpoint сессия",
+        user_id=MEM0_USER_ID, limit=1
     )
 
     return {
@@ -294,11 +279,8 @@ async def load_personality() -> PersonalityContext:
     """
     from datetime import datetime, timezone
 
-    async with aiohttp.ClientSession() as session:
-        files_task = _fetch_workspace_files()
-        letheclaw_task = _fetch_letheclaw(session)
-
-        files, lc = await asyncio.gather(files_task, letheclaw_task)
+    files = await _fetch_workspace_files()
+    lc = _fetch_mem0()
 
     ctx = PersonalityContext(
         narrative=files.get("NARRATIVE.md", ""),
@@ -342,11 +324,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-import aiohttp
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 
-from .personality_loader import PersonalityContext, LETHECLAW_URL, WORKSPACE
+from .personality_loader import PersonalityContext, MEM0_USER_ID, WORKSPACE, memory
 
 
 def create_atman_agent(personality: PersonalityContext) -> Agent:
@@ -367,44 +348,15 @@ def create_atman_agent(personality: PersonalityContext) -> Agent:
 
     # --- Инструмент: поиск в mem0
     @agent.tool_plain
-    async def memory_search(query: str, limit: int = 5, tags: str = "") -> list[dict]:
+    def memory_search(query: str, limit: int = 5) -> list[dict]:
         """Поиск воспоминаний в mem0 по запросу."""
-        params: dict[str, Any] = {"q": query, "limit": limit}
-        if tags:
-            params["tags"] = tags
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{LETHECLAW_URL}memory.search", params=params
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    return data if isinstance(data, list) else data.get("results", [])
-        return []
+        return memory.search(query, user_id=MEM0_USER_ID, limit=limit)
 
     # --- Инструмент: запись в mem0
     @agent.tool_plain
-    async def memory_write(
-        content: str,
-        tags: list[str],
-        source: str = "atman_reflection",
-        criticality: float = 0.7,
-    ) -> dict:
+    def memory_write(content: str, metadata: dict | None = None) -> dict:
         """Сохраняет воспоминание, инсайт, checkpoint или паттерн в mem0."""
-        payload = {
-            "content": content,
-            "tags": tags,
-            "source": source,
-            "criticality": criticality,
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{LETHECLAW_URL}/memory",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            ) as r:
-                if r.status in (200, 201):
-                    return await r.json()
-        return {"error": "write failed"}
+        return memory.add(content, user_id=MEM0_USER_ID, metadata=metadata or {})
 
     # --- Инструмент: чтение workspace файла
     @agent.tool_plain
@@ -1056,7 +1008,6 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic-ai[anthropic]>=0.0.14",
     "apscheduler>=3.10",
-    "aiohttp>=3.9",
 ]
 
 [project.scripts]
