@@ -35,3 +35,17 @@ Add observability for prompts, tool calls, latency, errors, and session-level qu
 ## Notes
 - Keep observability separate from core personality logic.
 - Datadog should observe Atman, not define it.
+
+
+## Secret handling
+- Store `DATADOG_API_KEY` in Bitwarden only.
+- Load it into the runtime environment at startup.
+- Never commit the key, print it, or write it to disk.
+
+## Runtime wiring
+- `DATADOG_SITE` should be configurable (default: `datadoghq.com`).
+- `DD_ENV`, `DD_SERVICE`, and `DD_VERSION` should be set per deployment.
+- The runtime should fail gracefully if observability is unavailable.
+
+## Next implementation step
+- Add a small bootstrap module that reads Datadog env vars and initializes tracing before the session manager starts.
