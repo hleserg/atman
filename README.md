@@ -180,12 +180,6 @@ atman/
 
 ---
 
-## Связанные issues
-
-Архитектура обсуждается в GitHub Issues:
-
-- [#47](https://github.com/hleserg/atman/issues/47) · [#48](https://github.com/hleserg/atman/issues/48) · [#49](https://github.com/hleserg/atman/issues/49) · [#50](https://github.com/hleserg/atman/issues/50) · [#51](https://github.com/hleserg/atman/issues/51) · [#52](https://github.com/hleserg/atman/issues/52)
-
 ---
 
 *Апрель 2026*
