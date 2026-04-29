@@ -52,7 +52,7 @@
 Живые наблюдения. Не принципы — то что заметно прямо сейчас.
 ```
 
-Подробная архитектура → [`docs/architecture/SYSTEM.md`](docs/architecture/SYSTEM.md)
+Подробная архитектура → [`docs/architecture/SYSTEM.md`](docs/architecture/SYSTEM.md) · Манифест → [`MANIFEST.md`](MANIFEST.md)
 
 ---
 
