@@ -1,0 +1,24 @@
+# ОС
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Редакторы и IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Секреты и локальная конфигурация
+.env
+.env.*
+!.env.example
+*.pem
+
+# Логи и временные файлы
+*.log
+*.tmp
+*.temp
+
+# Локальные заметки (не коммитить по имени)
+*.local
