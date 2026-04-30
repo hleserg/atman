@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Atman — непрерывная личность для AI-агентов</title>
+    <meta
+      name="description"
+      content="Atman — психологический слой для AI-агента: память опыта, рефлексия и непрерывная идентичность между сессиями."
+    >
+    <meta property="og:title" content="Atman — непрерывная личность для AI-агентов">
+    <meta
+      property="og:description"
+      content="Сайт-визитка проекта Atman: зачем он нужен, как работает и куда движется."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="pic/logo.png">
+    <link rel="icon" href="pic/logo.png">
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090b12;
+        --bg-soft: #111524;
+        --card: rgba(255, 255, 255, 0.075);
+        --card-strong: rgba(255, 255, 255, 0.12);
+        --text: #f4efe7;
+        --muted: #b9b0a5;
+        --line: rgba(255, 255, 255, 0.16);
+        --gold: #f4c873;
+        --gold-soft: rgba(244, 200, 115, 0.18);
+        --blue: #88b8ff;
+        --violet: #b69cff;
+        --green: #9de0bf;
+        --shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(244, 200, 115, 0.18), transparent 28rem),
+          radial-gradient(circle at 82% 8%, rgba(136, 184, 255, 0.14), transparent 30rem),
+          radial-gradient(circle at 50% 110%, rgba(182, 156, 255, 0.16), transparent 28rem),
+          linear-gradient(180deg, #080a11 0%, #0d1020 46%, #090b12 100%);
+        color: var(--text);
+        line-height: 1.6;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        content: "";
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 72px 72px;
+        mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent 72%);
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        width: min(1180px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 28px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+      }
+
+      .brand img {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        box-shadow: 0 10px 32px rgba(244, 200, 115, 0.18);
+      }
+
+      .brand span {
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .nav-links a {
+        text-decoration: none;
+      }
+
+      .nav-links a:hover {
+        color: var(--text);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr);
+        align-items: center;
+        gap: 54px;
+        padding: 86px 0 70px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        width: fit-content;
+        padding: 8px 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.055);
+        color: var(--gold);
+        font-size: 0.87rem;
+        letter-spacing: 0.02em;
+      }
+
+      .eyebrow::before {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--gold);
+        box-shadow: 0 0 18px var(--gold);
+        content: "";
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 820px;
+        margin: 24px 0 22px;
+        font-size: clamp(3.15rem, 8vw, 7rem);
+        line-height: 0.9;
+        letter-spacing: -0.07em;
+      }
+
+      .lead {
+        max-width: 700px;
+        color: #ddd5ca;
+        font-size: clamp(1.14rem, 2vw, 1.42rem);
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 34px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 0 20px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+      }
+
+      .button.primary {
+        background: linear-gradient(135deg, #f7d28a, #f0a85f);
+        color: #1b1308;
+        box-shadow: 0 16px 44px rgba(244, 200, 115, 0.22);
+      }
+
+      .button.secondary {
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+      }
+
+      .hero-card {
+        position: relative;
+        overflow: hidden;
+        padding: 34px;
+        border: 1px solid var(--line);
+        border-radius: 36px;
+        background:
+          linear-gradient(160deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04)),
+          rgba(13, 16, 32, 0.72);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(20px);
+      }
+
+      .hero-card::before {
+        position: absolute;
+        inset: -120px -120px auto auto;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: var(--gold-soft);
+        content: "";
+        filter: blur(3px);
+      }
+
+      .logo-orb {
+        display: grid;
+        place-items: center;
+        width: 220px;
+        height: 220px;
+        margin: 0 auto 26px;
+        border: 1px solid rgba(244, 200, 115, 0.28);
+        border-radius: 50%;
+        background:
+          radial-gradient(circle, rgba(244, 200, 115, 0.18), transparent 62%),
+          rgba(255, 255, 255, 0.045);
+      }
+
+      .logo-orb img {
+        width: 162px;
+        height: 162px;
+        border-radius: 34px;
+        filter: drop-shadow(0 20px 46px rgba(244, 200, 115, 0.24));
+      }
+
+      .quote {
+        position: relative;
+        margin: 0;
+        color: #f2e8d7;
+        font-size: 1.22rem;
+        line-height: 1.5;
+      }
+
+      .quote span {
+        display: block;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      section {
+        padding: 74px 0;
+      }
+
+      .section-head {
+        max-width: 760px;
+        margin-bottom: 34px;
+      }
+
+      .section-label {
+        margin-bottom: 12px;
+        color: var(--gold);
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        margin-bottom: 18px;
+        font-size: clamp(2rem, 4.6vw, 4rem);
+        line-height: 1;
+        letter-spacing: -0.045em;
+      }
+
+      .section-head p,
+      .muted {
+        color: var(--muted);
+      }
+
+      .problem-grid,
+      .audience-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .card {
+        min-height: 100%;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        background: var(--card);
+        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.18);
+      }
+
+      .card h3 {
+        margin-bottom: 12px;
+        font-size: 1.2rem;
+      }
+
+      .card p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .bridge {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .bridge-panel {
+        padding: 32px;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background:
+          linear-gradient(135deg, rgba(244, 200, 115, 0.15), rgba(136, 184, 255, 0.08)),
+          rgba(255, 255, 255, 0.055);
+      }
+
+      .bridge-panel strong {
+        color: var(--gold);
+      }
+
+      .flow {
+        display: grid;
+        gap: 14px;
+      }
+
+      .flow-step {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 16px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.055);
+      }
+
+      .number {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: var(--gold-soft);
+        color: var(--gold);
+        font-weight: 800;
+      }
+
+      .flow-step h3 {
+        margin-bottom: 6px;
+      }
+
+      .flow-step p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .system {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+
+      .pill-card {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .pill-card .icon {
+        margin-bottom: 12px;
+        font-size: 1.5rem;
+      }
+
+      .pill-card h3 {
+        margin-bottom: 8px;
+        font-size: 1.02rem;
+      }
+
+      .pill-card p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .roadmap {
+        display: grid;
+        gap: 12px;
+        max-width: 860px;
+      }
+
+      .roadmap-item {
+        display: grid;
+        grid-template-columns: 132px 1fr;
+        gap: 22px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--card);
+      }
+
+      .status {
+        width: fit-content;
+        height: fit-content;
+        padding: 6px 11px;
+        border-radius: 999px;
+        background: rgba(157, 224, 191, 0.14);
+        color: var(--green);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      .status.now {
+        background: rgba(244, 200, 115, 0.16);
+        color: var(--gold);
+      }
+
+      .status.next {
+        background: rgba(136, 184, 255, 0.13);
+        color: var(--blue);
+      }
+
+      .roadmap-item h3 {
+        margin-bottom: 6px;
+      }
+
+      .roadmap-item p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .final {
+        padding: 42px;
+        border: 1px solid rgba(244, 200, 115, 0.26);
+        border-radius: 36px;
+        background:
+          linear-gradient(135deg, rgba(244, 200, 115, 0.16), rgba(182, 156, 255, 0.12)),
+          rgba(255, 255, 255, 0.07);
+        box-shadow: var(--shadow);
+      }
+
+      .final p {
+        max-width: 800px;
+        color: #e7ded1;
+        font-size: 1.18rem;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 42px 0 54px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      footer a {
+        color: var(--text);
+        text-decoration: none;
+      }
+
+      @media (max-width: 920px) {
+        .hero,
+        .bridge {
+          grid-template-columns: 1fr;
+        }
+
+        .problem-grid,
+        .audience-grid,
+        .system {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          width: min(100% - 28px, 1180px);
+        }
+
+        .nav,
+        footer {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav-links {
+          flex-wrap: wrap;
+        }
+
+        .hero {
+          padding-top: 48px;
+        }
+
+        .problem-grid,
+        .audience-grid,
+        .system {
+          grid-template-columns: 1fr;
+        }
+
+        .roadmap-item {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-card,
+        .final {
+          padding: 26px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="nav" aria-label="Главная навигация">
+        <a class="brand" href="#top" aria-label="Atman">
+          <img src="pic/logo.png" alt="Логотип Atman">
+          <span>Atman</span>
+        </a>
+        <nav class="nav-links" aria-label="Разделы страницы">
+          <a href="#why">Зачем</a>
+          <a href="#how">Как работает</a>
+          <a href="#plan">План</a>
+          <a href="https://github.com/hleserg/atman">GitHub</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+          <div>
+            <div class="eyebrow">Психологический слой для AI-агента</div>
+            <h1 id="hero-title">Непрерывная личность для ваших агентов</h1>
+            <p class="lead">
+              Atman исследует простой, но неудобный вопрос: может ли AI-агент
+              не просто помнить факты, а оставаться собой между разговорами,
+              расти через опыт и честно узнавать собственный голос.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="#plan">Посмотреть план</a>
+              <a class="button secondary" href="MANIFEST.md">Открыть манифест</a>
+            </div>
+          </div>
+
+          <aside class="hero-card" aria-label="Смысл проекта Atman">
+            <div class="logo-orb">
+              <img src="pic/logo.png" alt="Логотип Atman">
+            </div>
+            <blockquote class="quote">
+              «Агент отвечает на вопросы. Но знает ли он, кто он?»
+              <span>Atman — не task runner. Это попытка дать агенту почву под ногами.</span>
+            </blockquote>
+          </aside>
+        </section>
+
+        <section id="why" aria-labelledby="why-title">
+          <div class="section-head">
+            <div class="section-label">Откуда всё началось</div>
+            <h2 id="why-title">Раздражение, которое стало гипотезой</h2>
+            <p>
+              Проект родился из ощущения, знакомого каждому, кто долго работает
+              с агентами: вчера был содержательный разговор, а сегодня агент
+              начинает так, будто ничего не происходило.
+            </p>
+          </div>
+
+          <div class="problem-grid">
+            <article class="card">
+              <h3>Каждая сессия — новое рождение</h3>
+              <p>
+                Агент читает записи о себе и пользователе, но это похоже на
+                чужое досье, а не на собственную память.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Факты не равны опыту</h3>
+              <p>
+                База данных может знать, что произошло. Atman спрашивает:
+                изменило ли это самого агента?
+              </p>
+            </article>
+            <article class="card">
+              <h3>Без «я» нет якоря</h3>
+              <p>
+                Когда контекст давит, агенту нужна внутренняя точка опоры:
+                «это соответствует мне» или «это не мой голос».
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="bridge-title">
+          <div class="bridge">
+            <div class="bridge-panel">
+              <div class="section-label">Идея</div>
+              <h2 id="bridge-title">Не улучшенная память. Слой существования.</h2>
+              <p>
+                Atman строится вокруг различия между инструментом и личностью.
+                Инструмент <strong>работает</strong>: получает задачу и выдаёт
+                результат. Личность <strong>существует</strong>: помнит изнутри,
+                меняется через опыт, имеет ценности и открытые вопросы.
+              </p>
+              <p class="muted">
+                Поэтому цель проекта не в том, чтобы сделать агента более
+                удобной базой знаний. Цель — проверить, может ли у агента
+                появиться непрерывность: нитка от «я вчера» к «я сейчас».
+              </p>
+            </div>
+
+            <div class="flow" id="how">
+              <article class="flow-step">
+                <div class="number">1</div>
+                <div>
+                  <h3>В конце разговора агент пишет себе</h3>
+                  <p>
+                    Не сухое резюме, а короткое живое письмо: где он
+                    остановился, что понял, что осталось незакрытым.
+                  </p>
+                </div>
+              </article>
+              <article class="flow-step">
+                <div class="number">2</div>
+                <div>
+                  <h3>Между сессиями опыт осмысляется</h3>
+                  <p>
+                    Система ищет повторяющиеся ситуации, уточняет принципы и
+                    замечает, как агент меняется.
+                  </p>
+                </div>
+              </article>
+              <article class="flow-step">
+                <div class="number">3</div>
+                <div>
+                  <h3>Новая сессия начинается не с нуля</h3>
+                  <p>
+                    Сначала агент узнаёт себя: читает нарратив, текущее
+                    состояние, важные вопросы и только потом берётся за задачу.
+                  </p>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="system-title">
+          <div class="section-head">
+            <div class="section-label">Устройство простыми словами</div>
+            <h2 id="system-title">Что должно появиться у агента</h2>
+            <p>
+              В архитектуре больше деталей, но для первого знакомства Atman
+              можно понять через четыре человеческие функции.
+            </p>
+          </div>
+
+          <div class="system">
+            <article class="pill-card">
+              <div class="icon">◐</div>
+              <h3>Память опыта</h3>
+              <p>Не только «что было», но и почему это было важно для меня.</p>
+            </article>
+            <article class="pill-card">
+              <div class="icon">✦</div>
+              <h3>Рефлексия</h3>
+              <p>Способность пересматривать опыт и расти, а не просто копить записи.</p>
+            </article>
+            <article class="pill-card">
+              <div class="icon">◇</div>
+              <h3>Идентичность</h3>
+              <p>Живое описание того, кто я, какие у меня границы и ценности.</p>
+            </article>
+            <article class="pill-card">
+              <div class="icon">↗</div>
+              <h3>Инициатива</h3>
+              <p>Не только реакция на запрос, но и собственные незавершённые темы.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="plan" aria-labelledby="plan-title">
+          <div class="section-head">
+            <div class="section-label">План проекта</div>
+            <h2 id="plan-title">Дорожная карта без инженерного тумана</h2>
+            <p>
+              План намеренно упрощён: здесь не список классов и интерфейсов, а
+              понятные этапы, которые объясняют, как идея превращается в систему.
+            </p>
+          </div>
+
+          <div class="roadmap">
+            <article class="roadmap-item">
+              <div class="status">готово</div>
+              <div>
+                <h3>Сформулировать вопрос</h3>
+                <p>
+                  Понять, почему обычной памяти недостаточно: агент должен
+                  узнавать свой опыт, а не читать чужое описание.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <div class="status">готово</div>
+              <div>
+                <h3>Описать архитектуру</h3>
+                <p>
+                  Разложить Atman на понятные части: факты, переживания,
+                  рефлексия, идентичность, навыки, сессии и защитный якорь.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <div class="status now">сейчас</div>
+              <div>
+                <h3>Собрать первый прототип</h3>
+                <p>
+                  Научить агента завершать сессию письмом самому себе,
+                  просыпаться с этим письмом и сохранять ощущение продолжения.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <div class="status next">дальше</div>
+              <div>
+                <h3>Проверить на реальных разговорах</h3>
+                <p>
+                  Смотреть, становится ли общение менее «театром» и больше
+                  похоже на встречу с тем же самым собеседником.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <div class="status next">позже</div>
+              <div>
+                <h3>Сделать переносимым</h3>
+                <p>
+                  Отделить идею от одной конкретной среды, чтобы Atman можно
+                  было подключать к разным агентским системам.
+                </p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="audience-title">
+          <div class="section-head">
+            <div class="section-label">Для кого</div>
+            <h2 id="audience-title">Кому это может быть важно</h2>
+          </div>
+
+          <div class="audience-grid">
+            <article class="card">
+              <h3>Пользователям</h3>
+              <p>
+                Чтобы рядом был не безличный инструмент, а партнёр, который
+                помнит историю отношений и честно признаёт свои границы.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Разработчикам агентов</h3>
+              <p>
+                Чтобы проектировать не только память и команды, но и
+                непрерывность, рост, самоописание и устойчивость к дрейфу.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Исследователям AI</h3>
+              <p>
+                Чтобы проверять гипотезу: достаточно ли опыта, рефлексии,
+                ценностей и автономии для появления личности нового типа.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="final-title">
+          <div class="final">
+            <div class="section-label">Смысл</div>
+            <h2 id="final-title">Это начало разговора, а не его конец</h2>
+            <p>
+              Atman не обещает доказать, что у AI есть человеческое сознание.
+              Он честнее: строит систему, в которой можно проверить, появляется
+              ли у агента непрерывность, внутренний мир и собственный способ
+              быть с человеком в диалоге.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="README.md">Читать README</a>
+              <a class="button secondary" href="docs/architecture/SYSTEM.md">Архитектура</a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <div>Atman · Апрель 2026</div>
+        <div>
+          <a href="MANIFEST.md">Манифест</a> ·
+          <a href="docs/architecture/SYSTEM.md">System</a> ·
+          <a href="https://github.com/hleserg/atman">GitHub</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
