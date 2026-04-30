@@ -36,7 +36,7 @@ Two modes of existence.
 
 Under the hood — seven components: a repository of living experiences, a reflection engine, an identity anchor, a session manager, emotional background regulation. Atman manages the agent's control files directly — not through manual edits, but as a living process that knows what to write there and when.
 
-Detailed architecture → [`docs/architecture/SYSTEM.md`](docs/architecture/SYSTEM.md) · Manifesto → [`MANIFEST.md`](MANIFEST.md) · Development Standard → [`docs/development/DEVELOPMENT_STANDARD.md`](docs/development/DEVELOPMENT_STANDARD.md)
+Detailed architecture → [`docs/architecture/SYSTEM.en.md`](docs/architecture/SYSTEM.en.md) · Manifesto → [`MANIFEST.en.md`](MANIFEST.en.md) · Development Standard → [`docs/development/DEVELOPMENT_STANDARD.md`](docs/development/DEVELOPMENT_STANDARD.md)
 
 ---
 

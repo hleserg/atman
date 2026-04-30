@@ -23,13 +23,14 @@ desktop.ini
 # Локальные заметки (не коммитить по имени)
 *.local
 
-# Тестовые медиа-файлы
-*.mp4
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
+# Тестовые медиа-файлы и артефакты
+/artifacts/
+/screenshots/
+/test-results/
+*-demo.mp4
+*-test.png
+*-test.jpg
+
 # Python
 __pycache__/
 *.py[cod]

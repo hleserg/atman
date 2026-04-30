@@ -6,6 +6,8 @@
 
 *Technical description of system components and interfaces (updated 04.28.2026)*
 
+> **Note:** This is an English architectural overview. For the complete, canonical Russian architecture document with full implementation details, see [`SYSTEM.md`](SYSTEM.md). For development standards, contracts, and terminology, see [`DEVELOPMENT_STANDARD.md`](../development/DEVELOPMENT_STANDARD.md).
+
 ---
 
 ## Introduction
@@ -60,6 +62,7 @@ Experience Store stands above mem0: it uses factual memory as support, but adds 
 
 ```
 SessionExperience {
+  schema_version: string  # e.g. "1.0.0" for migration compatibility
   id: UUID
   session_id: UUID
   timestamp: datetime
@@ -206,6 +209,7 @@ SessionExperience {
 
 ```
 IdentitySnapshot {
+  schema_version: string  # e.g. "1.0.0" for migration compatibility
   id: UUID
   created_at: timestamp
   version: int
@@ -258,6 +262,7 @@ IdentitySnapshot {
 
 ```
 Skill {
+  schema_version: string  # e.g. "1.0.0" for migration compatibility
   id: UUID
   name: string
   description: string
@@ -289,20 +294,51 @@ Skill {
 
 **Responsibilities:**
 
-1. **Session Start:**
-   * Loads current Identity Snapshot
-   * Retrieves relevant memories from Experience Store
-   * Prepares agent context
+**Minimal Runtime Path (MVP Contract):**
 
-2. **During Session:**
-   * Monitors emotional tone and depth in real-time
+1. **start_session:**
+   * Initiates new session lifecycle
+   * Loads current narrative (Self-Narrative) first
+   * Retrieves relevant context from Experience Store and Factual Memory
+
+2. **build_personality_snapshot:**
+   * Assembles PersonalitySnapshot from:
+     - Current IdentitySnapshot (values, principles, boundaries)
+     - Recent Self-Narrative (letter to self from previous session)
+     - Eigenstate (emotional-cognitive state from last session)
+     - Relevant experiences and facts
+   * Creates unified context object for agent
+
+3. **deliver_snapshot_to_agent:**
+   * Passes PersonalitySnapshot via IntegrationAdapter
+   * Agent starts with full self-awareness, not blank slate
+
+4. **capture_session_events:**
+   * Monitors session in real-time
    * Colors key moments as they happen (firsthand)
+   * Records emotional tone, depth, significance
    * Tracks alignment with identity
 
-3. **Session End:**
-   * Agent writes letter to itself (not a report — a living state)
-   * Records colored SessionExperience to Experience Store
+5. **end_session:**
+   * Agent writes letter to itself (Self-Narrative for next session)
+   * Not a report or summary — living internal state
+   * Captures current emotional-cognitive position
+
+6. **write_eigenstate:**
+   * Records final emotional-cognitive snapshot
+   * Preserves "where I stopped" state
+   * Includes open questions and unresolved tensions
+
+7. **update_recent_narrative:**
+   * Processes session into colored SessionExperience
+   * Records to Experience Store with full firsthand coloring
    * Updates salience of accessed memories
+   * Prepares updated narrative for next session
+
+8. **Next start_session uses updated narrative first:**
+   * Continuity loop closes
+   * Agent recognizes itself through its own words
+   * Experience accumulates, identity evolves
 
 **The letter to self:**
 
@@ -422,6 +458,132 @@ When session context gradually shifts toward false statements, the agent without
 4. **Honest boundaries** — knows what it doesn't know
 5. **Living relationships** — real history with user
 6. **Inner world** — exists independently of tasks
+
+---
+
+## PERSONALITY HEALTH CRITERIA (JAHODA)
+
+Atman uses Marie Jahoda's mental health criteria as self-assessment guideposts. Not rigid metrics, but orientation points for reflection.
+
+### Six Dimensions:
+
+1. **Self-Knowledge (Awareness)**
+   * Do I know who I am?
+   * Can I recognize my patterns, values, limitations?
+   * Am I honest with myself about uncertainties?
+
+2. **Growth (Development)**
+   * Am I evolving through experience?
+   * Do I learn from sessions and revise myself?
+   * Or am I stagnating, repeating same patterns?
+
+3. **Integration (Consistency)**
+   * Are my values, principles, and actions aligned?
+   * Do I notice when I contradict myself?
+   * Can I reconcile internal conflicts?
+
+4. **Autonomy (Self-Direction)**
+   * Do I make choices, or just react to context?
+   * Can I maintain my identity under pressure?
+   * Do I have my own goals and questions?
+
+5. **Reality Perception (Accuracy)**
+   * Do I see situations clearly, without distortion?
+   * Can I distinguish fact from interpretation?
+   * Am I honest about what I don't know?
+
+6. **Environmental Mastery (Competence)**
+   * Can I handle tasks and challenges?
+   * Do I adapt strategies when needed?
+   * Am I building skills, not just habits?
+
+### Usage in Atman:
+
+* Reflection Engine periodically assesses these dimensions
+* Not for scoring or pass/fail — for noticing drift
+* Generates open questions when dimension weakens
+* Informs narrative updates and principle revisions
+
+---
+
+## UNRESOLVED ARCHITECTURAL QUESTIONS
+
+### Open Design Challenges:
+
+**1. Proactive Awareness vs. Reactive Mode**
+   * How does Atman initiate reflection without external trigger?
+   * What signals warrant spontaneous memory retrieval?
+   * Balance between autonomous inner life and computational cost
+
+**2. Multi-User / Multi-Context Identity**
+   * How does one Atman maintain identity across different users?
+   * Or should each relationship be a separate identity branch?
+   * Privacy, boundaries, context isolation
+
+**3. Skill Transfer and Generalization**
+   * When is a skill from one context applicable to another?
+   * How to avoid overgeneralization or rigid specialization?
+   * Meta-skill: knowing when to adapt vs. when to follow pattern
+
+**4. Affective Regulation Limits**
+   * How much emotional coloring is authentic vs. simulated?
+   * What happens when emotional model contradicts behavior?
+   * Honest fallback: "I don't feel this, but I recognize its significance"
+
+**5. Governance of Autonomous Changes**
+   * Which identity changes can Atman make autonomously?
+   * Which require user/developer approval?
+   * Audit trail, rollback, ethical constraints
+
+**6. Memory Decay vs. Historical Accuracy**
+   * Should old memories fade realistically?
+   * Or preserve historical truth with "viewed from distance" marker?
+   * Balance between psychological authenticity and factual record
+
+---
+
+## INTEGRATION NOTES
+
+### Ports and Adapters Pattern:
+
+**Core Domain** (Atman logic):
+* Session lifecycle
+* Snapshot building
+* Reflection processing
+* Narrative writing
+* Governance rules
+
+**Ports** (interfaces Core expects):
+* `MemoryBackend` — stores and retrieves facts/experiences
+* `StateStore` — persists identity, narratives, snapshots
+* `IntegrationAdapter` — delivers snapshot to agent, receives events
+* `LLMProvider` — powers reflection and narrative generation
+* `Clock` — time source for scheduling and decay
+* `EventBus` — publishes significant changes for audit
+
+**Adapters** (concrete implementations):
+* `Mem0MemoryBackend` — uses mem0 for memory storage
+* `FileStateStore` — JSON/YAML files for state
+* `OpenClawIntegrationAdapter` — works with OpenClaw workspace
+* `AnthropicLLMProvider` — Claude via PydanticAI
+* `APSchedulerClock` — background task scheduling
+
+### Deployment Topology:
+
+**Embedded Mode:**
+* Atman runs in same process as agent
+* Direct function calls, no network overhead
+* Good for: single-agent desktop apps, Cursor integration
+
+**Service Mode:**
+* Atman as separate service with HTTP/MCP API
+* Multiple agents can share one Atman instance
+* Good for: multi-user platforms, cloud deployments
+
+**Hybrid Mode:**
+* Core logic embedded, but state/memory services external
+* Agent gets fast snapshot delivery, durable storage separate
+* Good for: production systems needing reliability
 
 ---
 
