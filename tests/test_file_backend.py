@@ -5,7 +5,6 @@ Unit-тесты для FileBackend.
 import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from uuid import uuid4
 
 from atman.adapters.memory import FileBackend
 from atman.core.models import FactRecord
@@ -148,3 +147,24 @@ def test_multiple_facts_persistence(temp_file):
         retrieved = backend2.get_fact(original.id)
         assert retrieved is not None
         assert retrieved.content == original.content
+
+
+def test_failed_save_keeps_existing_file_and_memory_state(temp_file):
+    """Неуспешное сохранение не должно портить уже записанные факты."""
+    backend = FileBackend(temp_file)
+    original = backend.add_fact(FactRecord(content="Безопасный факт", source="test"))
+    original_file_content = temp_file.read_text(encoding='utf-8')
+
+    invalid_replacement = original.model_copy(
+        update={"content": "Несериализуемый факт", "metadata": {"bad": object()}},
+        deep=True,
+    )
+
+    with pytest.raises(Exception):
+        backend.add_fact(invalid_replacement)
+
+    assert temp_file.read_text(encoding='utf-8') == original_file_content
+    assert backend.get_fact(original.id).content == "Безопасный факт"
+
+    reloaded = FileBackend(temp_file)
+    assert reloaded.get_fact(original.id).content == "Безопасный факт"

@@ -6,6 +6,7 @@ File-based адаптер для Factual Memory.
 """
 
 import json
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -45,20 +46,32 @@ class FileBackend(FactualMemory):
                     fact = FactRecord.model_validate(data)
                     self._facts[fact.id] = fact
     
-    def _save_facts(self):
-        """Сохраняет все факты в файл."""
+    def _save_facts(self, facts: dict[UUID, FactRecord] | None = None):
+        """Сохраняет все факты в файл атомарной заменой."""
+        facts_to_save = facts if facts is not None else self._facts
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.filepath.with_name(f".{self.filepath.name}.tmp")
         
-        with open(self.filepath, 'w', encoding='utf-8') as f:
-            for fact in self._facts.values():
-                json_line = fact.model_dump_json()
-                f.write(json_line + '\n')
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                for fact in facts_to_save.values():
+                    json_line = fact.model_dump_json()
+                    f.write(json_line + '\n')
+                f.flush()
+                os.fsync(f.fileno())
+            
+            temp_path.replace(self.filepath)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
     
     def add_fact(self, record: FactRecord) -> FactRecord:
         """Добавляет факт и сохраняет в файл."""
         fact_copy = record.model_copy(deep=True)
-        self._facts[fact_copy.id] = fact_copy
-        self._save_facts()
+        updated_facts = dict(self._facts)
+        updated_facts[fact_copy.id] = fact_copy
+        self._save_facts(updated_facts)
+        self._facts = updated_facts
         return fact_copy.model_copy(deep=True)
     
     def get_fact(self, fact_id: UUID) -> FactRecord | None:
@@ -107,8 +120,13 @@ class FileBackend(FactualMemory):
             relation_type=relation_type.strip().lower()
         )
         
-        source_fact.relations.append(relation)
-        self._save_facts()
+        updated_source = source_fact.model_copy(deep=True)
+        updated_source.relations.append(relation)
+        updated_facts = dict(self._facts)
+        updated_facts[source_id] = updated_source
+        
+        self._save_facts(updated_facts)
+        self._facts = updated_facts
         return True
     
     def list_recent(self, limit: int = 10) -> list[FactRecord]:
