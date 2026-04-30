@@ -6,9 +6,9 @@
 
 **Read these 3 files in order:**
 
-1. 📋 [`.cursor/local-agent-master-prompt.md`](.cursor/local-agent-master-prompt.md) — Your primary workflow guide
-2. 📖 [`docs/development/DEVELOPMENT_STANDARD.md`](docs/development/DEVELOPMENT_STANDARD.md) — Complete development standard
-3. 🏗️ [`docs/architecture/SYSTEM.md`](docs/architecture/SYSTEM.md) — System architecture
+1. 📋 [`local-agent-master-prompt.md`](local-agent-master-prompt.md) — Your primary workflow guide
+2. 📖 [`../docs/development/DEVELOPMENT_STANDARD.md`](../docs/development/DEVELOPMENT_STANDARD.md) — Complete development standard
+3. 🏗️ [`../docs/architecture/SYSTEM.md`](../docs/architecture/SYSTEM.md) — System architecture
 
 ## Essential Rules
 
@@ -31,7 +31,7 @@
 └── tests/                  # ← Test suite
 
 # Commands
-pip install -e .            # Install dependencies
+pip install -e .[dev]       # Install dependencies (including dev/test)
 pytest tests/ -v            # Run tests
 python3 -m atman.cli        # Interactive CLI
 ```
@@ -50,10 +50,10 @@ Before finishing work, verify:
 
 ## Need More Details?
 
-- **Workflow & Standards** → [`.cursor/local-agent-master-prompt.md`](.cursor/local-agent-master-prompt.md)
-- **Terminology & Architecture** → [`docs/development/DEVELOPMENT_STANDARD.md`](docs/development/DEVELOPMENT_STANDARD.md)
-- **Component Design** → [`docs/architecture/SYSTEM.md`](docs/architecture/SYSTEM.md)
-- **Sync Process** → [`.cursor/SYNC_GUIDE.md`](.cursor/SYNC_GUIDE.md)
+- **Workflow & Standards** → [`local-agent-master-prompt.md`](local-agent-master-prompt.md)
+- **Terminology & Architecture** → [`../docs/development/DEVELOPMENT_STANDARD.md`](../docs/development/DEVELOPMENT_STANDARD.md)
+- **Component Design** → [`../docs/architecture/SYSTEM.md`](../docs/architecture/SYSTEM.md)
+- **Sync Process** → [`SYNC_GUIDE.md`](SYNC_GUIDE.md)
 
 ---
 

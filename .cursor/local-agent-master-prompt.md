@@ -16,10 +16,10 @@ You are working on **Atman** — a psychological runtime layer for AI agents tha
 
 Before starting any work, you **MUST** read these documents in order:
 
-1. **[AGENTS.md](/workspace/AGENTS.md)** — Repository structure, tech stack, current status
-2. **[docs/development/DEVELOPMENT_STANDARD.md](/workspace/docs/development/DEVELOPMENT_STANDARD.md)** — Complete development standard (terminology, architecture boundaries, coding conventions)
-3. **[docs/architecture/SYSTEM.md](/workspace/docs/architecture/SYSTEM.md)** — System architecture (7 components, modes, protocols)
-4. **[MANIFEST.md](/workspace/MANIFEST.md)** — Philosophical foundation and project vision
+1. **[../AGENTS.md](../AGENTS.md)** — Repository structure, tech stack, current status
+2. **[../docs/development/DEVELOPMENT_STANDARD.md](../docs/development/DEVELOPMENT_STANDARD.md)** — Complete development standard (terminology, architecture boundaries, coding conventions)
+3. **[../docs/architecture/SYSTEM.md](../docs/architecture/SYSTEM.md)** — System architecture (7 components, modes, protocols)
+4. **[../MANIFEST.md](../MANIFEST.md)** — Philosophical foundation and project vision
 
 These documents define the single source of truth for:
 - Domain vocabulary (Fact, Experience, Identity, Narrative, etc.)
