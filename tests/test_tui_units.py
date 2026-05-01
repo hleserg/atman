@@ -194,3 +194,9 @@ def test_pytest_cmd_falls_back_without_uv(monkeypatch: pytest.MonkeyPatch) -> No
     p = pytest_cmd("-q")
     assert p[0] == sys.executable
     assert p[1:3] == ["-m", "pytest"]
+
+
+def test_uv_or_python_argv_pytest_python_paths_without_uv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("atman.tui.cmd.shutil.which", lambda _name: None)
+    assert uv_or_python_argv("pytest", "-q") == [sys.executable, "-m", "pytest", "-q"]
+    assert uv_or_python_argv("python", "demo.py") == [sys.executable, "demo.py"]

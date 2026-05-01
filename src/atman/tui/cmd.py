@@ -1,4 +1,4 @@
-"""Build command argv preferring ``uv run`` when available."""
+"""Build command argv for subprocesses launched from the TUI."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 
 
 def uv_or_python_argv(*parts: str) -> list[str]:
-    """``uv run <parts>`` if ``uv`` is on PATH, else ``python -m`` / executable."""
+    """``uv run <parts>`` if ``uv`` is on PATH, else same interpreter as fallback."""
     if shutil.which("uv"):
         return ["uv", "run", *parts]
     if parts[0] == "pytest":
@@ -18,9 +18,14 @@ def uv_or_python_argv(*parts: str) -> list[str]:
 
 
 def pytest_cmd(*pytest_args: str) -> list[str]:
-    return uv_or_python_argv("pytest", *pytest_args)
+    """Run pytest with **this** Python (``python -m pytest``).
+
+    Avoids nested ``uv run pytest`` when the TUI itself was started via ``uv run devui``,
+    which can stall or buffer stdout until the child exits.
+    """
+    return [sys.executable, "-m", "pytest", *pytest_args]
 
 
 def python_script_cmd(*script_and_args: str) -> list[str]:
-    """Run ``python src/demo.py`` style invocations (paths relative to repo root)."""
-    return uv_or_python_argv("python", *script_and_args)
+    """Run scripts with the same interpreter as the TUI (paths relative to repo root)."""
+    return [sys.executable, *script_and_args]

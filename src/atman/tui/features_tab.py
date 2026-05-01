@@ -24,13 +24,10 @@ class FeaturesTab(Vertical):
     }
     FeaturesTab #feat-pick-screen {
         height: 1fr;
+        width: 60;
+        max-height: 100%;
         align: center middle;
         border: solid $boost;
-    }
-    FeaturesTab #feat-pick-inner {
-        width: 60;
-        height: auto;
-        max-height: 100%;
     }
     FeaturesTab #feat-detail-screen {
         height: 1fr;
@@ -54,7 +51,18 @@ class FeaturesTab(Vertical):
         layout: vertical;
         margin-top: 1;
     }
-    FeaturesTab #feat-actions Button {
+    FeaturesTab #feat-row-readme,
+    FeaturesTab #feat-row-demo {
+        height: auto;
+        layout: horizontal;
+        margin-bottom: 1;
+    }
+    FeaturesTab #feat-row-readme Button,
+    FeaturesTab #feat-row-demo Button {
+        width: 1fr;
+    }
+    FeaturesTab #feat-actions > Button {
+        width: 100%;
         margin-bottom: 1;
     }
     FeaturesTab #feat-workarea {
@@ -105,7 +113,7 @@ class FeaturesTab(Vertical):
         self._current: FeatureInfo | None = None
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="feat-pick-screen"), Vertical(id="feat-pick-inner"):
+        with Vertical(id="feat-pick-screen"):
             yield Static("[b]Выберите фичу[/b]", id="feat-pick-title")
             for f in FEATURES:
                 yield Button(f.title, id=f"feat-pick-{f.slug}", variant="primary")
@@ -113,10 +121,12 @@ class FeaturesTab(Vertical):
             with Vertical(id="feat-sidebar"):
                 yield Static("", id="feat-desc")
                 with Vertical(id="feat-actions"):
-                    yield Button("README (EN)", id="feat-readme-en")
-                    yield Button("README (ru)", id="feat-readme-ru")
-                    yield Button("Demo: paced", id="feat-demo-slow")
-                    yield Button("Demo: fast", id="feat-demo-fast")
+                    with Horizontal(id="feat-row-readme"):
+                        yield Button("README (EN)", id="feat-readme-en")
+                        yield Button("README (ru)", id="feat-readme-ru")
+                    with Horizontal(id="feat-row-demo"):
+                        yield Button("Demo: paced", id="feat-demo-slow")
+                        yield Button("Demo: fast", id="feat-demo-fast")
                     yield Button("Install dev deps", id="feat-install", variant="warning")
                     yield Button("← К списку фич", id="feat-back", variant="default")
             with Vertical(id="feat-workarea"):

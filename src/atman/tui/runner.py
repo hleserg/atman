@@ -20,6 +20,7 @@ async def stream_command(
     Returns the process exit code.
     """
     merged = os.environ.copy()
+    merged.setdefault("PYTHONUNBUFFERED", "1")
     if env:
         merged.update(dict(env))
     proc = await asyncio.create_subprocess_exec(

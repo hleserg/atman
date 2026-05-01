@@ -1,14 +1,15 @@
-"""Tests tab: collect-only list, pytest runs, progress, statistics, failure filter."""
+"""Tests tab: run full suite, live log, progress bar, statistics, log filters."""
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Label, ListItem, ListView, ProgressBar, RichLog, Static
+from textual.widgets import Button, ProgressBar, RichLog, Static
 
 from atman.tui.cmd import pytest_cmd
 from atman.tui.pytest_utils import (
@@ -25,39 +26,66 @@ from atman.tui.runner import stream_command
 
 
 class TestsTab(Vertical):
-    """Left: actions + list; right: log + filter buttons."""
+    """Single column: controls, log, progress, stats."""
 
     DEFAULT_CSS = """
     TestsTab {
         height: 1fr;
     }
-    TestsTab #tests-left {
-        width: 38%;
-        min-width: 28;
-        height: 1fr;
+    TestsTab #tests-toolbar-run {
+        height: auto;
+        margin-bottom: 1;
     }
-    TestsTab #tests-right {
-        width: 1fr;
-        height: 1fr;
+    TestsTab #tests-toolbar-filters {
+        height: auto;
+        margin-bottom: 1;
     }
-    TestsTab #tests-list {
+    TestsTab #tests-log-wrap {
         height: 1fr;
-        border: solid $boost;
-    }
-    TestsTab #tests-log {
-        height: 1fr;
+        min-height: 8;
         border: solid $boost;
         background: $surface;
     }
+    /* Accent border only on log area (no full-panel tint) */
+    TestsTab #tests-log-wrap.-out-ok {
+        border: tall $success;
+    }
+    TestsTab #tests-log-wrap.-out-err {
+        border: tall $error;
+    }
+    TestsTab #tests-log {
+        height: 1fr;
+    }
+    TestsTab #tests-progress-row {
+        width: 100%;
+        height: 5;
+        min-height: 5;
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+    TestsTab #tests-progress {
+        width: 100%;
+        height: 100%;
+        min-height: 5;
+    }
+    TestsTab #tests-progress-label {
+        height: auto;
+        margin-bottom: 0;
+    }
     TestsTab #tests-stats {
         height: auto;
-        max-height: 10;
+        max-height: 12;
         border: solid $boost;
         padding: 0 1;
+        background: $boost;
     }
-    TestsTab #tests-meter {
-        height: auto;
-        padding: 0 1;
+    TestsTab #tests-stats.-stats-ok {
+        background: $success-muted;
+        color: $text-success;
+    }
+    TestsTab #tests-stats.-stats-err {
+        background: $error-muted;
+        color: $text-error;
     }
     """
 
@@ -70,131 +98,120 @@ class TestsTab(Vertical):
         self._junit_path = repo_root / ".atman" / "tui-cache" / "junit.xml"
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
-            with Vertical(id="tests-left"):
-                yield Button("Refresh list", id="btn-tests-refresh", variant="primary")
-                yield Button("Run all tests", id="btn-tests-all")
-                yield Button("Run selected", id="btn-tests-one")
-                yield ProgressBar(total=100, show_eta=False, id="tests-progress")
-                yield Static(
-                    "Progress: —   Success (finished): —%",
-                    id="tests-meter",
-                )
-                yield Static(
-                    "Statistics will appear after a run.\nUse “Refresh list” to load tests.",
-                    id="tests-stats",
-                )
-                yield ListView(id="tests-list")
-            with Vertical(id="tests-right"):
-                with Horizontal():
-                    yield Button(
-                        "Show errors only",
-                        id="btn-tests-errors",
-                        disabled=True,
-                    )
-                    yield Button(
-                        "Show full output",
-                        id="btn-tests-full",
-                        disabled=True,
-                    )
-                    yield Button("Clear log", id="btn-tests-clear")
-                yield RichLog(
-                    id="tests-log",
-                    highlight=False,
-                    max_lines=8000,
-                    auto_scroll=True,
-                )
+        with Horizontal(id="tests-toolbar-run"):
+            yield Button("Запустить тесты", id="btn-tests-run", variant="primary")
+        with Horizontal(id="tests-toolbar-filters"):
+            yield Button("Только ошибки", id="btn-tests-errors", disabled=True)
+            yield Button("Полный вывод", id="btn-tests-full", disabled=True)
+            yield Button("Очистить лог", id="btn-tests-clear")
+        with Vertical(id="tests-log-wrap"):
+            yield RichLog(
+                id="tests-log",
+                highlight=False,
+                max_lines=12000,
+                auto_scroll=True,
+            )
+        yield Static("", id="tests-progress-label")
+        with Horizontal(id="tests-progress-row"):
+            yield ProgressBar(
+                total=100,
+                show_eta=False,
+                show_percentage=True,
+                show_bar=True,
+                id="tests-progress",
+            )
+        yield Static(
+            "Нажмите «Запустить тесты». После прогона здесь появится статистика.",
+            id="tests-stats",
+        )
 
     def on_mount(self) -> None:
         self._junit_path.parent.mkdir(parents=True, exist_ok=True)
-
-    @on(Button.Pressed, "#btn-tests-refresh")
-    def refresh_tests(self) -> None:
-        self.refresh_test_list()
-
-    @work(group="tests", exclusive=True, exit_on_error=False)
-    async def refresh_test_list(self) -> None:
-        log = self.query_one("#tests-log", RichLog)
-        log.write("[dim]Collecting tests…[/]")
-        argv = pytest_cmd("tests/", "--collect-only", "-q")
-        buf: list[str] = []
-
-        code = await stream_command(argv, self._repo, on_line=buf.append)
-        text = "".join(buf)
-        self._nodeids = parse_collect_only(text)
-        lv = self.query_one("#tests-list", ListView)
-        await lv.clear()
-        if self._nodeids:
-            await lv.extend(ListItem(Label(n)) for n in self._nodeids)
-        log.write(f"[dim]Collected {len(self._nodeids)} tests (exit {code}).[/]")
-        kinds = classify_nodeids(self._nodeids)
-        stats = self.query_one("#tests-stats", Static)
-        stats.update(
-            f"Collected: {kinds.total}\n"
-            f"• Plain functions: {kinds.plain_functions}\n"
-            f"• Class methods: {kinds.class_methods}",
-        )
         pb = self.query_one("#tests-progress", ProgressBar)
-        pb.update(total=max(1, len(self._nodeids)), progress=0)
+        pb.update(total=100.0, progress=0.0)
 
-    @on(Button.Pressed, "#btn-tests-all")
-    def run_all_pressed(self) -> None:
-        self.run_pytest_suite(full=True)
+    def _reset_log_chrome(self) -> None:
+        wrap = self.query_one("#tests-log-wrap", Vertical)
+        stats = self.query_one("#tests-stats", Static)
+        wrap.remove_class("-out-ok", "-out-err")
+        stats.remove_class("-stats-ok", "-stats-err")
 
-    @on(Button.Pressed, "#btn-tests-one")
-    def run_one_pressed(self) -> None:
-        lv = self.query_one("#tests-list", ListView)
-        if lv.index is None or not self._nodeids:
-            self.app.notify("Select a test in the list (refresh first).", severity="warning")
-            return
-        target = self._nodeids[lv.index]
-        self.run_pytest_suite(full=False, target=target)
+    def _set_run_chrome(self, *, ok: bool) -> None:
+        wrap = self.query_one("#tests-log-wrap", Vertical)
+        stats = self.query_one("#tests-stats", Static)
+        wrap.remove_class("-out-ok", "-out-err")
+        stats.remove_class("-stats-ok", "-stats-err")
+        if ok:
+            wrap.add_class("-out-ok")
+            stats.add_class("-stats-ok")
+        else:
+            wrap.add_class("-out-err")
+            stats.add_class("-stats-err")
+
+    @on(Button.Pressed, "#btn-tests-run")
+    def run_pressed(self) -> None:
+        self.run_pytest_suite()
 
     @work(group="tests", exclusive=True, exit_on_error=False)
-    async def run_pytest_suite(self, *, full: bool, target: str | None = None) -> None:
+    async def run_pytest_suite(self) -> None:
         if self._running:
-            self.app.notify("A test run is already in progress.", severity="warning")
+            self.app.notify("Тесты уже выполняются.", severity="warning")
             return
         self._running = True
         self._last_full_log = ""
+        self._reset_log_chrome()
+
         log_w = self.query_one("#tests-log", RichLog)
         log_w.clear()
         errs = self.query_one("#btn-tests-errors", Button)
         full_btn = self.query_one("#btn-tests-full", Button)
         errs.disabled = True
         full_btn.disabled = True
-        for b in self.query(Button):
-            if b.id in ("btn-tests-all", "btn-tests-one", "btn-tests-refresh"):
-                b.disabled = True
+        self.query_one("#btn-tests-run", Button).disabled = True
 
-        if not self._nodeids:
-            buf: list[str] = []
-            await stream_command(
-                pytest_cmd("tests/", "--collect-only", "-q"),
-                self._repo,
-                on_line=buf.append,
-            )
-            self._nodeids = parse_collect_only("".join(buf))
+        stats_panel = self.query_one("#tests-stats", Static)
+        stats_panel.remove_class("-stats-ok", "-stats-err")
+        stats_panel.update("Сбор списка тестов…")
+        log_w.write("$ " + " ".join(pytest_cmd("tests/", "--collect-only", "-q")))
+
+        buf: list[str] = []
+
+        def on_collect_line(line: str) -> None:
+            buf.append(line)
+            log_w.write(line.rstrip("\n"))
+
+        await stream_command(
+            pytest_cmd("tests/", "--collect-only", "-q"),
+            self._repo,
+            on_line=on_collect_line,
+        )
+        self._nodeids = parse_collect_only("".join(buf))
+        total = max(1, len(self._nodeids))
+        kinds = classify_nodeids(self._nodeids)
 
         pb = self.query_one("#tests-progress", ProgressBar)
-        meter = self.query_one("#tests-meter", Static)
-        total = max(1, len(self._nodeids))
-        pb.update(total=float(total), progress=0)
-        meter.update("Starting…")
+        lbl = self.query_one("#tests-progress-label", Static)
+        pb.update(total=float(total), progress=0.0)
+        lbl.update(f"0% — 0 / {total} тестов")
+
+        log_w.write(
+            f"Собрано тестов: {total} (функций: {kinds.plain_functions}, "
+            f"методов классов: {kinds.class_methods}). Запуск pytest…",
+        )
+
+        with contextlib.suppress(OSError):
+            self._junit_path.unlink(missing_ok=True)
 
         junit_arg = f"--junitxml={self._junit_path}"
-        if full:
-            argv = pytest_cmd(
-                "tests/",
-                "-v",
-                "--cov=atman",
-                "--cov-fail-under=90",
-                "--cov-report=term-missing",
-                junit_arg,
-            )
-        else:
-            assert target is not None
-            argv = pytest_cmd(target, "-v", junit_arg)
+        argv = pytest_cmd(
+            "tests/",
+            "-v",
+            "--cov=atman",
+            "--cov-fail-under=90",
+            "--cov-report=term-missing",
+            junit_arg,
+        )
+        log_w.write("$ " + " ".join(argv))
 
         completed = 0
         passed = 0
@@ -220,63 +237,75 @@ class TestsTab(Vertical):
                     skipped += 1
                 elif st == "XPASS":
                     passed += 1
+                pct = 100.0 * min(completed, total) / total
                 pb.update(progress=min(float(completed), float(total)))
-                denom = max(1, passed + failed + errors)
-                rate = 100.0 * passed / denom
-                meter.update(
-                    f"Progress: {completed}/{total}   "
-                    f"Success (finished): {rate:.0f}% "
-                    f"(pass {passed} / fail+err {failed + errors})",
+                lbl.update(
+                    f"{pct:.0f}% — {completed} / {total} тестов завершено "
+                    f"(ok {passed}, fail {failed}, err {errors}, skip {skipped})",
                 )
 
         try:
             code = await stream_command(argv, self._repo, on_line=on_line)
         finally:
             self._running = False
-            for b in self.query(Button):
-                if b.id in ("btn-tests-all", "btn-tests-one", "btn-tests-refresh"):
-                    b.disabled = False
+            self.query_one("#btn-tests-run", Button).disabled = False
 
         summary = parse_summary_line(self._last_full_log)
         cov_pct = parse_coverage_total_percent(self._last_full_log)
         jcounts = parse_junit_counts(self._junit_path)
         fail_n = junit_failure_error_count(self._junit_path)
 
-        stats = self.query_one("#tests-stats", Static)
-        lines = [
-            f"Exit code: {code}",
-            f"JUnit: tests={jcounts['tests']} fail={jcounts['failures']} err={jcounts['errors']}",
-        ]
+        # Trust process exit code; stale JUnit is removed before the run.
+        ok_exit = code == 0
+        self._set_run_chrome(ok=ok_exit)
+
+        pb.update(progress=float(total))
+        if summary:
+            done = summary.passed + summary.failed + summary.errors + summary.skipped
+            lbl.update(
+                f"Готово: 100% — выполнено {done} из ~{total} "
+                f"(pytest: {summary.passed} passed, {summary.failed} failed)",
+            )
+        else:
+            lbl.update(f"Готово: 100% — exit code {code}")
+
+        lines: list[str] = []
         if summary:
             lines.append(
-                f"Summary: {summary.passed} passed, {summary.failed} failed, "
-                f"{summary.errors} errors, {summary.skipped} skipped",
+                f"Итог: пройдено {summary.passed}, провалено {summary.failed}, "
+                f"ошибок {summary.errors}, пропущено {summary.skipped}",
             )
             if summary.duration_seconds is not None:
-                lines.append(f"Duration (pytest): {summary.duration_seconds:.2f}s")
+                lines.append(f"Время pytest: {summary.duration_seconds:.2f} с")
+            denom = max(1, summary.passed + summary.failed + summary.errors)
+            rate = 100.0 * summary.passed / denom
+            lines.append(f"Доля успешных (без skip): {rate:.1f}%")
+        lines.append(f"Код выхода процесса: {code}")
+        lines.append(
+            f"JUnit: всего {jcounts['tests']}, failures {jcounts['failures']}, "
+            f"errors {jcounts['errors']}, skipped {jcounts['skipped']}",
+        )
         if cov_pct is not None:
-            lines.append(f"Coverage (TOTAL): {cov_pct:.1f}%")
-        stats.update("\n".join(lines))
+            lines.append(f"Покрытие (TOTAL): {cov_pct:.1f}%")
+        lines.append(f"Собрано при collect-only: {total} тестов")
 
-        if fail_n > 0:
+        stats_panel.update("\n".join(lines))
+
+        if fail_n > 0 or not ok_exit:
             errs.disabled = False
             full_btn.disabled = False
         elif self._last_full_log.strip():
             errs.disabled = True
             full_btn.disabled = False
 
-        if summary:
-            denom = max(1, summary.passed + summary.failed + summary.errors)
-            rate = 100.0 * summary.passed / denom
-            meter.update(
-                f"Done: {summary.passed} passed / {summary.failed} failed / {summary.errors} errors — "
-                f"success rate {rate:.0f}%",
+        if ok_exit:
+            self.app.notify(f"Тесты завершены (exit {code}).", severity="information")
+        else:
+            self.app.notify(
+                f"Тесты завершились с ошибкой (exit {code}). См. лог и статистику.",
+                severity="error",
+                timeout=12,
             )
-            pb.update(progress=float(total))
-
-        self.app.notify(
-            f"Tests finished (exit {code}).", severity="information" if code == 0 else "error"
-        )
 
     @on(Button.Pressed, "#btn-tests-errors")
     def show_errors(self) -> None:
@@ -289,8 +318,8 @@ class TestsTab(Vertical):
             for line in slim.splitlines():
                 log_w.write(line)
         else:
-            log_w.write("[green]No failure sections in the log (all green).[/]")
-        self.app.notify("Showing errors-only excerpt.", severity="information")
+            log_w.write("Нет секций с ошибками в логе (всё зелёное).")
+        self.app.notify("Показан фрагмент только с ошибками.", severity="information")
 
     @on(Button.Pressed, "#btn-tests-full")
     def show_full(self) -> None:
@@ -304,3 +333,10 @@ class TestsTab(Vertical):
     @on(Button.Pressed, "#btn-tests-clear")
     def clear_log(self) -> None:
         self.query_one("#tests-log", RichLog).clear()
+        self._reset_log_chrome()
+        self.query_one("#tests-stats", Static).update(
+            "Лог очищен. Запустите тесты снова для новой статистики.",
+        )
+        self.query_one("#tests-progress-label", Static).update("")
+        pb = self.query_one("#tests-progress", ProgressBar)
+        pb.update(total=100.0, progress=0.0)
