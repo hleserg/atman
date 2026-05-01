@@ -79,9 +79,10 @@ Before modifying any component, identify:
 
 **What exists**:
 - Markdown documentation (architecture, research, ideas)
-- First implementation: Factual Memory Adapter (v0.1.0)
+- Implementations: Factual Memory Adapter (v0.1.0), Experience Store (WP02)
 - Basic Python structure (`src/atman/`, `tests/`)
 - `pyproject.toml` with minimal dependencies
+- Reproducible demos: `src/demo.py`, `src/demo_experience_store.py` (`make demo-experience`)
 
 **What does NOT exist yet**:
 - Complete Core implementation
@@ -115,6 +116,17 @@ Before considering work complete, verify:
 - [ ] Has health/degraded mode story
 - [ ] Does not add mandatory runtime services without ADR
 - [ ] Core is not directly coupled to mem0/OpenClaw/specific LLM
+
+### 6.1 Definition of Demo (substantive features)
+
+If the change adds **user-visible behavior**, a **new CLI command**, or a **work-package-sized feature**, also verify (see `DEVELOPMENT_STANDARD.md`, *Definition of Demo*):
+
+- [ ] Feature narrative updated (`docs/development/work-packages/` and/or feature README such as `README_EXPERIENCE_STORE.md`)
+- [ ] Reproducible demo: `make demo-*` or `python3 src/demo_*.py` (or documented non-interactive commands)
+- [ ] Fixtures under `fixtures/` when sample data is required
+- [ ] PR template section **Как воспроизвести** filled in (or N/A with reason)
+
+Cloud agents read `AGENTS.md` and the PR template — keep demo instructions there, not only in this file.
 
 ### 7. Documentation Rules
 
@@ -222,6 +234,10 @@ pytest tests/ -v
 # Interactive CLI (Factual Memory)
 python3 -m atman.cli
 
+# Non-interactive demos
+python3 src/demo.py
+make demo-experience
+
 # Check structure
 tree src/atman/
 ```
@@ -241,6 +257,7 @@ Local agents and cloud agents (via Cursor Cloud) share the same standards:
 - Both use canonical terminology
 - Both respect Core/Adapter boundaries
 - Both must pass the same Definition of Done checklist
+- Substantive features must satisfy **Definition of Demo** (see `DEVELOPMENT_STANDARD.md` and `AGENTS.md`)
 
 **Difference**: Cloud agents get `AGENTS.md` injected automatically. Local agents must read this master prompt manually.
 

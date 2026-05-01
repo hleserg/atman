@@ -9,10 +9,10 @@ Use this skill when a Cloud agent needs to run, test, or extend this repository.
 
 ## 1. Reality check first
 
-- `AGENTS.md` still says the repo is documentation-only and has no tests or dependencies. Treat that as historical context, then verify the current tree.
-- Current runnable code exists: `pyproject.toml`, `src/atman/`, `tests/`, `src/demo.py`, `src/test_cli.sh`, and `src/full_demo.sh`.
+- Read `AGENTS.md` for the current truth: Python package, tests, and quality gates (`make check`).
+- Runnable code: `pyproject.toml`, `src/atman/`, `tests/`, `src/demo.py`, `src/demo_experience_store.py`, plus optional shell helpers if present in `src/`.
 - Project goal: Atman is a psychological layer for AI agents, not a task runner. It is meant to preserve identity, lived experience, reflection, skills, and narrative continuity across sessions.
-- Main implemented area today: Factual Memory Adapter v0.1.0.
+- Implemented areas today: Factual Memory Adapter; Experience Store (WP02) with JSONL/in-memory adapters, service, tests, and `README_EXPERIENCE_STORE.md`.
 - Primary documentation language is English. Keep paired Russian docs in sync only for paired files listed in `AGENTS.md`: `README.md` / `README-ru.md`, `docs/architecture/SYSTEM.md` / `docs/architecture/SYSTEM-ru.md`, `MANIFEST.md` / `MANIFEST-ru.md`.
 - **There is no GitHub Actions CI** in this repository. Validation is local (`make check`, pre-commit). The public site is static files under `docs/` (GitHub Pages from a branch). After editing root `README*` / `MANIFEST*` or `docs/architecture/SYSTEM.md` / `SYSTEM-ru.md`, run `make sync-site-content` so `docs/content/` stays in sync for `document.html` (English uses canonical `README.md`, `MANIFEST.md`, `SYSTEM.md`; Russian uses `*-ru.md` copies).
 
@@ -78,18 +78,18 @@ Use this workflow after touching models, ports, search behavior, relations, immu
 
 Area:
 
-- `src/atman/cli.py`
-- `src/demo.py`
-- `src/test_cli.sh`
-- `src/full_demo.sh`
+- `src/atman/cli.py` — factual memory REPL
+- `src/atman/cli_experience.py` — Experience Store REPL (`atman-experience` console script)
+- `src/demo.py` — non-interactive factual memory walkthrough
+- `src/demo_experience_store.py` — non-interactive Experience Store walkthrough (temp JSONL)
 
-Run the CLI:
+Run the factual CLI:
 
 ```bash
 python3 -m atman.cli
 ```
 
-Manual CLI commands:
+Manual factual CLI commands:
 
 ```text
 add "User asked to implement factual memory" session_1 task request
@@ -102,10 +102,12 @@ Non-interactive smoke checks:
 
 ```bash
 PYTHONPATH=src python3 src/demo.py
-bash src/test_cli.sh
+make demo-experience
 ```
 
-Use a temporary file or `/tmp` path when testing `FileBackend`. The CLI default is `~/.atman/facts.jsonl`; avoid committing or relying on that local state.
+Experience Store: see `README_EXPERIENCE_STORE.md`; interactive CLI persists to `~/.atman/experiences.jsonl` by default. Prefer `make demo-experience` or `python3 src/demo_experience_store.py` for a clean, reproducible demo.
+
+Use a temporary file or `/tmp` path when testing `FileBackend`. The factual CLI default is `~/.atman/facts.jsonl`; avoid committing or relying on that local state.
 
 ### Architecture and development docs
 
@@ -127,6 +129,7 @@ Key rules from the docs:
 - Persistable structures need `schema_version`.
 - Tests must not require real API keys, mem0 server, OpenClaw workspace, or internet.
 - New architecture decisions need an ADR if they add mandatory services, change storage boundaries, change session/reflection lifecycle, change `PersonalitySnapshot`, introduce breaking persistent schema changes, or alter deployment.
+- **Definition of Demo** (substantive features): reproducible demo path, fixtures when needed, narrative doc — see `docs/development/DEVELOPMENT_STANDARD.md` and the **Как воспроизвести** section in `.github/pull_request_template.md`.
 - Research docs are context, not direct implementation orders. Current research frames Atman as Facts + Reflection + Skills + Identity continuity, with separate factual, reflective, skill, and identity loops.
 - Ideas docs capture future operational blocks such as Control Room, observability/audit, governance, sandboxing, onboarding, relationships, benchmarks, and disaster recovery.
 
@@ -149,7 +152,7 @@ Area:
 
 Workflow:
 
-- Use the PR template sections: what changed, type of change, checklist, notes.
+- Use the PR template sections: what changed, **Как воспроизвести (демонстрация)**, type of change, checklist, notes.
 - Mark documentation changes as `Новая возможность / документация`.
 - Keep issue/discussion templates aligned with the repository's bilingual documentation style when editing them.
 

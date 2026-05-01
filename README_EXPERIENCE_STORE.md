@@ -2,6 +2,18 @@
 
 Experience Store is the archive of first-hand lived experiences for the Atman agent. It stores not facts and not analysis, but *what the agent actually experienced*.
 
+## One-command demo
+
+After `pip install -e ".[dev]"` from the repository root:
+
+```bash
+make demo-experience
+```
+
+Equivalent: `python3 src/demo_experience_store.py`. Uses a **temporary** JSONL file and [`fixtures/experience1_competence_challenge.json`](fixtures/experience1_competence_challenge.json); does not modify `~/.atman`.
+
+For interactive CLI (persists to `~/.atman/experiences.jsonl` by default): `atman-experience`.
+
 ## Overview
 
 The Experience Store implements the following architecture components:
