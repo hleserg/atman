@@ -736,15 +736,15 @@
         const paths = {
           readme: {
             ru: "content/README-ru.md",
-            en: "content/README.en.md"
+            en: "content/README.md"
           },
           manifest: {
             ru: "content/MANIFEST-ru.md",
-            en: "content/MANIFEST.en.md"
+            en: "content/MANIFEST.md"
           },
           system: {
             ru: "content/SYSTEM-ru.md",
-            en: "architecture/SYSTEM.en.md"
+            en: "content/SYSTEM.md"
           }
         };
         return paths[docKey]?.[lang] || paths[docKey]?.ru || "content/README-ru.md";
@@ -800,6 +800,8 @@
         "/architecture/SYSTEM-ru.md": "system",
         "content/SYSTEM-ru.md": "system",
         "/content/SYSTEM-ru.md": "system",
+        "content/SYSTEM.md": "system",
+        "/content/SYSTEM.md": "system",
       };
 
       const params = new URLSearchParams(window.location.search);

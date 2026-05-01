@@ -787,7 +787,7 @@ docs/
   CNAME                        — домен GitHub Pages (atmanai.dev)
   index.html, document.html    — лендинг и просмотр документов
   pic/                         — ассеты сайта (логотип и т.д.)
-  content/                     — копии для `document.html`: `README*.md` / `MANIFEST*.md` с корня и `SYSTEM-ru.md` из `docs/architecture/`; после правок: `make sync-site-content`
+  content/                     — копии для `document.html`: с корня `README.md` / `README-ru.md` / `MANIFEST.md` / `MANIFEST-ru.md`, из `docs/architecture/` — `SYSTEM.md` / `SYSTEM-ru.md`; после правок: `make sync-site-content`
   architecture/                — SYSTEM.md, ADR, архитектурные решения
   development/                 — DEVELOPMENT_STANDARD.md, work packages
   research/                    — исследования, эксперименты, GPT-диалоги
@@ -828,7 +828,7 @@ docs/
 - Отчёт о реализации (`IMPLEMENTATION_REPORT.md`) — в `reports/`
 - Скрипты-демо (`demo.py`, `full_demo.sh`) — в `src/` или удалить после завершения работы
 - Файлы сайта — в `docs/` (`index.html`, `document.html`, `pic/`, `CNAME`), не в корне репозитория
-- Правили `README*` / `MANIFEST*` в корне или `docs/architecture/SYSTEM-ru.md` — выполни `make sync-site-content`, чтобы обновить `docs/content/` для сайта
+- Правили `README*` / `MANIFEST*` в корне или `docs/architecture/SYSTEM.md` / `SYSTEM-ru.md` — выполни `make sync-site-content`, чтобы обновить `docs/content/` для сайта
 - Не создавать новые папки в корне без явного решения в PR
 
 ## 25. Checklist перед началом новой задачи

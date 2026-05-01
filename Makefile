@@ -32,11 +32,12 @@ check: lint format typecheck security test
 
 all: check audit
 
-# Copies README/MANIFEST (+ Russian) and SYSTEM-ru into docs/content/ for GitHub Pages.
-# Run after editing those files: make sync-site-content
+# Copies canonical EN + RU sources into docs/content/ for GitHub Pages (document.html).
+# English: README.md, MANIFEST.md, docs/architecture/SYSTEM.md — Russian: *-ru.md counterparts.
 sync-site-content:
 	mkdir -p docs/content
-	cp README.md README.en.md README-ru.md MANIFEST.md MANIFEST.en.md MANIFEST-ru.md docs/content/
+	cp README.md README-ru.md MANIFEST.md MANIFEST-ru.md docs/content/
+	cp docs/architecture/SYSTEM.md docs/content/SYSTEM.md
 	cp docs/architecture/SYSTEM-ru.md docs/content/SYSTEM-ru.md
 
 docs-preview: sync-site-content

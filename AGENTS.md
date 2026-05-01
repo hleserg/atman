@@ -82,7 +82,7 @@ pytest tests/ -v --cov=atman --cov-fail-under=90          # tests + coverage ≥
 
 ### Полезные заметки
 
-- После правок **`README.md` / `README.en.md` / `README-ru.md` / `MANIFEST.md` / `MANIFEST.en.md` / `MANIFEST-ru.md`** в корне или **`docs/architecture/SYSTEM-ru.md`** выполните **`make sync-site-content`**, чтобы копии в `docs/content/` совпадали с сайтом на GitHub Pages.
+- После правок **`README.md` / `README-ru.md` / `MANIFEST.md` / `MANIFEST-ru.md`** в корне или **`docs/architecture/SYSTEM.md` / `SYSTEM-ru.md`** выполните **`make sync-site-content`**, чтобы копии в `docs/content/` совпадали с сайтом на GitHub Pages.
 - PR-шаблон находится в `.github/pull_request_template.md` — используйте его при создании PR.
 - Pre-commit хуки настроены в `.pre-commit-config.yaml` (ruff, pyright, bandit).
 - `Makefile` содержит все проверки: `make check` запускает полный набор, `make test-fast` — параллельные тесты.
