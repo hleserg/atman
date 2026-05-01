@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
@@ -25,7 +26,7 @@ class FileBackend(FactualMemory):
     При запуске все факты загружаются в память для быстрого доступа.
     """
 
-    def __init__(self, filepath: str | Path):
+    def __init__(self, filepath: str | Path) -> None:
         """
         Инициализирует file backend.
 
@@ -37,7 +38,7 @@ class FileBackend(FactualMemory):
         self._facts: dict[UUID, FactRecord] = {}
         self._load_facts()
 
-    def _load_facts(self):
+    def _load_facts(self) -> None:
         """Загружает факты из файла в память."""
         self._facts = self._read_facts_from_disk()
 
@@ -58,7 +59,7 @@ class FileBackend(FactualMemory):
         return facts
 
     @contextmanager
-    def _storage_lock(self):
+    def _storage_lock(self) -> Iterator[None]:
         """Сериализует операции read-modify-write между экземплярами FileBackend."""
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(self._lockpath, "a", encoding="utf-8") as lock_file:
@@ -69,7 +70,7 @@ class FileBackend(FactualMemory):
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def _save_facts(self, facts: dict[UUID, FactRecord] | None = None):
+    def _save_facts(self, facts: dict[UUID, FactRecord] | None = None) -> None:
         """Сохраняет все факты в файл атомарной заменой."""
         facts_to_save = facts if facts is not None else self._facts
         self.filepath.parent.mkdir(parents=True, exist_ok=True)

@@ -13,9 +13,10 @@ from uuid import UUID
 
 from atman.adapters.memory import FileBackend
 from atman.core.models import FactRecord
+from atman.core.ports import FactualMemory
 
 
-def print_fact(fact: FactRecord, prefix: str = ""):
+def print_fact(fact: FactRecord, prefix: str = "") -> None:
     """Выводит информацию о факте."""
     print(f"{prefix}ID: {fact.id}")
     print(f"{prefix}Содержание: {fact.content}")
@@ -31,7 +32,7 @@ def print_fact(fact: FactRecord, prefix: str = ""):
     print()
 
 
-def cmd_add(backend, args):
+def cmd_add(backend: FactualMemory, args: list[str]) -> None:
     """Добавляет новый факт."""
     if len(args) < 2:
         print("Использование: add <content> <source> [tags...]")
@@ -48,7 +49,7 @@ def cmd_add(backend, args):
     print_fact(added)
 
 
-def cmd_get(backend, args):
+def cmd_get(backend: FactualMemory, args: list[str]) -> None:
     """Получает факт по ID."""
     if len(args) < 1:
         print("Использование: get <fact_id>")
@@ -68,7 +69,7 @@ def cmd_get(backend, args):
         print("✗ Факт не найден")
 
 
-def cmd_search(backend, args):
+def cmd_search(backend: FactualMemory, args: list[str]) -> None:
     """Ищет факты по запросу и/или тегам."""
     if len(args) < 1:
         print("Использование: search <query> [--tags tag1,tag2]")
@@ -100,7 +101,7 @@ def cmd_search(backend, args):
         print("✗ Факты не найдены")
 
 
-def cmd_link(backend, args):
+def cmd_link(backend: FactualMemory, args: list[str]) -> None:
     """Создает связь между фактами."""
     if len(args) < 3:
         print("Использование: link <source_id> <target_id> <relation_type>")
@@ -122,7 +123,7 @@ def cmd_link(backend, args):
         print("✗ Ошибка: один или оба факта не найдены")
 
 
-def cmd_recent(backend, args):
+def cmd_recent(backend: FactualMemory, args: list[str]) -> None:
     """Выводит последние факты."""
     limit = int(args[0]) if args and args[0].isdigit() else 10
 
@@ -136,7 +137,7 @@ def cmd_recent(backend, args):
         print("✗ Фактов нет")
 
 
-def cmd_help(_backend, _args):
+def cmd_help(_backend: FactualMemory, _args: list[str]) -> None:
     """Выводит справку."""
     print("""
 Atman Factual Memory CLI
@@ -168,7 +169,7 @@ COMMANDS = {
 }
 
 
-def main():
+def main() -> None:
     """Точка входа CLI."""
     print("Atman Factual Memory CLI")
     print("Введите 'help' для справки\n")
