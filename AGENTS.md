@@ -2,56 +2,45 @@
 
 ## Overview
 
-Atman — проект психологического слоя для AI-агента. Репозиторий находится на стадии **прототипирования**: основная часть — документация (markdown-файлы), но уже есть первая реализация компонента Factual Memory.
-
-**Текущее состояние**:
-- ✅ Документация: архитектура, стандарты разработки, исследования
-- ✅ Factual Memory Adapter v0.1.0: модели, порты, адаптеры, 41 unit-тест
-- ✅ Базовая структура: `src/atman/`, `tests/`, `pyproject.toml`
-- ⏳ Остальные компоненты (Experience Store, Identity Store, Reflection Engine) в очереди
-
-**Для работы с кодом** см. раздел "Local Agent Instructions" ниже.
+Atman — проект психологического слоя для AI-агента, находящийся на стадии **прототипирования**. Содержит документацию (markdown-файлы, изображения, шаблоны) и первый реализованный компонент — **Factual Memory Adapter** (Python-пакет `atman`).
 
 ## Cursor Cloud specific instructions
 
 ### Структура репозитория
 
+- `src/atman/` — Python-пакет (модели, порты, адаптеры, CLI)
+- `tests/` — юнит-тесты (pytest)
+- `src/demo.py` — демо-скрипт
+- `pyproject.toml` — конфигурация проекта и зависимости
 - `MANIFEST.md` — философский манифест проекта
 - `docs/architecture/SYSTEM.md` — подробная архитектура системы (7 компонентов, режимы работы, протоколы)
-- `docs/development/DEVELOPMENT_STANDARD.md` — стандарт разработки (терминология, границы, DoD)
 - `docs/research/` — исследования (mem0, интеграции)
 - `docs/ideas/` — идеи для будущих блоков
 - `reports/sessions/` — шаблоны отчётов о сессиях
 - `.github/` — шаблоны issue и PR
-- `src/atman/` — реализация (Core, Adapters, Infrastructure)
-- `tests/` — тесты
-- `.cursor/` — инструкции для локальных агентов
 
 ### Lint / Test / Build / Run
 
-**Текущее состояние кода**:
-- ✅ Python код: `src/atman/` (Factual Memory реализован)
-- ✅ Зависимости: `pyproject.toml` (Pydantic, pytest)
-- ✅ Тесты: 41 unit-тест в `tests/` (все проходят)
-- ❌ CI/CD workflows: пока нет
-- ❌ Pre-commit hooks: пока нет
+- **Python ≥ 3.12** required (see `pyproject.toml`)
+- **Install**: `pip install -e ".[dev]"`
+- **Tests**: `pytest tests/ -v --cov=atman --cov-fail-under=90` (49 tests, coverage ≥90%)
+- **Tests (parallel)**: `pytest tests/ -n auto` (pytest-xdist)
+- **CLI (REPL)**: `python3 -m atman.cli`
+- **Demo**: `python3 src/demo.py`
+- **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
+- **Type check**: `pyright src/ tests/` (standard mode, 0 errors)
+- **Security**: `bandit -c pyproject.toml -r src/atman/`
+- **Dependency audit**: `pip-audit`
+- **All checks at once**: `make check` (lint + format + typecheck + security + tests)
+- **Pre-commit**: configured in `.pre-commit-config.yaml` (ruff, pyright, bandit)
+- No external services (databases, Docker, etc.) are required — storage is in-memory or file-based (JSONL)
 
-**Команды для работы с кодом**:
-```bash
-pip install -e .[dev]    # Установить зависимости (включая dev/test)
-pytest tests/ -v         # Запустить тесты
-python3 -m atman.cli     # Интерактивный CLI (Factual Memory)
-```
+### Gotchas
 
-**Для работы с документацией**: редактирование markdown-файлов, соблюдение двуязычной синхронизации.
-
-**Важно**: При работе с кодом следуйте `docs/development/DEVELOPMENT_STANDARD.md` — канонические термины, границы Core/Adapter, Definition of Done.
-
-### Планируемый стек (из архитектурных документов)
-
-Когда код появится, проект будет использовать:
 - Python ≥ 3.12, менеджер пакетов `uv`, build-система Hatchling
-- PydanticAI + Anthropic (Claude), mem0, APScheduler
+- PydanticAI + Anthropic (Claude), mem0, APScheduler — планируемые зависимости, пока не подключены
+- Ruff настроен в `pyproject.toml` (`[tool.ruff]`); кириллица допускается (RUF001-003 отключены)
+- Pyright настроен в `pyproject.toml` (`[tool.pyright]`), режим `standard`; все функции должны иметь аннотации типов
 - Детали см. в `docs/architecture/SYSTEM.md`
 
 ### Язык документации
@@ -70,31 +59,27 @@ python3 -m atman.cli     # Интерактивный CLI (Factual Memory)
 - `docs/architecture/SYSTEM.md` / `docs/architecture/SYSTEM-ru.md`
 - `MANIFEST.md` / `MANIFEST-ru.md`
 
+### Обязательные проверки перед завершением задачи
+
+Любая задача программирования считается завершённой только если **все проверки** пройдены с нулём ошибок:
+
+```bash
+ruff check src/ tests/                                    # lint
+ruff format --check src/ tests/                           # format
+pyright src/ tests/                                       # type check
+bandit -c pyproject.toml -r src/atman/                    # security
+pytest tests/ -v --cov=atman --cov-fail-under=90          # tests + coverage ≥90%
+```
+
+**Правила:**
+- Не коммитить код с ошибками линтера, type checker или security linter
+- Новые функции и методы должны иметь аннотации типов
+- При обращении к результату, который может быть `None` (например `get_fact()` → `FactRecord | None`), сначала проверить `assert ... is not None` или `if ... is not None`
+- Если инструмент выдаёт ложное срабатывание на существующем паттерне — добавить исключение в конфигурацию `pyproject.toml`, а не игнорировать ошибку
+- Все проверки запускаются одной командой: `make check`
+
 ### Полезные заметки
 
 - PR-шаблон находится в `.github/pull_request_template.md` — используйте его при создании PR.
-- Нет pre-commit хуков, lint-staged, или CI workflows.
-
-## Local Agent Instructions
-
-**For local Cursor agents** (not cloud agents), read the master prompt before starting any work:
-
-📋 **Master Prompt**: [`.cursor/local-agent-master-prompt.md`](.cursor/local-agent-master-prompt.md)
-
-The master prompt provides:
-- Complete workflow and standards
-- Links to all essential documentation
-- Terminology discipline rules
-- Architecture boundaries (Core vs Adapters)
-- Definition of Done checklist
-- Forbidden actions and common pitfalls
-
-**Why separate from cloud instructions?**
-- Cloud agents get `AGENTS.md` injected automatically
-- Local agents need explicit guidance to follow the same standards
-- Master prompt ensures local agents don't "go rogue" and follow project rules
-
-**Before starting work, always**:
-1. Read `.cursor/local-agent-master-prompt.md`
-2. Review `docs/development/DEVELOPMENT_STANDARD.md`
-3. Check relevant sections in `docs/architecture/SYSTEM.md`
+- Pre-commit хуки настроены в `.pre-commit-config.yaml` (ruff, pyright, bandit).
+- `Makefile` содержит все проверки: `make check` запускает полный набор, `make test-fast` — параллельные тесты.
