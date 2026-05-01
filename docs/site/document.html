@@ -696,6 +696,9 @@
             const sourcePrefix = lang === 'ru' ? 'Источник' : 'Source';
             document.getElementById("doc-source").textContent = `${sourcePrefix}: ${activeDoc.path}`;
             
+            const contentElement = document.getElementById("markdown-content");
+            const tocElement = document.getElementById("toc-links");
+            
             fetch(activeDoc.path)
               .then((response) => {
                 if (!response.ok) {
@@ -708,19 +711,19 @@
               })
               .then((markdown) => {
                 const { html, headings } = renderMarkdown(markdown);
-                content.innerHTML = html;
-                toc.innerHTML = renderToc(headings, lang);
+                contentElement.innerHTML = html;
+                tocElement.innerHTML = renderToc(headings, lang);
               })
               .catch((error) => {
                 const errorTitle = lang === 'ru' ? 'Документ не загрузился.' : 'Document failed to load.';
                 const tocError = lang === 'ru' ? 'Оглавление недоступно.' : 'Contents unavailable.';
-                content.innerHTML = `
+                contentElement.innerHTML = `
                   <div class="empty-state">
                     <p><strong>${errorTitle}</strong></p>
                     <p>${escapeHtml(error.message)}</p>
                   </div>
                 `;
-                toc.innerHTML = `<span class="muted">${tocError}</span>`;
+                tocElement.innerHTML = `<span class="muted">${tocError}</span>`;
               });
           }
         });
