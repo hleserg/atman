@@ -735,19 +735,19 @@
       function getDocumentPath(docKey, lang) {
         const paths = {
           readme: {
-            ru: "README.md",
-            en: "README.en.md"
+            ru: "content/README.md",
+            en: "content/README.en.md"
           },
           manifest: {
-            ru: "MANIFEST.md",
-            en: "MANIFEST.en.md"
+            ru: "content/MANIFEST.md",
+            en: "content/MANIFEST.en.md"
           },
           system: {
-            ru: "docs/architecture/SYSTEM.md",
-            en: "docs/architecture/SYSTEM.en.md"
+            ru: "architecture/SYSTEM.md",
+            en: "architecture/SYSTEM.en.md"
           }
         };
-        return paths[docKey]?.[lang] || paths[docKey]?.ru || "README.md";
+        return paths[docKey]?.[lang] || paths[docKey]?.ru || "content/README.md";
       }
 
       function getDocuments(lang) {
@@ -776,10 +776,16 @@
       const docAliases = {
         "README.md": "readme",
         "/README.md": "readme",
+        "content/README.md": "readme",
+        "/content/README.md": "readme",
         "MANIFEST.md": "manifest",
         "/MANIFEST.md": "manifest",
+        "content/MANIFEST.md": "manifest",
+        "/content/MANIFEST.md": "manifest",
         "docs/architecture/SYSTEM.md": "system",
         "/docs/architecture/SYSTEM.md": "system",
+        "architecture/SYSTEM.md": "system",
+        "/architecture/SYSTEM.md": "system",
       };
 
       const params = new URLSearchParams(window.location.search);

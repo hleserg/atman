@@ -5,13 +5,16 @@ on:
     branches:
       - main
     paths:
-      - index.html
-      - document.html
-      - CNAME
+      - docs/index.html
+      - docs/document.html
+      - docs/CNAME
+      - docs/pic/**
       - README.md
+      - README.en.md
       - MANIFEST.md
-      - docs/**
-      - pic/**
+      - MANIFEST.en.md
+      - docs/architecture/SYSTEM.md
+      - docs/architecture/SYSTEM.en.md
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -42,12 +45,13 @@ jobs:
           set -euo pipefail
 
           rm -rf /tmp/atman-pages
-          mkdir -p /tmp/atman-pages/docs/architecture
+          mkdir -p /tmp/atman-pages/content /tmp/atman-pages/architecture
 
-          cp -R docs/site/. /tmp/atman-pages/
+          cp docs/index.html docs/document.html /tmp/atman-pages/
+          cp -R docs/pic /tmp/atman-pages/
           cp docs/CNAME /tmp/atman-pages/CNAME
-          cp README.md README.en.md MANIFEST.md MANIFEST.en.md /tmp/atman-pages/
-          cp docs/architecture/SYSTEM.md docs/architecture/SYSTEM.en.md /tmp/atman-pages/docs/architecture/
+          cp README.md README.en.md MANIFEST.md MANIFEST.en.md /tmp/atman-pages/content/
+          cp docs/architecture/SYSTEM.md docs/architecture/SYSTEM.en.md /tmp/atman-pages/architecture/
 
       - name: Upload landing artifact
         uses: actions/upload-pages-artifact@v3

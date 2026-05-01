@@ -26,22 +26,25 @@ class PagesWorkflowTest(unittest.TestCase):
             return self.workflow[start:]
         return self.workflow[start:next_step]
 
-    def test_pages_artifact_is_built_from_site_directory(self):
+    def test_pages_artifact_is_built_from_docs_directory(self):
         prepare = self.step_block("Prepare Pages artifact")
 
-        self.assertIn("mkdir -p /tmp/atman-pages/docs/architecture", prepare)
-        self.assertIn("cp -R docs/site/. /tmp/atman-pages/", prepare)
+        self.assertIn(
+            "mkdir -p /tmp/atman-pages/content /tmp/atman-pages/architecture", prepare
+        )
+        self.assertIn("cp docs/index.html docs/document.html /tmp/atman-pages/", prepare)
+        self.assertIn("cp -R docs/pic /tmp/atman-pages/", prepare)
         self.assertIn("cp docs/CNAME /tmp/atman-pages/CNAME", prepare)
 
     def test_pages_artifact_contains_documents_used_by_site(self):
         prepare = self.step_block("Prepare Pages artifact")
 
         self.assertIn(
-            "cp README.md README.en.md MANIFEST.md MANIFEST.en.md /tmp/atman-pages/",
+            "cp README.md README.en.md MANIFEST.md MANIFEST.en.md /tmp/atman-pages/content/",
             prepare,
         )
         self.assertIn(
-            "cp docs/architecture/SYSTEM.md docs/architecture/SYSTEM.en.md /tmp/atman-pages/docs/architecture/",
+            "cp docs/architecture/SYSTEM.md docs/architecture/SYSTEM.en.md /tmp/atman-pages/architecture/",
             prepare,
         )
 

@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all
+.PHONY: lint format typecheck security test test-fast audit check all docs-preview
 
 lint:
 	ruff check src/ tests/
@@ -31,3 +31,10 @@ check: lint format typecheck security test
 	@echo "All checks passed."
 
 all: check audit
+
+# Static site: same layout as CI artifact (README/MANIFEST copied for document.html fetch paths).
+docs-preview:
+	mkdir -p docs/content
+	cp README.md README.en.md MANIFEST.md MANIFEST.en.md docs/content/
+	@echo "Serving from docs/ — open http://127.0.0.1:8765/"
+	cd docs && python3 -m http.server 8765

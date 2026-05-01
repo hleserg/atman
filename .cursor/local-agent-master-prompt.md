@@ -196,6 +196,9 @@ If starting work out of order, explicitly explain how it integrates with the min
 ├── .cursor/                           # Cursor-specific files
 │   └── local-agent-master-prompt.md   # This file
 ├── docs/
+│   ├── index.html / document.html     # GitHub Pages landing + doc viewer
+│   ├── pic/                           # Site assets
+│   ├── CNAME                          # Custom domain for Pages
 │   ├── architecture/
 │   │   └── SYSTEM.md / SYSTEM-ru.md   # Complete architecture
 │   └── development/
