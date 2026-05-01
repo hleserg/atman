@@ -210,13 +210,22 @@ git diff --check -- reports
 **Mandatory checks before completing any coding task** (all must pass with zero errors):
 
 ```bash
-ruff check src/ tests/           # lint
-ruff format --check src/ tests/  # format
-pyright src/ tests/              # type check (standard mode)
-python3 -m pytest tests/ -v     # tests
+ruff check src/ tests/                                    # lint
+ruff format --check src/ tests/                           # format
+pyright src/ tests/                                       # type check (standard mode)
+bandit -c pyproject.toml -r src/atman/                    # security
+python3 -m pytest tests/ -v --cov=atman --cov-fail-under=90  # tests + coverage ≥90%
 ```
 
 Do not commit code that fails any of these checks. If a check produces a false positive on an intentional pattern, add an exception to `pyproject.toml` configuration rather than ignoring the error.
+
+For faster test runs during development, use parallel execution:
+
+```bash
+pytest tests/ -n auto
+```
+
+All checks can be run at once with `make check`. For a full run including dependency audit: `make all`.
 
 Additional validation:
 
