@@ -207,10 +207,20 @@ git diff --check -- reports
 
 ## 5. Whole-repo validation
 
-Run after non-trivial changes:
+**Mandatory checks before completing any coding task** (all must pass with zero errors):
 
 ```bash
-python3 -m pytest tests/ -v
+ruff check src/ tests/           # lint
+ruff format --check src/ tests/  # format
+pyright src/ tests/              # type check (standard mode)
+python3 -m pytest tests/ -v     # tests
+```
+
+Do not commit code that fails any of these checks. If a check produces a false positive on an intentional pattern, add an exception to `pyproject.toml` configuration rather than ignoring the error.
+
+Additional validation:
+
+```bash
 git diff --check
 ```
 

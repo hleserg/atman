@@ -19,7 +19,7 @@ class InMemoryBackend(FactualMemory):
     Подходит для тестов и разработки.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._facts: dict[UUID, FactRecord] = {}
 
     def add_fact(self, record: FactRecord) -> FactRecord:
@@ -84,7 +84,7 @@ class InMemoryBackend(FactualMemory):
 
         return [f.model_copy(deep=True) for f in sorted_facts[:limit]]
 
-    def clear(self):
+    def clear(self) -> None:
         """Очищает все факты из памяти. Полезно для тестов."""
         self._facts.clear()
 

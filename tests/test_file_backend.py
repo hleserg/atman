@@ -84,6 +84,7 @@ def test_link_facts(backend):
     assert success
 
     retrieved = backend.get_fact(fact1.id)
+    assert retrieved is not None
     assert len(retrieved.relations) == 1
 
 
@@ -96,6 +97,7 @@ def test_link_persistence(temp_file):
 
     backend2 = FileBackend(temp_file)
     retrieved = backend2.get_fact(fact1.id)
+    assert retrieved is not None
 
     assert len(retrieved.relations) == 1
     assert retrieved.relations[0].target_id == fact2.id
@@ -162,10 +164,14 @@ def test_failed_save_keeps_existing_file_and_memory_state(temp_file):
         backend.add_fact(invalid_replacement)
 
     assert temp_file.read_text(encoding="utf-8") == original_file_content
-    assert backend.get_fact(original.id).content == "Безопасный факт"
+    fact_after_fail = backend.get_fact(original.id)
+    assert fact_after_fail is not None
+    assert fact_after_fail.content == "Безопасный факт"
 
     reloaded = FileBackend(temp_file)
-    assert reloaded.get_fact(original.id).content == "Безопасный факт"
+    fact_reloaded = reloaded.get_fact(original.id)
+    assert fact_reloaded is not None
+    assert fact_reloaded.content == "Безопасный факт"
 
 
 def test_save_preserves_existing_file_permissions(temp_file):
@@ -198,8 +204,12 @@ def test_multiple_instances_do_not_lose_added_facts(temp_file):
 
     reloaded = FileBackend(temp_file)
     assert reloaded.count() == 2
-    assert reloaded.get_fact(fact1.id).content == fact1.content
-    assert reloaded.get_fact(fact2.id).content == fact2.content
+    r1 = reloaded.get_fact(fact1.id)
+    r2 = reloaded.get_fact(fact2.id)
+    assert r1 is not None
+    assert r2 is not None
+    assert r1.content == fact1.content
+    assert r2.content == fact2.content
 
 
 def test_multiple_instances_do_not_lose_links(temp_file):
@@ -214,8 +224,11 @@ def test_multiple_instances_do_not_lose_links(temp_file):
 
     reloaded = FileBackend(temp_file)
     assert reloaded.count() == 2
-    assert reloaded.get_fact(fact2.id).content == fact2.content
+    reloaded_fact2 = reloaded.get_fact(fact2.id)
+    assert reloaded_fact2 is not None
+    assert reloaded_fact2.content == fact2.content
 
     linked_fact = reloaded.get_fact(fact1.id)
+    assert linked_fact is not None
     assert len(linked_fact.relations) == 1
     assert linked_fact.relations[0].target_id == fact2.id

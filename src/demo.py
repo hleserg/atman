@@ -59,6 +59,7 @@ def demo_in_memory():
     # Получение факта со связями
     print("\n4. Проверка связей...")
     retrieved = memory.get_fact(fact1.id)
+    assert retrieved is not None, f"Факт {fact1.id} не найден"
     print(f"   ✓ Факт имеет {len(retrieved.relations)} связей")
     for rel in retrieved.relations:
         print(f"     - {rel.relation_type} -> {rel.target_id}")
