@@ -32,11 +32,12 @@ check: lint format typecheck security test
 
 all: check audit
 
-# Copies root README/MANIFEST into docs/content/ for GitHub Pages (document.html fetch paths).
+# Copies README/MANIFEST (+ Russian) and SYSTEM-ru into docs/content/ for GitHub Pages.
 # Run after editing those files: make sync-site-content
 sync-site-content:
 	mkdir -p docs/content
-	cp README.md README.en.md MANIFEST.md MANIFEST.en.md docs/content/
+	cp README.md README.en.md README-ru.md MANIFEST.md MANIFEST.en.md MANIFEST-ru.md docs/content/
+	cp docs/architecture/SYSTEM-ru.md docs/content/SYSTEM-ru.md
 
 docs-preview: sync-site-content
 	@echo "Serving from docs/ — open http://127.0.0.1:8765/"

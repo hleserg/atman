@@ -735,19 +735,19 @@
       function getDocumentPath(docKey, lang) {
         const paths = {
           readme: {
-            ru: "content/README.md",
+            ru: "content/README-ru.md",
             en: "content/README.en.md"
           },
           manifest: {
-            ru: "content/MANIFEST.md",
+            ru: "content/MANIFEST-ru.md",
             en: "content/MANIFEST.en.md"
           },
           system: {
-            ru: "architecture/SYSTEM.md",
+            ru: "content/SYSTEM-ru.md",
             en: "architecture/SYSTEM.en.md"
           }
         };
-        return paths[docKey]?.[lang] || paths[docKey]?.ru || "content/README.md";
+        return paths[docKey]?.[lang] || paths[docKey]?.ru || "content/README-ru.md";
       }
 
       function getDocuments(lang) {
@@ -776,16 +776,30 @@
       const docAliases = {
         "README.md": "readme",
         "/README.md": "readme",
+        "README-ru.md": "readme",
+        "/README-ru.md": "readme",
         "content/README.md": "readme",
         "/content/README.md": "readme",
+        "content/README-ru.md": "readme",
+        "/content/README-ru.md": "readme",
         "MANIFEST.md": "manifest",
         "/MANIFEST.md": "manifest",
+        "MANIFEST-ru.md": "manifest",
+        "/MANIFEST-ru.md": "manifest",
         "content/MANIFEST.md": "manifest",
         "/content/MANIFEST.md": "manifest",
+        "content/MANIFEST-ru.md": "manifest",
+        "/content/MANIFEST-ru.md": "manifest",
         "docs/architecture/SYSTEM.md": "system",
         "/docs/architecture/SYSTEM.md": "system",
+        "docs/architecture/SYSTEM-ru.md": "system",
+        "/docs/architecture/SYSTEM-ru.md": "system",
         "architecture/SYSTEM.md": "system",
         "/architecture/SYSTEM.md": "system",
+        "architecture/SYSTEM-ru.md": "system",
+        "/architecture/SYSTEM-ru.md": "system",
+        "content/SYSTEM-ru.md": "system",
+        "/content/SYSTEM-ru.md": "system",
       };
 
       const params = new URLSearchParams(window.location.search);

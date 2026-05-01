@@ -14,7 +14,7 @@ Use this skill when a Cloud agent needs to run, test, or extend this repository.
 - Project goal: Atman is a psychological layer for AI agents, not a task runner. It is meant to preserve identity, lived experience, reflection, skills, and narrative continuity across sessions.
 - Main implemented area today: Factual Memory Adapter v0.1.0.
 - Primary documentation language is English. Keep paired Russian docs in sync only for paired files listed in `AGENTS.md`: `README.md` / `README-ru.md`, `docs/architecture/SYSTEM.md` / `docs/architecture/SYSTEM-ru.md`, `MANIFEST.md` / `MANIFEST-ru.md`.
-- **There is no GitHub Actions CI** in this repository. Validation is local (`make check`, pre-commit). The public site is static files under `docs/` (GitHub Pages from a branch). After editing root `README*` / `MANIFEST*`, run `make sync-site-content` so `docs/content/` stays in sync for `document.html`.
+- **There is no GitHub Actions CI** in this repository. Validation is local (`make check`, pre-commit). The public site is static files under `docs/` (GitHub Pages from a branch). After editing root `README*` / `MANIFEST*` or `docs/architecture/SYSTEM-ru.md`, run `make sync-site-content` so `docs/content/` stays in sync for `document.html` (Russian locale uses `*-ru.md` copies and `SYSTEM-ru.md`).
 
 ## 2. Cloud setup and login
 
