@@ -771,7 +771,7 @@ AGENTS.md          — инструкции для агентов
 .gitignore
 .gitattributes
 pyproject.toml     — конфигурация Python-пакета
-.github/           — шаблоны PR/issues, workflows
+.github/           — шаблоны PR/issues (GitHub Actions в репозитории не используются)
 src/               — исполняемый код
 tests/             — тесты
 ```
@@ -787,7 +787,7 @@ docs/
   CNAME                        — домен GitHub Pages (atmanai.dev)
   index.html, document.html    — лендинг и просмотр документов
   pic/                         — ассеты сайта (логотип и т.д.)
-  content/                     — только в деплой-артефакте: копии README/MANIFEST с корня для fetch() на сайте; локально — `make docs-preview`
+  content/                     — копии `README*.md` / `MANIFEST*.md` с корня для `document.html` на сайте; после правок в корне: `make sync-site-content`
   architecture/                — SYSTEM.md, ADR, архитектурные решения
   development/                 — DEVELOPMENT_STANDARD.md, work packages
   research/                    — исследования, эксперименты, GPT-диалоги
@@ -828,6 +828,7 @@ docs/
 - Отчёт о реализации (`IMPLEMENTATION_REPORT.md`) — в `reports/`
 - Скрипты-демо (`demo.py`, `full_demo.sh`) — в `src/` или удалить после завершения работы
 - Файлы сайта — в `docs/` (`index.html`, `document.html`, `pic/`, `CNAME`), не в корне репозитория
+- Правили `README*` / `MANIFEST*` в корне — выполни `make sync-site-content`, чтобы обновить `docs/content/` для сайта
 - Не создавать новые папки в корне без явного решения в PR
 
 ## 25. Checklist перед началом новой задачи

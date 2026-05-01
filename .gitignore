@@ -62,9 +62,3 @@ htmlcov/
 
 # Atman
 .atman/
-
-# Local static site preview (`make docs-preview`) — canonical sources stay in repo root
-/docs/content/README.md
-/docs/content/README.en.md
-/docs/content/MANIFEST.md
-/docs/content/MANIFEST.en.md

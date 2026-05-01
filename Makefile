@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all docs-preview
+.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview
 
 lint:
 	ruff check src/ tests/
@@ -32,9 +32,12 @@ check: lint format typecheck security test
 
 all: check audit
 
-# Static site: same layout as CI artifact (README/MANIFEST copied for document.html fetch paths).
-docs-preview:
+# Copies root README/MANIFEST into docs/content/ for GitHub Pages (document.html fetch paths).
+# Run after editing those files: make sync-site-content
+sync-site-content:
 	mkdir -p docs/content
 	cp README.md README.en.md MANIFEST.md MANIFEST.en.md docs/content/
+
+docs-preview: sync-site-content
 	@echo "Serving from docs/ — open http://127.0.0.1:8765/"
 	cd docs && python3 -m http.server 8765

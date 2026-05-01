@@ -86,9 +86,8 @@ Before modifying any component, identify:
 **What does NOT exist yet**:
 - Complete Core implementation
 - Most adapters (except Factual Memory)
-- CI/CD workflows
-- Pre-commit hooks
-- Comprehensive test coverage
+- GitHub-hosted CI (checks run locally: `make check`, pre-commit)
+- Comprehensive test coverage (target remains high; see `AGENTS.md`)
 
 ### 5. Development Workflow
 
