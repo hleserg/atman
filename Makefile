@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-webui-paced webui
+.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-webui-paced webui
 
 lint:
 	ruff check src/ tests/
@@ -67,6 +67,13 @@ demo-identity demo-identity-paced:
 
 demo-identity-fast:
 	ATMAN_DEMO_PACE=off python3 src/demo_identity.py
+
+# Reflection Engine walkthrough (fixtures-based; see docs/features/reflection-engine/README.md).
+demo-reflection demo-reflection-paced:
+	ATMAN_DEMO_PACE=1 python3 src/demo_reflection.py
+
+demo-reflection-fast:
+	ATMAN_DEMO_PACE=off python3 src/demo_reflection.py
 
 # Web Dashboard console hint (see docs/features/web-dashboard/README.md).
 demo-webui demo-webui-paced:

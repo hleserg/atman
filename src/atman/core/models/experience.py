@@ -13,6 +13,15 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class ReframingNoteAppendResult(StrEnum):
+    """Outcome of appending a reframing note via :class:`~atman.core.ports.reflection.ExperienceRepository`."""
+
+    STORED = "stored"
+    DUPLICATE_TRIGGERED_BY = "duplicate_triggered_by"
+    EXPERIENCE_NOT_FOUND = "experience_not_found"
+    STORAGE_REJECTED = "storage_rejected"
+
+
 class EmotionalDepth(StrEnum):
     """
     Depth of emotional experience.

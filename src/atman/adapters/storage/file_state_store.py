@@ -6,7 +6,7 @@ Suitable for local development and single-agent use cases.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -71,6 +71,8 @@ class FileStateStore(StateStore):
     def create_experience(self, record: ExperienceRecord) -> ExperienceRecord:
         """Create experience record."""
         experience_file = self.experiences_dir / f"{record.experience.id}.json"
+        if experience_file.exists():
+            raise ValueError(f"Experience with id {record.experience.id} already exists")
         experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
@@ -89,8 +91,13 @@ class FileStateStore(StateStore):
         record = self.get_experience(experience_id)
         if record is None:
             return None
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in record.experience.reframing_notes
+        ):
+            return record
         record.experience.add_reframing_note(note)
-        self.create_experience(record)
+        experience_file = self.experiences_dir / f"{experience_id}.json"
+        experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
     def mark_accessed(self, experience_id: UUID) -> ExperienceRecord | None:
@@ -99,7 +106,8 @@ class FileStateStore(StateStore):
         if record is None:
             return None
         record.experience.mark_accessed()
-        self.create_experience(record)
+        experience_file = self.experiences_dir / f"{experience_id}.json"
+        experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
     def search_experiences(
@@ -229,17 +237,15 @@ class FileStateStore(StateStore):
         if narrative is None:
             return
 
-        # Create archive entry
+        now = datetime.now(UTC)
         archive_entry = {
             "narrative": narrative.model_dump(mode="json"),
             "reason": reason,
-            "archived_at": datetime.now().isoformat(),
+            "archived_at": now.isoformat(),
         }
 
         # Save to archive
-        archive_file = (
-            self.narrative_archive_dir / f"{narrative_id}_{datetime.now().timestamp()}.json"
-        )
+        archive_file = self.narrative_archive_dir / f"{narrative_id}_{now.timestamp()}.json"
         archive_file.write_text(json.dumps(archive_entry, indent=2), encoding="utf-8")
 
     def list_archived_narratives(
@@ -255,6 +261,8 @@ class FileStateStore(StateStore):
             if narrative.identity_id == identity_id:
                 reason = data["reason"]
                 archived_at = datetime.fromisoformat(data["archived_at"])
+                if archived_at.tzinfo is None:
+                    archived_at = archived_at.replace(tzinfo=UTC)
                 archived.append((narrative, reason, archived_at))
 
         # Sort by archived_at descending

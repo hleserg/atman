@@ -9,9 +9,11 @@ from atman.core.models.experience import (
     FeltSense,
     KeyMoment,
     ReframingNote,
+    ReframingNoteAppendResult,
     SessionExperience,
 )
 from atman.core.models.fact import FactRecord, Relation
+from atman.core.models.governance import GovernanceDecision, GovernanceMode
 from atman.core.models.identity import (
     CoreValue,
     Goal,
@@ -32,10 +34,21 @@ from atman.core.models.narrative import (
     NarrativeLayer,
     NarrativeThread,
 )
+from atman.core.models.reflection import (
+    CriterionAssessment,
+    HealthAssessment,
+    JahodaCriterion,
+    PatternCandidate,
+    PatternStatus,
+    PatternType,
+    ReflectionEvent,
+    ReflectionLevel,
+)
 
 __all__ = [
     "ContextHalo",
     "CoreValue",
+    "CriterionAssessment",
     "Eigenstate",
     "EmotionalDepth",
     "ExperienceRecord",
@@ -44,10 +57,14 @@ __all__ = [
     "Goal",
     "GoalHorizon",
     "GoalOwner",
+    "GovernanceDecision",
+    "GovernanceMode",
     "Habit",
+    "HealthAssessment",
     "HelpfulnessLevel",
     "Identity",
     "IdentitySnapshot",
+    "JahodaCriterion",
     "KeyMoment",
     "LayerType",
     "MoralOrientation",
@@ -55,8 +72,14 @@ __all__ = [
     "NarrativeLayer",
     "NarrativeThread",
     "OpenQuestion",
+    "PatternCandidate",
+    "PatternStatus",
+    "PatternType",
     "Principle",
+    "ReflectionEvent",
+    "ReflectionLevel",
     "ReframingNote",
+    "ReframingNoteAppendResult",
     "Relation",
     "SessionExperience",
 ]
