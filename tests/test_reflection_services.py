@@ -5,8 +5,6 @@ Tests for reflection services.
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-import pytest
-
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
 from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryHealthAssessmentStore,
@@ -50,20 +48,12 @@ class MockExperienceRepo:
 
     def get_recent(self, limit: int = 10) -> list[SessionExperience]:
         """Get recent experiences."""
-        sorted_exps = sorted(
-            self.experiences.values(), key=lambda e: e.timestamp, reverse=True
-        )
+        sorted_exps = sorted(self.experiences.values(), key=lambda e: e.timestamp, reverse=True)
         return sorted_exps[:limit]
 
-    def get_in_range(
-        self, start: datetime, end: datetime
-    ) -> list[SessionExperience]:
+    def get_in_range(self, start: datetime, end: datetime) -> list[SessionExperience]:
         """Get experiences in date range."""
-        return [
-            exp
-            for exp in self.experiences.values()
-            if start <= exp.timestamp <= end
-        ]
+        return [exp for exp in self.experiences.values() if start <= exp.timestamp <= end]
 
     def update(self, experience: SessionExperience) -> None:
         """Update experience."""
@@ -112,7 +102,7 @@ def create_test_experience(session_id: UUID | None = None) -> SessionExperience:
     """Create a test experience."""
     if session_id is None:
         session_id = uuid4()
-    
+
     return SessionExperience(
         session_id=session_id,
         key_moments=[
@@ -134,28 +124,28 @@ def test_micro_reflection_updates_narrative() -> None:
     """Test that micro reflection updates the recent narrative layer."""
     session_id = uuid4()
     exp = create_test_experience(session_id)
-    
+
     identity = Identity()
     narrative = NarrativeDocument(
         identity_id=identity.id,
         core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
         recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Old recent"),
     )
-    
+
     exp_repo = MockExperienceRepo([exp])
     narrative_repo = MockNarrativeRepo(narrative)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = MicroReflectionService(
         experience_repo=exp_repo,
         narrative_repo=narrative_repo,
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     event = service.reflect(session_id)
-    
+
     assert event.reflection_level == ReflectionLevel.MICRO
     assert len(event.experiences_analyzed) == 1
     assert narrative_repo.narrative.recent_layer.content != "Old recent"
@@ -169,21 +159,21 @@ def test_micro_reflection_no_experiences() -> None:
         core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
         recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Recent"),
     )
-    
+
     exp_repo = MockExperienceRepo([])
     narrative_repo = MockNarrativeRepo(narrative)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = MicroReflectionService(
         experience_repo=exp_repo,
         narrative_repo=narrative_repo,
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     event = service.reflect(uuid4())
-    
+
     assert event.reflection_level == ReflectionLevel.MICRO
     assert len(event.experiences_analyzed) == 0
 
@@ -192,15 +182,15 @@ def test_daily_reflection_detects_patterns() -> None:
     """Test that daily reflection detects patterns."""
     exp1 = create_test_experience()
     exp2 = create_test_experience()
-    
+
     identity = Identity()
-    
+
     exp_repo = MockExperienceRepo([exp1, exp2])
     identity_repo = MockIdentityRepo(identity)
     pattern_store = InMemoryPatternStore()
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DailyReflectionService(
         experience_repo=exp_repo,
         identity_repo=identity_repo,
@@ -208,10 +198,10 @@ def test_daily_reflection_detects_patterns() -> None:
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     date = datetime.now(UTC)
     event = service.reflect(date)
-    
+
     assert event.reflection_level == ReflectionLevel.DAILY
     assert len(event.experiences_analyzed) == 2
 
@@ -220,15 +210,15 @@ def test_daily_reflection_adds_reframing_notes() -> None:
     """Test that daily reflection can add reframing notes."""
     exp1 = create_test_experience()
     exp2 = create_test_experience()
-    
+
     identity = Identity()
-    
+
     exp_repo = MockExperienceRepo([exp1, exp2])
     identity_repo = MockIdentityRepo(identity)
     pattern_store = InMemoryPatternStore()
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DailyReflectionService(
         experience_repo=exp_repo,
         identity_repo=identity_repo,
@@ -236,10 +226,10 @@ def test_daily_reflection_adds_reframing_notes() -> None:
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     date = datetime.now(UTC)
     event = service.reflect(date)
-    
+
     assert event.reflection_level == ReflectionLevel.DAILY
 
 
@@ -248,14 +238,14 @@ def test_deep_reflection_performs_health_assessment() -> None:
     exp1 = create_test_experience()
     exp2 = create_test_experience()
     exp3 = create_test_experience()
-    
+
     identity = Identity()
     narrative = NarrativeDocument(
         identity_id=identity.id,
         core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
         recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Recent"),
     )
-    
+
     exp_repo = MockExperienceRepo([exp1, exp2, exp3])
     identity_repo = MockIdentityRepo(identity)
     narrative_repo = MockNarrativeRepo(narrative)
@@ -263,7 +253,7 @@ def test_deep_reflection_performs_health_assessment() -> None:
     health_store = InMemoryHealthAssessmentStore()
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DeepReflectionService(
         experience_repo=exp_repo,
         identity_repo=identity_repo,
@@ -273,16 +263,16 @@ def test_deep_reflection_performs_health_assessment() -> None:
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     since = datetime.now(UTC).replace(hour=0, minute=0)
     until = datetime.now(UTC)
-    
+
     event = service.reflect(since, until)
-    
+
     assert event.reflection_level == ReflectionLevel.DEEP
     assert len(event.experiences_analyzed) == 3
     assert event.health_assessment_id is not None
-    
+
     assessment = health_store.get(event.health_assessment_id)
     assert assessment is not None
     assert len(assessment.criteria) == 6
@@ -294,14 +284,14 @@ def test_deep_reflection_proposes_changes() -> None:
     exp1 = create_test_experience()
     exp2 = create_test_experience()
     exp3 = create_test_experience()
-    
+
     identity = Identity()
     narrative = NarrativeDocument(
         identity_id=identity.id,
         core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
         recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Recent"),
     )
-    
+
     exp_repo = MockExperienceRepo([exp1, exp2, exp3])
     identity_repo = MockIdentityRepo(identity)
     narrative_repo = MockNarrativeRepo(narrative)
@@ -309,7 +299,7 @@ def test_deep_reflection_proposes_changes() -> None:
     health_store = InMemoryHealthAssessmentStore()
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DeepReflectionService(
         experience_repo=exp_repo,
         identity_repo=identity_repo,
@@ -319,12 +309,12 @@ def test_deep_reflection_proposes_changes() -> None:
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     since = datetime.now(UTC).replace(hour=0, minute=0)
     until = datetime.now(UTC)
-    
+
     event = service.reflect(since, until)
-    
+
     assert event.reflection_level == ReflectionLevel.DEEP
     assert event.narrative_changes_proposed != ""
     assert event.identity_changes_proposed != ""

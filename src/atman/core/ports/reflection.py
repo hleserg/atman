@@ -29,7 +29,7 @@ from atman.core.models.reflection import (
 class ExperienceRepository(Protocol):
     """
     Port for accessing stored experiences.
-    
+
     Reflection Engine needs to read experiences to analyze patterns,
     add reframing notes, and assess salience.
     """
@@ -50,9 +50,7 @@ class ExperienceRepository(Protocol):
         """Get most recent experiences."""
         ...
 
-    def get_in_range(
-        self, start: datetime, end: datetime
-    ) -> list[SessionExperience]:
+    def get_in_range(self, start: datetime, end: datetime) -> list[SessionExperience]:
         """Get experiences within a date range."""
         ...
 
@@ -60,9 +58,7 @@ class ExperienceRepository(Protocol):
         """Update an experience (e.g., after adding reframing note)."""
         ...
 
-    def add_reframing_note(
-        self, experience_id: UUID, note: ReframingNote
-    ) -> None:
+    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> None:
         """Add a reframing note to an experience."""
         ...
 
@@ -70,7 +66,7 @@ class ExperienceRepository(Protocol):
 class IdentityRepository(Protocol):
     """
     Port for accessing identity state.
-    
+
     Reflection Engine needs to read current identity to understand values,
     principles, and open questions, and to propose updates.
     """
@@ -101,7 +97,7 @@ class IdentityRepository(Protocol):
 class NarrativeRepository(Protocol):
     """
     Port for accessing narrative state.
-    
+
     Reflection Engine needs to read and update the narrative document,
     especially during micro and deep reflection.
     """
@@ -122,7 +118,7 @@ class NarrativeRepository(Protocol):
 class PatternStore(ABC):
     """
     Storage for detected patterns.
-    
+
     Patterns accumulate over time as reflection discovers recurring themes.
     """
 
@@ -142,9 +138,7 @@ class PatternStore(ABC):
         ...
 
     @abstractmethod
-    def get_by_level(
-        self, level: ReflectionLevel
-    ) -> list[PatternCandidate]:
+    def get_by_level(self, level: ReflectionLevel) -> list[PatternCandidate]:
         """Get patterns detected at a specific reflection level."""
         ...
 
@@ -157,7 +151,7 @@ class PatternStore(ABC):
 class ReflectionEventStore(ABC):
     """
     Storage for reflection events.
-    
+
     This keeps a history of all reflection processes that have been run.
     """
 
@@ -177,9 +171,7 @@ class ReflectionEventStore(ABC):
         ...
 
     @abstractmethod
-    def get_by_level(
-        self, level: ReflectionLevel
-    ) -> list[ReflectionEvent]:
+    def get_by_level(self, level: ReflectionLevel) -> list[ReflectionEvent]:
         """Get reflection events at a specific level."""
         ...
 
@@ -192,7 +184,7 @@ class ReflectionEventStore(ABC):
 class HealthAssessmentStore(ABC):
     """
     Storage for health assessments.
-    
+
     Health assessments are performed during deep reflection.
     """
 
@@ -220,12 +212,12 @@ class HealthAssessmentStore(ABC):
 class ReflectionModel(ABC):
     """
     Port for text generation during reflection.
-    
+
     This can be implemented as:
     - A real LLM integration (Claude, GPT, etc.)
     - A mock/deterministic generator for testing
     - A template-based generator
-    
+
     The key is that reflection logic stays separate from text generation.
     """
 
@@ -237,11 +229,11 @@ class ReflectionModel(ABC):
     ) -> str:
         """
         Generate a reframing note for an experience.
-        
+
         Args:
             experience: The experience to reframe
             context: Additional context (identity, recent patterns, etc.)
-            
+
         Returns:
             Text of the reframing note
         """
@@ -255,11 +247,11 @@ class ReflectionModel(ABC):
     ) -> str:
         """
         Detect and describe a pattern across experiences.
-        
+
         Args:
             experiences: List of experiences to analyze
             context: Additional context (identity, known patterns, etc.)
-            
+
         Returns:
             Description of detected pattern
         """
@@ -274,12 +266,12 @@ class ReflectionModel(ABC):
     ) -> str:
         """
         Propose an update to the narrative.
-        
+
         Args:
             current_narrative: Current narrative document
             recent_experiences: Recent experiences to incorporate
             reflection_level: Level of reflection being performed
-            
+
         Returns:
             Proposed narrative update text
         """
@@ -294,12 +286,12 @@ class ReflectionModel(ABC):
     ) -> tuple[float, list[str], list[str]]:
         """
         Assess one Yakhoda health criterion.
-        
+
         Args:
             identity: Current identity
             experiences: Recent experiences
             criterion: Which criterion to assess
-            
+
         Returns:
             Tuple of (score, evidence_list, concerns_list)
         """

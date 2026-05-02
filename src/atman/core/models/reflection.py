@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class ReflectionLevel(StrEnum):
     """
     Depth of reflection process.
-    
+
     - micro: After-session reflection, updates recent layer and checkpoint
     - daily: End-of-day reflection, looks for patterns across sessions
     - deep: Scheduled deep reflection, revises identity and narrative
@@ -51,7 +51,7 @@ class PatternStatus(StrEnum):
 class PatternCandidate(BaseModel):
     """
     A detected behavior or emotional pattern.
-    
+
     Patterns are discovered through reflection on multiple experiences.
     They represent recurring themes, behaviors, or emotional responses.
     """
@@ -134,7 +134,7 @@ class PatternCandidate(BaseModel):
 class YakhodaCriterion(StrEnum):
     """
     Six criteria for psychological health based on Yakhoda's framework.
-    
+
     These criteria help assess whether the agent's self-representation
     is developing in a healthy direction.
     """
@@ -150,7 +150,7 @@ class YakhodaCriterion(StrEnum):
 class CriterionAssessment(BaseModel):
     """
     Assessment of one Yakhoda criterion.
-    
+
     Each criterion is assessed on a scale and includes evidence and concerns.
     """
 
@@ -197,7 +197,7 @@ class CriterionAssessment(BaseModel):
 class HealthAssessment(BaseModel):
     """
     Psychological health assessment based on 6 Yakhoda criteria.
-    
+
     This is performed during deep reflection to check if identity development
     is proceeding in a healthy direction.
     """
@@ -216,9 +216,7 @@ class HealthAssessment(BaseModel):
     overall_score: float = Field(
         ge=0.0, le=1.0, description="Overall health score (average of criteria)"
     )
-    summary: str = Field(
-        default="", description="Summary of overall psychological health state"
-    )
+    summary: str = Field(default="", description="Summary of overall psychological health state")
     recommendations: list[str] = Field(
         default_factory=list, description="Recommendations for healthy development"
     )
@@ -237,7 +235,7 @@ class HealthAssessment(BaseModel):
         """Ensure all 6 criteria are assessed."""
         required_criteria = set(YakhodaCriterion)
         present_criteria = set(v.keys())
-        
+
         if present_criteria != required_criteria:
             missing = required_criteria - present_criteria
             extra = present_criteria - required_criteria
@@ -247,7 +245,7 @@ class HealthAssessment(BaseModel):
             if extra:
                 error_parts.append(f"unexpected: {extra}")
             raise ValueError(f"All 6 Yakhoda criteria must be assessed; {', '.join(error_parts)}")
-        
+
         return v
 
     @field_validator("recommendations")
@@ -279,7 +277,7 @@ class HealthAssessment(BaseModel):
 class ReflectionEvent(BaseModel):
     """
     Record of a reflection process.
-    
+
     This captures what happened during a reflection session:
     what was analyzed, what patterns were found, what changes were proposed.
     """
@@ -307,12 +305,8 @@ class ReflectionEvent(BaseModel):
     )
 
     # What was proposed/done
-    narrative_changes_proposed: str = Field(
-        default="", description="Proposed changes to narrative"
-    )
-    identity_changes_proposed: str = Field(
-        default="", description="Proposed changes to identity"
-    )
+    narrative_changes_proposed: str = Field(default="", description="Proposed changes to narrative")
+    identity_changes_proposed: str = Field(default="", description="Proposed changes to identity")
     new_open_questions: list[str] = Field(
         default_factory=list, description="New open questions raised"
     )

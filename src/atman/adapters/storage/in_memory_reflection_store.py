@@ -5,7 +5,6 @@ These are simple implementations for testing and prototyping.
 Production implementations would use persistent storage (JSONL, SQLite, etc.).
 """
 
-from datetime import datetime
 from uuid import UUID
 
 from atman.core.models.reflection import (
@@ -24,7 +23,7 @@ from atman.core.ports.reflection import (
 class InMemoryPatternStore(PatternStore):
     """
     In-memory storage for pattern candidates.
-    
+
     Patterns are stored in a simple list with no persistence.
     """
 
@@ -58,7 +57,7 @@ class InMemoryPatternStore(PatternStore):
 class InMemoryReflectionEventStore(ReflectionEventStore):
     """
     In-memory storage for reflection events.
-    
+
     Events are stored in a simple list with no persistence.
     """
 
@@ -84,16 +83,14 @@ class InMemoryReflectionEventStore(ReflectionEventStore):
 
     def get_recent(self, limit: int = 10) -> list[ReflectionEvent]:
         """Get most recent reflection events."""
-        events = sorted(
-            self._events.values(), key=lambda e: e.timestamp, reverse=True
-        )
+        events = sorted(self._events.values(), key=lambda e: e.timestamp, reverse=True)
         return events[:limit]
 
 
 class InMemoryHealthAssessmentStore(HealthAssessmentStore):
     """
     In-memory storage for health assessments.
-    
+
     Assessments are stored in a simple list with no persistence.
     """
 
@@ -117,8 +114,6 @@ class InMemoryHealthAssessmentStore(HealthAssessmentStore):
         """Get the most recent health assessment."""
         if not self._assessments:
             return None
-        
-        assessments = sorted(
-            self._assessments.values(), key=lambda a: a.timestamp, reverse=True
-        )
+
+        assessments = sorted(self._assessments.values(), key=lambda a: a.timestamp, reverse=True)
         return assessments[0]

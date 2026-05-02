@@ -2,18 +2,19 @@
 CLI for Reflection Engine.
 
 Commands:
-- atman reflect micro --session-id <uuid> | --fixtures
-- atman reflect daily --date YYYY-MM-DD | --fixtures
-- atman reflect deep --since YYYY-MM-DD --until YYYY-MM-DD | --fixtures
+- atman reflect micro --fixtures
+- atman reflect daily --fixtures
+- atman reflect deep --fixtures
+
+Note: Non-fixtures modes require integration with FileStateStore,
+which is not yet implemented. Use demo_reflection.py for full walkthrough.
 """
 
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID, uuid4
 
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
-from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryHealthAssessmentStore,
     InMemoryPatternStore,
@@ -41,26 +42,127 @@ from atman.term import (
 )
 
 
-def setup_fixtures() -> tuple[FileStateStore, Identity, NarrativeDocument]:
+class MockExperienceRepo:
+    """Mock experience repository."""
+
+    def __init__(self, experiences: list[SessionExperience]):
+        """Initialize with experiences."""
+        self.experiences = {exp.id: exp for exp in experiences}
+
+    def get(self, experience_id: UUID) -> SessionExperience | None:
+        """Get experience by ID."""
+        return self.experiences.get(experience_id)
+
+    def get_all(self) -> list[SessionExperience]:
+        """Get all experiences."""
+        return list(self.experiences.values())
+
+    def get_by_session(self, session_id: UUID) -> list[SessionExperience]:
+        """Get experiences by session."""
+        return [exp for exp in self.experiences.values() if exp.session_id == session_id]
+
+    def get_recent(self, limit: int = 10) -> list[SessionExperience]:
+        """Get recent experiences."""
+        sorted_exps = sorted(
+            self.experiences.values(), key=lambda e: e.timestamp, reverse=True
+        )
+        return sorted_exps[:limit]
+
+    def get_in_range(
+        self, start: datetime, end: datetime
+    ) -> list[SessionExperience]:
+        """Get experiences in date range."""
+        return [
+            exp
+            for exp in self.experiences.values()
+            if start <= exp.timestamp <= end
+        ]
+
+    def update(self, experience: SessionExperience) -> None:
+        """Update experience."""
+        self.experiences[experience.id] = experience
+
+    def add_reframing_note(self, experience_id: UUID, note):  # type: ignore[no-untyped-def]
+        """Add reframing note."""
+        exp = self.experiences.get(experience_id)
+        if exp:
+            exp.add_reframing_note(note)
+
+
+class MockIdentityRepo:
+    """Mock identity repository."""
+
+    def __init__(self, identity: Identity):
+        """Initialize with identity."""
+        self.identity = identity
+
+    def get_current(self) -> Identity | None:
+        """Get current identity."""
+        return self.identity
+
+    def get_snapshot(self, snapshot_id: UUID):  # type: ignore[no-untyped-def]
+        """Get snapshot."""
+        return None
+
+    def get_history(self):  # type: ignore[no-untyped-def]
+        """Get history."""
+        return []
+
+    def update(self, identity: Identity) -> None:
+        """Update identity."""
+        self.identity = identity
+
+    def create_snapshot(self, identity: Identity, description: str, change_summary: str):  # type: ignore[no-untyped-def]
+        """Create snapshot."""
+        from atman.core.models.identity import IdentitySnapshot
+
+        return IdentitySnapshot(
+            identity_id=identity.id,
+            identity_snapshot=identity,
+            description=description,
+            change_summary=change_summary,
+        )
+
+
+class MockNarrativeRepo:
+    """Mock narrative repository."""
+
+    def __init__(self, narrative: NarrativeDocument):
+        """Initialize with narrative."""
+        self.narrative = narrative
+
+    def get_current(self) -> NarrativeDocument | None:
+        """Get current narrative."""
+        return self.narrative
+
+    def update(self, narrative: NarrativeDocument) -> None:
+        """Update narrative."""
+        self.narrative = narrative
+
+    def get_history(self):  # type: ignore[no-untyped-def]
+        """Get history."""
+        return []
+
+
+def setup_fixtures() -> tuple[MockExperienceRepo, MockIdentityRepo, MockNarrativeRepo]:
     """
     Set up test fixtures for reflection.
-    
+
     Creates:
     - Some sample experiences
     - A basic identity
     - A narrative document
-    
+
     Returns:
-        Tuple of (state_store, identity, narrative)
+        Tuple of (experience_repo, identity_repo, narrative_repo)
     """
-    state_store = FileStateStore(Path(".atman-reflection-test"))
-    
+
     identity = Identity(
         self_description="I am learning to understand myself through experience.",
         core_values=[],
         emotional_baseline=0.1,
     )
-    
+
     narrative = NarrativeDocument(
         identity_id=identity.id,
         core_layer=NarrativeLayer(
@@ -72,7 +174,7 @@ def setup_fixtures() -> tuple[FileStateStore, Identity, NarrativeDocument]:
             content="Just starting to explore reflection.",
         ),
     )
-    
+
     session_id = uuid4()
     exp1 = SessionExperience(
         session_id=session_id,
@@ -93,7 +195,7 @@ def setup_fixtures() -> tuple[FileStateStore, Identity, NarrativeDocument]:
         importance=0.7,
         salience=0.7,
     )
-    
+
     exp2 = SessionExperience(
         session_id=uuid4(),
         key_moments=[
@@ -113,128 +215,91 @@ def setup_fixtures() -> tuple[FileStateStore, Identity, NarrativeDocument]:
         importance=0.6,
         salience=0.6,
     )
-    
-    state_store.save_identity(identity)
-    state_store.save_narrative(narrative)
-    state_store.save_experience(exp1)
-    state_store.save_experience(exp2)
-    
-    return state_store, identity, narrative
+
+    experience_repo = MockExperienceRepo([exp1, exp2])
+    identity_repo = MockIdentityRepo(identity)
+    narrative_repo = MockNarrativeRepo(narrative)
+
+    return experience_repo, identity_repo, narrative_repo
 
 
 def cmd_reflect_micro(args: list[str]) -> int:
     """Run micro reflection."""
-    print_banner("Micro Reflection", width=70)
-    
-    use_fixtures = "--fixtures" in args
-    
-    if use_fixtures:
-        print_ok("Using test fixtures...")
-        demo_pace()
-        
-        state_store, identity, narrative = setup_fixtures()
-        
-        experiences = state_store.get_all_experiences()
-        if not experiences:
-            print_err("No experiences in fixtures")
-            return 1
-        
-        session_id = experiences[0].session_id
-    else:
-        if "--session-id" not in args:
-            print_help_text("Usage: atman reflect micro --session-id <uuid> | --fixtures")
-            return 1
-        
-        try:
-            session_id_idx = args.index("--session-id") + 1
-            session_id = UUID(args[session_id_idx])
-        except (ValueError, IndexError):
-            print_err("Invalid session ID")
-            return 1
-        
-        state_store = FileStateStore(Path(".atman"))
-        identity = state_store.get_identity()
-        narrative = state_store.get_narrative()
-        
-        if not identity or not narrative:
-            print_err("No identity or narrative found. Run bootstrap first.")
-            return 1
-    
+    print_banner("Micro Reflection")
+
+    if "--fixtures" not in args:
+        print_err("Only --fixtures mode is supported for now")
+        print_help_text("Usage: atman reflect micro --fixtures")
+        return 1
+
+    print_ok("Using test fixtures...")
+    demo_pace()
+
+    experience_repo, identity_repo, narrative_repo = setup_fixtures()
+
+    experiences = experience_repo.get_all()
+    if not experiences:
+        print_err("No experiences in fixtures")
+        return 1
+
+    session_id = experiences[0].session_id
+
     print_ok(f"Reflecting on session: {session_id}")
     demo_pace()
-    
+
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = MicroReflectionService(
-        experience_repo=state_store,
-        narrative_repo=state_store,
+        experience_repo=experience_repo,
+        narrative_repo=narrative_repo,
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     event = service.reflect(session_id)
-    
+
     print_ok("\nReflection Complete!")
     demo_pace()
     print(f"  Level: {event.reflection_level}")
     print(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
     print(f"  Key insight: {event.key_insight}")
-    
-    if use_fixtures:
-        state_store.storage_path.unlink(missing_ok=True)
-    
+
     return 0
 
 
 def cmd_reflect_daily(args: list[str]) -> int:
     """Run daily reflection."""
-    print_banner("Daily Reflection", width=70)
-    
-    use_fixtures = "--fixtures" in args
-    
-    if use_fixtures:
-        print_ok("Using test fixtures...")
-        demo_pace()
-        
-        state_store, identity, narrative = setup_fixtures()
-        date = datetime.now(UTC)
-    else:
-        if "--date" not in args:
-            print_help_text("Usage: atman reflect daily --date YYYY-MM-DD | --fixtures")
-            return 1
-        
-        try:
-            date_idx = args.index("--date") + 1
-            date = datetime.strptime(args[date_idx], "%Y-%m-%d").replace(tzinfo=UTC)
-        except (ValueError, IndexError):
-            print_err("Invalid date format. Use YYYY-MM-DD")
-            return 1
-        
-        state_store = FileStateStore(Path(".atman"))
-        identity = state_store.get_identity()
-        
-        if not identity:
-            print_err("No identity found. Run bootstrap first.")
-            return 1
-    
+    print_banner("Daily Reflection")
+
+    if "--fixtures" not in args:
+        print_err("Only --fixtures mode is supported for now")
+        print_help_text("Usage: atman reflect daily --fixtures")
+        return 1
+
+    print_ok("Using test fixtures...")
+    demo_pace()
+
+    experience_repo, identity_repo, narrative_repo = setup_fixtures()
+    date = datetime.now(UTC)
+
     print_ok(f"Reflecting on date: {date.strftime('%Y-%m-%d')}")
     demo_pace()
-    
+
     reflection_model = MockReflectionModel()
     pattern_store = InMemoryPatternStore()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DailyReflectionService(
-        experience_repo=state_store,
-        identity_repo=state_store,
+        experience_repo=experience_repo,
+        identity_repo=identity_repo,
         pattern_store=pattern_store,
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     event = service.reflect(date)
-    
+
     print_ok("\nReflection Complete!")
     demo_pace()
     print(f"  Level: {event.reflection_level}")
@@ -242,93 +307,61 @@ def cmd_reflect_daily(args: list[str]) -> int:
     print(f"  Patterns detected: {len(event.patterns_detected)}")
     print(f"  Reframing notes added: {event.reframing_notes_added}")
     print(f"  Key insight: {event.key_insight}")
-    
-    if use_fixtures:
-        state_store.storage_path.unlink(missing_ok=True)
-    
+
     return 0
 
 
 def cmd_reflect_deep(args: list[str]) -> int:
     """Run deep reflection."""
-    print_banner("Deep Reflection", width=70)
-    
-    use_fixtures = "--fixtures" in args
-    
-    if use_fixtures:
-        print_ok("Using test fixtures...")
-        demo_pace()
-        
-        state_store, identity, narrative = setup_fixtures()
-        
-        since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        until = datetime.now(UTC)
-    else:
-        if "--since" not in args or "--until" not in args:
-            print_help_text(
-                "Usage: atman reflect deep --since YYYY-MM-DD --until YYYY-MM-DD | --fixtures"
-            )
-            return 1
-        
-        try:
-            since_idx = args.index("--since") + 1
-            until_idx = args.index("--until") + 1
-            
-            since = datetime.strptime(args[since_idx], "%Y-%m-%d").replace(tzinfo=UTC)
-            until = datetime.strptime(args[until_idx], "%Y-%m-%d").replace(
-                tzinfo=UTC, hour=23, minute=59, second=59
-            )
-        except (ValueError, IndexError):
-            print_err("Invalid date format. Use YYYY-MM-DD")
-            return 1
-        
-        state_store = FileStateStore(Path(".atman"))
-        identity = state_store.get_identity()
-        narrative = state_store.get_narrative()
-        
-        if not identity or not narrative:
-            print_err("No identity or narrative found. Run bootstrap first.")
-            return 1
-    
-    print_ok(
-        f"Reflecting on period: {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}"
-    )
+    print_banner("Deep Reflection")
+
+    if "--fixtures" not in args:
+        print_err("Only --fixtures mode is supported for now")
+        print_help_text("Usage: atman reflect deep --fixtures")
+        return 1
+
+    print_ok("Using test fixtures...")
     demo_pace()
-    
+
+    experience_repo, identity_repo, narrative_repo = setup_fixtures()
+
+    since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    until = datetime.now(UTC)
+
+    print_ok(f"Reflecting on period: {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}")
+    demo_pace()
+
     reflection_model = MockReflectionModel()
     pattern_store = InMemoryPatternStore()
     health_store = InMemoryHealthAssessmentStore()
     event_store = InMemoryReflectionEventStore()
-    
+
     service = DeepReflectionService(
-        experience_repo=state_store,
-        identity_repo=state_store,
-        narrative_repo=state_store,
+        experience_repo=experience_repo,
+        identity_repo=identity_repo,
+        narrative_repo=narrative_repo,
         pattern_store=pattern_store,
         health_store=health_store,
         reflection_model=reflection_model,
         event_store=event_store,
     )
-    
+
     event = service.reflect(since, until)
-    
+
     print_ok("\nReflection Complete!")
     demo_pace()
     print(f"  Level: {event.reflection_level}")
     print(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
     print(f"  Patterns detected: {len(event.patterns_detected)}")
     print(f"  Reframing notes added: {event.reframing_notes_added}")
-    
+
     if event.health_assessment_id:
         assessment = health_store.get(event.health_assessment_id)
         if assessment:
             print(f"  Health score: {assessment.overall_score:.2f}/1.0")
-    
+
     print(f"  Key insight: {event.key_insight}")
-    
-    if use_fixtures:
-        state_store.storage_path.unlink(missing_ok=True)
-    
+
     return 0
 
 
@@ -336,13 +369,13 @@ def main() -> int:
     """Main CLI entry point."""
     if len(sys.argv) < 3 or sys.argv[1] != "reflect":
         print_help_text(
-            "Usage: python -m atman.cli_reflection reflect <micro|daily|deep> [options]"
+            "Usage: python -m atman.cli_reflection reflect <micro|daily|deep> --fixtures"
         )
         return 1
-    
+
     command = sys.argv[2]
     args = sys.argv[3:]
-    
+
     if command == "micro":
         return cmd_reflect_micro(args)
     elif command == "daily":

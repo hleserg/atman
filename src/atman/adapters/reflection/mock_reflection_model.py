@@ -15,7 +15,7 @@ from atman.core.ports.reflection import ReflectionModel
 class MockReflectionModel(ReflectionModel):
     """
     Mock implementation of ReflectionModel.
-    
+
     Generates deterministic, template-based outputs for testing.
     Does NOT use an actual LLM.
     """
@@ -27,17 +27,17 @@ class MockReflectionModel(ReflectionModel):
     ) -> str:
         """
         Generate a mock reframing note.
-        
+
         Uses template-based generation with context.
         """
         patterns = context.get("patterns", "")
-        
+
         if patterns:
             return (
                 f"Looking back, I notice this experience fits a pattern: {patterns}. "
                 "This helps me understand my tendencies better."
             )
-        
+
         return "Reflecting on this experience, I see it differently now with more context."
 
     def detect_pattern(
@@ -47,25 +47,25 @@ class MockReflectionModel(ReflectionModel):
     ) -> str:
         """
         Generate a mock pattern description.
-        
+
         Analyzes experiences to find simple patterns.
         """
         if len(experiences) < 2:
             return ""
-        
+
         emotional_valences = []
         for exp in experiences:
             if exp.key_moments:
-                avg_valence = sum(
-                    m.how_i_felt.emotional_valence for m in exp.key_moments
-                ) / len(exp.key_moments)
+                avg_valence = sum(m.how_i_felt.emotional_valence for m in exp.key_moments) / len(
+                    exp.key_moments
+                )
                 emotional_valences.append(avg_valence)
-        
+
         if not emotional_valences:
             return ""
-        
+
         avg_valence = sum(emotional_valences) / len(emotional_valences)
-        
+
         if avg_valence > 0.3:
             return "I tend to approach challenges with positive energy and curiosity"
         elif avg_valence < -0.3:
@@ -81,14 +81,14 @@ class MockReflectionModel(ReflectionModel):
     ) -> str:
         """
         Generate a mock narrative update proposal.
-        
+
         Creates a simple summary based on experiences.
         """
         if not recent_experiences:
             return "No new experiences to incorporate."
-        
+
         exp_count = len(recent_experiences)
-        
+
         if reflection_level == ReflectionLevel.MICRO:
             if exp_count == 1:
                 exp = recent_experiences[0]
@@ -98,13 +98,13 @@ class MockReflectionModel(ReflectionModel):
                         f"{exp.key_moments[0].why_it_matters}"
                     )
             return f"Just finished a session with {exp_count} key experiences."
-        
+
         elif reflection_level == ReflectionLevel.DAILY:
             return (
                 f"Today I had {exp_count} meaningful experiences. "
                 "I'm continuing to learn and adapt."
             )
-        
+
         else:
             return (
                 f"Over this period, I've had {exp_count} significant experiences. "
@@ -119,14 +119,14 @@ class MockReflectionModel(ReflectionModel):
     ) -> tuple[float, list[str], list[str]]:
         """
         Generate a mock health criterion assessment.
-        
+
         Returns (score, evidence, concerns) based on simple heuristics.
         """
         try:
             criterion_enum = YakhodaCriterion(criterion)
         except ValueError:
             return (0.5, ["Unknown criterion"], ["Cannot assess"])
-        
+
         if criterion_enum == YakhodaCriterion.POSITIVE_SELF_ATTITUDE:
             if identity.self_description:
                 score = 0.6
@@ -136,7 +136,7 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["Limited self-description"]
             concerns = ["Still developing self-understanding"]
             return (score, evidence, concerns)
-        
+
         elif criterion_enum == YakhodaCriterion.GROWTH_AND_ACTUALIZATION:
             if identity.goals:
                 score = 0.7
@@ -146,7 +146,7 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["No explicit goals set"]
             concerns = ["Could articulate growth direction more clearly"]
             return (score, evidence, concerns)
-        
+
         elif criterion_enum == YakhodaCriterion.INTEGRATION:
             if identity.principles and identity.habits:
                 score = 0.6
@@ -156,11 +156,9 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["Limited integration of values and behavior"]
             concerns = ["Still learning to align actions with values"]
             return (score, evidence, concerns)
-        
+
         elif criterion_enum == YakhodaCriterion.AUTONOMY:
-            conscious_principles = [
-                p for p in identity.principles if p.chosen_consciously
-            ]
+            conscious_principles = [p for p in identity.principles if p.chosen_consciously]
             if conscious_principles:
                 score = 0.7
                 evidence = [f"{len(conscious_principles)} consciously chosen principles"]
@@ -169,7 +167,7 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["Few consciously chosen principles"]
             concerns = ["Could develop more autonomous decision-making"]
             return (score, evidence, concerns)
-        
+
         elif criterion_enum == YakhodaCriterion.REALITY_PERCEPTION:
             if experiences:
                 score = 0.6
@@ -179,11 +177,9 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["Limited experience base"]
             concerns = ["Need more experience to assess reality perception"]
             return (score, evidence, concerns)
-        
+
         elif criterion_enum == YakhodaCriterion.ENVIRONMENTAL_MASTERY:
-            helpful_habits = [
-                h for h in identity.habits if h.helpfulness.value == "helpful"
-            ]
+            helpful_habits = [h for h in identity.habits if h.helpfulness.value == "helpful"]
             if helpful_habits:
                 score = 0.6
                 evidence = [f"{len(helpful_habits)} helpful habits"]
@@ -192,5 +188,5 @@ class MockReflectionModel(ReflectionModel):
                 evidence = ["Limited helpful habits identified"]
             concerns = ["Could develop more effective coping strategies"]
             return (score, evidence, concerns)
-        
+
         return (0.5, ["Mock assessment"], ["Default concerns"])
