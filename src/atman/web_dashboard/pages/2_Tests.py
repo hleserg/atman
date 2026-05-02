@@ -23,20 +23,13 @@ st.divider()
 # Test options
 st.markdown("### ⚙️ Настройки тестов")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    test_suite = st.selectbox(
-        "Набор тестов:",
-        options=["Все тесты (tests/)", "Только unit тесты", "Только integration тесты"],
-        index=0,
-    )
-
-with col2:
     verbose = st.checkbox("Подробный вывод (-v)", value=True)
     coverage = st.checkbox("С покрытием (--cov)", value=True)
 
-with col3:
+with col2:
     parallel = st.checkbox("Параллельно (-n auto)", value=False)
     fail_fast = st.checkbox("Остановить на первой ошибке (-x)", value=False)
 
@@ -61,13 +54,8 @@ with col3:
 
 # Build command
 if run_tests or run_quick:
-    # Base path
-    if test_suite == "Только unit тесты":
-        test_path = "tests/unit/"
-    elif test_suite == "Только integration тесты":
-        test_path = "tests/integration/"
-    else:
-        test_path = "tests/"
+    # Base path - always use tests/
+    test_path = "tests/"
 
     # Build arguments
     args = [test_path]

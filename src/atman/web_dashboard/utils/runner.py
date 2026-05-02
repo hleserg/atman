@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
+import subprocess  # nosec B404
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,7 +32,7 @@ async def run_command_async(
     if env:
         merged_env.update(env)
 
-    process = await asyncio.create_subprocess_exec(
+    process = await asyncio.create_subprocess_exec(  # nosec B603
         *args,
         cwd=str(cwd),
         env=merged_env,
@@ -77,7 +77,7 @@ def run_command_sync(
     if env:
         merged_env.update(env)
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603
         args,
         cwd=str(cwd),
         env=merged_env,

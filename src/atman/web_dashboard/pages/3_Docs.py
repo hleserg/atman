@@ -82,10 +82,22 @@ if markdown_files:
     # File selection in sidebar
     st.sidebar.markdown("### 📄 Файлы")
     file_options = {display: path for display, path in markdown_files}
+
+    # Determine current index based on session state
+    current_index = 0
+    if "doc_path" in st.session_state and st.session_state["doc_path"] is not None:
+        try:
+            current_path = st.session_state["doc_path"]
+            file_list = list(file_options.values())
+            if current_path in file_list:
+                current_index = file_list.index(current_path)
+        except (ValueError, KeyError):
+            pass
+
     selected_file_display = st.sidebar.selectbox(
         "Выберите файл:",
         options=list(file_options.keys()),
-        index=0,
+        index=current_index,
     )
 
     selected_file = file_options[selected_file_display]

@@ -15,7 +15,7 @@ The Web Dashboard provides a convenient browser interface for daily work with th
 - Install dev dependencies
 
 ### 🧪 Tests Tab
-- Run full test suite or specific test subsets
+- Run full test suite (all tests in `tests/`)
 - Configure test options (verbose, coverage, parallel, fail-fast)
 - View test results with pass/fail summary
 - Browse test coverage reports
@@ -34,15 +34,17 @@ The Web Dashboard provides a convenient browser interface for daily work with th
 
 ## Installation
 
-The web dashboard requires Streamlit, which is included in the project dependencies:
+The web dashboard requires Streamlit, which is available as an optional dependency:
 
 ```bash
 # Using uv (recommended)
-uv pip install -e ".[dev]"
+uv pip install -e ".[dev,webui]"
 
 # Or using pip
-pip install -e ".[dev]"
+pip install -e ".[dev,webui]"
 ```
+
+**Note**: The `webui` extra is separate from core dependencies to keep the base runtime footprint minimal.
 
 ## Usage
 
