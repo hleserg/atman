@@ -71,6 +71,8 @@ class FileStateStore(StateStore):
     def create_experience(self, record: ExperienceRecord) -> ExperienceRecord:
         """Create experience record."""
         experience_file = self.experiences_dir / f"{record.experience.id}.json"
+        if experience_file.exists():
+            raise ValueError(f"Experience with id {record.experience.id} already exists")
         experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
@@ -94,7 +96,8 @@ class FileStateStore(StateStore):
         ):
             return record
         record.experience.add_reframing_note(note)
-        self.create_experience(record)
+        experience_file = self.experiences_dir / f"{experience_id}.json"
+        experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
     def mark_accessed(self, experience_id: UUID) -> ExperienceRecord | None:
@@ -103,7 +106,8 @@ class FileStateStore(StateStore):
         if record is None:
             return None
         record.experience.mark_accessed()
-        self.create_experience(record)
+        experience_file = self.experiences_dir / f"{experience_id}.json"
+        experience_file.write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record
 
     def search_experiences(

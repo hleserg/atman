@@ -24,12 +24,17 @@ from atman.core.models.experience import (
     FeltSense,
     KeyMoment,
     ReframingNote,
+    ReframingNoteAppendResult,
     SessionExperience,
 )
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.reflection import ReflectionEvent, ReflectionLevel
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.reflection_run_keys import (
+    daily_reflection_run_key_for_identity,
+    identity_anchor_snapshot_id_for_run_key,
+)
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
     DailyReflectionService,
@@ -70,17 +75,19 @@ class MockExperienceRepo:
         """Update experience."""
         self.experiences[experience.id] = experience
 
-    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        """Add reframing note; return True if a new note was stored."""
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
+        """Add reframing note; return explicit append outcome."""
         exp = self.experiences.get(experience_id)
         if exp is None:
-            return False
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
         if note.triggered_by and any(
             n.triggered_by == note.triggered_by for n in exp.reframing_notes
         ):
-            return False
+            return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
         exp.add_reframing_note(note)
-        return True
+        return ReframingNoteAppendResult.STORED
 
 
 class MockIdentityRepo:
@@ -89,6 +96,7 @@ class MockIdentityRepo:
     def __init__(self, identity: Identity):
         """Initialize with identity."""
         self.identity = identity
+        self._snapshots: dict[UUID, IdentitySnapshot] = {}
 
     def get_current(self) -> Identity | None:
         """Get current identity."""
@@ -96,26 +104,35 @@ class MockIdentityRepo:
 
     def get_snapshot(self, snapshot_id: UUID) -> IdentitySnapshot | None:
         """Get snapshot."""
-        return None
+        return self._snapshots.get(snapshot_id)
 
     def get_history(self) -> list[IdentitySnapshot]:
         """Get history."""
-        return []
+        return list(self._snapshots.values())
 
     def update(self, identity: Identity) -> None:
         """Update identity."""
         self.identity = identity
 
     def create_snapshot(
-        self, identity: Identity, description: str, change_summary: str
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
         """Create snapshot."""
-        return IdentitySnapshot(
+        sid = snapshot_id or uuid4()
+        snap = IdentitySnapshot(
+            id=sid,
             identity_id=identity.id,
-            identity_snapshot=identity,
+            identity_snapshot=identity.model_copy(deep=True),
             description=description,
             change_summary=change_summary,
         )
+        self._snapshots[sid] = snap
+        return snap
 
 
 class MockNarrativeRepo:
@@ -174,9 +191,15 @@ class NullIdentityRepo:
         return None
 
     def create_snapshot(
-        self, identity: Identity, description: str, change_summary: str
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
         return IdentitySnapshot(
+            id=snapshot_id or uuid4(),
             identity_id=identity.id,
             identity_snapshot=identity,
             description=description,
@@ -200,10 +223,14 @@ class FlakyReflectionEventStore(InMemoryReflectionEventStore):
 
 
 class RejectingReframeMockRepo(MockExperienceRepo):
-    """Experience repo that never persists reframing notes (audit edge case)."""
+    """Experience repo that rejects reframing appends while experiences exist."""
 
-    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        return False
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
+        if experience_id not in self.experiences:
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+        return ReframingNoteAppendResult.STORAGE_REJECTED
 
 
 def create_test_experience(session_id: UUID | None = None) -> SessionExperience:
@@ -441,6 +468,8 @@ def test_daily_reflection_reframing_count_skips_failed_persist() -> None:
     assert event.reflection_level == ReflectionLevel.DAILY
     assert len(event.patterns_detected) >= 1
     assert event.reframing_notes_added == 0
+    assert event.reframing_append_storage_rejected_count >= 1
+    assert "signal=reframing_append_degraded" in (event.notes or "")
 
 
 def test_deep_reflection_performs_health_assessment() -> None:
@@ -694,6 +723,7 @@ class _CapturingReflectionEventObserver:
 
     def __init__(self) -> None:
         self.errors: list[str] = []
+        self.side_effect_errors: list[str] = []
 
     def record_reflection_event_save_failed_after_narrative_commit(
         self,
@@ -702,6 +732,17 @@ class _CapturingReflectionEventObserver:
         error_message: str,
     ) -> None:
         self.errors.append(f"{reflection_level.value}:{error_message}")
+
+    def record_reflection_job_event_save_failed_after_side_effects(
+        self,
+        *,
+        reflection_level: ReflectionLevel,
+        reflection_run_key: str | None,
+        error_message: str,
+    ) -> None:
+        self.side_effect_errors.append(
+            f"{reflection_level.value}|{reflection_run_key}|{error_message}"
+        )
 
 
 class FlakyMicroEventReflectionStore(InMemoryReflectionEventStore):
@@ -789,6 +830,9 @@ def test_daily_reflection_second_run_same_window_is_idempotent() -> None:
     ev2 = service.reflect(day)
 
     assert ev1.id == ev2.id
+    rk = daily_reflection_run_key_for_identity(day, identity.id)
+    assert ev1.identity_snapshot_id == identity_anchor_snapshot_id_for_run_key(rk)
+    assert ev1.identity_snapshot_id != identity.id
     assert len(pattern_store.get_all()) == 1
 
     r1 = exp_repo.get(exp1.id)

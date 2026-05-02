@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from atman.core.models.experience import ReframingNote, SessionExperience
+from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import NarrativeDocument
 from atman.core.models.reflection import (
@@ -59,17 +59,20 @@ class ExperienceRepository(Protocol):
         """Update an experience (e.g., after adding reframing note)."""
         ...
 
-    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
         """
         Append a reframing note to an experience.
 
         If ``note.triggered_by`` matches an existing note on the same experience,
-        implementations must treat the call as a no-op and return False (no new
-        append), so scheduled reflection retries stay idempotent.
+        implementations must return :attr:`~atman.core.models.experience.ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY`
+        (idempotent no-op). Callers must not treat that outcome like a missing
+        experience or a storage failure.
 
         Returns:
-            True if a new note was stored; False if skipped (duplicate triggered_by),
-            or the experience was not found.
+            :class:`~atman.core.models.experience.ReframingNoteAppendResult` discriminating
+            stored / duplicate / not found / storage rejected.
         """
         ...
 
@@ -99,9 +102,19 @@ class IdentityRepository(Protocol):
         ...
 
     def create_snapshot(
-        self, identity: Identity, description: str, change_summary: str
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
-        """Create a new identity snapshot."""
+        """
+        Create a new identity snapshot.
+
+        When ``snapshot_id`` is set, implementations must use it as the snapshot
+        row id (for idempotent reflection anchors keyed by ``reflection_run_key``).
+        """
         ...
 
 
@@ -292,6 +305,16 @@ class ReflectionEventPersistenceObserver(Protocol):
         error_message: str,
     ) -> None:
         """Narrative was committed but the reflection event could not be stored."""
+        ...
+
+    def record_reflection_job_event_save_failed_after_side_effects(
+        self,
+        *,
+        reflection_level: ReflectionLevel,
+        reflection_run_key: str | None,
+        error_message: str,
+    ) -> None:
+        """Patterns/reframing/health (etc.) may be persisted but the job event was not."""
         ...
 
 

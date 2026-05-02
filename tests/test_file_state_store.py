@@ -71,6 +71,15 @@ def test_experience_round_trip_and_get_missing() -> None:
         assert store.get_experience(uuid4()) is None
 
 
+def test_create_experience_duplicate_raises_like_other_stores() -> None:
+    with TemporaryDirectory() as tmp:
+        store = FileStateStore(Path(tmp))
+        rec = _experience_record()
+        store.create_experience(rec)
+        with pytest.raises(ValueError, match="already exists"):
+            store.create_experience(rec)
+
+
 def test_add_reframing_note_and_mark_accessed_missing() -> None:
     with TemporaryDirectory() as tmp:
         store = FileStateStore(Path(tmp))

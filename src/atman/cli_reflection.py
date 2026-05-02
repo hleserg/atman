@@ -1,18 +1,19 @@
 """
 CLI for Reflection Engine.
 
-Commands:
-- atman reflect micro --fixtures
-- atman reflect daily --fixtures
-- atman reflect deep --fixtures
+Commands (run from the repo with the package installed, e.g. ``pip install -e ".[dev]"``):
+
+- python -m atman.cli_reflection reflect micro --fixtures
+- python -m atman.cli_reflection reflect daily --fixtures
+- python -m atman.cli_reflection reflect deep --fixtures
 
 Note: Non-fixtures modes require integration with FileStateStore,
-which is not yet implemented. Use demo_reflection.py for full walkthrough.
+which is not yet implemented. Use ``python src/demo_reflection.py`` for the full walkthrough.
 """
 
 import sys
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from atman.adapters.reflection.fixture_loader import (
     anchor_session_experiences_to_utc_day_window,
@@ -26,7 +27,7 @@ from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryReflectionEventStore,
 )
 from atman.core.exceptions import NarrativePersistenceConflictError
-from atman.core.models.experience import ReframingNote, SessionExperience
+from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
@@ -78,17 +79,19 @@ class MockExperienceRepo:
         """Update experience."""
         self.experiences[experience.id] = experience
 
-    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        """Add reframing note; return True if a new note was stored."""
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
+        """Add reframing note; return explicit append outcome."""
         exp = self.experiences.get(experience_id)
         if exp is None:
-            return False
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
         if note.triggered_by and any(
             n.triggered_by == note.triggered_by for n in exp.reframing_notes
         ):
-            return False
+            return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
         exp.add_reframing_note(note)
-        return True
+        return ReframingNoteAppendResult.STORED
 
 
 class MockIdentityRepo:
@@ -97,6 +100,7 @@ class MockIdentityRepo:
     def __init__(self, identity: Identity):
         """Initialize with identity."""
         self.identity = identity
+        self._snapshots: dict[UUID, IdentitySnapshot] = {}
 
     def get_current(self) -> Identity | None:
         """Get current identity."""
@@ -104,26 +108,35 @@ class MockIdentityRepo:
 
     def get_snapshot(self, snapshot_id: UUID) -> IdentitySnapshot | None:
         """Get snapshot."""
-        return None
+        return self._snapshots.get(snapshot_id)
 
     def get_history(self) -> list[IdentitySnapshot]:
         """Get history."""
-        return []
+        return list(self._snapshots.values())
 
     def update(self, identity: Identity) -> None:
         """Update identity."""
         self.identity = identity
 
     def create_snapshot(
-        self, identity: Identity, description: str, change_summary: str
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
         """Create snapshot."""
-        return IdentitySnapshot(
+        sid = snapshot_id or uuid4()
+        snap = IdentitySnapshot(
+            id=sid,
             identity_id=identity.id,
-            identity_snapshot=identity,
+            identity_snapshot=identity.model_copy(deep=True),
             description=description,
             change_summary=change_summary,
         )
+        self._snapshots[sid] = snap
+        return snap
 
 
 class MockNarrativeRepo:

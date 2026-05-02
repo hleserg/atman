@@ -11,7 +11,7 @@ These models represent reflection processes and outputs:
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Any, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -199,6 +199,24 @@ class CriterionAssessment(BaseModel):
     )
 
 
+def _health_assessment_example_dict() -> dict[str, Any]:
+    """Valid JSON-schema example: six criteria and ``overall_score`` equal to their mean."""
+    criteria_json: dict[str, Any] = {}
+    for jc in JahodaCriterion:
+        criteria_json[jc.value] = {
+            "criterion": jc.value,
+            "score": 0.55,
+            "evidence": ["Illustrative evidence"],
+            "concerns": ["Illustrative concern"],
+        }
+    return {
+        "criteria": criteria_json,
+        "overall_score": 0.55,
+        "summary": "Illustrative health snapshot (six Jahoda criteria, mean-aligned overall_score).",
+        "recommendations": ["Continue honest self-reflection", "Seek diverse experiences"],
+    }
+
+
 class HealthAssessment(BaseModel):
     """
     Psychological health assessment based on 6 Jahoda criteria.
@@ -278,19 +296,7 @@ class HealthAssessment(BaseModel):
     model_config = ConfigDict(
         validate_assignment=True,
         json_schema_extra={
-            "example": {
-                "criteria": {
-                    "positive_self_attitude": {
-                        "criterion": "positive_self_attitude",
-                        "score": 0.6,
-                        "evidence": ["Shows self-awareness"],
-                        "concerns": ["Limited experience"],
-                    }
-                },
-                "overall_score": 0.65,
-                "summary": "Early stages of healthy identity development",
-                "recommendations": ["Continue honest self-reflection", "Seek diverse experiences"],
-            }
+            "example": _health_assessment_example_dict(),
         },
     )
 
@@ -314,7 +320,11 @@ class ReflectionEvent(BaseModel):
         default_factory=list, description="IDs of experiences analyzed during this reflection"
     )
     identity_snapshot_id: UUID | None = Field(
-        default=None, description="Identity snapshot used during this reflection"
+        default=None,
+        description=(
+            "Id of the immutable :class:`~atman.core.models.identity.IdentitySnapshot` "
+            "that anchored identity state for this job (never ``Identity.id``)"
+        ),
     )
     reflection_run_key: str | None = Field(
         default=None,
@@ -327,6 +337,16 @@ class ReflectionEvent(BaseModel):
     )
     reframing_notes_added: int = Field(
         default=0, ge=0, description="Number of reframing notes added"
+    )
+    reframing_experience_not_found_count: int = Field(
+        default=0,
+        ge=0,
+        description="Append attempts where the target experience was missing (degraded path)",
+    )
+    reframing_append_storage_rejected_count: int = Field(
+        default=0,
+        ge=0,
+        description="Append attempts refused by storage while the experience existed",
     )
 
     # What was proposed/done

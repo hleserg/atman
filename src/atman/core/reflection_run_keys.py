@@ -12,6 +12,7 @@ from atman.core.clock_impl import ensure_utc
 _REFLECTION_UUID_NS = UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 _PATTERN_UUID_NS = UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
 _HEALTH_UUID_NS = UUID("6ba7b812-9dad-11d1-80b4-00c04fd430c8")
+_IDENTITY_ANCHOR_SNAPSHOT_NS = UUID("6ba7b813-9dad-11d1-80b4-00c04fd430c8")
 
 
 def _calendar_day_utc(dt: datetime) -> str:
@@ -87,6 +88,11 @@ def daily_pattern_detection_key(run_key: str, pattern_type_value: str) -> str:
 def deep_pattern_detection_key(run_key: str, pattern_type_value: str) -> str:
     """Fingerprint for a deep pattern slot (one per pattern type)."""
     return f"pattern|deep|{run_key}|{pattern_type_value}"
+
+
+def identity_anchor_snapshot_id_for_run_key(run_key: str) -> UUID:
+    """Stable :class:`~atman.core.models.identity.IdentitySnapshot` id for a reflection job anchor."""
+    return uuid5(_IDENTITY_ANCHOR_SNAPSHOT_NS, run_key)
 
 
 def reframing_trigger_key(run_key: str, experience_id: UUID) -> str:

@@ -70,18 +70,21 @@ make demo-reflection-fast
 
 1. **Micro Reflection**: Обновление recent layer нарратива после сессии
 2. **Daily Reflection**: Обнаружение паттернов в опыте за день
-3. **Deep Reflection**: Оценка здоровья по 6 критериям Джаходы (Jahoda)
-4. **Principle Advisor**: Различение привычек и принципов
+3. **Deep Reflection**: Оценка здоровья по 6 критериям Джаходы (Jahoda) и вывод предложений из `ReflectionEvent`, если они непустые
+4. **Narrative Revision Service**: Открытие/обновление/закрытие narrative thread (отдельно от трёх уровней рефлексии)
+5. **Principle Advisor**: Различение привычек и принципов
 
 ### Вывод демо
 
-Демо загружает тестовые фикстуры и запускает все три уровня рефлексии, отображая:
+Демо загружает фикстуры, выполняет micro → daily → deep, затем narrative revision и principle advisor. Отображается:
 
 - Проанализированный опыт
 - Обнаруженные паттерны
 - Добавленные reframing notes
 - Оценки здоровья
-- Предложенные изменения идентичности/нарратива
+- Предложенные изменения идентичности и нарратива (поля `ReflectionEvent` после deep)
+- Жизненный цикл narrative thread (revision service)
+- Предложения principle advisor
 
 ---
 

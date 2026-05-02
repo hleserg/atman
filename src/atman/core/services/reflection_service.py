@@ -16,7 +16,7 @@ from uuid import UUID
 
 from atman.core.clock_impl import SystemClock
 from atman.core.exceptions import NarrativePersistenceConflictError
-from atman.core.models.experience import ReframingNote, SessionExperience
+from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.models.identity import Identity
 from atman.core.models.reflection import (
     CriterionAssessment,
@@ -49,6 +49,7 @@ from atman.core.reflection_run_keys import (
     deep_reflection_run_key_for_identity,
     deep_reflection_run_key_no_identity,
     health_assessment_id_for_run_key,
+    identity_anchor_snapshot_id_for_run_key,
     reframing_trigger_key,
 )
 from atman.core.services.narrative_revision import NarrativeRevisionService
@@ -64,6 +65,25 @@ def _deep_run_terminal_success(notes: str) -> bool:
     return any(
         x in notes for x in ("outcome=deep_ok", "outcome=deep_empty", "outcome=deep_skipped")
     )
+
+
+def _reflection_identity_anchor_snapshot_id(
+    identity_repo: IdentityRepository,
+    identity: Identity,
+    run_key: str,
+) -> UUID:
+    """Return (and optionally materialize) the immutable snapshot id for this job key."""
+    sid = identity_anchor_snapshot_id_for_run_key(run_key)
+    existing = identity_repo.get_snapshot(sid)
+    if existing is not None:
+        return existing.id
+    snap = identity_repo.create_snapshot(
+        identity,
+        "Reflection job identity anchor",
+        f"run_key={run_key}",
+        snapshot_id=sid,
+    )
+    return snap.id
 
 
 class MicroReflectionService:
@@ -211,6 +231,7 @@ class DailyReflectionService:
         event_store: ReflectionEventStore,
         *,
         clock: ClockPort | None = None,
+        reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
     ):
         """Initialize daily reflection service."""
         self.experience_repo = experience_repo
@@ -219,6 +240,9 @@ class DailyReflectionService:
         self.reflection_model = reflection_model
         self.event_store = event_store
         self._clock = clock or SystemClock()
+        self._reflection_event_observer = (
+            reflection_event_observer or NoOpReflectionEventPersistenceObserver()
+        )
 
     def reflect(self, date: datetime) -> ReflectionEvent:
         """
@@ -247,22 +271,45 @@ class DailyReflectionService:
         if existing is not None and _daily_run_terminal_success(existing.notes or ""):
             return existing
 
+        anchor_snapshot_id = _reflection_identity_anchor_snapshot_id(
+            self.identity_repo, identity, run_key
+        )
+
         patterns_detected = self._detect_patterns(experiences, identity, run_key)
-        reframing_count = self._add_reframing_notes(experiences, patterns_detected, run_key)
+        reframing_count, reframing_nf, reframing_sr = self._add_reframing_notes(
+            experiences, patterns_detected, run_key
+        )
+
+        notes = "outcome=daily_ok"
+        if reframing_nf or reframing_sr:
+            notes += (
+                f" signal=reframing_append_degraded not_found={reframing_nf} "
+                f"storage_rejected={reframing_sr}"
+            )
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DAILY,
             experiences_analyzed=[exp.id for exp in experiences],
             patterns_detected=[p.id for p in patterns_detected],
             reframing_notes_added=reframing_count,
+            reframing_experience_not_found_count=reframing_nf,
+            reframing_append_storage_rejected_count=reframing_sr,
             key_insight=f"Daily reflection: {len(patterns_detected)} patterns detected",
-            notes="outcome=daily_ok",
+            notes=notes,
             reflection_run_key=run_key,
-            identity_snapshot_id=identity.id,
+            identity_snapshot_id=anchor_snapshot_id,
             timestamp=self._clock.now(),
         )
 
-        self.event_store.save(event)
+        try:
+            self.event_store.save(event)
+        except Exception as exc:
+            self._reflection_event_observer.record_reflection_job_event_save_failed_after_side_effects(
+                reflection_level=ReflectionLevel.DAILY,
+                reflection_run_key=run_key,
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
+            raise
         got = self.event_store.get_by_reflection_run_key(run_key)
         return got if got is not None else event
 
@@ -302,12 +349,14 @@ class DailyReflectionService:
         experiences: list[SessionExperience],
         patterns: list[PatternCandidate],
         run_key: str,
-    ) -> int:
-        """Add reframing notes to experiences based on detected patterns."""
+    ) -> tuple[int, int, int]:
+        """Add reframing notes; return (stored_count, not_found_count, storage_rejected_count)."""
         if not patterns:
-            return 0
+            return (0, 0, 0)
 
         count = 0
+        not_found = 0
+        storage_rejected = 0
         for exp in experiences[:2]:
             context = {"patterns": ", ".join(p.description for p in patterns)}
 
@@ -321,10 +370,15 @@ class DailyReflectionService:
                     reflection_type="pattern",
                     triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
-                if self.experience_repo.add_reframing_note(exp.id, note):
+                outcome = self.experience_repo.add_reframing_note(exp.id, note)
+                if outcome == ReframingNoteAppendResult.STORED:
                     count += 1
+                elif outcome == ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND:
+                    not_found += 1
+                elif outcome == ReframingNoteAppendResult.STORAGE_REJECTED:
+                    storage_rejected += 1
 
-        return count
+        return (count, not_found, storage_rejected)
 
     def _create_empty_event(self, date: datetime) -> ReflectionEvent:
         """Create an event for when there's nothing to reflect on."""
@@ -400,6 +454,7 @@ class DeepReflectionService:
         event_store: ReflectionEventStore,
         *,
         clock: ClockPort | None = None,
+        reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
     ):
         """Initialize deep reflection service."""
         self.experience_repo = experience_repo
@@ -410,6 +465,9 @@ class DeepReflectionService:
         self.reflection_model = reflection_model
         self.event_store = event_store
         self._clock = clock or SystemClock()
+        self._reflection_event_observer = (
+            reflection_event_observer or NoOpReflectionEventPersistenceObserver()
+        )
 
     def reflect(self, since: datetime, until: datetime) -> ReflectionEvent:
         """
@@ -438,10 +496,16 @@ class DeepReflectionService:
         if existing is not None and _deep_run_terminal_success(existing.notes or ""):
             return existing
 
+        anchor_snapshot_id = _reflection_identity_anchor_snapshot_id(
+            self.identity_repo, identity, run_key
+        )
+
         health_assessment = self._perform_health_assessment(identity, experiences, run_key)
 
         patterns_detected = self._detect_deep_patterns(experiences, identity, run_key)
-        reframing_count = self._add_strategic_reframing(experiences, patterns_detected, run_key)
+        reframing_count, reframing_nf, reframing_sr = self._add_strategic_reframing(
+            experiences, patterns_detected, run_key
+        )
 
         narrative_changes = self._propose_narrative_revision(
             experiences, identity, patterns_detected
@@ -451,11 +515,20 @@ class DeepReflectionService:
             identity, patterns_detected, health_assessment
         )
 
+        notes = "outcome=deep_ok"
+        if reframing_nf or reframing_sr:
+            notes += (
+                f" signal=reframing_append_degraded not_found={reframing_nf} "
+                f"storage_rejected={reframing_sr}"
+            )
+
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DEEP,
             experiences_analyzed=[exp.id for exp in experiences],
             patterns_detected=[p.id for p in patterns_detected],
             reframing_notes_added=reframing_count,
+            reframing_experience_not_found_count=reframing_nf,
+            reframing_append_storage_rejected_count=reframing_sr,
             narrative_changes_proposed=narrative_changes,
             identity_changes_proposed=identity_changes,
             health_assessment_id=health_assessment.id,
@@ -463,9 +536,9 @@ class DeepReflectionService:
                 f"Deep reflection: {len(patterns_detected)} patterns, "
                 f"health score {health_assessment.overall_score:.2f}"
             ),
-            notes="outcome=deep_ok",
+            notes=notes,
             reflection_run_key=run_key,
-            identity_snapshot_id=identity.id,
+            identity_snapshot_id=anchor_snapshot_id,
             timestamp=self._clock.now(),
         )
 
@@ -475,11 +548,18 @@ class DeepReflectionService:
             health_persisted = True
             self.event_store.save(event)
         except Exception as exc:
+            self._reflection_event_observer.record_reflection_job_event_save_failed_after_side_effects(
+                reflection_level=ReflectionLevel.DEEP,
+                reflection_run_key=run_key,
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
             failed = ReflectionEvent(
                 reflection_level=ReflectionLevel.DEEP,
                 experiences_analyzed=[exp.id for exp in experiences],
                 patterns_detected=[p.id for p in patterns_detected],
                 reframing_notes_added=reframing_count,
+                reframing_experience_not_found_count=reframing_nf,
+                reframing_append_storage_rejected_count=reframing_sr,
                 narrative_changes_proposed=narrative_changes,
                 identity_changes_proposed=identity_changes,
                 health_assessment_id=health_assessment.id if health_persisted else None,
@@ -489,7 +569,7 @@ class DeepReflectionService:
                 ),
                 notes=f"outcome=deep_failed reason=persist err={type(exc).__name__}",
                 reflection_run_key=run_key,
-                identity_snapshot_id=identity.id,
+                identity_snapshot_id=anchor_snapshot_id,
                 timestamp=self._clock.now(),
             )
             with contextlib.suppress(Exception):
@@ -565,12 +645,14 @@ class DeepReflectionService:
         experiences: list[SessionExperience],
         patterns: list[PatternCandidate],
         run_key: str,
-    ) -> int:
-        """Add strategic reframing notes to key experiences."""
+    ) -> tuple[int, int, int]:
+        """Add strategic reframing; return (stored_count, not_found_count, storage_rejected_count)."""
         if not patterns:
-            return 0
+            return (0, 0, 0)
 
         count = 0
+        not_found = 0
+        storage_rejected = 0
         for exp in experiences[:3]:
             context = {"patterns": ", ".join(p.description for p in patterns)}
 
@@ -584,10 +666,15 @@ class DeepReflectionService:
                     reflection_type="growth",
                     triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
-                if self.experience_repo.add_reframing_note(exp.id, note):
+                outcome = self.experience_repo.add_reframing_note(exp.id, note)
+                if outcome == ReframingNoteAppendResult.STORED:
                     count += 1
+                elif outcome == ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND:
+                    not_found += 1
+                elif outcome == ReframingNoteAppendResult.STORAGE_REJECTED:
+                    storage_rejected += 1
 
-        return count
+        return (count, not_found, storage_rejected)
 
     def _propose_narrative_revision(
         self,

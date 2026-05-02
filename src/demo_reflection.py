@@ -10,7 +10,7 @@ All outputs use Rich via atman.term for consistent styling.
 """
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from rich.table import Table
 
@@ -26,7 +26,7 @@ from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryReflectionEventStore,
 )
 from atman.core.exceptions import NarrativePersistenceConflictError
-from atman.core.models.experience import ReframingNote, SessionExperience
+from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
@@ -78,17 +78,19 @@ class MockExperienceRepo:
         """Update experience."""
         self.experiences[experience.id] = experience
 
-    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        """Add reframing note; return True if a new note was stored."""
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
+        """Add reframing note; return explicit append outcome."""
         exp = self.experiences.get(experience_id)
         if exp is None:
-            return False
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
         if note.triggered_by and any(
             n.triggered_by == note.triggered_by for n in exp.reframing_notes
         ):
-            return False
+            return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
         exp.add_reframing_note(note)
-        return True
+        return ReframingNoteAppendResult.STORED
 
 
 class MockIdentityRepo:
@@ -97,6 +99,7 @@ class MockIdentityRepo:
     def __init__(self, identity: Identity):
         """Initialize with identity."""
         self.identity = identity
+        self._snapshots: dict[UUID, IdentitySnapshot] = {}
 
     def get_current(self) -> Identity | None:
         """Get current identity."""
@@ -104,26 +107,35 @@ class MockIdentityRepo:
 
     def get_snapshot(self, snapshot_id: UUID) -> IdentitySnapshot | None:
         """Get snapshot."""
-        return None
+        return self._snapshots.get(snapshot_id)
 
     def get_history(self) -> list[IdentitySnapshot]:
         """Get history."""
-        return []
+        return list(self._snapshots.values())
 
     def update(self, identity: Identity) -> None:
         """Update identity."""
         self.identity = identity
 
     def create_snapshot(
-        self, identity: Identity, description: str, change_summary: str
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
         """Create snapshot."""
-        return IdentitySnapshot(
+        sid = snapshot_id or uuid4()
+        snap = IdentitySnapshot(
+            id=sid,
             identity_id=identity.id,
-            identity_snapshot=identity,
+            identity_snapshot=identity.model_copy(deep=True),
             description=description,
             change_summary=change_summary,
         )
+        self._snapshots[sid] = snap
+        return snap
 
 
 class MockNarrativeRepo:
@@ -369,6 +381,16 @@ def demo_deep_reflection(
             console.print(health_table)
             demo_pace()
 
+    if event.narrative_changes_proposed:
+        print_ok("\nProposed narrative update (carried on ReflectionEvent):")
+        console.print(f"  {event.narrative_changes_proposed}")
+        demo_pace()
+
+    if event.identity_changes_proposed:
+        print_ok("\nProposed identity changes (carried on ReflectionEvent):")
+        console.print(f"  {event.identity_changes_proposed}")
+        demo_pace()
+
 
 def demo_narrative_revision(narrative: NarrativeDocument) -> None:
     """Demonstrate narrative revision service."""
@@ -492,7 +514,10 @@ def demo_principle_advisor(identity: Identity) -> None:
 def main() -> None:
     """Run the reflection engine demo."""
     print_banner("REFLECTION ENGINE DEMO")
-    print_help_text("This demo showcases WP-04: Reflection Engine with three levels of reflection.")
+    print_help_text(
+        "This demo showcases WP-04: Reflection Engine (micro / daily / deep), "
+        "then narrative revision and principle advisor walkthroughs."
+    )
     demo_pace()
 
     print_ok("Loading fixtures...")
@@ -524,10 +549,10 @@ def main() -> None:
 
     print_banner("DEMO COMPLETE")
     print_ok(
-        "The Reflection Engine demonstrates three levels of reflection:\n"
-        "  • Micro: Session checkpoint\n"
-        "  • Daily: Pattern detection\n"
-        "  • Deep: Health assessment and identity revision"
+        "Walkthrough covered:\n"
+        "  • Micro, daily, and deep reflection\n"
+        "  • NarrativeRevisionService (threads / layers)\n"
+        "  • PrincipleRevisionAdvisor"
     )
     demo_pace()
 

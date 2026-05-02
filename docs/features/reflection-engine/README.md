@@ -70,18 +70,21 @@ make demo-reflection-fast
 
 1. **Micro Reflection**: Updates recent narrative layer after a session
 2. **Daily Reflection**: Detects patterns across day's experiences
-3. **Deep Reflection**: Performs health assessment on 6 Jahoda criteria
-4. **Principle Advisor**: Distinguishes habits from principles
+3. **Deep Reflection**: Performs health assessment on 6 Jahoda criteria (and prints proposals from `ReflectionEvent` when present)
+4. **Narrative Revision Service**: Opens/updates/closes a narrative thread (separate from the three reflection levels)
+5. **Principle Advisor**: Distinguishes habits from principles
 
 ### Demo Output
 
-The demo loads test fixtures and runs all three reflection levels, displaying:
+The demo loads test fixtures, runs micro → daily → deep reflection, then narrative revision and principle advisor. It displays:
 
 - Experiences analyzed
 - Patterns detected
 - Reframing notes added
 - Health assessment scores
-- Proposed identity/narrative changes
+- Proposed identity and narrative text (from deep reflection’s `ReflectionEvent`, when the mock produces non-empty strings)
+- Narrative thread lifecycle (revision service)
+- Principle suggestions
 
 ---
 

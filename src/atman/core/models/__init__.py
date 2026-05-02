@@ -9,6 +9,7 @@ from atman.core.models.experience import (
     FeltSense,
     KeyMoment,
     ReframingNote,
+    ReframingNoteAppendResult,
     SessionExperience,
 )
 from atman.core.models.fact import FactRecord, Relation
@@ -78,6 +79,7 @@ __all__ = [
     "ReflectionEvent",
     "ReflectionLevel",
     "ReframingNote",
+    "ReframingNoteAppendResult",
     "Relation",
     "SessionExperience",
 ]
