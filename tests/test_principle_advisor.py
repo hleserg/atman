@@ -2,8 +2,6 @@
 Tests for principle revision advisor.
 """
 
-
-
 from atman.core.models.identity import Identity, Principle
 from atman.core.models.reflection import (
     PatternCandidate,

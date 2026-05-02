@@ -147,7 +147,7 @@ def demo_micro_reflection(
     identity: Identity,
 ) -> None:
     """Demonstrate micro reflection."""
-    print_banner("1. MICRO REFLECTION", width=70)
+    print_banner("1. MICRO REFLECTION")
     print_help_text(
         "Micro reflection runs after each session to update the recent narrative layer."
     )
@@ -187,8 +187,8 @@ def demo_micro_reflection(
     demo_pace()
 
     table = Table(title="Reflection Summary")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", style="green")
+    table.add_column("Metric")
+    table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
     table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
@@ -207,7 +207,7 @@ def demo_daily_reflection(
     identity: Identity,
 ) -> None:
     """Demonstrate daily reflection."""
-    print_banner("2. DAILY REFLECTION", width=70)
+    print_banner("2. DAILY REFLECTION")
     print_help_text("Daily reflection analyzes experiences across the day to detect patterns.")
     demo_pace()
 
@@ -235,8 +235,8 @@ def demo_daily_reflection(
     demo_pace()
 
     table = Table(title="Reflection Summary")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", style="green")
+    table.add_column("Metric")
+    table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
     table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
@@ -261,7 +261,7 @@ def demo_deep_reflection(
     identity: Identity,
 ) -> None:
     """Demonstrate deep reflection."""
-    print_banner("3. DEEP REFLECTION", width=70)
+    print_banner("3. DEEP REFLECTION")
     print_help_text(
         "Deep reflection performs health assessment and proposes identity/narrative revisions."
     )
@@ -311,8 +311,8 @@ def demo_deep_reflection(
     demo_pace()
 
     table = Table(title="Reflection Summary")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", style="green")
+    table.add_column("Metric")
+    table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
     table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
@@ -335,8 +335,8 @@ def demo_deep_reflection(
             print_ok("\nHealth Assessment (6 Yakhoda Criteria):")
 
             health_table = Table()
-            health_table.add_column("Criterion", style="cyan")
-            health_table.add_column("Score", style="green")
+            health_table.add_column("Criterion")
+            health_table.add_column("Score")
 
             for criterion, crit_assessment in assessment.criteria.items():
                 health_table.add_row(
@@ -350,7 +350,7 @@ def demo_deep_reflection(
 
 def demo_principle_advisor(identity: Identity) -> None:
     """Demonstrate principle revision advisor."""
-    print_banner("4. PRINCIPLE REVISION ADVISOR", width=70)
+    print_banner("4. PRINCIPLE REVISION ADVISOR")
     print_help_text("The advisor helps distinguish habits from principles and suggests revisions.")
     demo_pace()
 
@@ -394,7 +394,7 @@ def demo_principle_advisor(identity: Identity) -> None:
 
 def main() -> None:
     """Run the reflection engine demo."""
-    print_banner("REFLECTION ENGINE DEMO", width=70, style="bold magenta")
+    print_banner("REFLECTION ENGINE DEMO")
     print_help_text("This demo showcases WP-04: Reflection Engine with three levels of reflection.")
     demo_pace()
 
@@ -411,7 +411,7 @@ def main() -> None:
     demo_deep_reflection(experiences, identity)
     demo_principle_advisor(identity)
 
-    print_banner("DEMO COMPLETE", width=70, style="bold green")
+    print_banner("DEMO COMPLETE")
     print_ok(
         "The Reflection Engine demonstrates three levels of reflection:\n"
         "  • Micro: Session checkpoint\n"

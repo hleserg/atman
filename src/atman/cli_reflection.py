@@ -63,20 +63,12 @@ class MockExperienceRepo:
 
     def get_recent(self, limit: int = 10) -> list[SessionExperience]:
         """Get recent experiences."""
-        sorted_exps = sorted(
-            self.experiences.values(), key=lambda e: e.timestamp, reverse=True
-        )
+        sorted_exps = sorted(self.experiences.values(), key=lambda e: e.timestamp, reverse=True)
         return sorted_exps[:limit]
 
-    def get_in_range(
-        self, start: datetime, end: datetime
-    ) -> list[SessionExperience]:
+    def get_in_range(self, start: datetime, end: datetime) -> list[SessionExperience]:
         """Get experiences in date range."""
-        return [
-            exp
-            for exp in self.experiences.values()
-            if start <= exp.timestamp <= end
-        ]
+        return [exp for exp in self.experiences.values() if start <= exp.timestamp <= end]
 
     def update(self, experience: SessionExperience) -> None:
         """Update experience."""
