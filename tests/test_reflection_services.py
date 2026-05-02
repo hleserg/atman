@@ -1020,7 +1020,7 @@ def test_daily_reflection_retry_after_event_save_failure_counts_duplicate_refram
         service.reflect(anchor)
 
     assert len(observer.side_effect_errors) == 1
-    assert observer.side_effect_errors[0].startswith("daily|daily:")
+    assert observer.side_effect_errors[0].startswith("daily|daily|")
     assert "RuntimeError: simulated daily reflection event persist failure" in (
         observer.side_effect_errors[0]
     )
@@ -1062,7 +1062,7 @@ def test_daily_reflection_event_save_failure_notifies_observer_after_side_effect
     assert len(exp1.reframing_notes) + len(exp2.reframing_notes) >= 1
     assert len(observer.side_effect_errors) == 1
     observed = observer.side_effect_errors[0]
-    assert observed.startswith("daily|daily:")
+    assert observed.startswith("daily|daily|")
     assert "RuntimeError: simulated daily reflection event persist failure" in observed
 
 
@@ -1105,7 +1105,7 @@ def test_deep_reflection_retry_after_event_save_failure_counts_duplicate_reframi
         service.reflect(since, until)
 
     assert len(observer.side_effect_errors) == 1
-    assert observer.side_effect_errors[0].startswith("deep|deep:")
+    assert observer.side_effect_errors[0].startswith("deep|deep|")
     assert "RuntimeError: simulated reflection event persist failure" in (
         observer.side_effect_errors[0]
     )
@@ -1159,5 +1159,5 @@ def test_deep_reflection_event_save_failure_notifies_observer_after_side_effects
     assert len(pattern_store.get_all()) == 2
     assert len(observer.side_effect_errors) == 1
     observed = observer.side_effect_errors[0]
-    assert observed.startswith("deep|deep:")
+    assert observed.startswith("deep|deep|")
     assert "RuntimeError: simulated reflection event persist failure" in observed
