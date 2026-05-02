@@ -56,6 +56,51 @@ def test_pattern_store_get_by_level_and_update() -> None:
         )
 
 
+def test_pattern_store_save_with_detection_key_is_idempotent() -> None:
+    store = InMemoryPatternStore()
+    key = "k1"
+    p1 = PatternCandidate(
+        pattern_type=PatternType.BEHAVIOR,
+        description="first",
+        detected_by=ReflectionLevel.DAILY,
+    )
+    p2 = PatternCandidate(
+        pattern_type=PatternType.BEHAVIOR,
+        description="second",
+        detected_by=ReflectionLevel.DAILY,
+    )
+    a = store.save_with_detection_key(key, p1)
+    b = store.save_with_detection_key(key, p2)
+    assert a.id == b.id
+    assert a.description == "first"
+    assert len(store.get_all()) == 1
+
+
+def test_reflection_event_store_upserts_by_run_key() -> None:
+    store = InMemoryReflectionEventStore()
+    run_key = "daily|v1|2099-01-01|identity|00000000-0000-4000-8000-000000000001"
+    store.save(
+        ReflectionEvent(
+            reflection_level=ReflectionLevel.DAILY,
+            reflection_run_key=run_key,
+            key_insight="first",
+            notes="outcome=daily_ok",
+        )
+    )
+    store.save(
+        ReflectionEvent(
+            reflection_level=ReflectionLevel.DAILY,
+            reflection_run_key=run_key,
+            key_insight="second",
+            notes="outcome=daily_ok",
+        )
+    )
+    assert len(store.get_all()) == 1
+    got = store.get_by_reflection_run_key(run_key)
+    assert got is not None
+    assert got.key_insight == "second"
+
+
 def test_reflection_event_store_queries() -> None:
     store = InMemoryReflectionEventStore()
     e1 = ReflectionEvent(

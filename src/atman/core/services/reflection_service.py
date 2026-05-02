@@ -7,11 +7,14 @@ These services implement the three levels of reflection:
 - DeepReflectionService: Scheduled deep reflection with health assessment
 """
 
+from __future__ import annotations
+
 import contextlib
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from atman.core.clock_impl import SystemClock
 from atman.core.exceptions import NarrativePersistenceConflictError
 from atman.core.models.experience import ReframingNote, SessionExperience
 from atman.core.models.identity import Identity
@@ -24,15 +27,43 @@ from atman.core.models.reflection import (
     ReflectionEvent,
     ReflectionLevel,
 )
+from atman.core.ports.clock import ClockPort
 from atman.core.ports.reflection import (
     ExperienceRepository,
     HealthAssessmentStore,
     IdentityRepository,
     NarrativeRepository,
     PatternStore,
+    ReflectionEventPersistenceObserver,
     ReflectionEventStore,
     ReflectionModel,
 )
+from atman.core.reflection_event_audit import NoOpReflectionEventPersistenceObserver
+from atman.core.reflection_run_keys import (
+    daily_pattern_detection_key,
+    daily_reflection_run_key_empty_day,
+    daily_reflection_run_key_for_identity,
+    daily_reflection_run_key_no_identity,
+    deep_pattern_detection_key,
+    deep_reflection_run_key_empty,
+    deep_reflection_run_key_for_identity,
+    deep_reflection_run_key_no_identity,
+    health_assessment_id_for_run_key,
+    reframing_trigger_key,
+)
+from atman.core.services.narrative_revision import NarrativeRevisionService
+
+
+def _daily_run_terminal_success(notes: str) -> bool:
+    return any(
+        x in notes for x in ("outcome=daily_ok", "outcome=daily_empty", "outcome=daily_skipped")
+    )
+
+
+def _deep_run_terminal_success(notes: str) -> bool:
+    return any(
+        x in notes for x in ("outcome=deep_ok", "outcome=deep_empty", "outcome=deep_skipped")
+    )
 
 
 class MicroReflectionService:
@@ -45,21 +76,29 @@ class MicroReflectionService:
     persistence is not part of this service yet — that remains a separate
     contract when Session Manager lands.
 
+    Narrative writes go through :class:`NarrativeRevisionService` so commits are
+    audited like other reflection paths.
+
     Does NOT modify identity, core narrative, or add reframing notes.
     """
 
     def __init__(
         self,
         experience_repo: ExperienceRepository,
-        narrative_repo: NarrativeRepository,
-        reflection_model: ReflectionModel,
+        narrative_revision: NarrativeRevisionService,
         event_store: ReflectionEventStore,
+        *,
+        clock: ClockPort | None = None,
+        reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
     ):
         """Initialize micro reflection service."""
         self.experience_repo = experience_repo
-        self.narrative_repo = narrative_repo
-        self.reflection_model = reflection_model
+        self.narrative_revision = narrative_revision
         self.event_store = event_store
+        self._clock = clock or SystemClock()
+        self._reflection_event_observer = (
+            reflection_event_observer or NoOpReflectionEventPersistenceObserver()
+        )
 
     def reflect(self, session_id: UUID) -> ReflectionEvent:
         """
@@ -76,35 +115,28 @@ class MicroReflectionService:
         if not experiences:
             return self._create_skipped_micro_event(reason="no_experiences", experience_ids=[])
 
-        narrative = self.narrative_repo.get_current()
+        narrative = self.narrative_revision.narrative_repo.get_current()
         if not narrative:
             return self._create_skipped_micro_event(
                 reason="no_narrative",
                 experience_ids=[exp.id for exp in experiences],
             )
 
-        etag = narrative.updated_at
-        draft = narrative.model_copy(deep=True)
-
-        proposed_update = self.reflection_model.propose_narrative_update(
-            current_narrative=draft,
-            recent_experiences=experiences,
-            reflection_level=ReflectionLevel.MICRO,
-        )
-
-        draft.update_recent_layer(proposed_update)
         try:
-            self.narrative_repo.update(draft, expected_updated_at=etag)
+            proposed_update = self.narrative_revision.update_recent_layer(
+                experiences, ReflectionLevel.MICRO
+            )
         except NarrativePersistenceConflictError:
             event = ReflectionEvent(
                 reflection_level=ReflectionLevel.MICRO,
                 experiences_analyzed=[exp.id for exp in experiences],
-                narrative_changes_proposed=proposed_update,
+                narrative_changes_proposed="",
                 key_insight=(
                     "Micro reflection did not apply: narrative was modified "
                     "concurrently since this snapshot was read."
                 ),
                 notes="outcome=micro_failed reason=narrative_conflict",
+                timestamp=self._clock.now(),
             )
             self.event_store.save(event)
             return event
@@ -114,9 +146,17 @@ class MicroReflectionService:
             experiences_analyzed=[exp.id for exp in experiences],
             narrative_changes_proposed=proposed_update,
             key_insight="Micro reflection completed - recent layer updated",
+            timestamp=self._clock.now(),
         )
 
-        self.event_store.save(event)
+        try:
+            self.event_store.save(event)
+        except Exception as exc:
+            self._reflection_event_observer.record_reflection_event_save_failed_after_narrative_commit(
+                reflection_level=ReflectionLevel.MICRO,
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
+            raise
         return event
 
     def _create_skipped_micro_event(
@@ -141,6 +181,7 @@ class MicroReflectionService:
             experiences_analyzed=list(experience_ids),
             key_insight=key_insight,
             notes=notes,
+            timestamp=self._clock.now(),
         )
         self.event_store.save(event)
         return event
@@ -157,6 +198,8 @@ class DailyReflectionService:
     - May update open questions
 
     Does NOT modify core identity unless patterns are very strong.
+
+    Runs are idempotent per calendar day and identity via ``reflection_run_key``.
     """
 
     def __init__(
@@ -166,6 +209,8 @@ class DailyReflectionService:
         pattern_store: PatternStore,
         reflection_model: ReflectionModel,
         event_store: ReflectionEventStore,
+        *,
+        clock: ClockPort | None = None,
     ):
         """Initialize daily reflection service."""
         self.experience_repo = experience_repo
@@ -173,6 +218,7 @@ class DailyReflectionService:
         self.pattern_store = pattern_store
         self.reflection_model = reflection_model
         self.event_store = event_store
+        self._clock = clock or SystemClock()
 
     def reflect(self, date: datetime) -> ReflectionEvent:
         """
@@ -194,12 +240,15 @@ class DailyReflectionService:
 
         identity = self.identity_repo.get_current()
         if not identity:
-            return self._create_skipped_daily_no_identity(
-                date, [exp.id for exp in experiences]
-            )
+            return self._create_skipped_daily_no_identity(date, [exp.id for exp in experiences])
 
-        patterns_detected = self._detect_patterns(experiences, identity)
-        reframing_count = self._add_reframing_notes(experiences, patterns_detected)
+        run_key = daily_reflection_run_key_for_identity(date, identity.id)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and _daily_run_terminal_success(existing.notes or ""):
+            return existing
+
+        patterns_detected = self._detect_patterns(experiences, identity, run_key)
+        reframing_count = self._add_reframing_notes(experiences, patterns_detected, run_key)
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DAILY,
@@ -207,13 +256,18 @@ class DailyReflectionService:
             patterns_detected=[p.id for p in patterns_detected],
             reframing_notes_added=reframing_count,
             key_insight=f"Daily reflection: {len(patterns_detected)} patterns detected",
+            notes="outcome=daily_ok",
+            reflection_run_key=run_key,
+            identity_snapshot_id=identity.id,
+            timestamp=self._clock.now(),
         )
 
         self.event_store.save(event)
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event
 
     def _detect_patterns(
-        self, experiences: list[SessionExperience], identity: Identity
+        self, experiences: list[SessionExperience], identity: Identity, run_key: str
     ) -> list[PatternCandidate]:
         """Detect patterns across experiences."""
         if len(experiences) < 2:
@@ -231,6 +285,7 @@ class DailyReflectionService:
         if not pattern_description or len(pattern_description) < 10:
             return []
 
+        detection_key = daily_pattern_detection_key(run_key, PatternType.BEHAVIOR.value)
         pattern = PatternCandidate(
             pattern_type=PatternType.BEHAVIOR,
             description=pattern_description,
@@ -239,11 +294,14 @@ class DailyReflectionService:
             confidence=0.6,
         )
 
-        self.pattern_store.save(pattern)
-        return [pattern]
+        stored = self.pattern_store.save_with_detection_key(detection_key, pattern)
+        return [stored]
 
     def _add_reframing_notes(
-        self, experiences: list[SessionExperience], patterns: list[PatternCandidate]
+        self,
+        experiences: list[SessionExperience],
+        patterns: list[PatternCandidate],
+        run_key: str,
     ) -> int:
         """Add reframing notes to experiences based on detected patterns."""
         if not patterns:
@@ -261,7 +319,7 @@ class DailyReflectionService:
                 note = ReframingNote(
                     reflection=reframing_text,
                     reflection_type="pattern",
-                    triggered_by=f"daily_reflection_{patterns[0].id}",
+                    triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
                 if self.experience_repo.add_reframing_note(exp.id, note):
                     count += 1
@@ -270,19 +328,33 @@ class DailyReflectionService:
 
     def _create_empty_event(self, date: datetime) -> ReflectionEvent:
         """Create an event for when there's nothing to reflect on."""
+        run_key = daily_reflection_run_key_empty_day(date)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and "outcome=daily_empty" in (existing.notes or ""):
+            return existing
+
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DAILY,
             experiences_analyzed=[],
             key_insight=f"No experiences on {date.strftime('%Y-%m-%d')}",
             notes="outcome=daily_empty reason=no_experiences",
+            reflection_run_key=run_key,
+            timestamp=self._clock.now(),
         )
+
         self.event_store.save(event)
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event
 
     def _create_skipped_daily_no_identity(
         self, date: datetime, experience_ids: list[UUID]
     ) -> ReflectionEvent:
         """Experiences exist but identity is missing — distinct from an empty day."""
+        run_key = daily_reflection_run_key_no_identity(date, experience_ids)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and "outcome=daily_skipped" in (existing.notes or ""):
+            return existing
+
         n = len(experience_ids)
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DAILY,
@@ -292,9 +364,12 @@ class DailyReflectionService:
                 f"({n} experience(s) on {date.strftime('%Y-%m-%d')})."
             ),
             notes="outcome=daily_skipped reason=no_identity",
+            reflection_run_key=run_key,
+            timestamp=self._clock.now(),
         )
         self.event_store.save(event)
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event
 
 
 class DeepReflectionService:
@@ -323,6 +398,8 @@ class DeepReflectionService:
         health_store: HealthAssessmentStore,
         reflection_model: ReflectionModel,
         event_store: ReflectionEventStore,
+        *,
+        clock: ClockPort | None = None,
     ):
         """Initialize deep reflection service."""
         self.experience_repo = experience_repo
@@ -332,6 +409,7 @@ class DeepReflectionService:
         self.health_store = health_store
         self.reflection_model = reflection_model
         self.event_store = event_store
+        self._clock = clock or SystemClock()
 
     def reflect(self, since: datetime, until: datetime) -> ReflectionEvent:
         """
@@ -355,10 +433,15 @@ class DeepReflectionService:
                 since, until, [exp.id for exp in experiences]
             )
 
-        health_assessment = self._perform_health_assessment(identity, experiences)
+        run_key = deep_reflection_run_key_for_identity(since, until, identity.id)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and _deep_run_terminal_success(existing.notes or ""):
+            return existing
 
-        patterns_detected = self._detect_deep_patterns(experiences, identity)
-        reframing_count = self._add_strategic_reframing(experiences, patterns_detected)
+        health_assessment = self._perform_health_assessment(identity, experiences, run_key)
+
+        patterns_detected = self._detect_deep_patterns(experiences, identity, run_key)
+        reframing_count = self._add_strategic_reframing(experiences, patterns_detected, run_key)
 
         narrative_changes = self._propose_narrative_revision(
             experiences, identity, patterns_detected
@@ -376,7 +459,14 @@ class DeepReflectionService:
             narrative_changes_proposed=narrative_changes,
             identity_changes_proposed=identity_changes,
             health_assessment_id=health_assessment.id,
-            key_insight=f"Deep reflection: {len(patterns_detected)} patterns, health score {health_assessment.overall_score:.2f}",
+            key_insight=(
+                f"Deep reflection: {len(patterns_detected)} patterns, "
+                f"health score {health_assessment.overall_score:.2f}"
+            ),
+            notes="outcome=deep_ok",
+            reflection_run_key=run_key,
+            identity_snapshot_id=identity.id,
+            timestamp=self._clock.now(),
         )
 
         health_persisted = False
@@ -398,17 +488,21 @@ class DeepReflectionService:
                     f"({type(exc).__name__})."
                 ),
                 notes=f"outcome=deep_failed reason=persist err={type(exc).__name__}",
+                reflection_run_key=run_key,
+                identity_snapshot_id=identity.id,
+                timestamp=self._clock.now(),
             )
             with contextlib.suppress(Exception):
                 self.event_store.save(failed)
             raise
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event
 
     def _perform_health_assessment(
-        self, identity: Identity, experiences: list[SessionExperience]
+        self, identity: Identity, experiences: list[SessionExperience], run_key: str
     ) -> HealthAssessment:
         """Perform health assessment on 6 Jahoda criteria."""
-        criteria = {}
+        criteria: dict[JahodaCriterion, CriterionAssessment] = {}
 
         for criterion in JahodaCriterion:
             score, evidence, concerns = self.reflection_model.assess_health_criterion(
@@ -425,20 +519,22 @@ class DeepReflectionService:
         overall_score = sum(c.score for c in criteria.values()) / len(criteria)
 
         return HealthAssessment(
+            id=health_assessment_id_for_run_key(run_key),
             criteria=criteria,
             overall_score=overall_score,
             summary=f"Health assessment: {overall_score:.2f}/1.0",
             recommendations=["Continue honest reflection", "Seek diverse experiences"],
+            timestamp=self._clock.now(),
         )
 
     def _detect_deep_patterns(
-        self, experiences: list[SessionExperience], identity: Identity
+        self, experiences: list[SessionExperience], identity: Identity, run_key: str
     ) -> list[PatternCandidate]:
         """Detect patterns across extended period."""
         if len(experiences) < 3:
             return []
 
-        patterns = []
+        patterns: list[PatternCandidate] = []
 
         for pattern_type in [PatternType.BEHAVIOR, PatternType.EMOTIONAL]:
             context = {
@@ -451,6 +547,7 @@ class DeepReflectionService:
             )
 
             if pattern_description and len(pattern_description) > 10:
+                detection_key = deep_pattern_detection_key(run_key, pattern_type.value)
                 pattern = PatternCandidate(
                     pattern_type=pattern_type,
                     description=pattern_description,
@@ -458,13 +555,16 @@ class DeepReflectionService:
                     detected_by=ReflectionLevel.DEEP,
                     confidence=0.7,
                 )
-                self.pattern_store.save(pattern)
-                patterns.append(pattern)
+                stored = self.pattern_store.save_with_detection_key(detection_key, pattern)
+                patterns.append(stored)
 
         return patterns
 
     def _add_strategic_reframing(
-        self, experiences: list[SessionExperience], patterns: list[PatternCandidate]
+        self,
+        experiences: list[SessionExperience],
+        patterns: list[PatternCandidate],
+        run_key: str,
     ) -> int:
         """Add strategic reframing notes to key experiences."""
         if not patterns:
@@ -482,7 +582,7 @@ class DeepReflectionService:
                 note = ReframingNote(
                     reflection=reframing_text,
                     reflection_type="growth",
-                    triggered_by="deep_reflection",
+                    triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
                 if self.experience_repo.add_reframing_note(exp.id, note):
                     count += 1
@@ -530,19 +630,34 @@ class DeepReflectionService:
 
     def _create_empty_event(self, since: datetime, until: datetime) -> ReflectionEvent:
         """Create an event for when there's nothing to reflect on."""
+        run_key = deep_reflection_run_key_empty(since, until)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and "outcome=deep_empty" in (existing.notes or ""):
+            return existing
+
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DEEP,
             experiences_analyzed=[],
-            key_insight=f"No experiences from {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}",
+            key_insight=(
+                f"No experiences from {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}"
+            ),
             notes="outcome=deep_empty reason=no_experiences",
+            reflection_run_key=run_key,
+            timestamp=self._clock.now(),
         )
         self.event_store.save(event)
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event
 
     def _create_skipped_deep_no_identity(
         self, since: datetime, until: datetime, experience_ids: list[UUID]
     ) -> ReflectionEvent:
         """Experiences in range but identity missing — distinct from an empty period."""
+        run_key = deep_reflection_run_key_no_identity(since, until, experience_ids)
+        existing = self.event_store.get_by_reflection_run_key(run_key)
+        if existing is not None and "outcome=deep_skipped" in (existing.notes or ""):
+            return existing
+
         n = len(experience_ids)
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DEEP,
@@ -552,6 +667,9 @@ class DeepReflectionService:
                 f"({n} experience(s) from {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')})."
             ),
             notes="outcome=deep_skipped reason=no_identity",
+            reflection_run_key=run_key,
+            timestamp=self._clock.now(),
         )
         self.event_store.save(event)
-        return event
+        got = self.event_store.get_by_reflection_run_key(run_key)
+        return got if got is not None else event

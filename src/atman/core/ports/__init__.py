@@ -10,6 +10,7 @@ from atman.core.ports.reflection import (
     NarrativeRepository,
     NarrativeWriteAuditPort,
     PatternStore,
+    ReflectionEventPersistenceObserver,
     ReflectionEventStore,
     ReflectionModel,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "NarrativeRepository",
     "NarrativeWriteAuditPort",
     "PatternStore",
+    "ReflectionEventPersistenceObserver",
     "ReflectionEventStore",
     "ReflectionModel",
     "SessionExperienceQuery",

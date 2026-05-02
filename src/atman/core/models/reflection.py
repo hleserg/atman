@@ -316,6 +316,10 @@ class ReflectionEvent(BaseModel):
     identity_snapshot_id: UUID | None = Field(
         default=None, description="Identity snapshot used during this reflection"
     )
+    reflection_run_key: str | None = Field(
+        default=None,
+        description="Deterministic job key for idempotent daily/deep runs (level+window+identity)",
+    )
 
     # What was found
     patterns_detected: list[UUID] = Field(

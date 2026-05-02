@@ -12,6 +12,7 @@ from atman.core.models.experience import (
     SessionExperience,
 )
 from atman.core.models.fact import FactRecord, Relation
+from atman.core.models.governance import GovernanceDecision, GovernanceMode
 from atman.core.models.identity import (
     CoreValue,
     Goal,
@@ -55,6 +56,8 @@ __all__ = [
     "Goal",
     "GoalHorizon",
     "GoalOwner",
+    "GovernanceDecision",
+    "GovernanceMode",
     "Habit",
     "HealthAssessment",
     "HelpfulnessLevel",

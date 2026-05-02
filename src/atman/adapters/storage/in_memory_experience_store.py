@@ -50,6 +50,11 @@ class InMemoryExperienceStore(StateStore):
             return None
 
         record = self._experiences[experience_id]
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in record.experience.reframing_notes
+        ):
+            return record
+
         record.experience.add_reframing_note(note)
 
         return record

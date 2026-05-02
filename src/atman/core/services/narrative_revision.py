@@ -6,13 +6,17 @@ It's part of deep reflection but can be used independently.
 """
 
 import warnings
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
+from atman.core.clock_impl import SystemClock
+from atman.core.exceptions import GovernanceRejectedError
 from atman.core.models.experience import SessionExperience
+from atman.core.models.governance import GovernanceDecision
 from atman.core.models.identity import Identity
 from atman.core.models.narrative import NarrativeDocument, NarrativeThread
 from atman.core.models.reflection import PatternCandidate, ReflectionLevel
+from atman.core.ports.clock import ClockPort
 from atman.core.ports.reflection import (
     NarrativeRepository,
     NarrativeWriteAuditPort,
@@ -41,11 +45,13 @@ class NarrativeRevisionService:
         reflection_model: ReflectionModel,
         *,
         narrative_audit: NarrativeWriteAuditPort,
+        clock: ClockPort | None = None,
     ):
         """Initialize narrative revision service."""
         self.narrative_repo = narrative_repo
         self.reflection_model = reflection_model
         self._narrative_audit = narrative_audit
+        self._clock = clock or SystemClock()
 
     def _commit_narrative(
         self,
@@ -122,6 +128,7 @@ class NarrativeRevisionService:
         identity: Identity,
         patterns: list[PatternCandidate],
         reason: str,
+        governance: GovernanceDecision,
     ) -> str:
         """
         Update the core narrative layer.
@@ -133,15 +140,23 @@ class NarrativeRevisionService:
             identity: Current identity
             patterns: Patterns that triggered this update
             reason: Reason for core layer update
+            governance: Required governance decision; core writes are never AUTO
 
         Returns:
             New content for core layer
 
         Raises:
+            GovernanceRejectedError: If governance does not allow a core commit
             NarrativePersistenceConflictError: If the repository rejects the
                 write because ``updated_at`` no longer matches the snapshot
                 taken at read time.
         """
+        if not governance.allows_core_narrative_commit():
+            raise GovernanceRejectedError(
+                "Core narrative commit requires an explicit governance approval "
+                f"(mode={governance.mode.value}, review_approved={governance.review_approved})"
+            )
+
         base = self.narrative_repo.get_current()
         if not base:
             return "No narrative to update"
@@ -227,7 +242,7 @@ class NarrativeRevisionService:
         for thread in draft.threads:
             if thread.id == thread_uuid:
                 thread.current_state = new_state
-                thread.last_updated = datetime.now(UTC)
+                thread.last_updated = self._clock.now()
 
                 if add_moment:
                     thread.key_moments.append(add_moment)

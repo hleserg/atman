@@ -113,6 +113,11 @@ class JsonlExperienceStore(StateStore):
             return None
 
         record = experiences[experience_id]
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in record.experience.reframing_notes
+        ):
+            return record
+
         record.experience.add_reframing_note(note)
 
         self._write_all_experiences(experiences)

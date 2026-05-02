@@ -18,6 +18,10 @@ from atman.core.ports.reflection import (
     PatternStore,
     ReflectionEventStore,
 )
+from atman.core.reflection_run_keys import (
+    pattern_id_for_detection_key,
+    reflection_event_id_for_run_key,
+)
 
 
 class InMemoryPatternStore(PatternStore):
@@ -30,10 +34,24 @@ class InMemoryPatternStore(PatternStore):
     def __init__(self) -> None:
         """Initialize empty pattern store."""
         self._patterns: dict[UUID, PatternCandidate] = {}
+        self._detection_key_to_id: dict[str, UUID] = {}
 
     def save(self, pattern: PatternCandidate) -> None:
         """Save a pattern candidate."""
         self._patterns[pattern.id] = pattern
+
+    def save_with_detection_key(
+        self, detection_key: str, pattern: PatternCandidate
+    ) -> PatternCandidate:
+        """Save once per detection key; return the canonical stored row."""
+        existing_id = self._detection_key_to_id.get(detection_key)
+        if existing_id is not None:
+            return self._patterns[existing_id]
+        stable_id = pattern_id_for_detection_key(detection_key)
+        stored = pattern.model_copy(update={"id": stable_id})
+        self._patterns[stable_id] = stored
+        self._detection_key_to_id[detection_key] = stable_id
+        return stored
 
     def get(self, pattern_id: UUID) -> PatternCandidate | None:
         """Get a pattern by ID."""
@@ -67,7 +85,16 @@ class InMemoryReflectionEventStore(ReflectionEventStore):
 
     def save(self, event: ReflectionEvent) -> None:
         """Save a reflection event."""
+        if event.reflection_run_key:
+            rid = reflection_event_id_for_run_key(event.reflection_run_key)
+            to_store = event.model_copy(update={"id": rid})
+            self._events[rid] = to_store
+            return
         self._events[event.id] = event
+
+    def get_by_reflection_run_key(self, run_key: str) -> ReflectionEvent | None:
+        """Return the upserted event for this job key, if present."""
+        return self._events.get(reflection_event_id_for_run_key(run_key))
 
     def get(self, event_id: UUID) -> ReflectionEvent | None:
         """Get a reflection event by ID."""

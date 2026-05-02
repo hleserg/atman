@@ -29,6 +29,8 @@ from atman.core.exceptions import NarrativePersistenceConflictError
 from atman.core.models.experience import ReframingNote, SessionExperience
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
+from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
     DailyReflectionService,
     DeepReflectionService,
@@ -77,9 +79,13 @@ class MockExperienceRepo:
         self.experiences[experience.id] = experience
 
     def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        """Add reframing note; return True if the experience existed."""
+        """Add reframing note; return True if a new note was stored."""
         exp = self.experiences.get(experience_id)
         if exp is None:
+            return False
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in exp.reframing_notes
+        ):
             return False
         exp.add_reframing_note(note)
         return True
@@ -212,11 +218,13 @@ def cmd_reflect_micro(args: list[str]) -> int:
 
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     service = MicroReflectionService(
         experience_repo=experience_repo,
-        narrative_repo=narrative_repo,
-        reflection_model=reflection_model,
+        narrative_revision=narrative_revision,
         event_store=event_store,
     )
 

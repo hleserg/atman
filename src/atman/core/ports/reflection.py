@@ -12,7 +12,7 @@ These define interfaces that the Reflection Engine depends on:
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from atman.core.models.experience import ReframingNote, SessionExperience
@@ -63,8 +63,13 @@ class ExperienceRepository(Protocol):
         """
         Append a reframing note to an experience.
 
+        If ``note.triggered_by`` matches an existing note on the same experience,
+        implementations must treat the call as a no-op and return False (no new
+        append), so scheduled reflection retries stay idempotent.
+
         Returns:
-            True if the experience existed and the note was stored; False otherwise.
+            True if a new note was stored; False if skipped (duplicate triggered_by),
+            or the experience was not found.
         """
         ...
 
@@ -220,6 +225,18 @@ class PatternStore(ABC):
         """Update a pattern (e.g., change status to confirmed)."""
         ...
 
+    @abstractmethod
+    def save_with_detection_key(
+        self, detection_key: str, pattern: PatternCandidate
+    ) -> PatternCandidate:
+        """
+        Persist a pattern once per ``detection_key``.
+
+        Returns the stored instance (existing row on retry, or the newly saved
+        pattern with a stable id derived from the key).
+        """
+        ...
+
 
 class ReflectionEventStore(ABC):
     """
@@ -230,7 +247,17 @@ class ReflectionEventStore(ABC):
 
     @abstractmethod
     def save(self, event: ReflectionEvent) -> None:
-        """Save a reflection event."""
+        """
+        Save a reflection event.
+
+        When ``event.reflection_run_key`` is set, implementations must upsert by
+        that key so retries reuse the same logical event id.
+        """
+        ...
+
+    @abstractmethod
+    def get_by_reflection_run_key(self, run_key: str) -> ReflectionEvent | None:
+        """Return the event for a deterministic reflection job, if any."""
         ...
 
     @abstractmethod
@@ -251,6 +278,20 @@ class ReflectionEventStore(ABC):
     @abstractmethod
     def get_recent(self, limit: int = 10) -> list[ReflectionEvent]:
         """Get most recent reflection events."""
+        ...
+
+
+@runtime_checkable
+class ReflectionEventPersistenceObserver(Protocol):
+    """Observes failures to persist a reflection event after other durable writes."""
+
+    def record_reflection_event_save_failed_after_narrative_commit(
+        self,
+        *,
+        reflection_level: ReflectionLevel,
+        error_message: str,
+    ) -> None:
+        """Narrative was committed but the reflection event could not be stored."""
         ...
 
 

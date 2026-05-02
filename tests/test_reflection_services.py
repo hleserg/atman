@@ -29,6 +29,8 @@ from atman.core.models.experience import (
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.reflection import ReflectionEvent, ReflectionLevel
+from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
     DailyReflectionService,
     DeepReflectionService,
@@ -69,9 +71,13 @@ class MockExperienceRepo:
         self.experiences[experience.id] = experience
 
     def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> bool:
-        """Add reframing note; return True if the experience existed."""
+        """Add reframing note; return True if a new note was stored."""
         exp = self.experiences.get(experience_id)
         if exp is None:
+            return False
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in exp.reframing_notes
+        ):
             return False
         exp.add_reframing_note(note)
         return True
@@ -238,11 +244,13 @@ def test_micro_reflection_updates_narrative() -> None:
     narrative_repo = MockNarrativeRepo(narrative)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     service = MicroReflectionService(
         experience_repo=exp_repo,
-        narrative_repo=narrative_repo,
-        reflection_model=reflection_model,
+        narrative_revision=narrative_revision,
         event_store=event_store,
     )
 
@@ -268,11 +276,13 @@ def test_micro_reflection_no_experiences() -> None:
     narrative_repo = MockNarrativeRepo(narrative)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     service = MicroReflectionService(
         experience_repo=exp_repo,
-        narrative_repo=narrative_repo,
-        reflection_model=reflection_model,
+        narrative_revision=narrative_revision,
         event_store=event_store,
     )
 
@@ -300,11 +310,13 @@ def test_micro_reflection_narrative_conflict_persists_failed_event() -> None:
     narrative_repo = ConflictNarrativeRepo(narrative)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     service = MicroReflectionService(
         experience_repo=exp_repo,
-        narrative_repo=narrative_repo,
-        reflection_model=reflection_model,
+        narrative_revision=narrative_revision,
         event_store=event_store,
     )
 
@@ -329,11 +341,13 @@ def test_micro_reflection_no_narrative() -> None:
     narrative_repo = MockNarrativeRepo(None)
     reflection_model = MockReflectionModel()
     event_store = InMemoryReflectionEventStore()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     service = MicroReflectionService(
         experience_repo=exp_repo,
-        narrative_repo=narrative_repo,
-        reflection_model=reflection_model,
+        narrative_revision=narrative_revision,
         event_store=event_store,
     )
 
@@ -673,3 +687,119 @@ def test_deep_reflection_persist_failure_links_health_assessment() -> None:
     assert "deep_failed" in failed.notes
     assert failed.health_assessment_id is not None
     assert failed.health_assessment_id == health_store.get_all()[0].id
+
+
+class _CapturingReflectionEventObserver:
+    """Records reflection event persistence failures after narrative commit."""
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+
+    def record_reflection_event_save_failed_after_narrative_commit(
+        self,
+        *,
+        reflection_level: ReflectionLevel,
+        error_message: str,
+    ) -> None:
+        self.errors.append(f"{reflection_level.value}:{error_message}")
+
+
+class FlakyMicroEventReflectionStore(InMemoryReflectionEventStore):
+    """Fails the first persistence of a successful micro reflection event."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._fail_eligible_once = True
+
+    def save(self, event: ReflectionEvent) -> None:
+        notes = event.notes or ""
+        if (
+            self._fail_eligible_once
+            and event.reflection_level == ReflectionLevel.MICRO
+            and "micro_failed" not in notes
+            and "micro_skipped" not in notes
+        ):
+            self._fail_eligible_once = False
+            raise OSError("simulated micro reflection event persist failure")
+        super().save(event)
+
+
+def test_micro_reflection_notifies_observer_when_event_store_fails_after_narrative() -> None:
+    """Narrative commit succeeds; failing event store must surface via observer."""
+    session_id = uuid4()
+    exp = create_test_experience(session_id)
+
+    identity = Identity()
+    narrative = NarrativeDocument(
+        identity_id=identity.id,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Old recent"),
+    )
+
+    exp_repo = MockExperienceRepo([exp])
+    narrative_repo = MockNarrativeRepo(narrative)
+    reflection_model = MockReflectionModel()
+    event_store = FlakyMicroEventReflectionStore()
+    observer = _CapturingReflectionEventObserver()
+    narrative_revision = NarrativeRevisionService(
+        narrative_repo, reflection_model, narrative_audit=NoOpNarrativeWriteAudit()
+    )
+
+    service = MicroReflectionService(
+        experience_repo=exp_repo,
+        narrative_revision=narrative_revision,
+        event_store=event_store,
+        reflection_event_observer=observer,
+    )
+
+    with pytest.raises(OSError, match="persist failure"):
+        service.reflect(session_id)
+
+    assert len(observer.errors) == 1
+    assert "micro" in observer.errors[0]
+    updated = narrative_repo.get_current()
+    assert updated is not None
+    assert updated.recent_layer.content != "Old recent"
+
+
+def test_daily_reflection_second_run_same_window_is_idempotent() -> None:
+    """Re-running daily reflection for the same day must not duplicate patterns or notes."""
+    anchor = datetime(2026, 5, 2, 14, 30, 0, tzinfo=UTC)
+    exp1 = create_test_experience().model_copy(update={"timestamp": anchor})
+    exp2 = create_test_experience().model_copy(update={"timestamp": anchor})
+
+    identity = Identity()
+
+    exp_repo = MockExperienceRepo([exp1, exp2])
+    identity_repo = MockIdentityRepo(identity)
+    pattern_store = InMemoryPatternStore()
+    reflection_model = MockReflectionModel()
+    event_store = InMemoryReflectionEventStore()
+
+    service = DailyReflectionService(
+        experience_repo=exp_repo,
+        identity_repo=identity_repo,
+        pattern_store=pattern_store,
+        reflection_model=reflection_model,
+        event_store=event_store,
+    )
+
+    day = anchor.replace(hour=12, minute=0, second=0, microsecond=0)
+    ev1 = service.reflect(day)
+    ev2 = service.reflect(day)
+
+    assert ev1.id == ev2.id
+    assert len(pattern_store.get_all()) == 1
+
+    r1 = exp_repo.get(exp1.id)
+    r2 = exp_repo.get(exp2.id)
+    assert r1 is not None and r2 is not None
+    total_notes = len(r1.reframing_notes) + len(r2.reframing_notes)
+    assert total_notes == ev1.reframing_notes_added
+
+    ev3 = service.reflect(day)
+    assert ev3.id == ev1.id
+    r1b = exp_repo.get(exp1.id)
+    r2b = exp_repo.get(exp2.id)
+    assert r1b is not None and r2b is not None
+    assert len(r1b.reframing_notes) + len(r2b.reframing_notes) == total_notes

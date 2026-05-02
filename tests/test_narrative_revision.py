@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
-from atman.core.exceptions import NarrativePersistenceConflictError
+from atman.core.exceptions import GovernanceRejectedError, NarrativePersistenceConflictError
 from atman.core.models.experience import (
     EmotionalDepth,
     FeltSense,
     KeyMoment,
     SessionExperience,
 )
+from atman.core.models.governance import GovernanceDecision, GovernanceMode
 from atman.core.models.identity import CoreValue, Identity
 from atman.core.models.narrative import (
     LayerType,
@@ -155,7 +156,9 @@ def test_update_recent_layer_no_narrative() -> None:
 def test_update_recent_layer_updates_repo() -> None:
     doc = _minimal_narrative()
     repo = _StubNarrativeRepo(doc)
-    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit())
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
     out = svc.update_recent_layer([_sample_experience()], ReflectionLevel.MICRO)
     assert len(out) > 0
     cur = repo.get_current()
@@ -168,13 +171,16 @@ def test_update_core_layer_no_narrative() -> None:
         _StubNarrativeRepo(None), MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
     )
     ident = Identity(self_description="Me")
-    assert svc.update_core_layer(ident, [], "reason") == "No narrative to update"
+    gov = GovernanceDecision(mode=GovernanceMode.REVIEW, review_approved=True)
+    assert svc.update_core_layer(ident, [], "reason", gov) == "No narrative to update"
 
 
 def test_update_core_layer_minimal_identity_low_confidence_patterns() -> None:
     doc = _minimal_narrative()
     repo = _StubNarrativeRepo(doc)
-    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit())
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
     ident = Identity()
     pat = PatternCandidate(
         pattern_type=PatternType.COGNITIVE,
@@ -182,14 +188,17 @@ def test_update_core_layer_minimal_identity_low_confidence_patterns() -> None:
         detected_by=ReflectionLevel.DAILY,
         confidence=0.2,
     )
-    text = svc.update_core_layer(ident, [pat], "only reason")
+    gov = GovernanceDecision(mode=GovernanceMode.REVIEW, review_approved=True)
+    text = svc.update_core_layer(ident, [pat], "only reason", gov)
     assert "only reason" in text
 
 
 def test_update_core_layer_with_identity_and_patterns() -> None:
     doc = _minimal_narrative()
     repo = _StubNarrativeRepo(doc)
-    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit())
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
     ident = Identity(
         self_description="I grow.",
         core_values=[CoreValue(name="honesty", description="truth", confidence=0.9)],
@@ -200,7 +209,8 @@ def test_update_core_layer_with_identity_and_patterns() -> None:
         detected_by=ReflectionLevel.DAILY,
         confidence=0.9,
     )
-    text = svc.update_core_layer(ident, [pat], "deep review")
+    gov = GovernanceDecision(mode=GovernanceMode.REVIEW, review_approved=True)
+    text = svc.update_core_layer(ident, [pat], "deep review", gov)
     assert "honesty" in text
     assert "deep review" in text
     cur = repo.get_current()
@@ -228,7 +238,9 @@ def test_update_thread_and_close_without_narrative() -> None:
 def test_open_update_close_thread_flow() -> None:
     doc = _minimal_narrative()
     repo = _StubNarrativeRepo(doc)
-    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit())
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
 
     thread = svc.open_thread("Topic", "About topic", context="Started")
     assert thread.title == "Topic"
@@ -249,7 +261,9 @@ def test_open_update_close_thread_flow() -> None:
     assert svc.close_thread("bad", "r") is False
     assert svc.close_thread(str(uuid4()), "r") is False
 
-    svc2 = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit())
+    svc2 = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
     t2 = svc2.open_thread("T2", "D2")
     assert svc2.close_thread(str(t2.id), "") is False
 
@@ -271,7 +285,8 @@ def test_update_core_layer_records_audit_when_configured() -> None:
     audit = _AuditSink()
     svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=audit)
     ident = Identity(self_description="Audited")
-    svc.update_core_layer(ident, [], "reason")
+    gov = GovernanceDecision(mode=GovernanceMode.REVIEW, review_approved=True)
+    svc.update_core_layer(ident, [], "reason", gov)
     assert audit.kinds == ["core_layer"]
 
 
@@ -302,6 +317,68 @@ def test_audit_primary_failure_records_degraded_audit_row() -> None:
     after = repo.get_current()
     assert after is not None
     assert after.recent_layer.content != before.recent_layer.content
+
+
+def test_update_core_layer_rejects_auto_governance() -> None:
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
+    ident = Identity(self_description="X")
+    gov = GovernanceDecision(mode=GovernanceMode.AUTO, review_approved=False)
+    with pytest.raises(GovernanceRejectedError, match="governance approval"):
+        svc.update_core_layer(ident, [], "reason", gov)
+
+
+def test_update_core_layer_allows_experimental_with_review_approval() -> None:
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
+    ident = Identity(self_description="Exp")
+    pat = PatternCandidate(
+        pattern_type=PatternType.EMOTIONAL,
+        description="High confidence pattern text.",
+        detected_by=ReflectionLevel.DAILY,
+        confidence=0.9,
+    )
+    gov = GovernanceDecision(mode=GovernanceMode.EXPERIMENTAL, review_approved=True)
+    text = svc.update_core_layer(ident, [pat], "lab run", gov)
+    assert "lab run" in text
+
+
+def test_update_core_layer_rejects_review_without_approval() -> None:
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
+    ident = Identity(self_description="X")
+    gov = GovernanceDecision(mode=GovernanceMode.REVIEW, review_approved=False)
+    with pytest.raises(GovernanceRejectedError, match="governance approval"):
+        svc.update_core_layer(ident, [], "reason", gov)
+
+
+def test_update_thread_uses_injected_clock() -> None:
+    from atman.core.clock_impl import FrozenClock
+
+    fixed = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    svc = NarrativeRevisionService(
+        repo,
+        MockReflectionModel(),
+        narrative_audit=NoOpNarrativeWriteAudit(),
+        clock=FrozenClock(fixed),
+    )
+    t = svc.open_thread("A", "B")
+    svc.update_thread(str(t.id), "next")
+    cur = repo.get_current()
+    assert cur is not None
+    updated_t = next(x for x in cur.threads if x.id == t.id)
+    assert updated_t.last_updated == fixed
 
 
 def test_audit_double_fault_emits_warning() -> None:

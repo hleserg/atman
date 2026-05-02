@@ -215,9 +215,7 @@ def test_assess_health_all_criteria() -> None:
     ]
 
     for criterion in JahodaCriterion:
-        score, evidence, concerns = model.assess_health_criterion(
-            identity, experiences, criterion
-        )
+        score, evidence, concerns = model.assess_health_criterion(identity, experiences, criterion)
 
         assert 0.0 <= score <= 1.0
         assert isinstance(evidence, list)

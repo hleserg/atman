@@ -89,6 +89,10 @@ class FileStateStore(StateStore):
         record = self.get_experience(experience_id)
         if record is None:
             return None
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in record.experience.reframing_notes
+        ):
+            return record
         record.experience.add_reframing_note(note)
         self.create_experience(record)
         return record
