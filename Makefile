@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced
+.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-webui-paced webui
 
 lint:
 	ruff check src/ tests/
@@ -61,7 +61,7 @@ demo-factual demo-factual-paced:
 demo-factual-fast:
 	ATMAN_DEMO_PACE=off python3 src/demo.py
 
-# Identity Store walkthrough (file-based; see docs/features/identity-store/README.md).
+# Identity Store walkthrough (see docs/features/identity-store/README.md).
 demo-identity demo-identity-paced:
 	ATMAN_DEMO_PACE=1 python3 src/demo_identity.py
 
@@ -74,3 +74,14 @@ demo-reflection demo-reflection-paced:
 
 demo-reflection-fast:
 	ATMAN_DEMO_PACE=off python3 src/demo_reflection.py
+
+# Web Dashboard console hint (see docs/features/web-dashboard/README.md).
+demo-webui demo-webui-paced:
+	ATMAN_DEMO_PACE=1 python3 src/demo_web_dashboard.py
+
+demo-webui-fast:
+	ATMAN_DEMO_PACE=off python3 src/demo_web_dashboard.py
+
+# Web dashboard — runs Streamlit web UI (see docs/features/web-dashboard/).
+webui:
+	python3 -m streamlit run src/atman/web_dashboard/app.py
