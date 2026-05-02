@@ -13,7 +13,7 @@ from atman.core.models.experience import (
 )
 from atman.core.models.identity import Goal, Habit, HelpfulnessLevel, Identity, Principle
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
-from atman.core.models.reflection import ReflectionLevel, YakhodaCriterion
+from atman.core.models.reflection import JahodaCriterion, ReflectionLevel
 
 _SID = UUID("123e4567-e89b-12d3-a456-426614174000")
 _SID2 = UUID("223e4567-e89b-12d3-a456-426614174000")
@@ -214,7 +214,7 @@ def test_assess_health_all_criteria() -> None:
         )
     ]
 
-    for criterion in YakhodaCriterion:
+    for criterion in JahodaCriterion:
         score, evidence, concerns = model.assess_health_criterion(
             identity, experiences, criterion.value
         )
@@ -231,7 +231,7 @@ def test_assess_health_positive_self_attitude() -> None:
     identity = Identity(self_description="I am learning")
 
     score, evidence, _concerns = model.assess_health_criterion(
-        identity, [], YakhodaCriterion.POSITIVE_SELF_ATTITUDE.value
+        identity, [], JahodaCriterion.POSITIVE_SELF_ATTITUDE.value
     )
 
     assert score >= 0.5
@@ -245,7 +245,7 @@ def test_assess_health_growth() -> None:
     identity = Identity(goals=[Goal(content="Learn more")])
 
     score, evidence, _concerns = model.assess_health_criterion(
-        identity, [], YakhodaCriterion.GROWTH_AND_ACTUALIZATION.value
+        identity, [], JahodaCriterion.GROWTH_AND_ACTUALIZATION.value
     )
 
     assert score >= 0.5
@@ -262,7 +262,7 @@ def test_assess_health_integration() -> None:
     )
 
     score, _evidence, _concerns = model.assess_health_criterion(
-        identity, [], YakhodaCriterion.INTEGRATION.value
+        identity, [], JahodaCriterion.INTEGRATION.value
     )
 
     assert score >= 0.5
@@ -275,7 +275,7 @@ def test_assess_health_autonomy() -> None:
     identity = Identity(principles=[Principle(statement="My choice", chosen_consciously=True)])
 
     score, _evidence, _concerns = model.assess_health_criterion(
-        identity, [], YakhodaCriterion.AUTONOMY.value
+        identity, [], JahodaCriterion.AUTONOMY.value
     )
 
     assert score >= 0.5

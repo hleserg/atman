@@ -8,7 +8,7 @@ Useful for testing reflection logic without external dependencies.
 from atman.core.models.experience import SessionExperience
 from atman.core.models.identity import Identity
 from atman.core.models.narrative import NarrativeDocument
-from atman.core.models.reflection import ReflectionLevel, YakhodaCriterion
+from atman.core.models.reflection import JahodaCriterion, ReflectionLevel
 from atman.core.ports.reflection import ReflectionModel
 
 
@@ -123,11 +123,11 @@ class MockReflectionModel(ReflectionModel):
         Returns (score, evidence, concerns) based on simple heuristics.
         """
         try:
-            criterion_enum = YakhodaCriterion(criterion)
+            criterion_enum = JahodaCriterion(criterion)
         except ValueError:
             return (0.5, ["Unknown criterion"], ["Cannot assess"])
 
-        if criterion_enum == YakhodaCriterion.POSITIVE_SELF_ATTITUDE:
+        if criterion_enum == JahodaCriterion.POSITIVE_SELF_ATTITUDE:
             if identity.self_description:
                 score = 0.6
                 evidence = ["Has self-description", "Shows self-awareness"]
@@ -137,7 +137,7 @@ class MockReflectionModel(ReflectionModel):
             concerns = ["Still developing self-understanding"]
             return (score, evidence, concerns)
 
-        elif criterion_enum == YakhodaCriterion.GROWTH_AND_ACTUALIZATION:
+        elif criterion_enum == JahodaCriterion.GROWTH_AND_ACTUALIZATION:
             if identity.goals:
                 score = 0.7
                 evidence = [f"Has {len(identity.goals)} goals"]
@@ -147,7 +147,7 @@ class MockReflectionModel(ReflectionModel):
             concerns = ["Could articulate growth direction more clearly"]
             return (score, evidence, concerns)
 
-        elif criterion_enum == YakhodaCriterion.INTEGRATION:
+        elif criterion_enum == JahodaCriterion.INTEGRATION:
             if identity.principles and identity.habits:
                 score = 0.6
                 evidence = ["Has both principles and observed habits"]
@@ -157,7 +157,7 @@ class MockReflectionModel(ReflectionModel):
             concerns = ["Still learning to align actions with values"]
             return (score, evidence, concerns)
 
-        elif criterion_enum == YakhodaCriterion.AUTONOMY:
+        elif criterion_enum == JahodaCriterion.AUTONOMY:
             conscious_principles = [p for p in identity.principles if p.chosen_consciously]
             if conscious_principles:
                 score = 0.7
@@ -168,7 +168,7 @@ class MockReflectionModel(ReflectionModel):
             concerns = ["Could develop more autonomous decision-making"]
             return (score, evidence, concerns)
 
-        elif criterion_enum == YakhodaCriterion.REALITY_PERCEPTION:
+        elif criterion_enum == JahodaCriterion.REALITY_PERCEPTION:
             if experiences:
                 score = 0.6
                 evidence = [f"Has {len(experiences)} recorded experiences"]
@@ -178,7 +178,7 @@ class MockReflectionModel(ReflectionModel):
             concerns = ["Need more experience to assess reality perception"]
             return (score, evidence, concerns)
 
-        elif criterion_enum == YakhodaCriterion.ENVIRONMENTAL_MASTERY:
+        elif criterion_enum == JahodaCriterion.ENVIRONMENTAL_MASTERY:
             helpful_habits = [h for h in identity.habits if h.helpfulness.value == "helpful"]
             if helpful_habits:
                 score = 0.6

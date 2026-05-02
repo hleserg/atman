@@ -52,8 +52,8 @@
 ● Прототипирование      ← Мы здесь
   ├─ Factual Memory     ✅ Реализовано (v0.1.0)
   ├─ Experience Store   ✅ Реализовано (WP02)
-  ├─ Identity Store     ⏳ В очереди
-  ├─ Reflection Engine  ⏳ В очереди
+  ├─ Identity Store     ✅ Реализовано (WP03)
+  ├─ Reflection Engine  ✅ Реализовано (WP04)
   └─ Session Manager    ⏳ В очереди
 ○ Первая реализация
 ○ Интеграция
@@ -79,6 +79,18 @@
 - 💻 CLI: `atman-experience`
 - 📚 [Руководство (RU)](docs/features/experience-store/README-ru.md) · [EN](docs/features/experience-store/README.md)
 - ▶️ Демо: `make demo-experience` или `python3 src/demo_experience_store.py` (мгновенно: `make demo-experience-fast`)
+
+**✅ Identity Store** (рабочий пакет 03)  
+Честный bootstrap идентичности, eigenstate, трёхслойный self-narrative, снимки, CLI.
+
+- 📚 [Руководство (RU)](docs/features/identity-store/README-ru.md) · [EN](docs/features/identity-store/README.md)
+- ▶️ Демо: `make demo-identity` или `python3 src/demo_identity.py` (мгновенно: `make demo-identity-fast`)
+
+**✅ Reflection Engine** (рабочий пакет 04)  
+Micro / daily / deep рефлексия, паттерны, хуки правки нарратива, оценка здоровья по Джаходе, советник по принципам.
+
+- 📚 [Руководство (RU)](docs/features/reflection-engine/README-ru.md) · [EN](docs/features/reflection-engine/README.md)
+- ▶️ Демо: `make demo-reflection` или `python3 src/demo_reflection.py` (мгновенно: `make demo-reflection-fast`)
 
 ```bash
 # Быстрый старт (установка + интерактивный CLI фактов)

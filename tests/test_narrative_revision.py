@@ -64,6 +64,7 @@ class _AuditSink:
 
     def __init__(self) -> None:
         self.kinds: list[str] = []
+        self.failures: list[tuple[str, str]] = []
 
     def record_narrative_commit(
         self,
@@ -74,6 +75,46 @@ class _AuditSink:
         reason_or_summary: str,
     ) -> None:
         self.kinds.append(change_kind)
+
+    def record_narrative_commit_audit_failure(
+        self,
+        *,
+        change_kind: str,
+        narrative_id: UUID,
+        identity_id: UUID,
+        committed_summary: str,
+        error_message: str,
+    ) -> None:
+        self.failures.append((change_kind, error_message))
+
+
+class _FlakyAuditSink(_AuditSink):
+    """Primary audit raises; failure path must still run."""
+
+    def record_narrative_commit(
+        self,
+        *,
+        change_kind: str,
+        narrative_id: UUID,
+        identity_id: UUID,
+        reason_or_summary: str,
+    ) -> None:
+        raise RuntimeError("audit sink unavailable")
+
+
+class _DoubleFaultAuditSink(_FlakyAuditSink):
+    """Both primary and failure recorders raise (exercises warning path)."""
+
+    def record_narrative_commit_audit_failure(
+        self,
+        *,
+        change_kind: str,
+        narrative_id: UUID,
+        identity_id: UUID,
+        committed_summary: str,
+        error_message: str,
+    ) -> None:
+        raise OSError("failure recorder also broken")
 
 
 def _minimal_narrative() -> NarrativeDocument:
@@ -232,3 +273,33 @@ def test_open_thread_records_audit_when_configured() -> None:
     svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=audit)
     svc.open_thread("T", "D")
     assert audit.kinds == ["thread_open"]
+
+
+def test_audit_primary_failure_records_degraded_audit_row() -> None:
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    audit = _FlakyAuditSink()
+    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=audit)
+
+    before = repo.get_current()
+    assert before is not None
+    svc.update_recent_layer([_sample_experience()], ReflectionLevel.MICRO)
+
+    assert audit.kinds == []
+    assert len(audit.failures) == 1
+    assert audit.failures[0][0] == "recent_layer"
+    assert "RuntimeError" in audit.failures[0][1]
+
+    after = repo.get_current()
+    assert after is not None
+    assert after.recent_layer.content != before.recent_layer.content
+
+
+def test_audit_double_fault_emits_warning() -> None:
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    audit = _DoubleFaultAuditSink()
+    svc = NarrativeRevisionService(repo, MockReflectionModel(), narrative_audit=audit)
+
+    with pytest.warns(RuntimeWarning, match="persisted but audit failed"):
+        svc.update_recent_layer([_sample_experience()], ReflectionLevel.MICRO)

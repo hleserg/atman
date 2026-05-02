@@ -6,7 +6,7 @@ These models represent reflection processes and outputs:
 - ReframingNote: new perspective on existing experience (already exists in experience.py, but referenced here)
 - PatternCandidate: detected behavior pattern
 - ReflectionEvent: record of a reflection process
-- HealthAssessment: psychological health check based on 6 Yakhoda criteria
+- HealthAssessment: psychological health check based on 6 Jahoda criteria
 """
 
 from datetime import UTC, datetime
@@ -20,9 +20,9 @@ class ReflectionLevel(StrEnum):
     """
     Depth of reflection process.
 
-    - micro: After-session reflection, updates recent layer and checkpoint
+    - micro: After-session reflection, updates recent narrative layer (see services)
     - daily: End-of-day reflection, looks for patterns across sessions
-    - deep: Scheduled deep reflection, revises identity and narrative
+    - deep: Scheduled deep reflection; health assessment and proposals on events (see services)
     """
 
     MICRO = "micro"
@@ -135,9 +135,9 @@ class PatternCandidate(BaseModel):
     )
 
 
-class YakhodaCriterion(StrEnum):
+class JahodaCriterion(StrEnum):
     """
-    Six criteria for psychological health based on Yakhoda's framework.
+    Six criteria for psychological health based on Marie Jahoda's framework.
 
     These criteria help assess whether the agent's self-representation
     is developing in a healthy direction.
@@ -153,12 +153,12 @@ class YakhodaCriterion(StrEnum):
 
 class CriterionAssessment(BaseModel):
     """
-    Assessment of one Yakhoda criterion.
+    Assessment of one Jahoda criterion.
 
     Each criterion is assessed on a scale and includes evidence and concerns.
     """
 
-    criterion: YakhodaCriterion = Field(description="Which criterion is being assessed")
+    criterion: JahodaCriterion = Field(description="Which criterion is being assessed")
     score: float = Field(
         ge=0.0,
         le=1.0,
@@ -200,7 +200,7 @@ class CriterionAssessment(BaseModel):
 
 class HealthAssessment(BaseModel):
     """
-    Psychological health assessment based on 6 Yakhoda criteria.
+    Psychological health assessment based on 6 Jahoda criteria.
 
     This is performed during deep reflection to check if identity development
     is proceeding in a healthy direction.
@@ -212,7 +212,7 @@ class HealthAssessment(BaseModel):
     )
 
     # Assessments for each criterion
-    criteria: dict[YakhodaCriterion, CriterionAssessment] = Field(
+    criteria: dict[JahodaCriterion, CriterionAssessment] = Field(
         description="Assessment for each of the 6 criteria"
     )
 
@@ -239,9 +239,9 @@ class HealthAssessment(BaseModel):
 
     @field_validator("criteria")
     @classmethod
-    def validate_all_criteria_present(cls, v: dict[YakhodaCriterion, CriterionAssessment]) -> dict:
+    def validate_all_criteria_present(cls, v: dict[JahodaCriterion, CriterionAssessment]) -> dict:
         """Ensure all 6 criteria are assessed."""
-        required_criteria = set(YakhodaCriterion)
+        required_criteria = set(JahodaCriterion)
         present_criteria = set(v.keys())
 
         if present_criteria != required_criteria:
@@ -252,7 +252,7 @@ class HealthAssessment(BaseModel):
                 error_parts.append(f"missing: {missing}")
             if extra:
                 error_parts.append(f"unexpected: {extra}")
-            raise ValueError(f"All 6 Yakhoda criteria must be assessed; {', '.join(error_parts)}")
+            raise ValueError(f"All 6 Jahoda criteria must be assessed; {', '.join(error_parts)}")
 
         return v
 

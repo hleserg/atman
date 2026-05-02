@@ -18,9 +18,9 @@ The Reflection Engine is Atman's component for analyzing already-colored experie
 ### Three Levels of Reflection
 
 ```text
-MICRO    → After each session    → Updates recent layer + checkpoint
+MICRO    → After each session    → Updates recent narrative layer (repo write)
 DAILY    → End of day            → Detects patterns, adds reframing notes
-DEEP     → Scheduled (weekly+)   → Health assessment, identity revision
+DEEP     → Scheduled (weekly+)   → Health assessment, proposals on ReflectionEvent
 ```
 
 ### Components
@@ -29,7 +29,7 @@ DEEP     → Scheduled (weekly+)   → Health assessment, identity revision
    - `ReflectionEvent` — record of a reflection process
    - `ReflectionLevel` — depth enum (micro/daily/deep)
    - `PatternCandidate` — detected behavior pattern
-   - `HealthAssessment` — psychological health check (6 Yakhoda criteria)
+   - `HealthAssessment` — psychological health check (6 Jahoda criteria)
 
 2. **Services**:
    - `MicroReflectionService` — session checkpoint
@@ -70,7 +70,7 @@ make demo-reflection-fast
 
 1. **Micro Reflection**: Updates recent narrative layer after a session
 2. **Daily Reflection**: Detects patterns across day's experiences
-3. **Deep Reflection**: Performs health assessment on 6 Yakhoda criteria
+3. **Deep Reflection**: Performs health assessment on 6 Jahoda criteria
 4. **Principle Advisor**: Distinguishes habits from principles
 
 ### Demo Output
@@ -115,16 +115,21 @@ python -m atman.cli_reflection reflect deep --fixtures
 
 - Colored `SessionExperience` records
 - Current `Identity` state
-- `Self-Narrative` document
-- Existing `Uncertainty` entries
+- `Self-Narrative` document (when wired)
 
-### What Reflection Writes
+### What Reflection Writes (implemented today)
 
-- `reframing_notes` to existing experiences (append-only)
-- `ReflectionEvent` records
-- `PatternCandidate` detections
-- Updated or new `Uncertainty` entries
-- Draft changes to `Identity` and `Narrative`
+- `reframing_notes` on existing experiences (append-only)
+- `ReflectionEvent` records (including **failed** micro outcomes, e.g. narrative concurrency conflict)
+- `PatternCandidate` detections (pattern store)
+- `HealthAssessment` records (deep path only)
+- **Micro**: persists an update to the narrative **recent** layer via `NarrativeRepository` when the optimistic concurrency token matches
+
+### Not implemented in this package (future / proposal-only)
+
+- **`Uncertainty` store**: no port or persistence yet; reflection does not read or write uncertainty rows.
+- **Deep → core narrative**: `DeepReflectionService` attaches **proposed** narrative text to the `ReflectionEvent` only; it does **not** persist the core layer. Apply proposals through `NarrativeRevisionService` (or another governed path) when you want a durable core-layer change.
+- **Identity mutations from deep reflection**: proposals are text on the event, not automatic `IdentityRepository` writes.
 
 ### Critical Rule
 
@@ -133,9 +138,9 @@ It can only interpret experiences where `how_i_felt` was recorded first-hand dur
 
 ---
 
-## Health Assessment (6 Yakhoda Criteria)
+## Health Assessment (6 Jahoda Criteria)
 
-Deep reflection assesses psychological health using Jahoda's framework:
+Deep reflection assesses psychological health using Marie Jahoda's framework:
 
 1. **Positive Self-Attitude** — self-acceptance and awareness
 2. **Growth and Actualization** — pursuing potential
@@ -194,9 +199,9 @@ Reframing notes accumulate in a separate list.
 
 ### 3. Three-Level Hierarchy
 
-Micro updates checkpoint, Daily detects patterns, Deep revises identity.
+Micro updates the **recent** narrative layer; Daily detects patterns; Deep assesses health and emits **proposals** on the reflection event (identity / narrative persistence is out of band).
 
-**Why**: Separation of concerns — frequent lightweight updates vs rare deep revisions.
+**Why**: Separation of concerns — frequent lightweight updates vs rare deep revisions, with a clear boundary between “proposed” and “committed” state.
 
 ### 4. Health Assessment is Optional
 
@@ -219,7 +224,7 @@ Deep reflection proposes changes to values, habits, principles.
 
 ### With Narrative Store
 
-Micro updates recent layer, Deep updates core layer.
+Micro updates the **recent** layer when the write succeeds. Deep reflection **proposes** narrative text on `ReflectionEvent`; persisting a **core** layer update is a separate step (e.g. `NarrativeRevisionService.update_core_layer` under audit).
 
 ### With Session Manager (future)
 

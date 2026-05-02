@@ -52,8 +52,8 @@ Under the hood — seven components: store of lived experiences, reflection engi
 ● Prototyping           ← We are here
   ├─ Factual Memory     ✅ Implemented (v0.1.0)
   ├─ Experience Store   ✅ Implemented (WP02)
-  ├─ Identity Store     ⏳ In queue
-  ├─ Reflection Engine  ⏳ In queue
+  ├─ Identity Store     ✅ Implemented (WP03)
+  ├─ Reflection Engine  ✅ Implemented (WP04)
   └─ Session Manager    ⏳ In queue
 ○ First implementation
 ○ Integration
@@ -79,6 +79,18 @@ First-hand lived experience: `SessionExperience`, `KeyMoment`, salience decay, r
 - 💻 CLI: `atman-experience`
 - 📚 [Guide (EN)](docs/features/experience-store/README.md) · [RU](docs/features/experience-store/README-ru.md)
 - ▶️ Demo: `make demo-experience` or `python3 src/demo_experience_store.py` (`make demo-experience-fast` for instant output)
+
+**✅ Identity Store** (work package 03)  
+Honest bootstrap identity, eigenstate, three-layer self-narrative, snapshots, CLI.
+
+- 📚 [Guide (EN)](docs/features/identity-store/README.md) · [RU](docs/features/identity-store/README-ru.md)
+- ▶️ Demo: `make demo-identity` or `python3 src/demo_identity.py` (`make demo-identity-fast` for instant output)
+
+**✅ Reflection Engine** (work package 04)  
+Micro / daily / deep reflection, patterns, narrative revision hooks, Jahoda health assessment, principle advisor.
+
+- 📚 [Guide (EN)](docs/features/reflection-engine/README.md) · [RU](docs/features/reflection-engine/README-ru.md)
+- ▶️ Demo: `make demo-reflection` or `python3 src/demo_reflection.py` (`make demo-reflection-fast` for instant output)
 
 ```bash
 # Quick start (install + interactive factual CLI)

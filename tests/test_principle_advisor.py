@@ -175,3 +175,46 @@ def test_suggest_principle_revision_no_suggestions() -> None:
     suggestions = advisor.suggest_principle_revision(identity, [pattern])
 
     assert len(suggestions) == 0
+
+
+def test_is_habit_not_principle_ambiguous_both_signal_types() -> None:
+    """Habit and principle cue words together → not classified as habit-only."""
+    advisor = PrincipleRevisionAdvisor()
+    pattern = PatternCandidate(
+        pattern_type=PatternType.BEHAVIOR,
+        description="I usually believe I should rest when overwhelmed",
+        detected_by=ReflectionLevel.DAILY,
+        confidence=0.6,
+    )
+    assert advisor.is_habit_not_principle(pattern) is False
+
+
+def test_is_habit_not_principle_stopword_heavy_description() -> None:
+    """No habit/principle keywords → heuristic returns False (not habit-only)."""
+    advisor = PrincipleRevisionAdvisor()
+    pattern = PatternCandidate(
+        pattern_type=PatternType.BEHAVIOR,
+        description="a an the of in on at",
+        detected_by=ReflectionLevel.DAILY,
+        confidence=0.5,
+    )
+    assert advisor.is_habit_not_principle(pattern) is False
+
+
+def test_suggest_principle_short_overlap_does_not_false_match() -> None:
+    """Very short shared tokens should not spuriously merge distinct principles."""
+    advisor = PrincipleRevisionAdvisor()
+    identity = Identity(
+        principles=[
+            Principle(statement="Be kind", chosen_consciously=True),
+        ]
+    )
+    pattern = PatternCandidate(
+        pattern_type=PatternType.VALUE_BASED,
+        description="Kindness matters",
+        detected_by=ReflectionLevel.DEEP,
+        confidence=0.8,
+        potential_principle="Be zen",
+    )
+    suggestions = advisor.suggest_principle_revision(identity, [pattern])
+    assert any("new principle" in s.lower() for s in suggestions)

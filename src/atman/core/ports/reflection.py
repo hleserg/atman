@@ -144,6 +144,11 @@ class NarrativeWriteAuditPort(Protocol):
     Implementations may append :class:`AuditEvent`-like records, emit metrics,
     or enqueue human review. Core layer commits should always be observable
     when this port is wired.
+
+    If :meth:`record_narrative_commit` raises after the repository has already
+    persisted the narrative, callers use :meth:`record_narrative_commit_audit_failure`
+    so governance still sees a durable signal (commit succeeded, audit emission
+    failed).
     """
 
     def record_narrative_commit(
@@ -160,6 +165,24 @@ class NarrativeWriteAuditPort(Protocol):
         ``change_kind`` values used by ``NarrativeRevisionService``:
         ``core_layer``, ``recent_layer``, ``thread_open``, ``thread_update``,
         ``thread_close``.
+        """
+        ...
+
+    def record_narrative_commit_audit_failure(
+        self,
+        *,
+        change_kind: str,
+        narrative_id: UUID,
+        identity_id: UUID,
+        committed_summary: str,
+        error_message: str,
+    ) -> None:
+        """
+        Record that persistence succeeded but the primary audit line failed.
+
+        Implementations should append a degraded / out-of-band audit row (or
+        enqueue retry). Must not raise if avoidable — the narrative is already
+        committed.
         """
         ...
 
@@ -334,7 +357,7 @@ class ReflectionModel(ABC):
         criterion: str,
     ) -> tuple[float, list[str], list[str]]:
         """
-        Assess one Yakhoda health criterion.
+        Assess one Jahoda health criterion.
 
         Args:
             identity: Current identity

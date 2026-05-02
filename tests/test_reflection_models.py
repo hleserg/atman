@@ -9,12 +9,12 @@ import pytest
 from atman.core.models.reflection import (
     CriterionAssessment,
     HealthAssessment,
+    JahodaCriterion,
     PatternCandidate,
     PatternStatus,
     PatternType,
     ReflectionEvent,
     ReflectionLevel,
-    YakhodaCriterion,
 )
 
 
@@ -56,13 +56,13 @@ def test_pattern_candidate_validation() -> None:
 def test_criterion_assessment_creation() -> None:
     """Test creating a criterion assessment."""
     assessment = CriterionAssessment(
-        criterion=YakhodaCriterion.POSITIVE_SELF_ATTITUDE,
+        criterion=JahodaCriterion.POSITIVE_SELF_ATTITUDE,
         score=0.7,
         evidence=["Shows self-awareness", "Honest about limitations"],
         concerns=["Limited experience base"],
     )
 
-    assert assessment.criterion == YakhodaCriterion.POSITIVE_SELF_ATTITUDE
+    assert assessment.criterion == JahodaCriterion.POSITIVE_SELF_ATTITUDE
     assert assessment.score == 0.7
     assert len(assessment.evidence) == 2
     assert len(assessment.concerns) == 1
@@ -74,7 +74,7 @@ def test_criterion_assessment_score_validation() -> None:
 
     with pytest.raises(ValidationError):
         CriterionAssessment(
-            criterion=YakhodaCriterion.AUTONOMY,
+            criterion=JahodaCriterion.AUTONOMY,
             score=1.5,
             evidence=[],
             concerns=[],
@@ -84,15 +84,15 @@ def test_criterion_assessment_score_validation() -> None:
 def test_health_assessment_all_criteria_required() -> None:
     """Test that health assessment requires all 6 criteria."""
     criteria = {
-        YakhodaCriterion.POSITIVE_SELF_ATTITUDE: CriterionAssessment(
-            criterion=YakhodaCriterion.POSITIVE_SELF_ATTITUDE,
+        JahodaCriterion.POSITIVE_SELF_ATTITUDE: CriterionAssessment(
+            criterion=JahodaCriterion.POSITIVE_SELF_ATTITUDE,
             score=0.6,
             evidence=["Test"],
             concerns=[],
         ),
     }
 
-    with pytest.raises(ValueError, match="All 6 Yakhoda criteria must be assessed"):
+    with pytest.raises(ValueError, match="All 6 Jahoda criteria must be assessed"):
         HealthAssessment(
             criteria=criteria,
             overall_score=0.6,
@@ -102,7 +102,7 @@ def test_health_assessment_all_criteria_required() -> None:
 def test_health_assessment_complete() -> None:
     """Test creating a complete health assessment."""
     criteria = {}
-    for criterion in YakhodaCriterion:
+    for criterion in JahodaCriterion:
         criteria[criterion] = CriterionAssessment(
             criterion=criterion,
             score=0.6,

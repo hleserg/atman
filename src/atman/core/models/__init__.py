@@ -35,12 +35,12 @@ from atman.core.models.narrative import (
 from atman.core.models.reflection import (
     CriterionAssessment,
     HealthAssessment,
+    JahodaCriterion,
     PatternCandidate,
     PatternStatus,
     PatternType,
     ReflectionEvent,
     ReflectionLevel,
-    YakhodaCriterion,
 )
 
 __all__ = [
@@ -60,6 +60,7 @@ __all__ = [
     "HelpfulnessLevel",
     "Identity",
     "IdentitySnapshot",
+    "JahodaCriterion",
     "KeyMoment",
     "LayerType",
     "MoralOrientation",
@@ -76,5 +77,4 @@ __all__ = [
     "ReframingNote",
     "Relation",
     "SessionExperience",
-    "YakhodaCriterion",
 ]

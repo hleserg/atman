@@ -14,11 +14,11 @@ from atman.adapters.storage.in_memory_reflection_store import (
 from atman.core.models.reflection import (
     CriterionAssessment,
     HealthAssessment,
+    JahodaCriterion,
     PatternCandidate,
     PatternType,
     ReflectionEvent,
     ReflectionLevel,
-    YakhodaCriterion,
 )
 
 
@@ -78,9 +78,9 @@ def test_reflection_event_store_queries() -> None:
     assert len(recent) == 1
 
 
-def _full_criteria() -> dict[YakhodaCriterion, CriterionAssessment]:
-    criteria: dict[YakhodaCriterion, CriterionAssessment] = {}
-    for criterion in YakhodaCriterion:
+def _full_criteria() -> dict[JahodaCriterion, CriterionAssessment]:
+    criteria: dict[JahodaCriterion, CriterionAssessment] = {}
+    for criterion in JahodaCriterion:
         criteria[criterion] = CriterionAssessment(
             criterion=criterion,
             score=0.6,

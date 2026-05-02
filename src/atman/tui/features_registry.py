@@ -117,6 +117,44 @@ FEATURES: tuple[FeatureInfo, ...] = (
         ),
     ),
     FeatureInfo(
+        slug="reflection-engine",
+        title="Reflection Engine",
+        summary=(
+            "Micro/daily/deep reflection, patterns, narrative revision hooks, "
+            "health assessment (Jahoda), principle advisor (WP-04)."
+        ),
+        doc_dir="docs/features/reflection-engine",
+        related_paths=(
+            "src/atman/core/services/reflection_service.py",
+            "src/atman/core/services/narrative_revision.py",
+            "src/atman/core/services/principle_advisor.py",
+            "src/atman/core/models/reflection.py",
+            "src/atman/core/ports/reflection.py",
+            "src/atman/adapters/reflection/",
+            "src/demo_reflection.py",
+            "src/atman/cli_reflection.py",
+        ),
+        demos=(
+            DemoCommand(
+                "Demo (paced)",
+                ("src/demo_reflection.py",),
+                {"ATMAN_DEMO_PACE": "1"},
+            ),
+            DemoCommand(
+                "Demo (fast)",
+                ("src/demo_reflection.py",),
+                {"ATMAN_DEMO_PACE": "off"},
+            ),
+        ),
+        test_globs=(
+            "tests/test_reflection*.py",
+            "tests/test_narrative_revision.py",
+            "tests/test_principle_advisor.py",
+            "tests/test_mock_reflection_model.py",
+            "tests/test_in_memory_reflection_store.py",
+        ),
+    ),
+    FeatureInfo(
         slug="web-dashboard",
         title="Web Dashboard",
         summary="Streamlit browser UI for features, tests, and docs (same registry as TUI).",

@@ -346,7 +346,7 @@ def demo_deep_reflection(
     if event.health_assessment_id:
         assessment = health_store.get(event.health_assessment_id)
         if assessment:
-            print_ok("\nHealth Assessment (6 Yakhoda Criteria):")
+            print_ok("\nHealth Assessment (6 Jahoda criteria):")
 
             health_table = Table()
             health_table.add_column("Criterion")

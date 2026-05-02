@@ -141,6 +141,15 @@ class MockNarrativeRepo:
         return []
 
 
+class ConflictNarrativeRepo(MockNarrativeRepo):
+    """Repository that always rejects narrative writes (optimistic conflict)."""
+
+    def update(
+        self, narrative: NarrativeDocument, *, expected_updated_at: datetime | None = None
+    ) -> None:
+        raise NarrativePersistenceConflictError("simulated concurrent narrative write")
+
+
 class RejectingReframeMockRepo(MockExperienceRepo):
     """Experience repo that never persists reframing notes (audit edge case)."""
 
@@ -230,6 +239,42 @@ def test_micro_reflection_no_experiences() -> None:
     assert len(event.experiences_analyzed) == 0
     assert "no experiences" in event.key_insight.lower()
     assert "no_experiences" in event.notes
+
+
+def test_micro_reflection_narrative_conflict_persists_failed_event() -> None:
+    """Concurrent narrative edit: no successful write, but a failed outcome is audited."""
+    session_id = uuid4()
+    exp = create_test_experience(session_id)
+
+    identity = Identity()
+    narrative = NarrativeDocument(
+        identity_id=identity.id,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Old recent"),
+    )
+
+    exp_repo = MockExperienceRepo([exp])
+    narrative_repo = ConflictNarrativeRepo(narrative)
+    reflection_model = MockReflectionModel()
+    event_store = InMemoryReflectionEventStore()
+
+    service = MicroReflectionService(
+        experience_repo=exp_repo,
+        narrative_repo=narrative_repo,
+        reflection_model=reflection_model,
+        event_store=event_store,
+    )
+
+    event = service.reflect(session_id)
+
+    assert event.reflection_level == ReflectionLevel.MICRO
+    assert event.experiences_analyzed == [exp.id]
+    assert "narrative_conflict" in event.notes
+    assert "micro_failed" in event.notes
+    assert event_store.get_all()[-1].id == event.id
+    cur = narrative_repo.get_current()
+    assert cur is not None
+    assert cur.recent_layer.content == "Old recent"
 
 
 def test_micro_reflection_no_narrative() -> None:

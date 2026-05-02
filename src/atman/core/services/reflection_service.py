@@ -11,16 +11,17 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from atman.core.exceptions import NarrativePersistenceConflictError
 from atman.core.models.experience import ReframingNote, SessionExperience
 from atman.core.models.identity import Identity
 from atman.core.models.reflection import (
     CriterionAssessment,
     HealthAssessment,
+    JahodaCriterion,
     PatternCandidate,
     PatternType,
     ReflectionEvent,
     ReflectionLevel,
-    YakhodaCriterion,
 )
 from atman.core.ports.reflection import (
     ExperienceRepository,
@@ -37,12 +38,13 @@ class MicroReflectionService:
     """
     Micro-level reflection: after-session checkpoint.
 
-    This runs at the end of each session and updates:
-    - Recent narrative layer with session summary
-    - Checkpoint (eigenstate) for next session
-    - Quick pass for obvious patterns
+    This runs at the end of each session and updates the **recent** narrative
+    layer with a session-derived summary (optimistic concurrency on
+    ``NarrativeDocument.updated_at``). Eigenstate / session checkpoint
+    persistence is not part of this service yet — that remains a separate
+    contract when Session Manager lands.
 
-    Does NOT modify identity or add reframing notes.
+    Does NOT modify identity, core narrative, or add reframing notes.
     """
 
     def __init__(
@@ -90,7 +92,21 @@ class MicroReflectionService:
         )
 
         draft.update_recent_layer(proposed_update)
-        self.narrative_repo.update(draft, expected_updated_at=etag)
+        try:
+            self.narrative_repo.update(draft, expected_updated_at=etag)
+        except NarrativePersistenceConflictError:
+            event = ReflectionEvent(
+                reflection_level=ReflectionLevel.MICRO,
+                experiences_analyzed=[exp.id for exp in experiences],
+                narrative_changes_proposed=proposed_update,
+                key_insight=(
+                    "Micro reflection did not apply: narrative was modified "
+                    "concurrently since this snapshot was read."
+                ),
+                notes="outcome=micro_failed reason=narrative_conflict",
+            )
+            self.event_store.save(event)
+            return event
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.MICRO,
@@ -266,9 +282,12 @@ class DeepReflectionService:
 
     This runs on schedule (weekly/monthly) and:
     - Analyzes experiences across extended period
-    - Performs health assessment on 6 Yakhoda criteria
-    - Proposes changes to identity (values, principles, habits)
-    - Revises core narrative layer
+    - Performs health assessment on 6 Jahoda criteria
+    - Proposes changes to identity (values, principles, habits) as text on the
+      :class:`~atman.core.models.reflection.ReflectionEvent` (not persisted to
+      ``Identity`` here)
+    - Proposes narrative text on the same event (core layer is **not** written
+      by this service; use :class:`~atman.core.services.narrative_revision.NarrativeRevisionService` under governance)
     - Adds strategic reframing notes
 
     This is the most comprehensive reflection level.
@@ -344,10 +363,10 @@ class DeepReflectionService:
     def _perform_health_assessment(
         self, identity: Identity, experiences: list[SessionExperience]
     ) -> HealthAssessment:
-        """Perform health assessment on 6 Yakhoda criteria."""
+        """Perform health assessment on 6 Jahoda criteria."""
         criteria = {}
 
-        for criterion in YakhodaCriterion:
+        for criterion in JahodaCriterion:
             score, evidence, concerns = self.reflection_model.assess_health_criterion(
                 identity=identity, experiences=experiences, criterion=criterion.value
             )

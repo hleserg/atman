@@ -5,6 +5,7 @@ This service handles narrative document updates during reflection.
 It's part of deep reflection but can be used independently.
 """
 
+import warnings
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -54,13 +55,31 @@ class NarrativeRevisionService:
     ) -> None:
         """Persist draft if ``expected_updated_at`` matches last commit; then audit."""
         self.narrative_repo.update(draft, expected_updated_at=expected_updated_at)
-        if self._narrative_audit is not None:
+        if self._narrative_audit is None:
+            return
+        try:
             self._narrative_audit.record_narrative_commit(
                 change_kind=change_kind,
                 narrative_id=draft.id,
                 identity_id=draft.identity_id,
                 reason_or_summary=audit_summary,
             )
+        except Exception as exc:
+            try:
+                self._narrative_audit.record_narrative_commit_audit_failure(
+                    change_kind=change_kind,
+                    narrative_id=draft.id,
+                    identity_id=draft.identity_id,
+                    committed_summary=audit_summary,
+                    error_message=f"{type(exc).__name__}: {exc}",
+                )
+            except Exception as nested:
+                warnings.warn(
+                    "Narrative persisted but audit failed; "
+                    f"failure recorder also raised: {nested!r}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
 
     def update_recent_layer(
         self, experiences: list[SessionExperience], reflection_level: ReflectionLevel
