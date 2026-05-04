@@ -294,3 +294,53 @@ def test_narrative_has_schema_version():
     )
 
     assert narrative.schema_version == "1.0.0"
+
+
+# --- SYSTEM_MAP §4.1 / §4.5: empty Eigenstate fields ---
+
+
+def test_eigenstate_with_all_empty_collections_is_explicitly_marked():
+    """SYSTEM_MAP §4.5: an ``Eigenstate`` with no threads/themes/tensions is intentionally allowed.
+
+    Empty collections are normalized to ``[]`` defaults — the model relies on
+    other fields (``emotional_tone``, ``cognitive_load``, ``session_summary``)
+    to convey state. This test freezes that contract so any future change
+    rejecting empty collections must be explicit.
+    """
+    eigenstate = Eigenstate(
+        session_id=uuid4(),
+        emotional_tone=0.0,
+        emotional_intensity=0.0,
+        cognitive_load=0.0,
+        open_threads=[],
+        dominant_themes=[],
+        unresolved_tensions=[],
+    )
+
+    assert eigenstate.open_threads == []
+    assert eigenstate.dominant_themes == []
+    assert eigenstate.unresolved_tensions == []
+    # Whitespace-only strings must be stripped out by the validators.
+    eigenstate2 = Eigenstate(
+        session_id=uuid4(),
+        open_threads=["   ", "\t"],
+        dominant_themes=[""],
+        unresolved_tensions=["  "],
+    )
+    assert eigenstate2.open_threads == []
+    assert eigenstate2.dominant_themes == []
+    assert eigenstate2.unresolved_tensions == []
+
+
+# --- SYSTEM_MAP §4.1: NarrativeLayer first-person validation ---
+
+
+def test_narrative_layer_first_person_validator_rejects_third_person_pronouns():
+    """SYSTEM_MAP §4.1: third-person phrases like 'the agent' raise ``ValueError``."""
+    with pytest.raises(Exception, match="first-person"):
+        NarrativeLayer(layer_type=LayerType.CORE, content="The agent has learned a lot today.")
+    with pytest.raises(Exception, match="first-person"):
+        NarrativeLayer(layer_type=LayerType.RECENT, content="The system decided to refactor.")
+    # First-person phrasing is accepted.
+    ok = NarrativeLayer(layer_type=LayerType.CORE, content="I have learned to be honest.")
+    assert "honest" in ok.content

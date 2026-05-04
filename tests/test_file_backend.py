@@ -252,3 +252,38 @@ def test_multiple_instances_preserve_links_added_to_same_fact(temp_file):
 
     assert len(linked_fact.relations) == 2
     assert relation_targets == {target1.id, target2.id}
+
+
+# --- SYSTEM_MAP §4.3 / §5.3: malformed JSONL handling ---
+
+
+def test_read_facts_skips_malformed_lines_without_data_loss(temp_file):
+    """SYSTEM_MAP §4.3: malformed JSONL lines are warned and skipped, not silently dropped."""
+    valid = FactRecord(content="Хороший факт", source="test")
+    temp_file.write_text(
+        valid.model_dump_json() + "\n" + "this is not json\n" + '{"oops": "not a fact record"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.warns(RuntimeWarning, match="Skipping malformed fact"):
+        backend = FileBackend(temp_file)
+
+    # Valid fact survived.
+    loaded = backend.get_fact(valid.id)
+    assert loaded is not None
+    assert loaded.content == "Хороший факт"
+
+    # Adding a new fact after recovery still works and preserves the valid one.
+    extra = FactRecord(content="Ещё один", source="test")
+    backend.add_fact(extra)
+    assert backend.get_fact(extra.id) is not None
+    assert backend.get_fact(valid.id) is not None
+
+
+def test_add_fact_duplicate_id_raises_with_clear_message(temp_file, backend):
+    """SYSTEM_MAP §4.2: duplicate fact id is rejected with an explicit error mentioning the UUID."""
+    fact = FactRecord(content="Уникальный факт", source="test")
+    backend.add_fact(fact)
+
+    with pytest.raises(ValueError, match=str(fact.id)):
+        backend.add_fact(fact)

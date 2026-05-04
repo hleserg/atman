@@ -179,3 +179,39 @@ def test_reflection_event_validation() -> None:
             reflection_level=ReflectionLevel.MICRO,
             reframing_notes_added=-1,
         )
+
+
+# --- SYSTEM_MAP §1.1 / §4.1 P2 additions ---
+
+
+def test_pattern_candidate_confidence_at_boundary_zero_and_one():
+    """SYSTEM_MAP §4.1: ``confidence`` accepts 0.0 and 1.0; rejects values outside."""
+    low = PatternCandidate(
+        pattern_type=PatternType.BEHAVIOR,
+        description="Boundary low",
+        detected_by=ReflectionLevel.DAILY,
+        confidence=0.0,
+    )
+    high = PatternCandidate(
+        pattern_type=PatternType.EMOTIONAL,
+        description="Boundary high",
+        detected_by=ReflectionLevel.DEEP,
+        confidence=1.0,
+    )
+    assert low.confidence == 0.0
+    assert high.confidence == 1.0
+
+    with pytest.raises(Exception, match="confidence"):
+        PatternCandidate(
+            pattern_type=PatternType.BEHAVIOR,
+            description="Out of range",
+            detected_by=ReflectionLevel.DAILY,
+            confidence=1.01,
+        )
+    with pytest.raises(Exception, match="confidence"):
+        PatternCandidate(
+            pattern_type=PatternType.BEHAVIOR,
+            description="Out of range",
+            detected_by=ReflectionLevel.DAILY,
+            confidence=-0.01,
+        )

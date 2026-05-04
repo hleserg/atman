@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 import tempfile
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -50,11 +51,21 @@ class FileBackend(FactualMemory):
 
         facts: dict[UUID, FactRecord] = {}
         with open(self.filepath, encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
+            for line_number, line in enumerate(f, start=1):
+                if not line.strip():
+                    continue
+                try:
                     data = json.loads(line)
                     fact = FactRecord.model_validate(data)
-                    facts[fact.id] = fact
+                except (json.JSONDecodeError, ValueError) as exc:
+                    warnings.warn(
+                        f"Skipping malformed fact at {self.filepath}:{line_number}: "
+                        f"{type(exc).__name__}: {exc}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    continue
+                facts[fact.id] = fact
 
         return facts
 
@@ -104,6 +115,11 @@ class FileBackend(FactualMemory):
         fact_copy = record.model_copy(deep=True)
         with self._storage_lock():
             updated_facts = self._read_facts_from_disk()
+            if fact_copy.id in updated_facts:
+                self._facts = updated_facts
+                raise ValueError(
+                    f"Duplicate fact id: a record with id {fact_copy.id} already exists"
+                )
             updated_facts[fact_copy.id] = fact_copy
             self._save_facts(updated_facts)
             self._facts = updated_facts

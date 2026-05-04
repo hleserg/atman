@@ -109,3 +109,24 @@ def test_fact_record_serialization():
     assert restored.tags == original.tags
     assert restored.metadata == original.metadata
     assert restored.created_at == original.created_at
+
+
+# --- SYSTEM_MAP §4.1 P2 additions ---
+
+
+def test_fact_record_accepts_very_long_content():
+    """SYSTEM_MAP §4.1: ``FactRecord.content`` has no upper bound — large payloads are accepted."""
+    long_content = "x" * 100_000  # 100 KiB
+    fact = FactRecord(content=long_content, source="long-source")
+    assert len(fact.content) == 100_000
+    # Round-trip through JSON to confirm it can be persisted.
+    reloaded = FactRecord.model_validate_json(fact.model_dump_json())
+    assert len(reloaded.content) == 100_000
+
+
+def test_fact_record_with_unicode_and_emoji_content():
+    """SYSTEM_MAP §4.1: non-ASCII content (incl. emoji) round-trips through JSON."""
+    text = "Пользователь сказал «всё работает» — 🎉"
+    fact = FactRecord(content=text, source="unicode-test")
+    reloaded = FactRecord.model_validate_json(fact.model_dump_json())
+    assert reloaded.content == text
