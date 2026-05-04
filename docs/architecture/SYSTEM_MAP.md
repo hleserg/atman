@@ -253,9 +253,9 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 
 | Location | Error handling |
 |----------|----------------|
-| `FileBackend._read_facts_from_disk()` | **GAP**: silently skips malformed lines (`adapters/memory/file_backend.py:52-57`) |
+| `FileBackend._read_facts_from_disk()` | ✅ malformed lines are reported via `warnings.warn(RuntimeWarning, ...)` and skipped (`adapters/memory/file_backend.py`); covered by `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
 | `JsonlExperienceStore._read_all_experiences()` | `warnings.warn(...)`, continues (`adapters/storage/jsonl_experience_store.py:57-73`) |
-| `FileStateStore.get_experience()` | **GAP**: `JSONDecodeError` propagates (`adapters/storage/file_state_store.py:84`) |
+| `FileStateStore.get_experience()` / `load_identity()` / etc. | ✅ `_read_json_file` wraps `json.JSONDecodeError` into `ValueError` with file path + line/column context (`adapters/storage/file_state_store.py`); covered by `tests/test_file_state_store.py::test_get_experience_with_corrupted_json_raises_clear_error` and `test_load_identity_with_corrupted_json_raises_clear_error` |
 | `cli_experience.py:cmd_add()` | broad `except Exception` (`cli_experience.py:45-56`) |
 
 ### 4.4. Governance and concurrency
@@ -269,13 +269,13 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 
 ### 4.5. What still needs covering (gaps)
 
-- Empty `key_moments` list in `SessionExperience`.
-- Malformed JSONL in `FileBackend` (silent data loss).
-- `json.JSONDecodeError` in `FileStateStore.get_experience()`.
-- `confidence > 0.7` validation for patterns in `PatternStore`.
-- Empty eigenstate without context.
-- Concurrent narrative update race (no test).
-- `GovernanceRejectedError` flow (declared but never raised in code).
+- ✅ Empty `key_moments` list in `SessionExperience` — covered by `tests/test_experience_models.py::test_session_experience_rejects_empty_key_moments` (rejected via `min_length=1`).
+- ✅ Malformed JSONL in `FileBackend` — fixed (warn-and-skip) and covered by `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss`.
+- ✅ `json.JSONDecodeError` in `FileStateStore` — wrapped via `_read_json_file` with file context; covered in `tests/test_file_state_store.py`.
+- `confidence > 0.7` validation for patterns in `PatternStore` — partially covered; range bounds (0..1) frozen by `tests/test_reflection_models.py::test_pattern_candidate_confidence_at_boundary_zero_and_one`. Threshold semantics remain a service-level concern (see `DeepReflectionService._generate_core_content`).
+- ✅ Empty eigenstate without context — current behaviour frozen by `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` (intentionally allowed; whitespace-only entries normalised).
+- ✅ Concurrent identity writes — covered by `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` (last-writer-wins is documented behaviour). Concurrent narrative writes still rely on optimistic concurrency at the service layer (see `tests/test_narrative_revision.py`).
+- ✅ `GovernanceRejectedError` flow — `LOCKED` mode covered by `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (in addition to existing `AUTO` and unapproved `REVIEW` cases).
 
 ---
 
@@ -303,13 +303,17 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 
 ### 5.3. Test coverage gaps
 
-| Area | Test exists? | Where it should live |
-|------|--------------|----------------------|
-| `FileBackend` with malformed JSONL | no | `tests/test_file_backend.py` |
-| Concurrent narrative write (race) | no | `tests/` |
-| `reflection_run_key` idempotency | likely yes | `tests/test_reflection_services.py` |
-| Empty eigenstate | no | `tests/` |
-| `GovernanceRejectedError` | no (never raised) | `tests/` |
+| Area | Status | Location |
+|------|--------|----------|
+| `FileBackend` with malformed JSONL | ✅ closed | `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
+| Concurrent identity writes | ✅ closed (last-writer-wins frozen) | `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` |
+| Concurrent narrative write (true thread race) | open — only mocked optimistic-locking covered | `tests/test_narrative_revision.py::test_repo_update_rejects_stale_concurrency_token` |
+| `reflection_run_key` idempotency | ✅ closed | `tests/test_reflection_services.py::test_deep_reflection_repeated_run_does_not_duplicate_snapshot`, `test_daily_reflection_repeated_run_does_not_duplicate_snapshot` |
+| Empty eigenstate | ✅ closed | `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` |
+| `GovernanceRejectedError` flow | ✅ closed | `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (+ pre-existing AUTO / REVIEW-without-approval tests) |
+| End-to-end §3 lifecycle | ✅ closed | `tests/test_system_e2e_lifecycle.py::test_bootstrap_to_deep_reflection_full_lifecycle` |
+| CLI surface (factual memory / experience / identity / reflection) | ✅ closed | `tests/test_cli_factual_memory.py`, `tests/test_cli_experience.py`, `tests/test_cli_identity.py`, `tests/test_cli_reflection.py` |
+| Demo entrypoints (smoke) | ✅ closed | `tests/test_demo_smoke.py` |
 
 ### 5.4. TODO / FIXME
 

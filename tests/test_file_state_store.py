@@ -335,3 +335,83 @@ def test_list_archived_normalizes_naive_archived_at_and_sorts_with_utc_fields() 
         archived_at = listed[0][2]
         assert archived_at.tzinfo is not None
         _ = doc.created_at <= archived_at
+
+
+# --- SYSTEM_MAP §4.3 / §5.3: corrupted JSON state files ---
+
+
+def test_get_experience_with_corrupted_json_raises_clear_error():
+    """SYSTEM_MAP §4.3: ``JSONDecodeError`` from a state file is wrapped with file path context."""
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = FileStateStore(root)
+        record = _experience_record()
+        store.create_experience(record)
+
+        # Corrupt the file written for that experience.
+        experience_file = root / "experiences" / f"{record.experience.id}.json"
+        experience_file.write_text("{not really json", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Corrupted JSON in state store file"):
+            store.get_experience(record.experience.id)
+
+
+def test_load_identity_with_corrupted_json_raises_clear_error():
+    """SYSTEM_MAP §4.3: corrupted ``identity.json`` raises ``ValueError`` with file context."""
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = FileStateStore(root)
+
+        identity = Identity(self_description="Тестовое самоописание для проверки")
+        store.save_identity(identity)
+
+        # Corrupt the identity file.
+        store.identity_path.write_text("{ broken", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Corrupted JSON"):
+            store.load_identity(identity.id)
+
+
+# --- SYSTEM_MAP §4.4 / §5.3: concurrent identity writers ---
+
+
+def test_save_identity_concurrent_writers_resolve_to_last_writer():
+    """SYSTEM_MAP §5.3: concurrent identity writes resolve to a single committed state.
+
+    The file backend currently implements last-writer-wins (no optimistic
+    locking on identity). This test freezes that behavior so any future
+    introduction of write-conflict semantics fails the test on purpose and
+    forces a follow-up.
+    """
+    import threading
+
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = FileStateStore(root)
+
+        identity = Identity(self_description="Initial state")
+        store.save_identity(identity)
+
+        # Two concurrent updates with distinct self_descriptions.
+        descriptions = [f"writer_{i}" for i in range(8)]
+        errors: list[BaseException] = []
+
+        def writer(desc: str) -> None:
+            try:
+                updated = identity.model_copy(update={"self_description": desc}, deep=True)
+                store.save_identity(updated)
+            except BaseException as exc:  # pragma: no cover - exercised only on failure
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(d,)) for d in descriptions]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+
+        # Reload and verify the final state corresponds to one of the writers.
+        reloaded = store.load_identity(identity.id)
+        assert reloaded is not None
+        assert reloaded.self_description in descriptions

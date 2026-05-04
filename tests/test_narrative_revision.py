@@ -389,3 +389,20 @@ def test_audit_double_fault_emits_warning() -> None:
 
     with pytest.warns(RuntimeWarning, match="persisted but audit failed"):
         svc.update_recent_layer([_sample_experience()], ReflectionLevel.MICRO)
+
+
+# --- SYSTEM_MAP §4.4 / §5.3: GovernanceMode.LOCKED rejection ---
+
+
+def test_governance_mode_locked_raises_governance_rejected_error() -> None:
+    """SYSTEM_MAP §4.4: ``GovernanceMode.LOCKED`` blocks any core-layer commit, even with review."""
+    doc = _minimal_narrative()
+    repo = _StubNarrativeRepo(doc)
+    svc = NarrativeRevisionService(
+        repo, MockReflectionModel(), narrative_audit=NoOpNarrativeWriteAudit()
+    )
+    ident = Identity(self_description="Me")
+    locked = GovernanceDecision(mode=GovernanceMode.LOCKED, review_approved=True)
+
+    with pytest.raises(GovernanceRejectedError, match="locked"):
+        svc.update_core_layer(ident, [], "reason", locked)

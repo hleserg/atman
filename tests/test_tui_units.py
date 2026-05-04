@@ -267,3 +267,44 @@ def test_tests_tab_does_not_use_message_pump_running_for_pytest_guard() -> None:
     src = inspect.getsource(TestsTab.run_pytest_suite)
     assert "_pytest_busy" in src
     assert "self._running" not in src
+
+
+# --- SYSTEM_MAP §2.5 P2 additions ---
+
+
+def test_stream_command_returns_nonzero_on_failing_subprocess(tmp_path: Path) -> None:
+    """SYSTEM_MAP §2.5: ``stream_command`` surfaces non-zero exit codes from subprocesses."""
+    import asyncio
+
+    from atman.tui.runner import stream_command
+
+    captured: list[str] = []
+
+    rc = asyncio.run(
+        stream_command(
+            [sys.executable, "-c", "import sys; sys.stderr.write('boom\\n'); sys.exit(2)"],
+            cwd=tmp_path,
+            on_line=captured.append,
+        )
+    )
+    assert rc == 2
+    # The "boom" line was streamed (stderr merged into stdout).
+    assert any("boom" in line for line in captured)
+
+
+def test_stream_command_propagates_exit_code_from_zero_path(tmp_path: Path) -> None:
+    """SYSTEM_MAP §2.5: a successful subprocess returns 0 and emits its output."""
+    import asyncio
+
+    from atman.tui.runner import stream_command
+
+    captured: list[str] = []
+    rc = asyncio.run(
+        stream_command(
+            [sys.executable, "-c", "print('ok-line')"],
+            cwd=tmp_path,
+            on_line=captured.append,
+        )
+    )
+    assert rc == 0
+    assert any("ok-line" in line for line in captured)

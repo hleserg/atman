@@ -368,3 +368,12 @@ class TestIncompleteColoring:
         # Default should be False
         exp = SessionExperience(session_id=uuid4(), key_moments=[moment])
         assert exp.incomplete_coloring is False
+
+
+# --- SYSTEM_MAP §4.1 / §4.5: empty key_moments ---
+
+
+def test_session_experience_rejects_empty_key_moments():
+    """SYSTEM_MAP §4.5: ``SessionExperience`` requires at least one ``KeyMoment``."""
+    with pytest.raises(ValidationError, match="key_moments"):
+        SessionExperience(session_id=uuid4(), key_moments=[])

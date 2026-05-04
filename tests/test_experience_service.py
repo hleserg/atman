@@ -272,3 +272,67 @@ class TestExperienceService:
         # Should be ordered by timestamp (newest first)
         timestamps = [r.experience.timestamp for r in results]
         assert timestamps == sorted(timestamps, reverse=True)
+
+
+# --- SYSTEM_MAP §1.3 / §4.2 P2 additions ---
+
+
+class TestExperienceServiceP2:
+    """SYSTEM_MAP §1.3 + §4.2: additional invariants on the experience service."""
+
+    @pytest.fixture
+    def service(self):
+        store = InMemoryExperienceStore()
+        return ExperienceService(store)
+
+    @pytest.fixture
+    def sample_experience(self):
+        felt = FeltSense(
+            emotional_valence=0.3, emotional_intensity=0.7, depth=EmotionalDepth.MEANINGFUL
+        )
+        moment = KeyMoment(
+            what_happened="P2 sample event",
+            how_i_felt=felt,
+            why_it_matters="P2 test",
+        )
+        return SessionExperience(
+            session_id=uuid4(), key_moments=[moment], importance=0.5, salience=1.0
+        )
+
+    def test_add_reframing_note_duplicate_triggered_by_returns_unchanged_record(
+        self, service, sample_experience
+    ):
+        """SYSTEM_MAP §4.2: re-using ``triggered_by`` does not append a duplicate note."""
+        service.create_experience(sample_experience)
+        first = service.add_reframing_note(
+            experience_id=sample_experience.id,
+            reflection="First reflection text",
+            triggered_by="run-A",
+        )
+        assert first is not None
+        assert len(first.experience.reframing_notes) == 1
+
+        second = service.add_reframing_note(
+            experience_id=sample_experience.id,
+            reflection="Different reflection but same trigger",
+            triggered_by="run-A",
+        )
+        assert second is not None
+        # No additional note appended; the first reflection text is preserved.
+        assert len(second.experience.reframing_notes) == 1
+        assert second.experience.reframing_notes[0].reflection == "First reflection text"
+
+    def test_calculate_current_salience_decays_with_age(self, service, sample_experience):
+        """SYSTEM_MAP §1.3: salience for the same record strictly decreases with age."""
+        service.create_experience(sample_experience)
+
+        ref = sample_experience.last_accessed_at
+        s_now = service.calculate_current_salience(sample_experience.id, current_time=ref)
+        s_later = service.calculate_current_salience(
+            sample_experience.id, current_time=ref + timedelta(days=10)
+        )
+        s_much_later = service.calculate_current_salience(
+            sample_experience.id, current_time=ref + timedelta(days=60)
+        )
+        assert s_now is not None and s_later is not None and s_much_later is not None
+        assert s_now > s_later > s_much_later

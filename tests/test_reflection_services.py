@@ -995,3 +995,95 @@ def test_deep_reflection_retry_after_event_save_failure_counts_duplicate_reframi
     assert "outcome=deep_ok" in (retry.notes or "")
     assert retry.reframing_duplicate_triggered_by_count >= 1
     assert "reframing_duplicate_triggered_by=" in (retry.notes or "")
+
+
+# --- SYSTEM_MAP §4.2 / §5.3: reflection_run_key idempotency ---
+
+
+def test_deep_reflection_repeated_run_does_not_duplicate_snapshot() -> None:
+    """SYSTEM_MAP §5.3: deep reflection invoked twice with the same window/identity reuses the run.
+
+    The second call must:
+    - return the same persisted ``ReflectionEvent`` (same ``reflection_run_key``);
+    - reuse the same ``IdentitySnapshot`` (no second snapshot created);
+    - reuse the same ``HealthAssessment`` id.
+    """
+    exp1 = create_test_experience()
+    exp2 = create_test_experience()
+    exp3 = create_test_experience()
+
+    identity = Identity(
+        self_description="I am self-discovering.",
+        emotional_baseline=0.0,
+    )
+
+    narrative = NarrativeDocument(
+        identity_id=identity.id,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Core"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="Recent"),
+    )
+
+    exp_repo = MockExperienceRepo([exp1, exp2, exp3])
+    identity_repo = MockIdentityRepo(identity)
+    narrative_repo = MockNarrativeRepo(narrative)
+    reflection_model = MockReflectionModel()
+    pattern_store = InMemoryPatternStore()
+    health_store = InMemoryHealthAssessmentStore()
+    event_store = InMemoryReflectionEventStore()
+
+    service = DeepReflectionService(
+        experience_repo=exp_repo,
+        identity_repo=identity_repo,
+        narrative_repo=narrative_repo,
+        pattern_store=pattern_store,
+        health_store=health_store,
+        reflection_model=reflection_model,
+        event_store=event_store,
+    )
+
+    since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    until = datetime.now(UTC)
+
+    first = service.reflect(since, until)
+    snapshots_after_first = identity_repo.get_history()
+
+    second = service.reflect(since, until)
+    snapshots_after_second = identity_repo.get_history()
+
+    assert first.reflection_run_key == second.reflection_run_key
+    assert first.identity_snapshot_id == second.identity_snapshot_id
+    assert first.health_assessment_id == second.health_assessment_id
+    assert len(snapshots_after_first) == len(snapshots_after_second) == 1
+
+
+def test_daily_reflection_repeated_run_does_not_duplicate_snapshot() -> None:
+    """SYSTEM_MAP §5.3: daily reflection is idempotent on (calendar day, identity).
+
+    Two ``reflect()`` calls for the same UTC day must yield the same anchor
+    snapshot and the same ``reflection_run_key``.
+    """
+    exp1 = create_test_experience()
+    exp2 = create_test_experience()
+    identity = Identity()
+
+    exp_repo = MockExperienceRepo([exp1, exp2])
+    identity_repo = MockIdentityRepo(identity)
+    pattern_store = InMemoryPatternStore()
+    event_store = InMemoryReflectionEventStore()
+
+    service = DailyReflectionService(
+        experience_repo=exp_repo,
+        identity_repo=identity_repo,
+        pattern_store=pattern_store,
+        reflection_model=MockReflectionModel(),
+        event_store=event_store,
+    )
+
+    date = datetime.now(UTC)
+    first = service.reflect(date)
+    second = service.reflect(date)
+
+    assert first.reflection_run_key == second.reflection_run_key
+    assert first.identity_snapshot_id == second.identity_snapshot_id
+    # Anchor snapshot created exactly once.
+    assert len(identity_repo.get_history()) == 1

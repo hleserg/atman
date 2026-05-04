@@ -156,3 +156,31 @@ def test_health_assessment_store_get_latest() -> None:
     assert latest is not None
     assert latest.overall_score == 0.8
     assert store.get(a2.id) == a2
+
+
+# --- SYSTEM_MAP §1.5 P2 additions ---
+
+
+def test_reflection_event_store_get_by_unknown_run_key_returns_none() -> None:
+    """SYSTEM_MAP §1.5: querying for an unknown ``reflection_run_key`` returns ``None``."""
+    store = InMemoryReflectionEventStore()
+    assert store.get_by_reflection_run_key("never|saved|key") is None
+
+
+def test_pattern_store_get_unknown_pattern_id_returns_none() -> None:
+    """SYSTEM_MAP §1.5: ``PatternStore.get`` for an unknown id yields ``None``."""
+    from uuid import uuid4
+
+    store = InMemoryPatternStore()
+    assert store.get(uuid4()) is None
+    assert store.get_all() == []
+    assert store.get_by_level(ReflectionLevel.DAILY) == []
+
+
+def test_health_store_get_unknown_assessment_returns_none() -> None:
+    """SYSTEM_MAP §1.5: ``HealthAssessmentStore.get`` returns ``None`` for unknown ids."""
+    from uuid import uuid4
+
+    store = InMemoryHealthAssessmentStore()
+    assert store.get(uuid4()) is None
+    assert store.get_latest() is None

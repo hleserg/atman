@@ -256,9 +256,9 @@ PrincipleRevisionAdvisor — пересмотр принципов
 
 | Место | Обработка ошибок |
 |-------|------------------|
-| `FileBackend._read_facts_from_disk()` | **GAP**: тихий пропуск битых строк (`adapters/memory/file_backend.py:52-57`) |
+| `FileBackend._read_facts_from_disk()` | ✅ битые строки идут через `warnings.warn(RuntimeWarning, ...)` и пропускаются (`adapters/memory/file_backend.py`); тест `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
 | `JsonlExperienceStore._read_all_experiences()` | `warnings.warn(...)`, продолжение (`adapters/storage/jsonl_experience_store.py:57-73`) |
-| `FileStateStore.get_experience()` | **GAP**: `JSONDecodeError` пробрасывается наружу (`adapters/storage/file_state_store.py:84`) |
+| `FileStateStore.get_experience()` / `load_identity()` / др. | ✅ `_read_json_file` оборачивает `json.JSONDecodeError` в `ValueError` с путём + строкой/колонкой (`adapters/storage/file_state_store.py`); тесты в `tests/test_file_state_store.py` |
 | `cli_experience.py:cmd_add()` | общий `except Exception` (`cli_experience.py:45-56`) |
 
 ### 4.4. Governance и конкуренция
@@ -272,13 +272,13 @@ PrincipleRevisionAdvisor — пересмотр принципов
 
 ### 4.5. Что нужно проверить (gaps)
 
-- Пустой список `key_moments` в `SessionExperience`.
-- Битый JSONL в `FileBackend` (тихая потеря данных).
-- Падение `json.JSONDecodeError` в `FileStateStore.get_experience()`.
-- Валидация `confidence > 0.7` для паттернов на стороне `PatternStore`.
-- Пустой eigenstate без контекста.
-- Расового конкурентного апдейта нарратива (нет теста).
-- Поток `GovernanceRejectedError` (исключение объявлено, но нигде не возбуждается в коде).
+- ✅ Пустой `key_moments` в `SessionExperience` — `tests/test_experience_models.py::test_session_experience_rejects_empty_key_moments` (отказ через `min_length=1`).
+- ✅ Битый JSONL в `FileBackend` — починено (warn-and-skip), тест `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss`.
+- ✅ `json.JSONDecodeError` в `FileStateStore` — обёрнут в `ValueError` с контекстом файла; тесты в `tests/test_file_state_store.py`.
+- Валидация `confidence > 0.7` для паттернов — частично: границы 0..1 закрыты `tests/test_reflection_models.py::test_pattern_candidate_confidence_at_boundary_zero_and_one`. Семантика порога — на уровне сервисов.
+- ✅ Пустой eigenstate — поведение зафиксировано тестом `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` (намеренно разрешено; пробельные строки нормализуются).
+- ✅ Конкурентные записи identity — `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` (last-writer-wins). Конкурентная запись нарратива по-прежнему живёт через оптимистическую блокировку (`tests/test_narrative_revision.py`).
+- ✅ Поток `GovernanceRejectedError` — `LOCKED` режим закрыт `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (плюс существующие AUTO и REVIEW-без-approval).
 
 ---
 
@@ -306,13 +306,17 @@ PrincipleRevisionAdvisor — пересмотр принципов
 
 ### 5.3. Дыры в покрытии тестами
 
-| Зона | Есть тест? | Где должно быть |
-|------|------------|-----------------|
-| `FileBackend` с битым JSONL | нет | `tests/test_file_backend.py` |
-| Конкурентная запись нарратива (race) | нет | `tests/` |
-| Идемпотентность `reflection_run_key` | вероятно есть | `tests/test_reflection_services.py` |
-| Пустой eigenstate | нет | `tests/` |
-| `GovernanceRejectedError` | нет (нигде не возбуждается) | `tests/` |
+| Зона | Статус | Где |
+|------|--------|-----|
+| `FileBackend` с битым JSONL | ✅ закрыто | `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
+| Конкурентные записи identity | ✅ закрыто (last-writer-wins зафиксирован) | `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` |
+| Конкурентная запись нарратива (реальная гонка потоков) | открыто — есть только мок оптимистической блокировки | `tests/test_narrative_revision.py::test_repo_update_rejects_stale_concurrency_token` |
+| Идемпотентность `reflection_run_key` | ✅ закрыто | `tests/test_reflection_services.py::test_deep_reflection_repeated_run_does_not_duplicate_snapshot`, `test_daily_reflection_repeated_run_does_not_duplicate_snapshot` |
+| Пустой eigenstate | ✅ закрыто | `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` |
+| Поток `GovernanceRejectedError` | ✅ закрыто | `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (+ существующие AUTO / REVIEW-без-approval) |
+| Сквозной §3 lifecycle | ✅ закрыто | `tests/test_system_e2e_lifecycle.py::test_bootstrap_to_deep_reflection_full_lifecycle` |
+| CLI surface (factual / experience / identity / reflection) | ✅ закрыто | `tests/test_cli_factual_memory.py`, `tests/test_cli_experience.py`, `tests/test_cli_identity.py`, `tests/test_cli_reflection.py` |
+| Demo entrypoints (smoke) | ✅ закрыто | `tests/test_demo_smoke.py` |
 
 ### 5.4. TODO / FIXME
 

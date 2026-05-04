@@ -8,6 +8,7 @@ Suitable for local development and single-agent use cases.
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from atman.core.models import (
@@ -26,6 +27,18 @@ from atman.core.ports.state_store import (
     StateStore,
     ValuesTouchedQuery,
 )
+
+
+def _read_json_file(path: Path) -> Any:
+    """Read JSON from ``path``; raise ``ValueError`` with file context on parse error."""
+    raw = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Corrupted JSON in state store file {path}: "
+            f"{exc.msg} (line {exc.lineno}, column {exc.colno})"
+        ) from exc
 
 
 class FileStateStore(StateStore):
@@ -81,7 +94,7 @@ class FileStateStore(StateStore):
         experience_file = self.experiences_dir / f"{experience_id}.json"
         if not experience_file.exists():
             return None
-        data = json.loads(experience_file.read_text(encoding="utf-8"))
+        data = _read_json_file(experience_file)
         return ExperienceRecord.model_validate(data)
 
     def add_reframing_note(
@@ -117,7 +130,7 @@ class FileStateStore(StateStore):
         all_experiences: list[ExperienceRecord] = []
 
         for experience_file in self.experiences_dir.glob("*.json"):
-            data = json.loads(experience_file.read_text(encoding="utf-8"))
+            data = _read_json_file(experience_file)
             record = ExperienceRecord.model_validate(data)
 
             # Apply filter
@@ -157,7 +170,7 @@ class FileStateStore(StateStore):
         if not self.identity_path.exists():
             return None
 
-        data = json.loads(self.identity_path.read_text(encoding="utf-8"))
+        data = _read_json_file(self.identity_path)
         identity = Identity.model_validate(data)
 
         # Check if this identity matches the requested agent_id
@@ -190,7 +203,7 @@ class FileStateStore(StateStore):
         snapshots: list[IdentitySnapshot] = []
 
         for snapshot_file in self.identity_snapshots_dir.glob("*.json"):
-            data = json.loads(snapshot_file.read_text(encoding="utf-8"))
+            data = _read_json_file(snapshot_file)
             snapshot = IdentitySnapshot.model_validate(data)
 
             if snapshot.identity_id == identity_id:
@@ -207,7 +220,7 @@ class FileStateStore(StateStore):
         if not self.narrative_path.exists():
             return None
 
-        data = json.loads(self.narrative_path.read_text(encoding="utf-8"))
+        data = _read_json_file(self.narrative_path)
         narrative = NarrativeDocument.model_validate(data)
 
         # Check if this narrative matches the requested identity
@@ -255,7 +268,7 @@ class FileStateStore(StateStore):
         archived: list[tuple[NarrativeDocument, str, datetime]] = []
 
         for archive_file in self.narrative_archive_dir.glob("*.json"):
-            data = json.loads(archive_file.read_text(encoding="utf-8"))
+            data = _read_json_file(archive_file)
 
             narrative = NarrativeDocument.model_validate(data["narrative"])
             if narrative.identity_id == identity_id:
@@ -281,7 +294,7 @@ class FileStateStore(StateStore):
         if not self.eigenstate_path.exists():
             return None
 
-        data = json.loads(self.eigenstate_path.read_text(encoding="utf-8"))
+        data = _read_json_file(self.eigenstate_path)
         eigenstate = Eigenstate.model_validate(data)
 
         if session_id is not None and eigenstate.session_id != session_id:
@@ -294,7 +307,7 @@ class FileStateStore(StateStore):
         if not self.narrative_path.exists():
             return None
 
-        data = json.loads(self.narrative_path.read_text(encoding="utf-8"))
+        data = _read_json_file(self.narrative_path)
         narrative = NarrativeDocument.model_validate(data)
 
         if narrative.id != narrative_id:
