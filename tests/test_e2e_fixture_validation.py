@@ -12,6 +12,7 @@ from e2e.models import (
     SessionSkeletonItem,
     fixture_events_to_session_events,
     fixture_moments_to_key_moment_inputs,
+    theme_to_slug,
     validate_fixture_document,
     weighted_mean_valence,
 )
@@ -205,6 +206,13 @@ def test_skeleton_matches_count() -> None:
     skeleton_matches_count(rows, 2)
     with pytest.raises(ValueError):
         skeleton_matches_count(rows, 3)
+
+
+def test_theme_to_slug_ascii_and_cyrillic() -> None:
+    assert theme_to_slug("Technical Doubt!") == "technical_doubt"
+    cyr = theme_to_slug("Сложный рефакторинг", session_number=7)
+    assert cyr.startswith("07_")
+    assert len(cyr) == 2 + 1 + 8  # %02d + _ + 8 hex
 
 
 def test_fixture_events_roundtrip_session_event() -> None:

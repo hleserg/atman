@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import zlib
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -105,15 +106,21 @@ class SessionSkeletonItem(BaseModel):
 class SkeletonPassOutput(BaseModel):
     """Tool output: planned skeleton for all sessions."""
 
-    sessions: list[SessionSkeletonItem] = Field(min_length=1, max_length=20)
+    sessions: list[SessionSkeletonItem] = Field(min_length=1, max_length=32)
 
 
-def theme_to_slug(theme: str) -> str:
+def theme_to_slug(theme: str, session_number: int | None = None) -> str:
     """Derive filesystem slug from theme (``session_NN_<slug>.json``)."""
     s = theme.lower().strip()
-    s = re.sub(r"[^a-z0-9]+", "_", s)
-    s = re.sub(r"_+", "_", s).strip("_")
-    return s or "session"
+    ascii_slug = re.sub(r"[^a-z0-9]+", "_", s)
+    ascii_slug = re.sub(r"_+", "_", ascii_slug).strip("_")
+    if ascii_slug:
+        return ascii_slug[:80]
+    # Cyrillic or other scripts: stable short ASCII name
+    crc = zlib.crc32(theme.encode("utf-8")) & 0xFFFFFFFF
+    if session_number is not None:
+        return f"{session_number:02d}_{crc:08x}"
+    return f"{crc:08x}"
 
 
 def coerce_metadata_str(d: dict[str, Any]) -> dict[str, str]:

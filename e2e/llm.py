@@ -14,7 +14,14 @@ from e2e.models import (
     SkeletonPassOutput,
     validate_fixture_document,
 )
-from e2e.prompts import SESSION_SYSTEM, SKELETON_SYSTEM, session_user_prompt, skeleton_user_prompt
+from e2e.prompts import (
+    Locale,
+    retry_prefix,
+    session_system,
+    session_user_prompt,
+    skeleton_system,
+    skeleton_user_prompt,
+)
 from e2e.validation import skeleton_matches_count, validate_corpus
 
 
@@ -34,13 +41,15 @@ def _extract_tool_input(message: Any, tool_name: str) -> dict[str, Any]:
     raise RuntimeError(f"No tool_use block named {tool_name!r} in assistant message")
 
 
-def run_skeleton_pass(client: Any, model: str, count: int) -> list[SessionSkeletonItem]:
+def run_skeleton_pass(
+    client: Any, model: str, count: int, locale: Locale
+) -> list[SessionSkeletonItem]:
     """Call Anthropic once; return ordered skeleton rows."""
     input_schema = SkeletonPassOutput.model_json_schema()
     msg = client.messages.create(
         model=model,
         max_tokens=4096,
-        system=SKELETON_SYSTEM,
+        system=skeleton_system(locale),
         tools=[
             {
                 "name": "submit_session_skeleton",
@@ -51,7 +60,7 @@ def run_skeleton_pass(client: Any, model: str, count: int) -> list[SessionSkelet
         messages=[
             {
                 "role": "user",
-                "content": skeleton_user_prompt(count),
+                "content": skeleton_user_prompt(count, locale),
             }
         ],
     )
@@ -84,20 +93,18 @@ def run_session_pass(
     skeleton: SessionSkeletonItem,
     prior_documents: list[SessionFixtureDocument],
     validation_error_hint: str | None,
+    locale: Locale,
 ) -> SessionFixtureDocument:
     """Generate one session fixture; optional hint retries after validation failure."""
     schema = SessionFixtureDocument.model_json_schema()
     prior_summary = [fixture_summary(d) for d in prior_documents]
-    user_text = session_user_prompt(skeleton, prior_summary)
+    user_text = session_user_prompt(skeleton, prior_summary, locale)
     if validation_error_hint:
-        user_text = (
-            f"The previous attempt was rejected:\n{validation_error_hint}\n\n"
-            f"Fix the JSON to satisfy constraints and call the tool again.\n\n{user_text}"
-        )
+        user_text = f"{retry_prefix(validation_error_hint, locale)}{user_text}"
     msg = client.messages.create(
         model=model,
         max_tokens=16384,
-        system=SESSION_SYSTEM,
+        system=session_system(locale),
         tools=[
             {
                 "name": "submit_session_fixture",
@@ -123,14 +130,14 @@ def anthropic_client() -> Any:
 
 
 def generate_corpus_with_retries(
-    client: Any, model: str, count: int
+    client: Any, model: str, count: int, locale: Locale = "en"
 ) -> list[SessionFixtureDocument]:
     """
     Full two-phase generation with up to 3 attempts per session (1 + 2 retries).
 
     Raises the last ``ValidationError`` or ``ValueError`` if all attempts fail.
     """
-    skeleton = run_skeleton_pass(client, model, count)
+    skeleton = run_skeleton_pass(client, model, count, locale)
     out: list[SessionFixtureDocument] = []
     for row in skeleton:
         last_err: str | None = None
@@ -138,7 +145,7 @@ def generate_corpus_with_retries(
         for attempt in range(3):
             hint = last_err if attempt else None
             try:
-                doc = run_session_pass(client, model, row, out, hint)
+                doc = run_session_pass(client, model, row, out, hint, locale)
                 if doc.metadata.session_number != row.session_number:
                     raise ValueError(
                         f"session_number {doc.metadata.session_number} != skeleton "
@@ -164,7 +171,7 @@ def write_fixture_files(fixtures: list[SessionFixtureDocument], output_dir: Path
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for doc in sorted(fixtures, key=lambda d: d.metadata.session_number):
-        slug = theme_to_slug(doc.metadata.theme)
+        slug = theme_to_slug(doc.metadata.theme, doc.metadata.session_number)
         nn = doc.metadata.session_number
         path = output_dir / f"session_{nn:02d}_{slug}.json"
         payload = json.loads(doc.model_dump_json(indent=2))
