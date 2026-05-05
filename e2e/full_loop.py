@@ -24,8 +24,11 @@ SEAMS AND CONTRACT ISSUES:
 """
 
 import json
+import shutil
 import sys
 import tempfile
+import warnings
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -39,7 +42,6 @@ from atman.adapters.storage.in_memory_reflection_store import (
 from atman.core.clock_impl import FrozenClock, SystemClock
 from atman.core.models import (
     CoreValue,
-    EmotionalDepth,
     Goal,
     GoalHorizon,
     GoalOwner,
@@ -51,6 +53,7 @@ from atman.core.models import (
     NarrativeLayer,
     SessionEvent,
 )
+from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.ports.reflection import (
     ExperienceRepository,
@@ -58,6 +61,7 @@ from atman.core.ports.reflection import (
     NarrativeRepository,
     ReflectionModel,
 )
+from atman.core.ports.state_store import DateRangeQuery, SessionExperienceQuery
 from atman.core.services import SessionManager
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
@@ -65,6 +69,12 @@ from atman.core.services.reflection_service import (
     DeepReflectionService,
     MicroReflectionService,
 )
+
+# Repository adapter limits for E2E testing
+_EXPERIENCE_SESSION_LIMIT = 100
+_EXPERIENCE_RANGE_LIMIT = 1000
+_EXPERIENCE_ALL_LIMIT = 10000
+_SNAPSHOT_SEARCH_LIMIT = 1000
 
 
 def _load_fixture_sessions(locale: str = "en", max_count: int = 5) -> list[Path]:
@@ -78,44 +88,47 @@ def _load_fixture_sessions(locale: str = "en", max_count: int = 5) -> list[Path]
 
 
 def _parse_fixture(fixture_path: Path) -> tuple[list[SessionEvent], list[KeyMomentInput], dict]:
-    """Parse fixture JSON into SessionEvent, KeyMomentInput, and expected outcome."""
-    with open(fixture_path, encoding="utf-8") as f:
-        data = json.load(f)
+    """
+    Parse fixture JSON into SessionEvent, KeyMomentInput, and expected outcome.
 
-    # SEAM: e2e.models.SessionFixtureDocument is the canonical shape;
-    # this function assumes same structure but doesn't import to avoid circular dependency.
-    # If shapes diverge, this will raise ValueError.
+    Uses Pydantic validation via e2e.models to ensure type safety.
 
-    events_raw = data.get("events", [])
-    moments_raw = data.get("key_moments", [])
-    outcome = data.get("expected_session_outcome", {})
+    Args:
+        fixture_path: Path to the session fixture JSON file
 
-    # Convert to domain models (injecting session_id at call site)
-    events = [
-        SessionEvent(
-            session_id=UUID(int=0),  # placeholder; replaced at call site
-            event_type=e["event_type"],
-            description=e["description"],
-            metadata=e.get("metadata", {}),
-        )
-        for e in events_raw
-    ]
+    Returns:
+        Tuple of (events, key_moments, expected_outcome)
 
-    moments = [
-        KeyMomentInput(
-            what_happened=m["what_happened"],
-            emotional_valence=m["emotional_valence"],
-            emotional_intensity=m["emotional_intensity"],
-            depth=EmotionalDepth(m["depth"]),
-            why_it_matters=m["why_it_matters"],
-            values_touched=m.get("values_touched", []),
-            principles_confirmed=m.get("principles_confirmed", []),
-            principles_questioned=m.get("principles_questioned", []),
-            what_changed=m.get("what_changed", ""),
-            incomplete_coloring=m.get("incomplete_coloring", False),
-        )
-        for m in moments_raw
-    ]
+    Raises:
+        ValueError: If file not found, invalid JSON, or validation fails
+    """
+    try:
+        with open(fixture_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError as e:
+        raise ValueError(f"Fixture file not found: {fixture_path}") from e
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in fixture {fixture_path}: {e}") from e
+    except Exception as e:
+        raise ValueError(f"Failed to load fixture {fixture_path}: {e}") from e
+
+    # Validate via Pydantic
+    from e2e.models import (
+        SessionFixtureDocument,
+        fixture_events_to_session_events,
+        fixture_moments_to_key_moment_inputs,
+    )
+
+    try:
+        fixture_doc = SessionFixtureDocument.model_validate(data)
+    except Exception as e:
+        raise ValueError(f"Fixture validation failed for {fixture_path}: {e}") from e
+
+    # Convert using helper functions
+    session_id = UUID(int=0)  # placeholder; replaced at call site
+    events = fixture_events_to_session_events(fixture_doc.events, session_id)
+    moments = fixture_moments_to_key_moment_inputs(fixture_doc.key_moments)
+    outcome = fixture_doc.expected_session_outcome.model_dump()
 
     return events, moments, outcome
 
@@ -167,44 +180,55 @@ class DeterministicReflectionModel(ReflectionModel):
 
 
 class StateStoreExperienceAdapter(ExperienceRepository):
-    """Adapter: StateStore → ExperienceRepository port."""
+    """
+    Adapter: StateStore → ExperienceRepository port.
+
+    Bridges FileStateStore to Reflection Engine's ExperienceRepository protocol.
+    This is a minimal implementation for E2E testing; production would require
+    more sophisticated error handling and pagination.
+
+    SEAMS:
+    - update() not implemented (FileStateStore doesn't support direct updates)
+    - Uses hardcoded limits for search operations
+    """
 
     def __init__(self, state_store: FileStateStore):
         self._state_store = state_store
 
-    def get(self, experience_id: UUID):
+    def get(self, experience_id: UUID) -> SessionExperience | None:
         record = self._state_store.get_experience(experience_id)
         return record.experience if record else None
 
-    def get_all(self) -> list:
-        records = self._state_store.list_recent_experiences(limit=10000)
+    def get_all(self) -> list[SessionExperience]:
+        records = self._state_store.list_recent_experiences(limit=_EXPERIENCE_ALL_LIMIT)
         return [r.experience for r in records]
 
-    def get_by_session(self, session_id: UUID) -> list:
-        from atman.core.ports.state_store import SessionExperienceQuery
-
+    def get_by_session(self, session_id: UUID) -> list[SessionExperience]:
         records = self._state_store.search_experiences(
-            SessionExperienceQuery(session_id), limit=100
+            SessionExperienceQuery(session_id), limit=_EXPERIENCE_SESSION_LIMIT
         )
         return [r.experience for r in records]
 
-    def get_in_range(self, start: datetime, end: datetime) -> list:
-        from atman.core.ports.state_store import DateRangeQuery
-
-        records = self._state_store.search_experiences(DateRangeQuery(start, end), limit=1000)
+    def get_in_range(self, start: datetime, end: datetime) -> list[SessionExperience]:
+        records = self._state_store.search_experiences(
+            DateRangeQuery(start, end), limit=_EXPERIENCE_RANGE_LIMIT
+        )
         return [r.experience for r in records]
 
-    def get_recent(self, limit: int = 10) -> list:
+    def get_recent(self, limit: int = 10) -> list[SessionExperience]:
         records = self._state_store.list_recent_experiences(limit=limit)
         return [r.experience for r in records]
 
-    def update(self, experience) -> None:
-        # SEAM: FileStateStore doesn't have direct update; would need refactor
-        pass
+    def update(self, experience: SessionExperience) -> None:
+        raise NotImplementedError(
+            "StateStoreExperienceAdapter.update() not implemented; "
+            "FileStateStore doesn't support direct experience updates. "
+            "Use add_reframing_note() for modifications."
+        )
 
-    def add_reframing_note(self, experience_id: UUID, note):
-        from atman.core.models.experience import ReframingNoteAppendResult
-
+    def add_reframing_note(
+        self, experience_id: UUID, note: ReframingNote
+    ) -> ReframingNoteAppendResult:
         result = self._state_store.add_reframing_note(experience_id, note)
         if result is None:
             return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
@@ -213,7 +237,16 @@ class StateStoreExperienceAdapter(ExperienceRepository):
 
 
 class StateStoreIdentityAdapter(IdentityRepository):
-    """Adapter: StateStore → IdentityRepository port."""
+    """
+    Adapter: StateStore → IdentityRepository port.
+
+    Bridges FileStateStore to Reflection Engine's IdentityRepository protocol.
+
+    SEAMS:
+    - Assumes single identity per workspace (no multi-agent support)
+    - get_history() returns empty list (FileStateStore needs identity_id)
+    - get_snapshot() uses inefficient linear search
+    """
 
     def __init__(self, state_store: FileStateStore):
         self._state_store = state_store
@@ -223,12 +256,22 @@ class StateStoreIdentityAdapter(IdentityRepository):
         identity_path = self._state_store.identity_path
         if not identity_path.exists():
             return None
-        with open(identity_path, encoding="utf-8") as f:
-            data = json.load(f)
-        return Identity.model_validate(data)
+        try:
+            with open(identity_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return Identity.model_validate(data)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            warnings.warn(f"Failed to load identity: {e}", stacklevel=2)
+            return None
 
     def get_history(self) -> list[IdentitySnapshot]:
         # SEAM: FileStateStore doesn't expose all snapshots without identity_id
+        # Return empty list is acceptable for E2E demo, but log warning for transparency
+        warnings.warn(
+            "StateStoreIdentityAdapter.get_history() returns empty list; "
+            "FileStateStore requires identity_id for snapshot queries",
+            stacklevel=2,
+        )
         return []
 
     def update(self, identity: Identity) -> None:
@@ -241,7 +284,7 @@ class StateStoreIdentityAdapter(IdentityRepository):
         change_summary: str,
         *,
         snapshot_id: UUID | None = None,
-    ):
+    ) -> IdentitySnapshot:
         from atman.core.models.identity import IdentitySnapshot
 
         snap = IdentitySnapshot(
@@ -253,9 +296,11 @@ class StateStoreIdentityAdapter(IdentityRepository):
         )
         return self._state_store.create_identity_snapshot(snap)
 
-    def get_snapshot(self, snapshot_id: UUID):
+    def get_snapshot(self, snapshot_id: UUID) -> IdentitySnapshot | None:
         # SEAM: FileStateStore doesn't have get_snapshot by ID; we search
-        snapshots = self._state_store.list_identity_snapshots(identity_id=UUID(int=0), limit=1000)
+        snapshots = self._state_store.list_identity_snapshots(
+            identity_id=UUID(int=0), limit=_SNAPSHOT_SEARCH_LIMIT
+        )
         for snap in snapshots:
             if snap.id == snapshot_id:
                 return snap
@@ -263,7 +308,14 @@ class StateStoreIdentityAdapter(IdentityRepository):
 
 
 class StateStoreNarrativeAdapter(NarrativeRepository):
-    """Adapter: StateStore → NarrativeRepository port."""
+    """
+    Adapter: StateStore → NarrativeRepository port.
+
+    Bridges FileStateStore to Reflection Engine's NarrativeRepository protocol.
+
+    SEAMS:
+    - get_history() returns empty list (FileStateStore doesn't track narrative versions)
+    """
 
     def __init__(self, state_store: FileStateStore):
         self._state_store = state_store
@@ -272,12 +324,21 @@ class StateStoreNarrativeAdapter(NarrativeRepository):
         narrative_path = self._state_store.narrative_path
         if not narrative_path.exists():
             return None
-        with open(narrative_path, encoding="utf-8") as f:
-            data = json.load(f)
-        return NarrativeDocument.model_validate(data)
+        try:
+            with open(narrative_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return NarrativeDocument.model_validate(data)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            warnings.warn(f"Failed to load narrative: {e}", stacklevel=2)
+            return None
 
-    def get_history(self) -> list:
+    def get_history(self) -> list[NarrativeDocument]:
         # SEAM: FileStateStore doesn't have comprehensive narrative history API
+        warnings.warn(
+            "StateStoreNarrativeAdapter.get_history() returns empty list; "
+            "FileStateStore doesn't track narrative version history",
+            stacklevel=2,
+        )
         return []
 
     def update(
@@ -378,15 +439,34 @@ def run_session_from_fixture(
     return session_id
 
 
+@contextmanager
+def temp_workspace():
+    """
+    Context manager for temporary workspace with automatic cleanup.
+
+    Ensures workspace is removed even if script fails, preventing /tmp pollution.
+    """
+    workspace_path = Path(tempfile.mkdtemp(prefix="atman-e2e-full-loop-"))
+    try:
+        yield workspace_path
+    finally:
+        shutil.rmtree(workspace_path, ignore_errors=True)
+
+
 def main() -> int:
     print("=" * 80)
     print("E2E-01: Full Integration Loop")
     print("=" * 80)
     print()
 
-    # 1. Setup temp workspace
+    # 1. Setup temp workspace with automatic cleanup
     print("[1] Setup: Creating temporary workspace")
-    workspace_path = Path(tempfile.mkdtemp(prefix="atman-e2e-full-loop-"))
+    with temp_workspace() as workspace_path:
+        return _run_e2e_loop(workspace_path)
+
+
+def _run_e2e_loop(workspace_path: Path) -> int:
+    """Run the full E2E loop in the given workspace."""
     print(f"    Workspace: {workspace_path}")
     state_store = FileStateStore(workspace=workspace_path)
     clock = SystemClock()
