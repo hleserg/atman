@@ -702,3 +702,42 @@ def test_finish_session_storage_failure_allows_retry(session_manager, temp_stora
     experiences = temp_storage.list_recent_experiences(limit=1)
     assert len(experiences) == 1
     assert experiences[0].experience.session_id == context.session_id
+
+
+def test_session_experience_has_identity_snapshot_provenance(session_manager, temp_storage):
+    """Test that SessionExperience is linked to identity snapshot for provenance."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    # Context should have identity_snapshot_id
+    assert context.identity_snapshot_id is not None
+
+    # Record a key moment
+    moment = KeyMomentInput(
+        what_happened="Test provenance",
+        emotional_valence=0.5,
+        emotional_intensity=0.5,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Testing identity snapshot linkage",
+    )
+    manager.record_key_moment(context.session_id, moment)
+
+    # Finish session
+    result = manager.finish_session(context.session_id)
+
+    # Result should have identity_snapshot_id
+    assert result.identity_snapshot_id is not None
+    assert result.identity_snapshot_id == context.identity_snapshot_id
+
+    # Stored experience should have identity_snapshot_id
+    experiences = temp_storage.list_recent_experiences(limit=1)
+    assert len(experiences) == 1
+    stored_exp = experiences[0].experience
+    assert stored_exp.identity_snapshot_id is not None
+    assert stored_exp.identity_snapshot_id == context.identity_snapshot_id
+
+    # Verify snapshot exists in storage
+    snapshots = temp_storage.list_identity_snapshots(agent_id, limit=1)
+    assert len(snapshots) == 1
+    assert snapshots[0].id == context.identity_snapshot_id
+    assert snapshots[0].identity_snapshot.id == agent_id

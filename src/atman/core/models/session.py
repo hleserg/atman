@@ -297,6 +297,11 @@ class SessionResult(BaseModel):
     # Eigenstate for next session
     eigenstate: Eigenstate | None = Field(default=None, description="Eigenstate at session end")
 
+    # Identity snapshot ID for provenance
+    identity_snapshot_id: UUID | None = Field(
+        default=None, description="ID of identity snapshot active during this session"
+    )
+
     model_config = ConfigDict(
         validate_assignment=True,
         json_schema_extra={

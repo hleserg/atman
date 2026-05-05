@@ -70,18 +70,23 @@ class SessionManager:
         """
         Start a new session with personality context.
 
-        Loads:
+        Loads and creates:
         1. Current identity
-        2. Current narrative
-        3. Emotional baseline from identity
-        4. Last eigenstate (if exists)
-        5. Recent reflections summary (placeholder for now)
+        2. Identity snapshot for provenance tracking
+        3. Current narrative
+        4. Emotional baseline from identity
+        5. Last eigenstate (if exists)
+        6. Recent reflections summary (placeholder for now)
+
+        The identity snapshot establishes provenance chain: later Reflection/Identity
+        can link session experience to the specific identity state that was active
+        during the session.
 
         Args:
             agent_id: UUID of the agent
 
         Returns:
-            SessionContext: Context for this session
+            SessionContext: Context for this session with identity_snapshot_id
 
         Raises:
             ValueError: If identity or narrative not found
@@ -97,8 +102,20 @@ class SessionManager:
 
         last_eigenstate = self._state_store.load_latest_eigenstate()
 
+        # Create identity snapshot for provenance
+        from atman.core.models.identity import IdentitySnapshot
+
+        snapshot = IdentitySnapshot(
+            identity_id=identity.id,
+            description="Session start snapshot",
+            identity_snapshot=identity,
+            change_summary="Snapshot for session lifecycle tracking",
+        )
+        stored_snapshot = self._state_store.create_identity_snapshot(snapshot)
+
         context = SessionContext(
             identity=identity,
+            identity_snapshot_id=stored_snapshot.id,
             narrative=narrative,
             emotional_baseline=identity.emotional_baseline,
             last_eigenstate=last_eigenstate,
@@ -118,6 +135,7 @@ class SessionManager:
                 started_at=context.started_at,
                 events=[],
                 key_moments=[],
+                identity_snapshot_id=stored_snapshot.id,
             )
 
         return context
@@ -255,6 +273,7 @@ class SessionManager:
             timestamp=session_result.finished_at,
             key_moments=session_result.key_moments,
             recorded_by="session_manager",
+            identity_snapshot_id=session_result.identity_snapshot_id,
             importance=0.5,
             salience=0.5,
             incomplete_coloring=session_result.incomplete_coloring,
