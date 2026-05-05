@@ -316,6 +316,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 - ✅ Пустой eigenstate — поведение зафиксировано тестом `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` (намеренно разрешено; пробельные строки нормализуются).
 - ✅ Конкурентные записи identity — `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` (last-writer-wins). Конкурентная запись нарратива по-прежнему живёт через оптимистическую блокировку (`tests/test_narrative_revision.py`).
 - ✅ Поток `GovernanceRejectedError` — `LOCKED` режим закрыт `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (плюс существующие AUTO и REVIEW-без-approval).
+- ⏳ **Session Manager: неограниченный рост recent narrative** — каждый `finish_session` добавляет session summary в `recent_layer.content` без вытеснения; после многих сессий (100+) контент может превысить токен-лимиты или ухудшить производительность. Требуется trim/sliding-window логика. Отслеживается в issue (будет создан).
 
 ---
 
@@ -331,6 +332,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `28a2285` | Артефакты GitHub Pages | закрыто |
 | `b530f36` | Сохранение связей в `FileBackend` — добавлен regression-тест | покрыто (`tests/test_file_backend.py`) |
 | `e48a060`, `83df039` | Правки ruff lint/format/type | в основном закрыто |
+| `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 
 ### 5.2. Из инспекции кода
 

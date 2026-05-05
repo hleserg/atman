@@ -313,6 +313,7 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 - ✅ Empty eigenstate without context — current behaviour frozen by `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` (intentionally allowed; whitespace-only entries normalised).
 - ✅ Concurrent identity writes — covered by `tests/test_file_state_store.py::test_save_identity_concurrent_writers_resolve_to_last_writer` (last-writer-wins is documented behaviour). Concurrent narrative writes still rely on optimistic concurrency at the service layer (see `tests/test_narrative_revision.py`).
 - ✅ `GovernanceRejectedError` flow — `LOCKED` mode covered by `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (in addition to existing `AUTO` and unapproved `REVIEW` cases).
+- ⏳ **Session Manager: recent narrative unbounded growth** — each `finish_session` appends session summary to `recent_layer.content` without eviction; after many sessions (100+), content may exceed token limits or degrade performance. Requires trim/sliding-window logic. Tracked in issue (to be created).
 
 ---
 
@@ -328,6 +329,7 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 | `28a2285` | GitHub Pages artifacts | closed |
 | `b530f36` | Relation persistence in `FileBackend` — regression test added | covered (`tests/test_file_backend.py`) |
 | `e48a060`, `83df039` | ruff lint/format/type fixes | mostly closed |
+| `6a9f28f` | Session Manager recent narrative update replaced the whole recent layer instead of appending; regression test added | covered (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 
 ### 5.2. From code inspection
 
