@@ -245,7 +245,7 @@ python3 src/demo_session_manager.py
 6. Finishes session → SessionExperience + Eigenstate
 7. Verifies experience stored with `recorded_by="session_manager"`
 
-**No external services required** - uses temporary file storage in `/tmp/atman-session-demo`.
+**No external services required** - uses ephemeral temporary file storage (system temp directory with `atman-session-demo-*` prefix).
 
 ---
 

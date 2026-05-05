@@ -245,7 +245,7 @@ python3 src/demo_session_manager.py
 6. Завершает сессию → SessionExperience + Eigenstate
 7. Проверяет, что опыт сохранён с `recorded_by="session_manager"`
 
-**Внешние сервисы не требуются** — использует временное файловое хранилище в `/tmp/atman-session-demo`.
+**Внешние сервисы не требуются** — использует эфемерное временное файловое хранилище (системный temp-каталог с префиксом `atman-session-demo-*`).
 
 ---
 

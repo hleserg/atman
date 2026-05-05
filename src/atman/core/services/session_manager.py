@@ -348,7 +348,11 @@ class SessionManager:
         for _ in range(_NARRATIVE_SAVE_RETRIES):
             narrative = self._state_store.load_narrative(identity_id)
             if narrative is None:
-                return
+                raise RuntimeError(
+                    f"Narrative disappeared for identity {identity_id} during finish_session; "
+                    "session experience/eigenstate saved but narrative not updated. "
+                    "This breaks the session lifecycle contract."
+                )
             expected_at = narrative.updated_at
             narrative.update_recent_layer(update_text)
             try:
@@ -450,7 +454,11 @@ class SessionManager:
         ]
         unresolved_tensions = list(dict.fromkeys(tension_flat))
 
+        # Deterministic ID based on session_id for idempotent retry
+        eigenstate_id = UUID(int=session_result.session_id.int ^ 0xE16E157A7E)
+
         return Eigenstate(
+            id=eigenstate_id,
             session_id=session_result.session_id,
             identity_id=session_result.identity_id,
             timestamp=session_result.finished_at,

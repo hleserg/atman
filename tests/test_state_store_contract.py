@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import pytest
 
-from atman.adapters.storage import FileStateStore
+from atman.adapters.storage import FileStateStore, InMemoryStateStore
 from atman.core.models import (
     Eigenstate,
     EmotionalDepth,
@@ -45,10 +45,12 @@ from atman.core.ports.state_store import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(params=["file"])
+@pytest.fixture(params=["file", "in_memory"])
 def store(request, tmp_path: Path) -> StateStore:
     if request.param == "file":
         return FileStateStore(tmp_path)
+    if request.param == "in_memory":
+        return InMemoryStateStore()
     raise NotImplementedError(request.param)
 
 

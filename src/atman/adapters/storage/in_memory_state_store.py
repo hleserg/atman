@@ -186,12 +186,21 @@ class InMemoryStateStore(StateStore):
 
     def archive_narrative(self, narrative_id: UUID, reason: str) -> None:
         """Archive narrative."""
-        narrative = self._narratives.get(narrative_id)
+        # Find narrative by its document ID across all stored narratives
+        narrative = None
+        for stored_narrative in self._narratives.values():
+            if stored_narrative.id == narrative_id:
+                narrative = stored_narrative
+                break
+
         if narrative is None:
             return
-        if narrative_id not in self._archived_narratives:
-            self._archived_narratives[narrative_id] = []
-        self._archived_narratives[narrative_id].append(
+
+        # Store archived narratives by identity_id for filtering
+        identity_id = narrative.identity_id
+        if identity_id not in self._archived_narratives:
+            self._archived_narratives[identity_id] = []
+        self._archived_narratives[identity_id].append(
             (narrative.model_copy(deep=True), reason, datetime.utcnow())
         )
 
@@ -204,7 +213,9 @@ class InMemoryStateStore(StateStore):
         return [(n.model_copy(deep=True), r, a) for n, r, a in archived[:limit]]
 
     def save_eigenstate(self, eigenstate: Eigenstate) -> Eigenstate:
-        """Save eigenstate."""
+        """Save eigenstate (idempotent - upserts by eigenstate.id)."""
+        # Remove existing eigenstate with same id for idempotent retry
+        self._eigenstates = [e for e in self._eigenstates if e.id != eigenstate.id]
         self._eigenstates.append(eigenstate.model_copy(deep=True))
         return eigenstate
 
