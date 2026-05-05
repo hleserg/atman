@@ -56,7 +56,7 @@
   ├─ Experience Store   ✅ Реализовано (WP02)
   ├─ Identity Store     ✅ Реализовано (WP03)
   ├─ Reflection Engine  ✅ Реализовано (WP04)
-  └─ Session Manager    ⏳ В очереди
+  └─ Session Manager    ✅ Реализовано (WP05)
 ○ Первая реализация
 ○ Интеграция
 ○ Развитие
@@ -95,6 +95,12 @@ Micro / daily / deep рефлексия, паттерны, хуки правки
 
 - 📚 [Руководство (RU)](docs/features/reflection-engine/README-ru.md) · [EN](docs/features/reflection-engine/README.md)
 - ▶️ Демо: `make demo-reflection` или `python3 src/demo_reflection.py` (мгновенно: `make demo-reflection-fast`)
+
+**✅ Session Manager** (рабочий пакет 05)
+Сессионный runtime в реальном времени: окраска опыта от первого лица, key moments с обязательной эмоциональной меткой, генерация eigenstate, обновление нарратива.
+
+- 📚 [Руководство (RU)](docs/features/session-manager/README-ru.md) · [EN](docs/features/session-manager/README.md)
+- ▶️ Демо: `make demo-session` или `python3 src/demo_session_manager.py` (мгновенно: `make demo-session-fast`)
 
 ```bash
 # Быстрый старт (установка + интерактивный CLI фактов)
