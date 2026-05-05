@@ -240,6 +240,8 @@ class SessionManager:
                     "alignment_notes is required when alignment_check=False "
                     "(explain how experience diverged from identity)."
                 )
+            # Mark as finishing to block concurrent finish_session calls
+            # If persistence fails, we rollback this flag in except
             session_result.is_finished = True
 
         session_result.finished_at = datetime.now(UTC)
@@ -258,13 +260,23 @@ class SessionManager:
             incomplete_coloring=session_result.incomplete_coloring,
         )
 
-        experience_record = ExperienceRecord(experience=experience)
-        self._state_store.create_experience(experience_record)
+        # Persist experience and eigenstate
+        # If this fails, rollback is_finished flag to allow retry
+        try:
+            experience_record = ExperienceRecord(experience=experience)
+            self._state_store.create_experience(experience_record)
 
-        eigenstate = self._create_eigenstate(session_result)
-        session_result.eigenstate = eigenstate
-        self._state_store.save_eigenstate(eigenstate)
+            eigenstate = self._create_eigenstate(session_result)
+            session_result.eigenstate = eigenstate
+            self._state_store.save_eigenstate(eigenstate)
 
+        except Exception:
+            # Rollback is_finished flag to allow retry of finish_session()
+            with self._lock:
+                session_result.is_finished = False
+            raise
+
+        # Remove from active sessions only after successful persistence
         with self._lock:
             self._active_sessions.pop(session_id, None)
 

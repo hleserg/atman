@@ -657,3 +657,48 @@ def test_eigenstate_captures_session_state(session_manager):
     assert eigenstate.session_summary == "Deep insight"
     assert "honesty" in eigenstate.dominant_themes or "competence" in eigenstate.dominant_themes
     assert "always_be_certain" in eigenstate.unresolved_tensions
+
+
+def test_finish_session_storage_failure_allows_retry(session_manager, temp_storage):
+    """Test that storage failure leaves session in retryable state."""
+    manager, agent_id = session_manager
+
+    context = manager.start_session(agent_id)
+
+    # Record a key moment
+    moment = KeyMomentInput(
+        what_happened="Test event",
+        emotional_valence=0.5,
+        emotional_intensity=0.5,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Testing persistence order",
+    )
+    manager.record_key_moment(context.session_id, moment)
+
+    # Mock create_experience to fail
+    def failing_create_experience(record):
+        raise RuntimeError("Storage failure simulation")
+
+    with (
+        patch.object(temp_storage, "create_experience", side_effect=failing_create_experience),
+        pytest.raises(RuntimeError, match="Storage failure"),
+    ):
+        # Try to finish session - should fail during persistence
+        manager.finish_session(context.session_id)
+
+    # Session should still be active and NOT marked as finished
+    active_session = manager.get_active_session(context.session_id)
+    assert active_session is not None
+    assert active_session.is_finished is False
+
+    # Restore original method and retry - should succeed
+    result = manager.finish_session(context.session_id)
+    assert result.is_finished is True
+
+    # Session should be removed from active sessions
+    assert manager.get_active_session(context.session_id) is None
+
+    # Verify experience was stored
+    experiences = temp_storage.list_recent_experiences(limit=1)
+    assert len(experiences) == 1
+    assert experiences[0].experience.session_id == context.session_id
