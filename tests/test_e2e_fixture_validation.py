@@ -97,6 +97,49 @@ def test_validate_fixture_document_tone_mismatch() -> None:
         validate_fixture_document(doc)
 
 
+def test_validate_fixture_document_principle_dash_paraphrase() -> None:
+    doc = SessionFixtureDocument(
+        metadata=SessionFixtureMetadata(
+            session_number=1,
+            theme="delete_policy",
+            duration_seconds=1500,
+            narrative_arc="Team debates deletion policy and auditability.",
+        ),
+        events=[
+            FixtureEventRecord(
+                event_type="user_message",
+                description="We decided on no soft deletes, use hard delete with audit log.",
+                metadata={},
+            ),
+            FixtureEventRecord(
+                event_type="agent_response",
+                description="I summarized risks and migration steps.",
+                metadata={},
+            ),
+            FixtureEventRecord(
+                event_type="decision",
+                description="Plan accepted for next sprint.",
+                metadata={},
+            ),
+        ],
+        key_moments=[
+            _moment(
+                val=0.2,
+                intensity=0.5,
+                pq=["no soft deletes — hard delete with audit log"],
+                what="After the policy discussion event, the deletion principle felt contested.",
+            ),
+            _moment(val=0.2, intensity=0.5, what="Decision stabilized the discussion."),
+        ],
+        expected_session_outcome=ExpectedSessionOutcome(
+            overall_emotional_tone=0.2,
+            key_insight="Deletion policy is explicit and auditable.",
+            alignment_check=True,
+        ),
+    )
+    validate_fixture_document(doc)
+
+
 def test_validate_corpus_value_overlap_and_palette() -> None:
     def doc(
         n: int,

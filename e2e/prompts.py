@@ -15,7 +15,10 @@ def skeleton_system(locale: Locale) -> str:
 You output ONLY via the provided tool — no prose outside tool calls.
 Sessions form one chronological corpus: later sessions may reference emotional residue from earlier ones.
 Use concrete, grounded language; avoid melodrama or grand claims.
-Themes and arcs should be plausible work sessions (coding, planning, user dialogue)."""
+Themes and arcs should feel like everyday life with a helpful AI companion.
+Prefer human topics: small tech support, casual chat, life meaning, relationships, identity ("who are you?"),
+vacation planning, project presentation prep, routine decisions, emotional support.
+Do NOT make the corpus programming-heavy: at most occasional light technical help, never mostly coding/debugging."""
     if locale == "ru":
         return (
             base
@@ -57,6 +60,48 @@ Required emotional palette across the five sessions (map sessions 1→5 in order
 """
         palette = palette_ru if locale == "ru" else palette_en
 
+    topic_matrix_en = """
+Topic coverage matrix (human everyday assistant):
+1) Small practical tech help (device/app settings, account recovery, file issues)
+2) Casual check-in / friendly chat
+3) Life meaning / values / motivation reflection
+4) Family, partner, friends, relationship dynamics
+5) Identity and mind questions ("who are you?", "how do you think?", "can you feel?")
+6) Vacation or weekend planning
+7) Work communication support (message/email polishing, difficult conversation prep)
+8) Presentation prep (storyline, slide structure, rehearsal prompts)
+9) Daily planning and routines (priorities, focus blocks, healthy habits)
+10) Emotional support in uncertainty (anxiety, shame, decision fatigue)
+11) Learning support (exam prep, language practice, explaining concepts simply)
+12) Light creative collaboration (ideas, naming, short drafts, gift/message ideas)
+
+Coverage rules:
+- For count >= 12, use all 12 categories at least once.
+- For count >= 20, avoid over-concentration: no single category should dominate (>4 sessions).
+- Keep explicit coding/debugging scenarios to 0-2 sessions total for count >= 20.
+"""
+    topic_matrix_ru = """
+Матрица покрытия тем (повседневный помощник):
+1) Небольшая бытовая техпомощь (настройки устройства/приложений, восстановление доступа, проблемы с файлами)
+2) Неформальный check-in / дружеская болтовня
+3) Размышления о смысле, ценностях, мотивации
+4) Семья, партнер, друзья, динамика отношений
+5) Вопросы про идентичность и мышление ("кто ты?", "как ты думаешь?", "можешь ли чувствовать?")
+6) Планирование отпуска или выходных
+7) Поддержка рабочей коммуникации (черновики сообщений/писем, подготовка сложного разговора)
+8) Подготовка презентации (сюжет, структура слайдов, репетиция)
+9) Планирование дня и рутины (приоритеты, фокус-блоки, привычки)
+10) Эмоциональная поддержка в неопределенности (тревога, стыд, усталость от решений)
+11) Поддержка в обучении (подготовка к экзамену, практика языка, простые объяснения)
+12) Легкое творческое сотрудничество (идеи, нейминг, короткие черновики, текст для поздравления)
+
+Правила покрытия:
+- При count >= 12 используй все 12 категорий минимум по одному разу.
+- При count >= 20 избегай перекоса: одна категория не должна доминировать (>4 сессий).
+- Явные сценарии кодинга/дебага держи на уровне 0-2 сессий суммарно при count >= 20.
+"""
+    topic_matrix = topic_matrix_ru if locale == "ru" else topic_matrix_en
+
     intro = "Ограничения:" if locale == "ru" else "Constraints:"
     lines = f"""
 {intro}
@@ -65,7 +110,9 @@ Required emotional palette across the five sessions (map sessions 1→5 in order
 - Each session: theme (short), narrative_arc (one sentence), key_values (≥1), key_principles (may be empty).
 - key_values will recur across sessions (same value in multiple sessions in different contexts).
 - key_principles lists phrases that may later be questioned; early questions must be revisit-able in later sessions.
+- Build corpus diversity intentionally (no repetitive "same conversation in different words").
 {palette}
+{topic_matrix}
 """
     return lines.strip()
 
@@ -78,7 +125,12 @@ principles_questioned items MUST appear in wording or paraphrase in an event des
 expected_session_outcome.overall_emotional_tone must equal (within 0.1 of) the intensity-weighted mean
 of emotional_valence over key_moments, using weights emotional_intensity. Use 3–5 events and 2–3 key moments.
 metadata.duration_seconds should be plausible (e.g. 900–7200).
-Keep language grounded; avoid purple prose."""
+Keep language grounded; avoid purple prose.
+Prioritize ordinary assistant interactions with non-technical users:
+- practical daily support (planning, communication drafts, errands, study/work organization)
+- warm conversational moments (check-ins, values, meaning, doubts, motivation)
+- relationship and identity questions ("how do you think?", "can you feel?", "who are you?")
+Avoid deep coding/debugging narratives unless it is a minor side note."""
     if locale == "ru":
         return (
             base
@@ -107,6 +159,8 @@ def session_user_prompt(
 Заполни инструмент полной сессией: metadata (session_number и theme как в скелете),
 events, key_moments, expected_session_outcome.
 metadata.narrative_arc — одно предложение, согласованное со скелетом narrative_arc.
+Делай сессии максимально «человеческими»: как разговор с умным поддерживающим знакомым,
+а не как рабочий день программиста. Технические темы — только бытовые и умеренные.
 """.strip()
     return f"""Fixed skeleton for this session (obey theme, arc, values, principles):
 {sk_json}

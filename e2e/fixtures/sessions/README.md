@@ -21,6 +21,10 @@ export ANTHROPIC_API_KEY=...
 python -m e2e.generate_fixtures --model claude-sonnet-4-6
 ```
 
+Generation is incremental: each valid session is written to disk immediately.
+If corpus-level validation fails, the generator deletes only the affected session tail
+and keeps generating replacements until the requested count is reached (or retry limit is hit).
+
 Options:
 
 - `--count-en N` / `--count-ru N` — per-locale session counts (0 skips that locale).

@@ -211,7 +211,11 @@ def _check_weighted_tone(moments: list[KeyMomentInput], expected: float) -> None
 
 
 def norm_token(s: str) -> str:
-    return s.lower().replace("_", " ").strip()
+    normalized = s.lower().replace("_", " ")
+    # Treat punctuation/dashes as separators so LLM phrasing variants still match.
+    normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
 
 
 def _event_blob(events: list[FixtureEventRecord]) -> str:
@@ -239,8 +243,20 @@ def _check_principles_prefixed_in_events(
         blob = _event_blob(prefix)
         for pq in km.principles_questioned:
             needle = norm_token(pq)
-            if needle and needle not in blob:
+            if needle and not _principle_mentioned_in_blob(needle, blob):
                 raise ValueError(
                     f"principles_questioned item {pq!r} for key moment {mi + 1} must be "
                     f"mentioned in an earlier event (checked first {cutoff} events)"
                 )
+
+
+def _principle_mentioned_in_blob(needle: str, blob: str) -> bool:
+    """Allow lightweight paraphrase matching for principle strings."""
+    if needle in blob:
+        return True
+    needle_tokens = [t for t in needle.split() if len(t) >= 3]
+    if len(needle_tokens) < 2:
+        return False
+    matched = sum(1 for token in needle_tokens if token in blob)
+    # Require at least two meaningful tokens and half of principle tokens.
+    return matched >= 2 and matched >= (len(needle_tokens) + 1) // 2

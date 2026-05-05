@@ -31,14 +31,16 @@ def _repo_root() -> Path:
 
 
 def _generate_one_locale(
-    model: str, count: int, locale: Locale
+    model: str, count: int, locale: Locale, output_dir: Path
 ) -> tuple[Locale, list[SessionFixtureDocument]]:
     from e2e.llm import anthropic_client, generate_corpus_with_retries
 
     if count <= 0:
         return locale, []
+    print(f"[{locale}] start generation for {count} sessions", flush=True)
     client = anthropic_client()
-    fixtures = generate_corpus_with_retries(client, model, count, locale)
+    fixtures = generate_corpus_with_retries(client, model, count, locale, output_dir=output_dir)
+    print(f"[{locale}] generation complete", flush=True)
     return locale, fixtures
 
 
@@ -105,29 +107,44 @@ def main(argv: list[str] | None = None) -> int:
 
     base = args.output_dir or (_repo_root() / "e2e" / "fixtures" / "sessions")
 
-    from e2e.llm import print_summary, write_fixture_files
+    from e2e.llm import print_summary
 
     results: dict[str, list[SessionFixtureDocument]] = {"en": [], "ru": []}
     parallel = args.parallel_locales and count_en > 0 and count_ru > 0
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            f_en = executor.submit(_generate_one_locale, args.model, count_en, "en")
-            f_ru = executor.submit(_generate_one_locale, args.model, count_ru, "ru")
+        executor = ThreadPoolExecutor(max_workers=2)
+        f_en = executor.submit(_generate_one_locale, args.model, count_en, "en", base / "en")
+        f_ru = executor.submit(_generate_one_locale, args.model, count_ru, "ru", base / "ru")
+        interrupted = False
+        try:
             _, results["en"] = f_en.result()
             _, results["ru"] = f_ru.result()
+        except KeyboardInterrupt:
+            interrupted = True
+            print(
+                "\nInterrupted by user. Stopping background locale workers "
+                "(already saved session files are kept).",
+                file=sys.stderr,
+                flush=True,
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise SystemExit(130) from None
+        finally:
+            if not interrupted:
+                executor.shutdown(wait=True)
     else:
         if count_en > 0:
-            _, results["en"] = _generate_one_locale(args.model, count_en, "en")
+            _, results["en"] = _generate_one_locale(args.model, count_en, "en", base / "en")
         if count_ru > 0:
-            _, results["ru"] = _generate_one_locale(args.model, count_ru, "ru")
+            _, results["ru"] = _generate_one_locale(args.model, count_ru, "ru", base / "ru")
 
     all_paths: list[Path] = []
     for loc, fixtures in results.items():
         if not fixtures:
             continue
         sub = base / loc
-        paths = write_fixture_files(fixtures, sub)
+        paths = sorted(sub.glob("session_*.json"))
         all_paths.extend(paths)
         print(f"=== locale {loc} ({len(fixtures)} sessions) ===")
         print_summary(fixtures)

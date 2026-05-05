@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -130,38 +131,82 @@ def anthropic_client() -> Any:
 
 
 def generate_corpus_with_retries(
-    client: Any, model: str, count: int, locale: Locale = "en"
+    client: Any,
+    model: str,
+    count: int,
+    locale: Locale = "en",
+    output_dir: Path | None = None,
 ) -> list[SessionFixtureDocument]:
     """
     Full two-phase generation with up to 3 attempts per session (1 + 2 retries).
 
     Raises the last ``ValidationError`` or ``ValueError`` if all attempts fail.
     """
+    max_corpus_attempts = 8
     skeleton = run_skeleton_pass(client, model, count, locale)
-    out: list[SessionFixtureDocument] = []
-    for row in skeleton:
-        last_err: str | None = None
-        doc: SessionFixtureDocument | None = None
-        for attempt in range(3):
-            hint = last_err if attempt else None
-            try:
-                doc = run_session_pass(client, model, row, out, hint, locale)
-                if doc.metadata.session_number != row.session_number:
-                    raise ValueError(
-                        f"session_number {doc.metadata.session_number} != skeleton "
-                        f"{row.session_number}"
-                    )
-                validate_fixture_document(doc)
-                break
-            except (ValidationError, ValueError) as e:
-                last_err = str(e)
-                if attempt == 2:
-                    raise
-        assert doc is not None
-        out.append(doc)
+    skeleton_by_num = {item.session_number: item for item in skeleton}
+    docs_by_num: dict[int, SessionFixtureDocument] = {}
 
-    validate_corpus(out, count)
-    return out
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    for corpus_attempt in range(1, max_corpus_attempts + 1):
+        missing = [n for n in range(1, count + 1) if n not in docs_by_num]
+        print(
+            f"[{locale}] corpus attempt {corpus_attempt}/{max_corpus_attempts}: "
+            f"{len(missing)} missing sessions",
+            flush=True,
+        )
+        for session_number in missing:
+            row = skeleton_by_num[session_number]
+            prior_docs = [docs_by_num[n] for n in sorted(docs_by_num) if n < session_number]
+            last_err: str | None = None
+            doc: SessionFixtureDocument | None = None
+            for attempt in range(3):
+                hint = last_err if attempt else None
+                try:
+                    doc = run_session_pass(client, model, row, prior_docs, hint, locale)
+                    if doc.metadata.session_number != row.session_number:
+                        raise ValueError(
+                            f"session_number {doc.metadata.session_number} != skeleton "
+                            f"{row.session_number}"
+                        )
+                    validate_fixture_document(doc)
+                    docs_by_num[session_number] = doc
+                    if output_dir is not None:
+                        saved_path = _write_single_fixture(doc, output_dir)
+                        print(
+                            f"[{locale}] session {session_number}/{count} saved: {saved_path.name}",
+                            flush=True,
+                        )
+                    else:
+                        print(f"[{locale}] session {session_number}/{count} ready", flush=True)
+                    break
+                except (ValidationError, ValueError) as e:
+                    last_err = str(e)
+                    if attempt == 2:
+                        raise
+            assert doc is not None
+
+        out = [docs_by_num[n] for n in sorted(docs_by_num)]
+        try:
+            validate_corpus(out, count)
+            return out
+        except ValueError as e:
+            if corpus_attempt == max_corpus_attempts:
+                raise
+            to_regen = _sessions_to_regenerate(str(e), count)
+            print(
+                f"[{locale}] corpus validation failed: {e}. "
+                f"Deleting {len(to_regen)} sessions and regenerating...",
+                flush=True,
+            )
+            for n in to_regen:
+                docs_by_num.pop(n, None)
+                if output_dir is not None:
+                    _delete_session_file(output_dir, n)
+
+    raise RuntimeError("unreachable: corpus generation exited without result")
 
 
 def write_fixture_files(fixtures: list[SessionFixtureDocument], output_dir: Path) -> list[Path]:
@@ -178,6 +223,38 @@ def write_fixture_files(fixtures: list[SessionFixtureDocument], output_dir: Path
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         paths.append(path)
     return paths
+
+
+def _write_single_fixture(doc: SessionFixtureDocument, output_dir: Path) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    from e2e.models import theme_to_slug
+
+    slug = theme_to_slug(doc.metadata.theme, doc.metadata.session_number)
+    path = output_dir / f"session_{doc.metadata.session_number:02d}_{slug}.json"
+    payload = json.loads(doc.model_dump_json(indent=2))
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def _delete_session_file(output_dir: Path, session_number: int) -> None:
+    pattern = f"session_{session_number:02d}_*.json"
+    for p in output_dir.glob(pattern):
+        p.unlink(missing_ok=True)
+
+
+def _sessions_to_regenerate(error_text: str, count: int) -> list[int]:
+    """
+    Infer which sessions to discard after a corpus-level validation failure.
+
+    For principle-follow-through errors, we regenerate from the referenced session to the end.
+    For global invariants (overlap/palette), regenerate everything.
+    """
+    m = re.search(r"session\s+(\d+)", error_text)
+    if m:
+        start = int(m.group(1))
+        if 1 <= start <= count:
+            return list(range(start, count + 1))
+    return list(range(1, count + 1))
 
 
 def print_summary(fixtures: list[SessionFixtureDocument]) -> None:
