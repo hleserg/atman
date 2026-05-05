@@ -178,7 +178,7 @@ To add a new page to the dashboard:
 
    ```python
    import streamlit as st
-   
+
    st.set_page_config(
        page_title="My Page - Atman Dashboard",
        page_icon="🔧",

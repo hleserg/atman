@@ -146,11 +146,11 @@ Downstream: Experience Store, Identity Store, Reflection Engine, Session Manager
 
 ## Design principles
 
-1. Small, explicit API  
-2. No dependency on other Atman runtime components  
-3. New backends implement one port  
-4. Fully testable without network or API keys  
-5. Facts ≠ interpretations  
+1. Small, explicit API
+2. No dependency on other Atman runtime components
+3. New backends implement one port
+4. Fully testable without network or API keys
+5. Facts ≠ interpretations
 
 ## Layout (excerpt)
 
@@ -179,5 +179,5 @@ See the repository root.
 
 ---
 
-**Status:** MVP ready  
+**Status:** MVP ready
 **Version:** 0.1.0

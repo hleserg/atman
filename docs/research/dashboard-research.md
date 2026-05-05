@@ -19,9 +19,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.1 Grafana
 
-**Type:** Infrastructure & Operations Monitoring  
-**License:** AGPLv3  
-**Language:** Go + TypeScript  
+**Type:** Infrastructure & Operations Monitoring
+**License:** AGPLv3
+**Language:** Go + TypeScript
 **GitHub Stars:** ~60k+
 
 **Strengths:**
@@ -53,9 +53,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.2 Metabase
 
-**Type:** Self-Service Business Intelligence  
-**License:** AGPLv3 (Core), Commercial (Enterprise)  
-**Language:** Clojure + TypeScript  
+**Type:** Self-Service Business Intelligence
+**License:** AGPLv3 (Core), Commercial (Enterprise)
+**Language:** Clojure + TypeScript
 **GitHub Stars:** ~38k+
 
 **Strengths:**
@@ -87,9 +87,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.3 Apache Superset
 
-**Type:** Scalable Analytics & Visualization  
-**License:** Apache 2.0  
-**Language:** Python + TypeScript  
+**Type:** Scalable Analytics & Visualization
+**License:** Apache 2.0
+**Language:** Python + TypeScript
 **GitHub Stars:** ~61k+
 
 **Strengths:**
@@ -121,9 +121,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.4 Streamlit
 
-**Type:** Rapid Python Data Apps  
-**License:** Apache 2.0  
-**Language:** Python  
+**Type:** Rapid Python Data Apps
+**License:** Apache 2.0
+**Language:** Python
 **GitHub Stars:** ~31k+
 
 **Strengths:**
@@ -156,9 +156,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.5 Retool
 
-**Type:** Internal Tools Platform  
-**License:** Proprietary  
-**Language:** JavaScript + Python support  
+**Type:** Internal Tools Platform
+**License:** Proprietary
+**Language:** JavaScript + Python support
 **Pricing:** Self-hosted available on **Enterprise plan only** (as of 2026)
 
 **Strengths:**
@@ -190,9 +190,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.6 Appsmith
 
-**Type:** Low-Code Internal Tools  
-**License:** Apache 2.0  
-**Language:** Java + TypeScript  
+**Type:** Low-Code Internal Tools
+**License:** Apache 2.0
+**Language:** Java + TypeScript
 **GitHub Stars:** ~32k+
 
 **Strengths:**
@@ -224,9 +224,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.7 Budibase
 
-**Type:** Low-Code App Platform  
-**License:** GPL v3  
-**Language:** JavaScript + TypeScript  
+**Type:** Low-Code App Platform
+**License:** GPL v3
+**Language:** JavaScript + TypeScript
 **GitHub Stars:** ~21k+
 
 **Strengths:**
@@ -258,9 +258,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.8 Evidence
 
-**Type:** Code-First BI (SQL + Markdown)  
-**License:** MIT  
-**Language:** JavaScript (Svelte)  
+**Type:** Code-First BI (SQL + Markdown)
+**License:** MIT
+**Language:** JavaScript (Svelte)
 **GitHub Stars:** ~3k+
 
 **Strengths:**
@@ -291,9 +291,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.9 Panel (HoloViz)
 
-**Type:** Python Dashboarding Library  
-**License:** BSD-3-Clause  
-**Language:** Python  
+**Type:** Python Dashboarding Library
+**License:** BSD-3-Clause
+**Language:** Python
 **GitHub Stars:** ~4k+
 
 **Strengths:**
@@ -325,9 +325,9 @@ This research evaluates 10 self-hosted dashboard solutions for the Atman project
 
 ### 1.10 Plotly Dash
 
-**Type:** Analytical Web Apps (Python)  
-**License:** MIT  
-**Language:** Python  
+**Type:** Analytical Web Apps (Python)
+**License:** MIT
+**Language:** Python
 **GitHub Stars:** ~21k+
 
 **Strengths:**
@@ -710,6 +710,6 @@ The MVP dashboard should focus on **System Health** and **Tests** first, as thes
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-04-30  
+**Document Version:** 1.0
+**Last Updated:** 2026-04-30
 **Author:** Cloud Agent (Cursor)

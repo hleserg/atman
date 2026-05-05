@@ -178,7 +178,7 @@ src/atman/web_dashboard/
 
    ```python
    import streamlit as st
-   
+
    st.set_page_config(
        page_title="Моя страница - Atman Dashboard",
        page_icon="🔧",

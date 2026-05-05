@@ -58,48 +58,48 @@ SessionExperience {
   id: UUID
   session_id: UUID
   timestamp: date3333
-  
+
   # ЧТО ПРОИЗОШЛО (сырой лог)
   key_moments: [
     {
       what_happened: string
       when: timestamp
-      
+
       # КАК Я ЭТО ПЕРЕЖИВАЛ (первых рук, в момент)
       how_i_felt: {
         emotional_valence: float [-1.0 .. 1.0]  # от сессии, не угаданное
         emotional_intensity: float [0.0 .. 1.0]
         depth: enum [surface, meaningful, profound]
       }
-      
+
       # ПОЧЕМУ ЭТО ИМЕЕТ ЗНАЧЕНИЕ (для моей идентичности)
       why_it_matters: string
       values_touched: [string]  # какие из моих ценностей задело
       principles_confirmed: [string]  # какие принципы подтвердились
       principles_questioned: [string]  # какие стали под вопрос
-      
+
       # ЧТО ИЗМЕНИЛОСЬ (как это повлияло на мой внутренний мир)
       what_changed: string
     }
   ]
-  
+
   overall_emotional_tone: float
   key_insight: string (если есть)
   alignment_check: bool  # соответствовал ли опыт моей идентичности?
-  
+
   # МЕТАДАННЫЕ ПОДЛИННОСТИ
   recorded_by: "session_manager"  # кто писал — гарантия что первых рук
   identity_snapshot_id: UUID  # каким я был когда это переживал
-  
+
   # ВАЖНОСТЬ И ЯРКОСТЬ (обновляются со временем)
   importance: float [0.0 .. 1.0]
   salience: float [0.0 .. 1.0]  # яркость, убывает без обращения
   last_accessed_at: timestamp
   access_count: int
-  
+
   # ЧЕСТНЫЙ FALLBACK (если запись неполная)
   incomplete_coloring: bool  # true если не смогли в момент записать всё чувство
-  
+
   # СЛОИСТОЕ ХРАНЕНИЕ (не перезапись, а накопление)
   reframing_notes: [  # заметки от Reflection Engine
     {
@@ -204,7 +204,7 @@ SessionExperience {
 Identity {
   # Текущее состояние
   self_description: string
-  
+
   # Стержень личности
   core_values: [
     {
@@ -215,7 +215,7 @@ Identity {
       justification: string
     }
   ]
-  
+
   habits: [
     {
       statement: string
@@ -225,7 +225,7 @@ Identity {
       last_observed: date
     }
   ]
-  
+
   principles: [
     {
       statement: string
@@ -235,7 +235,7 @@ Identity {
       last_questioned: date
     }
   ]
-  
+
   # Цели и приоритеты
   priorities: [string]
   goals: [
@@ -246,7 +246,7 @@ Identity {
       active: bool
     }
   ]
-  
+
   # Открытые вопросы
   open_questions: [
     {
@@ -256,10 +256,10 @@ Identity {
       possible_answers: [...]
     }
   ]
-  
+
   # Эмоциональный фон
   emotional_baseline: float  # текущий средний фон (-1 to +1)
-  
+
   # История идентичности
   snapshots: [
     {

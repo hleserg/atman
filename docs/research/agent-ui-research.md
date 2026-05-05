@@ -1,7 +1,7 @@
 # Agent UI Research: Open Source Solutions for Universal Agent Interface
 
-**Date:** April 30, 2026  
-**Author:** Cursor Cloud Agent  
+**Date:** April 30, 2026
+**Author:** Cursor Cloud Agent
 **Status:** Research Complete
 
 ## Executive Summary
@@ -93,18 +93,18 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Most comprehensive feature set  
-✅ Strong security and enterprise readiness  
-✅ Open Terminal provides sandbox-like environment  
-✅ Active community (40K+ GitHub stars)  
-✅ Proven production deployments  
-✅ Best security posture with active vulnerability management  
+✅ Most comprehensive feature set
+✅ Strong security and enterprise readiness
+✅ Open Terminal provides sandbox-like environment
+✅ Active community (40K+ GitHub stars)
+✅ Proven production deployments
+✅ Best security posture with active vulnerability management
 
 #### Cons
 
-❌ More complex initial setup than desktop-first solutions  
-❌ Enterprise features (SSO, audit logs) may require paid tier  
-❌ Multi-agent workflows require custom tool/pipeline configuration  
+❌ More complex initial setup than desktop-first solutions
+❌ Enterprise features (SSO, audit logs) may require paid tier
+❌ Multi-agent workflows require custom tool/pipeline configuration
 
 #### Integration Assessment
 
@@ -113,7 +113,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 - **Extensibility:** ⭐⭐⭐⭐⭐ (5/5) - Tools, Pipes, MCP, OpenAPI
 - **Community:** ⭐⭐⭐⭐⭐ (5/5) - Very active, 40K+ stars, frequent updates
 
-**GitHub:** <https://github.com/open-webui/open-webui>  
+**GitHub:** <https://github.com/open-webui/open-webui>
 **Docs:** <https://docs.openwebui.com/>
 
 ---
@@ -158,18 +158,18 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Excellent multi-provider unification  
-✅ Strong authentication options (OAuth, SAML, LDAP)  
-✅ Code Interpreter for secure code execution  
-✅ Active development with clear roadmap  
-✅ Professional deployment options (AWS Marketplace)  
+✅ Excellent multi-provider unification
+✅ Strong authentication options (OAuth, SAML, LDAP)
+✅ Code Interpreter for secure code execution
+✅ Active development with clear roadmap
+✅ Professional deployment options (AWS Marketplace)
 
 #### Cons
 
-❌ Configuration primarily via YAML/env vars (Admin Panel in progress)  
-❌ Less mature security posture compared to Open WebUI  
-❌ RAG functionality reported as less polished in community feedback  
-❌ No built-in terminal/workspace environment  
+❌ Configuration primarily via YAML/env vars (Admin Panel in progress)
+❌ Less mature security posture compared to Open WebUI
+❌ RAG functionality reported as less polished in community feedback
+❌ No built-in terminal/workspace environment
 
 #### Integration Assessment
 
@@ -178,7 +178,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 - **Extensibility:** ⭐⭐⭐⭐⭐ (5/5) - MCP, custom actions, function calling
 - **Community:** ⭐⭐⭐⭐⭐ (5/5) - 34K+ stars, very active
 
-**GitHub:** <https://github.com/danny-avila/LibreChat>  
+**GitHub:** <https://github.com/danny-avila/LibreChat>
 **Docs:** <https://www.librechat.ai/docs>
 
 ---
@@ -221,18 +221,18 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Best desktop app experience (one-click install)  
-✅ Excellent RAG and document handling  
-✅ MCP support for workspace exposure  
-✅ Built-in LLM engine for offline use  
-✅ Simple UX for non-technical users  
+✅ Best desktop app experience (one-click install)
+✅ Excellent RAG and document handling
+✅ MCP support for workspace exposure
+✅ Built-in LLM engine for offline use
+✅ Simple UX for non-technical users
 
 #### Cons
 
-❌ Security features not well-documented  
-❌ Less enterprise-ready than Open WebUI/LibreChat  
-❌ Multi-user features limited to Docker deployment  
-❌ No built-in terminal/workspace environment  
+❌ Security features not well-documented
+❌ Less enterprise-ready than Open WebUI/LibreChat
+❌ Multi-user features limited to Docker deployment
+❌ No built-in terminal/workspace environment
 
 #### Integration Assessment
 
@@ -241,7 +241,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 - **Extensibility:** ⭐⭐⭐⭐ (4/5) - MCP, API, agent builder
 - **Community:** ⭐⭐⭐⭐ (4/5) - Active, good documentation
 
-**GitHub:** <https://github.com/Mintplex-Labs/anything-llm>  
+**GitHub:** <https://github.com/Mintplex-Labs/anything-llm>
 **Docs:** <https://docs.anythingllm.com/>
 
 ---
@@ -279,17 +279,17 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Excellent for multi-channel deployment  
-✅ Visual flow builder (low-code)  
-✅ Strong compliance (GDPR, SOC 2)  
-✅ Enterprise support available  
+✅ Excellent for multi-channel deployment
+✅ Visual flow builder (low-code)
+✅ Strong compliance (GDPR, SOC 2)
+✅ Enterprise support available
 
 #### Cons
 
-❌ **Primary deployment is cloud-hosted, not self-hosted**  
-❌ Self-hosted version lacks modern features  
-❌ Not designed as universal agent chat interface  
-❌ More focused on customer-facing chatbots than internal agent tools  
+❌ **Primary deployment is cloud-hosted, not self-hosted**
+❌ Self-hosted version lacks modern features
+❌ Not designed as universal agent chat interface
+❌ More focused on customer-facing chatbots than internal agent tools
 
 #### Integration Assessment
 
@@ -300,7 +300,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 **Not recommended for Atman:** Cloud-first architecture conflicts with self-hosted requirement.
 
-**GitHub:** <https://github.com/botpress/botpress>  
+**GitHub:** <https://github.com/botpress/botpress>
 **Website:** <https://botpress.com/>
 
 ---
@@ -331,17 +331,17 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Exceptional security for regulated industries  
-✅ Deterministic governance and auditability  
-✅ Self-hosted from day one  
-✅ Proven enterprise scalability  
+✅ Exceptional security for regulated industries
+✅ Deterministic governance and auditability
+✅ Self-hosted from day one
+✅ Proven enterprise scalability
 
 #### Cons
 
-❌ **Not designed as general-purpose chat UI**  
-❌ Steep learning curve  
-❌ Focused on process-based workflows, not free-form agent chat  
-❌ Overkill for Atman's use case  
+❌ **Not designed as general-purpose chat UI**
+❌ Steep learning curve
+❌ Focused on process-based workflows, not free-form agent chat
+❌ Overkill for Atman's use case
 
 #### Integration Assessment
 
@@ -352,7 +352,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 **Not recommended for Atman:** Over-engineered for use case. Better suited for enterprise customer service workflows than internal agent communication.
 
-**GitHub:** <https://github.com/RasaHQ/rasa>  
+**GitHub:** <https://github.com/RasaHQ/rasa>
 **Website:** <https://rasa.com/>
 
 ---
@@ -393,17 +393,17 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 #### Pros
 
-✅ Excellent for complex agent orchestration  
-✅ Strong security and governance  
-✅ Mature self-hosting with enterprise features  
-✅ Best-in-class workflow automation  
+✅ Excellent for complex agent orchestration
+✅ Strong security and governance
+✅ Mature self-hosting with enterprise features
+✅ Best-in-class workflow automation
 
 #### Cons
 
-❌ **Not a chat interface** - requires building chat UI separately  
-❌ Workflow-first design, not optimized for conversational interaction  
-❌ Steeper learning curve than pure chat UIs  
-❌ Users must design workflows vs. ready-to-use chat  
+❌ **Not a chat interface** - requires building chat UI separately
+❌ Workflow-first design, not optimized for conversational interaction
+❌ Steeper learning curve than pure chat UIs
+❌ Users must design workflows vs. ready-to-use chat
 
 #### Integration Assessment
 
@@ -414,7 +414,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 
 **Not recommended as primary solution:** Excellent for backend agent orchestration, but requires separate chat interface. Could complement Open WebUI for complex workflows.
 
-**GitHub:** <https://github.com/n8n-io/n8n>  
+**GitHub:** <https://github.com/n8n-io/n8n>
 **Website:** <https://n8n.io/>
 
 ---
@@ -431,7 +431,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 - Desktop app + Docker + cloud deployment
 - MCP server support (flows as tools for IDEs)
 
-**Pros:** Great for prototyping, visual debugging  
+**Pros:** Great for prototyping, visual debugging
 **Cons:** Less production-ready than Open WebUI/LibreChat, workflow-first design
 
 #### Dify
@@ -442,7 +442,7 @@ This research evaluates 7 open-source solutions for building a universal interfa
 - Self-hosted via Docker Compose
 - Apache 2.0 license
 
-**Pros:** Good RAG engine, visual workflows, active development  
+**Pros:** Good RAG engine, visual workflows, active development
 **Cons:** Still maturing, less chat-focused than Open WebUI
 
 #### Integration Assessment
@@ -455,7 +455,7 @@ Both solutions are **workflow/pipeline builders** rather than chat-first interfa
 
 **Not recommended as primary solution:** Neither is optimized as universal chat interface for agents. Lack the polish and feature completeness of Open WebUI/LibreChat.
 
-**Langflow GitHub:** <https://github.com/langflow-ai/langflow>  
+**Langflow GitHub:** <https://github.com/langflow-ai/langflow>
 **Dify GitHub:** <https://github.com/langgenius/dify>
 
 ---
@@ -774,11 +774,11 @@ If Open WebUI does not meet requirements, **LibreChat** is the strong second cho
 
 **Open WebUI** provides the optimal solution for Atman's Agent UI vision:
 
-✅ **Universal Interface:** Chat with any agent/model in one place  
-✅ **Secure Communication:** RBAC, SSO, encrypted credentials  
-✅ **File Exchange:** Upload/download with workspace file browser  
-✅ **Sandbox Environment:** Open Terminal for instant agent development  
-✅ **Production-Ready:** Proven deployments, active security, strong community  
+✅ **Universal Interface:** Chat with any agent/model in one place
+✅ **Secure Communication:** RBAC, SSO, encrypted credentials
+✅ **File Exchange:** Upload/download with workspace file browser
+✅ **Sandbox Environment:** Open Terminal for instant agent development
+✅ **Production-Ready:** Proven deployments, active security, strong community
 
 The integration plan provides a clear path from initial deployment (1-2 weeks) to production-ready system (6-8 weeks of part-time work). Total effort estimate of 52-72 hours is reasonable for self-hosted deployment with security hardening.
 
@@ -807,6 +807,6 @@ The integration plan provides a clear path from initial deployment (1-2 weeks) t
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** April 30, 2026  
+**Document Version:** 1.0
+**Last Updated:** April 30, 2026
 **Status:** Final Recommendation

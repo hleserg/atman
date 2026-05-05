@@ -1,6 +1,6 @@
 # Session Manager
 
-**Status:** Implemented (WP-05)  
+**Status:** Implemented (WP-05)
 **Purpose:** Session runtime that experiences sessions in real-time, not retrospectively
 
 [[ru](README-ru.md)] — *Russian version*
@@ -86,19 +86,19 @@ SessionEvent {
 # Key moment input (REQUIRES emotional coloring)
 KeyMomentInput {
     what_happened: str
-    
+
     # HOW I FELT (mandatory)
     emotional_valence: float      # -1.0 to +1.0
     emotional_intensity: float    # 0.0 to 1.0
     depth: EmotionalDepth         # surface/meaningful/profound
-    
+
     # WHY IT MATTERS
     why_it_matters: str
     values_touched: [str]
     principles_confirmed: [str]
     principles_questioned: [str]
     what_changed: str
-    
+
     # HONEST FALLBACK
     incomplete_coloring: bool  # True if couldn't capture fully
 }
@@ -122,13 +122,13 @@ SessionResult {
 class SessionManager:
     def start_session(self, agent_id: UUID) -> SessionContext:
         """Load personality context and start session."""
-        
+
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
         """Track raw event (not all become key moments)."""
-        
+
     def record_key_moment(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """Capture key moment with mandatory emotional coloring."""
-        
+
     def finish_session(
         self,
         session_id: UUID,
@@ -263,13 +263,13 @@ pytest tests/ -v
 
 Tests verify:
 
-✅ Start session returns context with identity & narrative  
-✅ Key moment without emotional coloring is rejected  
-✅ Key moment with `incomplete_coloring` flag is allowed  
-✅ Finish session creates SessionExperience & Eigenstate  
-✅ Original key moments don't mutate after storage  
-✅ Resource/token warnings can be key moments  
-✅ Multiple key moments in one session  
+✅ Start session returns context with identity & narrative
+✅ Key moment without emotional coloring is rejected
+✅ Key moment with `incomplete_coloring` flag is allowed
+✅ Finish session creates SessionExperience & Eigenstate
+✅ Original key moments don't mutate after storage
+✅ Resource/token warnings can be key moments
+✅ Multiple key moments in one session
 ✅ Eigenstate captures session state correctly
 
 ---

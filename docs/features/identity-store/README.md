@@ -1,6 +1,6 @@
 # Identity Store: WP-03 Feature Guide
 
-**Status:** Implemented  
+**Status:** Implemented
 **Work Package:** [03-identity-and-narrative.md](../../development/work-packages/03-identity-and-narrative.md)
 
 ---
@@ -33,7 +33,7 @@ identity = Identity(
 )
 ```
 
-❌ **Wrong:** Pre-seeding with "be helpful", "serve user", etc.  
+❌ **Wrong:** Pre-seeding with "be helpful", "serve user", etc.
 ✅ **Right:** Empty state with honest acknowledgment
 
 ### 2. Separation of Concerns
@@ -55,7 +55,7 @@ Self-narrative has explicit structure:
 
 Narrative content must be first-person:
 
-❌ **Wrong:** "The agent learned something today"  
+❌ **Wrong:** "The agent learned something today"
 ✅ **Right:** "I learned something today"
 
 ## Architecture

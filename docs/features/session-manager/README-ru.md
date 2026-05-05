@@ -1,6 +1,6 @@
 # Session Manager (Менеджер сессий)
 
-**Статус:** Реализован (WP-05)  
+**Статус:** Реализован (WP-05)
 **Назначение:** Сессионный runtime, который переживает сессии в реальном времени, а не ретроспективно
 
 [[en](README.md)] — *English version*
@@ -86,19 +86,19 @@ SessionEvent {
 # Входящий key moment (ТРЕБУЕТ эмоциональной окраски)
 KeyMomentInput {
     what_happened: str
-    
+
     # КАК Я ПОЧУВСТВОВАЛ (обязательно)
     emotional_valence: float      # -1.0 до +1.0
     emotional_intensity: float    # 0.0 до 1.0
     depth: EmotionalDepth         # surface/meaningful/profound
-    
+
     # ПОЧЕМУ ЭТО ВАЖНО
     why_it_matters: str
     values_touched: [str]
     principles_confirmed: [str]
     principles_questioned: [str]
     what_changed: str
-    
+
     # ЧЕСТНЫЙ FALLBACK
     incomplete_coloring: bool  # True если не удалось зафиксировать полностью
 }
@@ -122,13 +122,13 @@ SessionResult {
 class SessionManager:
     def start_session(self, agent_id: UUID) -> SessionContext:
         """Загрузить личностный контекст и начать сессию."""
-        
+
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
         """Отследить сырое событие (не все становятся key moments)."""
-        
+
     def record_key_moment(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """Зафиксировать key moment с обязательной эмоциональной окраской."""
-        
+
     def finish_session(
         self,
         session_id: UUID,
@@ -263,13 +263,13 @@ pytest tests/ -v
 
 Тесты проверяют:
 
-✅ Старт сессии возвращает context с identity & narrative  
-✅ Key moment без эмоциональной окраски отклоняется  
-✅ Key moment с флагом `incomplete_coloring` разрешён  
-✅ Завершение сессии создаёт SessionExperience & Eigenstate  
-✅ Оригинальные key moments не мутируют после сохранения  
-✅ Resource/token warnings могут быть key moments  
-✅ Несколько key moments в одной сессии  
+✅ Старт сессии возвращает context с identity & narrative
+✅ Key moment без эмоциональной окраски отклоняется
+✅ Key moment с флагом `incomplete_coloring` разрешён
+✅ Завершение сессии создаёт SessionExperience & Eigenstate
+✅ Оригинальные key moments не мутируют после сохранения
+✅ Resource/token warnings могут быть key moments
+✅ Несколько key moments в одной сессии
 ✅ Eigenstate правильно фиксирует состояние сессии
 
 ---
