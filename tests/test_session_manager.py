@@ -19,6 +19,7 @@ from atman.core.models import (
     CoreValue,
     Eigenstate,
     EmotionalDepth,
+    ExperienceRecord,
     Goal,
     GoalHorizon,
     Identity,
@@ -27,6 +28,7 @@ from atman.core.models import (
     NarrativeDocument,
     NarrativeLayer,
     SessionEvent,
+    SessionExperience,
     SessionResult,
 )
 from atman.core.ports.state_store import SessionExperienceQuery
@@ -123,6 +125,15 @@ def test_start_session_fails_without_identity(temp_storage):
 
     with pytest.raises(ValueError, match="Identity not found"):
         manager.start_session(fake_agent_id)
+
+
+def test_start_session_fails_without_narrative(temp_storage, test_identity):
+    """A session cannot start without the matching narrative context."""
+    temp_storage.save_identity(test_identity)
+    manager = SessionManager(temp_storage)
+
+    with pytest.raises(ValueError, match="Narrative not found"):
+        manager.start_session(test_identity.id)
 
 
 def test_record_event_tracks_event(session_manager):
@@ -588,6 +599,47 @@ def test_record_after_finish_raises(session_manager):
         t.join(timeout=5)
 
 
+def test_record_key_moment_during_finish_raises(session_manager):
+    """Key moments cannot be appended while finish_session is persisting."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+    real_create = manager._state_store.create_experience
+    started = threading.Event()
+    unblock = threading.Event()
+
+    def slow_create(record: ExperienceRecord) -> ExperienceRecord:
+        started.set()
+        assert unblock.wait(timeout=10)
+        return real_create(record)
+
+    late_moment = KeyMomentInput(
+        what_happened="late",
+        emotional_valence=0.2,
+        emotional_intensity=0.3,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="should be rejected",
+    )
+
+    with patch.object(manager._state_store, "create_experience", side_effect=slow_create):
+        t = threading.Thread(target=lambda: manager.finish_session(context.session_id))
+        t.start()
+        assert started.wait(timeout=2)
+        with pytest.raises(SessionAlreadyFinishedError):
+            manager.record_key_moment(context.session_id, late_moment)
+        unblock.set()
+        t.join(timeout=5)
+
+
 def test_resource_warning_can_be_recorded_as_key_moment(session_manager):
     """Test that resource/token warnings can be recorded as key moments."""
     manager, agent_id = session_manager
@@ -891,6 +943,72 @@ def test_finish_session_retry_skips_duplicate_narrative_after_post_narrative_fai
     assert narrative.recent_layer.content.count(insight) == 1
 
 
+def test_finish_session_retries_narrative_updated_at_conflict(session_manager, temp_storage):
+    """A transient optimistic-lock conflict should be retried before failing the finish."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="optimistic lock retry",
+            emotional_valence=0.2,
+            emotional_intensity=0.3,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="narrative retry",
+            values_touched=["continuity"],
+        ),
+    )
+    real_save_narrative = temp_storage.save_narrative
+    fail_once = {"value": True}
+
+    def flaky_save_narrative(
+        narrative: NarrativeDocument,
+        expected_updated_at: datetime | None = None,
+    ) -> NarrativeDocument:
+        if fail_once["value"]:
+            fail_once["value"] = False
+            raise ValueError(
+                "Narrative updated_at mismatch: expected old, got new (concurrent update detected)"
+            )
+        return real_save_narrative(narrative, expected_updated_at=expected_updated_at)
+
+    insight = "Retry narrative after optimistic lock conflict"
+    with patch.object(temp_storage, "save_narrative", side_effect=flaky_save_narrative) as save:
+        result = manager.finish_session(context.session_id, key_insight=insight)
+
+    assert result.is_finished is True
+    assert save.call_count == 2
+    narrative = temp_storage.load_narrative(agent_id)
+    assert narrative is not None
+    assert narrative.recent_layer.content.count(insight) == 1
+
+
+def test_finish_session_missing_narrative_rolls_back_for_retry(session_manager, temp_storage):
+    """If narrative disappears after partial persistence, the live session stays retryable."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="missing narrative",
+            emotional_valence=0.2,
+            emotional_intensity=0.3,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="partial persistence must be retryable",
+        ),
+    )
+
+    with (
+        patch.object(temp_storage, "load_narrative", return_value=None),
+        pytest.raises(RuntimeError, match="Narrative disappeared"),
+    ):
+        manager.finish_session(context.session_id)
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.is_finished is False
+
+
 def test_finish_session_retry_after_eigenstate_failure_does_not_duplicate_experience(
     session_manager, temp_storage
 ):
@@ -927,6 +1045,39 @@ def test_finish_session_retry_after_eigenstate_failure_does_not_duplicate_experi
     rows = temp_storage.search_experiences(SessionExperienceQuery(context.session_id), limit=10)
     assert len(rows) == 1
     assert rows[0].experience.id == deterministic_session_experience_id(context.session_id)
+
+
+def test_finish_session_rejects_conflicting_deterministic_experience_id(
+    session_manager, temp_storage, frozen_clock
+):
+    """The deterministic retry id must never attach a session to another session's record."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    moment = KeyMomentInput(
+        what_happened="id conflict",
+        emotional_valence=0.2,
+        emotional_intensity=0.3,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="stored experience identity must match",
+    )
+    manager.record_key_moment(context.session_id, moment)
+
+    conflicting_record = ExperienceRecord(
+        experience=SessionExperience(
+            id=deterministic_session_experience_id(context.session_id),
+            session_id=uuid4(),
+            timestamp=frozen_clock.now(),
+            key_moments=[moment.to_key_moment()],
+        )
+    )
+    temp_storage.create_experience(conflicting_record)
+
+    with pytest.raises(ValueError, match="belongs to another session"):
+        manager.finish_session(context.session_id)
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.is_finished is False
 
 
 def test_start_session_ignores_eigenstate_from_different_identity(tmp_path):
