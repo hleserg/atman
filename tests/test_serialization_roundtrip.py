@@ -23,13 +23,17 @@ from atman.core.models import (
     EmotionalDepth,
     ExperienceRecord,
     FeltSense,
+    HealthCriterionOutput,
     Identity,
     IdentitySnapshot,
     KeyMoment,
     LayerType,
     NarrativeDocument,
     NarrativeLayer,
+    NarrativeUpdateOutput,
+    PatternDetectionOutput,
     ReframingNote,
+    ReframingNoteOutput,
     SessionExperience,
 )
 from atman.core.services import IdentityService
@@ -247,6 +251,29 @@ def test_reframing_note_persists_across_store_restart(tmp_path: Path) -> None:
     assert loaded is not None
     assert len(loaded.experience.reframing_notes) == 1
     assert loaded.experience.reframing_notes[0].reflection == "persisted reframe"
+
+
+def test_reflection_model_dto_json_roundtrip() -> None:
+    """Round-trip for structured ReflectionModel outputs (GitHub #146)."""
+    samples = [
+        ReframingNoteOutput(reflection="note", reflection_type="pattern"),
+        PatternDetectionOutput(
+            description="desc",
+            confidence=0.5,
+            potential_habit="h",
+            potential_principle="p",
+        ),
+        NarrativeUpdateOutput(body="fragment"),
+        HealthCriterionOutput(
+            score=0.55,
+            evidence=["a", "b"],
+            concerns=["c"],
+        ),
+    ]
+    for obj in samples:
+        j = obj.model_dump_json()
+        restored = type(obj).model_validate_json(j)
+        assert restored == obj
 
 
 # ---------------------------------------------------------------------------
