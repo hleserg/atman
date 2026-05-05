@@ -57,7 +57,7 @@ atman
 
 Примеры команд:
 
-```
+```text
 atman> add "Пользователь попросил реализовать память" session_1 task request
 ✓ Факт добавлен
 
@@ -337,20 +337,20 @@ pytest --cov=atman --cov-report=html
 
 ### Что делает этот пакет
 
-✅ Хранит только факты и связи  
-✅ Отделяет `fact.content` от выводов  
-✅ Валидирует пустой content/source  
-✅ Поддерживает теги и метаданные  
-✅ Создает связи между фактами  
-✅ Работает локально без внешних сервисов  
+✅ Хранит только факты и связи
+✅ Отделяет `fact.content` от выводов
+✅ Валидирует пустой content/source
+✅ Поддерживает теги и метаданные
+✅ Создает связи между фактами
+✅ Работает локально без внешних сервисов
 
 ### Что НЕ делает этот пакет
 
-❌ Не добавляет эмоциональную окраску  
-❌ Не выводит привычки, принципы, навыки  
-❌ Не строит идентичность  
-❌ Не делает рефлексию  
-❌ Не требует mem0 или другие внешние сервисы  
+❌ Не добавляет эмоциональную окраску
+❌ Не выводит привычки, принципы, навыки
+❌ Не строит идентичность
+❌ Не делает рефлексию
+❌ Не требует mem0 или другие внешние сервисы
 
 Эти функции реализуются в других компонентах Atman поверх этого фундамента.
 
@@ -367,7 +367,7 @@ class VectorBackend(FactualMemory):
     def __init__(self, embedding_model):
         self.embeddings = {}
         self.model = embedding_model
-    
+
     def search(self, query, tags=None, limit=10):
         # Семантический поиск через embeddings
         query_vector = self.model.embed(query)
@@ -383,7 +383,7 @@ class Neo4jBackend(FactualMemory):
     def link(self, source_id, target_id, relation_type):
         # Создать ребро в графе
         self.graph.create_edge(source_id, target_id, relation_type)
-    
+
     def find_path(self, from_id, to_id):
         # Поиск пути между фактами
         return self.graph.shortest_path(from_id, to_id)
@@ -398,7 +398,7 @@ class Mem0Backend(FactualMemory):
     def __init__(self, user_id):
         self.memory = Memory()
         self.user_id = user_id
-    
+
     def add_fact(self, record):
         # Добавить в mem0
         self.memory.add(record.content, user_id=self.user_id)
@@ -423,7 +423,7 @@ class Mem0Backend(FactualMemory):
 
 ## Структура проекта
 
-```
+```text
 atman/
 ├── src/atman/
 │   ├── __init__.py
@@ -466,6 +466,6 @@ atman/
 
 ---
 
-**Статус**: ✅ MVP готов  
-**Версия**: 0.1.0  
+**Статус**: ✅ MVP готов
+**Версия**: 0.1.0
 **Последнее обновление**: 2026-05-01

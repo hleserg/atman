@@ -120,6 +120,7 @@ def test_golden_eigenstate_deserializes() -> None:
     assert str(e.id) == "ffffffff-ffff-4fff-8fff-ffffffffffff"
     assert e.dominant_themes == ["growth"]
     assert e.key_insight == "Progress is possible."
+    assert e.schema_version == "1.0.0"
 
 
 # ---------------------------------------------------------------------------

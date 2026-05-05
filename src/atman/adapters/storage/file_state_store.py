@@ -258,15 +258,36 @@ class FileStateStore(StateStore):
         return narrative
 
     def save_narrative(
-        self, narrative: NarrativeDocument, expected_version: str | None = None
+        self,
+        narrative: NarrativeDocument,
+        expected_version: str | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> NarrativeDocument:
         """Save narrative."""
+        existing = self.load_narrative(narrative.identity_id)
         # Simple version check
-        if expected_version is not None:
-            existing = self.load_narrative(narrative.identity_id)
-            if existing is not None and existing.schema_version != expected_version:
+        if (
+            expected_version is not None
+            and existing is not None
+            and existing.schema_version != expected_version
+        ):
+            raise ValueError(
+                f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+            )
+
+        if expected_updated_at is not None:
+            if existing is None:
+                raise ValueError("Narrative missing on disk; cannot verify expected_updated_at")
+            eu = existing.updated_at
+            exp = expected_updated_at
+            if eu.tzinfo is None:
+                eu = eu.replace(tzinfo=UTC)
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=UTC)
+            if eu != exp:
                 raise ValueError(
-                    f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+                    "Narrative updated_at mismatch (concurrent update?). "
+                    f"expected {expected_updated_at}, got {existing.updated_at}"
                 )
 
         self._write_json_atomically(self.narrative_path, narrative.model_dump_json(indent=2))
@@ -317,7 +338,11 @@ class FileStateStore(StateStore):
         self._write_json_atomically(self.eigenstate_path, eigenstate.model_dump_json(indent=2))
         return eigenstate
 
-    def load_latest_eigenstate(self, session_id: UUID | None = None) -> Eigenstate | None:
+    def load_latest_eigenstate(
+        self,
+        session_id: UUID | None = None,
+        identity_id: UUID | None = None,
+    ) -> Eigenstate | None:
         """Load latest eigenstate."""
         if not self.eigenstate_path.exists():
             return None
@@ -327,6 +352,12 @@ class FileStateStore(StateStore):
 
         if session_id is not None and eigenstate.session_id != session_id:
             return None
+
+        if identity_id is not None:
+            if eigenstate.identity_id is None:
+                return None
+            if eigenstate.identity_id != identity_id:
+                return None
 
         return eigenstate
 

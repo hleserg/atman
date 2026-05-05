@@ -86,7 +86,7 @@
 When a PR adds tests from this backlog, it MUST cite the map section in the
 "System Map" block of the PR template (per `DEVELOPMENT_STANDARD.md` §26.3):
 
-```
+```text
 Affected map sections: §4.3, §4.5, §5.3
 Tests added: tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss
 GAPs closed: §4.5 — "Malformed JSONL in FileBackend (silent data loss)"

@@ -272,6 +272,39 @@ def test_eigenstate_round_trip_and_session_filter() -> None:
         assert store.load_latest_eigenstate() is not None
 
 
+def test_eigenstate_without_identity_not_visible_when_filtering_by_identity() -> None:
+    """Legacy eigenstate rows without identity_id must not bind to an arbitrary agent."""
+    with TemporaryDirectory() as tmp:
+        store = FileStateStore(Path(tmp))
+        sid = uuid4()
+        es = Eigenstate(session_id=sid, emotional_tone=0.0, session_summary="Legacy.")
+        store.save_eigenstate(es)
+        assert store.load_latest_eigenstate(identity_id=uuid4()) is None
+
+
+def test_save_narrative_expected_updated_at_mismatch() -> None:
+    with TemporaryDirectory() as tmp:
+        store = FileStateStore(Path(tmp))
+        iid = uuid4()
+        doc = NarrativeDocument(
+            identity_id=iid,
+            core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="C"),
+            recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="R"),
+            threads=[],
+        )
+        store.save_narrative(doc)
+        loaded = store.load_narrative(iid)
+        assert loaded is not None
+        stale = loaded.model_copy(deep=True)
+        stale.update_recent_layer("changed elsewhere")
+        store.save_narrative(stale)
+        loaded_again = store.load_narrative(iid)
+        assert loaded_again is not None
+        loaded_again.update_recent_layer("session manager attempt")
+        with pytest.raises(ValueError, match="updated_at mismatch"):
+            store.save_narrative(loaded_again, expected_updated_at=loaded.updated_at)
+
+
 def test_archive_narrative_when_narrative_file_missing() -> None:
     with TemporaryDirectory() as tmp:
         store = FileStateStore(Path(tmp))

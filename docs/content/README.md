@@ -1,6 +1,7 @@
 <img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/e7269c6f-f81a-4982-afa3-ed45e8fd1f84" />
 
 # Atman
+>
 > **Continuous Identity for Your Agents**
 
 [[ru](README-ru.md)] — *Russian version*
@@ -47,7 +48,7 @@ Under the hood — seven components: store of lived experiences, reflection engi
 
 ## Roadmap
 
-```
+```text
 ● Research              ✅ Complete
 ● Design                ✅ Complete
 ● Prototyping           ← We are here
@@ -55,7 +56,7 @@ Under the hood — seven components: store of lived experiences, reflection engi
   ├─ Experience Store   ✅ Implemented (WP02)
   ├─ Identity Store     ✅ Implemented (WP03)
   ├─ Reflection Engine  ✅ Implemented (WP04)
-  └─ Session Manager    ⏳ In queue
+  └─ Session Manager    ✅ Implemented (WP05)
 ○ First implementation
 ○ Integration
 ○ Evolution
@@ -94,6 +95,12 @@ Micro / daily / deep reflection, patterns, narrative revision hooks, Jahoda heal
 
 - 📚 [Guide (EN)](docs/features/reflection-engine/README.md) · [RU](docs/features/reflection-engine/README-ru.md)
 - ▶️ Demo: `make demo-reflection` or `python3 src/demo_reflection.py` (`make demo-reflection-fast` for instant output)
+
+**✅ Session Manager** (work package 05)
+Real-time session runtime: first-hand experience coloring, key moments with mandatory emotional marking, eigenstate generation, narrative updates.
+
+- 📚 [Guide (EN)](docs/features/session-manager/README.md) · [RU](docs/features/session-manager/README-ru.md)
+- ▶️ Demo: `make demo-session` or `python3 src/demo_session_manager.py` (`make demo-session-fast` for instant output)
 
 ```bash
 # Quick start (install + interactive factual CLI)

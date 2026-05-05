@@ -2,6 +2,11 @@
 Core services for Atman.
 """
 
+from atman.core.exceptions import (
+    SessionAlreadyFinishedError,
+    SessionNotFoundError,
+    TooManyActiveSessionsError,
+)
 from atman.core.services.experience_service import ExperienceService
 from atman.core.services.identity_service import IdentityService
 from atman.core.services.narrative_revision import NarrativeRevisionService
@@ -12,6 +17,7 @@ from atman.core.services.reflection_service import (
     DeepReflectionService,
     MicroReflectionService,
 )
+from atman.core.services.session_manager import SessionManager
 
 __all__ = [
     "DailyReflectionService",
@@ -22,4 +28,8 @@ __all__ = [
     "NarrativeRevisionService",
     "NarrativeService",
     "PrincipleRevisionAdvisor",
+    "SessionAlreadyFinishedError",
+    "SessionManager",
+    "SessionNotFoundError",
+    "TooManyActiveSessionsError",
 ]

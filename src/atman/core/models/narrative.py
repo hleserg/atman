@@ -23,8 +23,13 @@ class Eigenstate(BaseModel):
     what tone remained, what cognitive load was present.
     """
 
+    schema_version: str = Field(default="1.0.0", description="Schema version for migrations")
     id: UUID = Field(default_factory=uuid4, description="Unique identifier for this eigenstate")
     session_id: UUID = Field(description="ID of the session this eigenstate is from")
+    identity_id: UUID | None = Field(
+        default=None,
+        description="Owning identity for isolation when multiple agents share a workspace layout",
+    )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="When this eigenstate was recorded"
     )

@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import pytest
 
-from atman.adapters.storage import FileStateStore
+from atman.adapters.storage import FileStateStore, InMemoryStateStore
 from atman.core.models import (
     Eigenstate,
     EmotionalDepth,
@@ -45,10 +45,12 @@ from atman.core.ports.state_store import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(params=["file"])
+@pytest.fixture(params=["file", "in_memory"])
 def store(request, tmp_path: Path) -> StateStore:
     if request.param == "file":
         return FileStateStore(tmp_path)
+    if request.param == "in_memory":
+        return InMemoryStateStore()
     raise NotImplementedError(request.param)
 
 
@@ -329,3 +331,24 @@ def test_load_latest_eigenstate_filters_by_session(store: StateStore) -> None:
 
     assert store.load_latest_eigenstate(session_id=sid) is not None
     assert store.load_latest_eigenstate(session_id=uuid4()) is None
+
+
+def test_load_latest_eigenstate_filters_by_identity(store: StateStore) -> None:
+    sid = uuid4()
+    iid = uuid4()
+    e = Eigenstate(
+        session_id=sid,
+        identity_id=iid,
+        emotional_tone=0.0,
+        emotional_intensity=0.0,
+        cognitive_load=0.0,
+        open_threads=[],
+        dominant_themes=[],
+        unresolved_tensions=[],
+        session_summary="s",
+        key_insight="k",
+    )
+    store.save_eigenstate(e)
+
+    assert store.load_latest_eigenstate(identity_id=iid) is not None
+    assert store.load_latest_eigenstate(identity_id=uuid4()) is None

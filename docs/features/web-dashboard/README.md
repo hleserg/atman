@@ -9,6 +9,7 @@ The Web Dashboard provides a convenient browser interface for daily work with th
 ## Features
 
 ### 🎯 Features (home, `app.py`)
+
 - View all registered features from `FEATURES` (Factual Memory, Experience Store, Identity Store, Web Dashboard, …)
 - Toggle **Documentation** / **Demo** (default: documentation); only one panel is shown at a time
 - Run feature demos (paced/fast mode) on the Demo view
@@ -16,6 +17,7 @@ The Web Dashboard provides a convenient browser interface for daily work with th
 - Install dev dependencies (available in both views)
 
 ### 🧪 Tests Tab
+
 - Run full test suite (all tests in `tests/`)
 - Configure test options (verbose, coverage, parallel, fail-fast)
 - View test results with pass/fail summary
@@ -23,6 +25,7 @@ The Web Dashboard provides a convenient browser interface for daily work with th
 - Filter output (all tests / errors only)
 
 ### 📚 Docs Tab
+
 - Navigate project documentation by section:
   - Architecture
   - Development
@@ -54,11 +57,13 @@ pip install -e ".[dev,webui]"
 There are several ways to start the web dashboard:
 
 **1. Using the make command (recommended):**
+
 ```bash
 make webui
 ```
 
 **2. Using the entry point script:**
+
 ```bash
 atman-web
 # or
@@ -66,6 +71,7 @@ webui
 ```
 
 **3. Using Streamlit directly:**
+
 ```bash
 streamlit run src/atman/web_dashboard/app.py
 ```
@@ -87,7 +93,7 @@ Or: `python3 src/demo_web_dashboard.py` (see `src/demo_web_dashboard.py`).
 
 ### Project Structure
 
-```
+```text
 src/atman/web_dashboard/
 ├── __init__.py           # Entry point with main() function
 ├── app.py                # Home: features (docs/demo toggle), dev install
@@ -103,24 +109,28 @@ src/atman/web_dashboard/
 ### Key Components
 
 #### 1. Main Application (`app.py`)
+
 - Feature selection from `FEATURES` registry
 - Documentation / Demo toggle (default: documentation)
 - Demo execution (paced/fast modes) and README viewer (language toggle)
 - Dev dependencies installer
 
 #### 2. Tests Page
+
 - Test suite configuration
 - Real-time test execution
 - Results parsing and display
 - Coverage reporting
 
 #### 3. Docs Page
+
 - Hierarchical document navigation
 - Markdown rendering
 - Bilingual document support
 - Quick access to key documents
 
 #### 4. Utilities
+
 - **`cmd.py`**: Command builders for pytest, Python scripts, and demos
 - **`runner.py`**: Async/sync process execution with output streaming
 
@@ -165,15 +175,17 @@ To add a new page to the dashboard:
 
 1. Create a new file in `src/atman/web_dashboard/pages/` with prefix `N_PageName.py` (where N is the order number)
 2. Configure page settings at the top:
+
    ```python
    import streamlit as st
-   
+
    st.set_page_config(
        page_title="My Page - Atman Dashboard",
        page_icon="🔧",
        layout="wide"
    )
    ```
+
 3. Implement your page content
 4. The page will automatically appear in the sidebar
 
@@ -209,6 +221,7 @@ The web dashboard is excluded from code coverage (see `pyproject.toml`). Manual 
 **Problem**: `streamlit: command not found`
 
 **Solution**: Install dependencies with webui extra:
+
 ```bash
 uv pip install -e ".[dev,webui]"
 # or

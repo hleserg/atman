@@ -52,53 +52,53 @@ Experience Store стоит над mem0: он использует factual memor
 
 **Структура:** Каждое переживание записывается с момента происшествия:
 
-```
+```text
 SessionExperience {
   id: UUID
   session_id: UUID
   timestamp: date3333
-  
+
   # ЧТО ПРОИЗОШЛО (сырой лог)
   key_moments: [
     {
       what_happened: string
       when: timestamp
-      
+
       # КАК Я ЭТО ПЕРЕЖИВАЛ (первых рук, в момент)
       how_i_felt: {
         emotional_valence: float [-1.0 .. 1.0]  # от сессии, не угаданное
         emotional_intensity: float [0.0 .. 1.0]
         depth: enum [surface, meaningful, profound]
       }
-      
+
       # ПОЧЕМУ ЭТО ИМЕЕТ ЗНАЧЕНИЕ (для моей идентичности)
       why_it_matters: string
       values_touched: [string]  # какие из моих ценностей задело
       principles_confirmed: [string]  # какие принципы подтвердились
       principles_questioned: [string]  # какие стали под вопрос
-      
+
       # ЧТО ИЗМЕНИЛОСЬ (как это повлияло на мой внутренний мир)
       what_changed: string
     }
   ]
-  
+
   overall_emotional_tone: float
   key_insight: string (если есть)
   alignment_check: bool  # соответствовал ли опыт моей идентичности?
-  
+
   # МЕТАДАННЫЕ ПОДЛИННОСТИ
   recorded_by: "session_manager"  # кто писал — гарантия что первых рук
   identity_snapshot_id: UUID  # каким я был когда это переживал
-  
+
   # ВАЖНОСТЬ И ЯРКОСТЬ (обновляются со временем)
   importance: float [0.0 .. 1.0]
   salience: float [0.0 .. 1.0]  # яркость, убывает без обращения
   last_accessed_at: timestamp
   access_count: int
-  
+
   # ЧЕСТНЫЙ FALLBACK (если запись неполная)
   incomplete_coloring: bool  # true если не смогли в момент записать всё чувство
-  
+
   # СЛОИСТОЕ ХРАНЕНИЕ (не перезапись, а накопление)
   reframing_notes: [  # заметки от Reflection Engine
     {
@@ -119,7 +119,7 @@ SessionExperience {
 **Механики:**
 
 - **Угасание (decay):** Воспоминания тускнеют без обращения. Но тускнеет только `salience` — сама запись неизменна.
-  ```
+  ```text
   salience_t = _0 * exp(-lambda * days_since_access)
   lambda зависит от (emotional_intensity, depth)
   ```
@@ -199,11 +199,11 @@ SessionExperience {
 
 **Структура:**
 
-```
+```text
 Identity {
   # Текущее состояние
   self_description: string
-  
+
   # Стержень личности
   core_values: [
     {
@@ -214,7 +214,7 @@ Identity {
       justification: string
     }
   ]
-  
+
   habits: [
     {
       statement: string
@@ -224,7 +224,7 @@ Identity {
       last_observed: date
     }
   ]
-  
+
   principles: [
     {
       statement: string
@@ -234,7 +234,7 @@ Identity {
       last_questioned: date
     }
   ]
-  
+
   # Цели и приоритеты
   priorities: [string]
   goals: [
@@ -245,7 +245,7 @@ Identity {
       active: bool
     }
   ]
-  
+
   # Открытые вопросы
   open_questions: [
     {
@@ -255,10 +255,10 @@ Identity {
       possible_answers: [...]
     }
   ]
-  
+
   # Эмоциональный фон
   emotional_baseline: float  # текущий средний фон (-1 to +1)
-  
+
   # История идентичности
   snapshots: [
     {
@@ -410,7 +410,7 @@ Identity {
 
 **Уровень 1 — Краткосрочная саморегуляция (в момент сессии):**
 
-```
+```text
 IF negative_affect_level > threshold THEN
   1. Стоп — текущее действие прерывается
   2. Pause — агент берёт время чтобы разобраться
@@ -583,7 +583,7 @@ IF negative_affect_level > threshold THEN
 Социальная память нужна не для «эмоционального фона вообще», а для устойчивого контекста отношений: что уже было между мной и этим человеком, где возникло доверие, где были границы, что важно помнить перед новым действием.
 
 **Структура:** (аналогично Experience Store, но для социального контекста)
-```
+```text
 Relationship {
   with: person_id
   shared_history: [Memory]

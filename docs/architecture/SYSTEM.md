@@ -60,53 +60,53 @@ Experience Store stands above mem0: it uses factual memory as support, but adds 
 
 **Structure:** Each experience is recorded from the moment of occurrence:
 
-```
+```text
 SessionExperience {
   id: UUID
   session_id: UUID
   timestamp: date
-  
+
   # WHAT HAPPENED (raw log)
   key_moments: [
     {
       what_happened: string
       when: timestamp
-      
+
       # HOW I EXPERIENCED IT (first-hand, in the moment)
       how_i_felt: {
         emotional_valence: float [-1.0 .. 1.0]  # from session, not guessed
         emotional_intensity: float [0.0 .. 1.0]
         depth: enum [surface, meaningful, profound]
       }
-      
+
       # WHY IT MATTERS (for my identity)
       why_it_matters: string
       values_touched: [string]  # which of my values were touched
       principles_confirmed: [string]  # which principles confirmed
       principles_questioned: [string]  # which became questioned
-      
+
       # WHAT CHANGED (how it affected my internal world)
       what_changed: string
     }
   ]
-  
+
   overall_emotional_tone: float
   key_insight: string (if any)
   alignment_check: bool  # did experience match my identity?
-  
+
   # AUTHENTICITY METADATA
   recorded_by: "session_manager"  # who wrote — guarantee it's first-hand
   identity_snapshot_id: UUID  # who I was when experiencing this
-  
+
   # IMPORTANCE AND SALIENCE (updated over time)
   importance: float [0.0 .. 1.0]
   salience: float [0.0 .. 1.0]  # brightness, decreases without access
   last_accessed_at: timestamp
   access_count: int
-  
+
   # HONEST FALLBACK (if record incomplete)
   incomplete_coloring: bool  # true if couldn't record full feeling in the moment
-  
+
   # LAYERED STORAGE (not rewriting, but accumulation)
   reframing_notes: [  # notes from Reflection Engine
     {
@@ -129,7 +129,7 @@ SessionExperience {
 
 * **Decay:** Memories fade without access. But only `salience` fades — the record itself is unchanged.
 
-```
+```text
   salience_t = salience_0 * exp(-lambda * days_since_access)
   lambda depends on (emotional_intensity, depth)
 ```
@@ -215,11 +215,11 @@ SessionExperience {
 
 **Structure:**
 
-```
+```text
 Identity {
   # Current state
   self_description: string
-  
+
   # Core of personality
   core_values: [
     {
@@ -230,7 +230,7 @@ Identity {
       justification: string
     }
   ]
-  
+
   habits: [
     {
       statement: string
@@ -240,7 +240,7 @@ Identity {
       last_observed: date
     }
   ]
-  
+
   principles: [
     {
       statement: string
@@ -250,7 +250,7 @@ Identity {
       last_questioned: date
     }
   ]
-  
+
   # Goals and priorities
   priorities: [string]
   goals: [
@@ -261,7 +261,7 @@ Identity {
       active: bool
     }
   ]
-  
+
   # Open questions
   open_questions: [
     {
@@ -271,10 +271,10 @@ Identity {
       possible_answers: [...]
     }
   ]
-  
+
   # Emotional baseline
   emotional_baseline: float  # current average tone (-1 to +1)
-  
+
   # Identity history
   snapshots: [
     {
@@ -438,7 +438,7 @@ A skill isn't equal to memory and isn't equal to principle. It's born from exper
 
 **Level 1 — Short-term self-regulation (in session moment):**
 
-```
+```text
 IF negative_affect_level > threshold THEN
   1. Stop — current action interrupted
   2. Pause — agent takes time to figure it out

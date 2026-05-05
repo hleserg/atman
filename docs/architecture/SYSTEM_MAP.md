@@ -23,7 +23,8 @@ All paths are absolute relative to the repository root.
 | `core/models/fact.py` | Verifiable facts and links between them | `FactRecord`, `Relation` |
 | `core/models/experience.py` | Lived experience, key moments, reframing | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Agent's self-representation (values, habits, principles, goals, open questions) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
-| `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
+| `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate` (`schema_version`, optional `identity_id`), `LayerType` |
+| `core/models/session.py` | Session runtime models: context, events, key moment input, result, active listing | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
 | `core/models/reflection.py` | Reflection processes, patterns, health assessment (Jahoda criteria) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Governance decisions for core narrative mutations | `GovernanceDecision`, `GovernanceMode` |
 
@@ -44,6 +45,7 @@ All paths are absolute relative to the repository root.
 | `core/services/identity_service.py` | Identity lifecycle: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Narrative document: create, update, archive, validate | `NarrativeService` |
 | `core/services/narrative_revision.py` | Narrative updates during reflection with concurrency control | `NarrativeRevisionService` |
+| `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate (thread-safe registry, optional `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
 
@@ -51,7 +53,7 @@ All paths are absolute relative to the repository root.
 
 | File | Purpose |
 |------|---------|
-| `core/exceptions.py` | `GovernanceRejectedError`, `NarrativePersistenceConflictError` |
+| `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Narrative commit audit hooks |
 | `core/reflection_event_audit.py` | Reflection event persistence observers |
@@ -89,6 +91,7 @@ All paths are absolute relative to the repository root.
 | `src/demo.py` | demo | factual memory demo |
 | `src/demo_experience_store.py` | demo | Experience Store walkthrough |
 | `src/demo_identity.py` | demo | identity bootstrap + narrative render |
+| `src/demo_session_manager.py` | demo | session lifecycle: start, record events/key moments, finish with eigenstate |
 | `src/demo_reflection.py` | demo | micro→daily→deep with fixtures |
 | `src/demo_web_dashboard.py` | demo | web dashboard launch hint |
 
@@ -105,6 +108,7 @@ Connections between two or more parts. These are seams that may break independen
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start; `IdentitySnapshot` on start; deterministic `SessionExperience.id` (uuid5 of `session_id`) for idempotent `finish_session`; eigenstate load scoped by `identity_id`; recent narrative update uses `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | optimistic locking |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | reads experience, updates recent layer |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
@@ -136,6 +140,7 @@ Connections between two or more parts. These are seams that may break independen
 | `demo.py` | `InMemoryBackend` + `FileBackend` for `FactualMemory` |
 | `demo_experience_store.py` | `JsonlExperienceStore` → `ExperienceService` |
 | `demo_identity.py` | `FileStateStore` → `IdentityService` + `NarrativeService` |
+| `demo_session_manager.py` | `FileStateStore` → `SessionManager` (loads identity/narrative, records events/moments, stores experience/eigenstate) |
 | `demo_reflection.py` | mocks + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 
 ### 2.5. TUI / Web ↔ subprocesses
@@ -148,7 +153,7 @@ Connections between two or more parts. These are seams that may break independen
 
 ### 2.6. Reflection service chain
 
-```
+```text
 session ends
   ↓
 MicroReflectionService — reads ExperienceRepository
@@ -176,14 +181,18 @@ PrincipleRevisionAdvisor — principle revision
 ## 3. User scenarios
 
 ### A. Bootstrap a new agent
+
 Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `IdentityService.bootstrap_identity(agent_id)`.
 2. An honestly empty `Identity` is created with open questions.
 3. The first `IdentitySnapshot` is created with description "Bootstrap".
 4. `python -m atman.cli_identity` displays the identity.
 
 ### B. Record experience after a session
+
 Files: `docs/features/experience-store/`, `src/demo_experience_store.py`, `cli_experience.py`.
+
 1. During session — `KeyMoment` + `FeltSense` (valence, intensity, depth).
 2. End of session — `SessionExperience`.
 3. `ExperienceService.create_experience(...)` → write to JSONL/memory (immutable).
@@ -191,18 +200,22 @@ Files: `docs/features/experience-store/`, `src/demo_experience_store.py`, `cli_e
 5. Search by `values_touched`, depth, or date range.
 
 ### C. Micro reflection (after-session)
+
 Files: `docs/features/reflection-engine/`, `src/demo_reflection.py`, `cli_reflection.py`.
+
 1. `MicroReflectionService.reflect_micro(...)` takes recent experience + optional eigenstate.
 2. `ReflectionModel` (LLM or mock) generates a summary.
 3. Updates `NarrativeDocument.recent_layer` checking `expected_updated_at`.
 4. `NarrativeWriteAuditPort` records audit.
 
 ### D. Daily — pattern detection
+
 1. `DailyReflectionService.reflect_daily(...)` collects experience for the UTC day.
 2. `ReflectionModel` returns `list[PatternCandidate]`.
 3. Stored in `PatternStore` + `ReflectionEvent(level=DAILY)`.
 
 ### E. Deep reflection + health
+
 1. `DeepReflectionService.reflect_deep(...)`: experience + patterns + identity.
 2. Computes Jahoda criteria (autonomy, competence, integration, actualization, aspiration, purpose).
 3. `ReflectionModel` proposes narrative changes (core/recent).
@@ -210,17 +223,36 @@ Files: `docs/features/reflection-engine/`, `src/demo_reflection.py`, `cli_reflec
 5. Identity updated + narrative proposals + `HealthAssessment`.
 
 ### F. Factual memory: record and search
+
 Files: `docs/features/factual-memory/`, `src/demo.py`, `cli.py`.
+
 1. `add "..." session_042 task` — `FactRecord` with UUID.
 2. `search --tags task` — filter.
 3. `link <id1> <id2> "caused_by"` — relation.
 4. Facts are immutable; only relations may be added.
 
 ### G. Render NARRATIVE.md
+
 Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `NarrativeService.render_narrative_md(identity_id)`.
 2. Three layers: CORE / RECENT / THREADS.
 3. First-person style validation.
+
+### H. Session lifecycle with first-hand experience
+
+Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
+
+1. `SessionManager.start_session(agent_id)` → loads identity, narrative, eigenstate → `SessionContext`.
+2. During session: `record_event(...)` tracks raw events from lower agent.
+3. `record_key_moment(...)` captures significant moments with mandatory emotional coloring (valence/intensity/depth).
+4. If coloring incomplete → flag `incomplete_coloring=True` (honest about limitation).
+5. `finish_session(...)` → creates `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
+6. Both stored via `StateStore` (experience immutable, eigenstate for next session).
+7. Key invariant: emotional coloring MUST be present (from real experiencing) or explicitly marked incomplete.
+8. `KeyMomentInput.recorded_at` is copied to `KeyMoment.when` so timestamps are stable relative to validation/finish ordering.
+9. `finish_session(..., alignment_check=False)` requires non-empty `alignment_notes`.
+10. `list_active_sessions()` returns `ActiveSessionSummary` (counts + `started_at`) for sessions not mid-finish.
 
 ---
 
@@ -235,9 +267,14 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 | Empty `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` outside 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` outside -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
+| `KeyMomentInput` with zero valence/intensity without `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py` |
+| `alignment_check=False` with blank `alignment_notes` | `SessionManager.finish_session` → `ValueError` | `core/services/session_manager.py` |
+| Second `finish_session` after successful completion | session removed from active map → `SessionNotFoundError` | `core/services/session_manager.py` |
+| Concurrent second `finish_session` while first is persisting | `SessionAlreadyFinishedError` | `core/services/session_manager.py` |
+| Active session cap | `SessionManager(..., max_active_sessions=n)` → `TooManyActiveSessionsError` on `start_session` | `core/services/session_manager.py` |
 | Invalid UUID in CLI | try/except `UUID(...)` | `cli.py:50-54` |
 | Missing experience file | `if not json_file.exists()` | `cli_experience.py:40-43` |
-| **GAP**: empty `key_moments` in `SessionExperience` | no check | `core/models/experience.py` |
+| **GAP**: empty `key_moments` in `SessionExperience` | checked in `SessionManager.finish_session` | `core/services/session_manager.py` |
 | **GAP**: empty eigenstate (`open_threads`, `dominant_themes`, `unresolved_tensions`) | default empty list | `core/models/narrative.py:50-59` |
 
 ### 4.2. Duplicates / idempotency

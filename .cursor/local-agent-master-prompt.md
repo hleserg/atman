@@ -22,6 +22,7 @@ Before starting any work, you **MUST** read these documents in order:
 4. **[../MANIFEST.md](../MANIFEST.md)** — Philosophical foundation and project vision
 
 These documents define the single source of truth for:
+
 - Domain vocabulary (Fact, Experience, Identity, Narrative, etc.)
 - Architecture boundaries (Core vs Adapters)
 - Persistent data structures
@@ -35,11 +36,13 @@ These documents define the single source of truth for:
 **Primary documentation language**: English
 
 **Bilingual support** (English + Russian) for:
+
 - `README.md` / `README-ru.md`
 - `MANIFEST.md` / `MANIFEST-ru.md`
 - `docs/architecture/SYSTEM.md` / `docs/architecture/SYSTEM-ru.md`
 
 **Rules**:
+
 - Always edit the English version first
 - Immediately synchronize the corresponding Russian version (if it exists)
 - Code comments: English only
@@ -53,13 +56,16 @@ These documents define the single source of truth for:
 ### 3. Terminology Discipline
 
 **Use canonical terms** from `DEVELOPMENT_STANDARD.md`:
+
 - Fact, Experience, Reflection, Identity, Narrative, Eigenstate, Uncertainty, Skill, Session, PersonalitySnapshot
 
 **Forbidden synonyms**:
+
 - ❌ `memory_item`, `note`, `profile`, `persona`, `soul_state`
 - ✅ Use canonical terms only
 
 **Never mix**:
+
 - Fact ≠ Experience
 - Experience ≠ Reflection
 - Habit ≠ Principle
@@ -74,6 +80,7 @@ These documents define the single source of truth for:
 **Adapter** = Translation layer between Core and external systems
 
 Before modifying any component, identify:
+
 - Is this Core or Adapter?
 - Which ports does it use?
 - What persistent structures are affected?
@@ -82,6 +89,7 @@ Before modifying any component, identify:
 ### 5. Current Repository State
 
 **What exists**:
+
 - Markdown documentation (architecture, research, ideas)
 - Implementations: Factual Memory Adapter (v0.1.0), Experience Store (WP02)
 - Basic Python structure (`src/atman/`, `tests/`)
@@ -89,6 +97,7 @@ Before modifying any component, identify:
 - Reproducible demos: `src/demo.py`, `src/demo_experience_store.py` (`make demo-experience`)
 
 **What does NOT exist yet**:
+
 - Complete Core implementation
 - Most adapters (except Factual Memory)
 - GitHub-hosted CI (checks run locally: `make check`, pre-commit)
@@ -135,6 +144,7 @@ Cloud agents read `AGENTS.md` and the PR template — keep demo instructions the
 ### 8. Documentation Rules
 
 **When editing documentation**:
+
 - Keep structure consistent with existing docs
 - Update both language versions for bilingual files
 - Follow markdown conventions (heading hierarchy, code blocks, lists)
@@ -142,6 +152,7 @@ Cloud agents read `AGENTS.md` and the PR template — keep demo instructions the
 - Add timestamp to architectural decisions
 
 **When adding new concepts**:
+
 - Define them in `DEVELOPMENT_STANDARD.md` first
 - Use consistent formatting
 - Explain relationships to existing concepts
@@ -150,15 +161,18 @@ Cloud agents read `AGENTS.md` and the PR template — keep demo instructions the
 ### 9. Git & PR Workflow
 
 **Branches**:
+
 - Work on feature branches, not `main`
 - Use descriptive names: `feature/component-name`, `fix/issue-description`, `docs/update-topic`
 
 **Commits**:
+
 - English language
 - Clear, descriptive messages
 - Atomic commits (one logical change per commit)
 
 **Pull Requests**:
+
 - Use template from `.github/pull_request_template.md`
 - Fill all sections honestly
 - Reference related issues
@@ -167,6 +181,7 @@ Cloud agents read `AGENTS.md` and the PR template — keep demo instructions the
 ### 10. Forbidden Actions
 
 **Do NOT**:
+
 - ❌ Create new domain terms without adding them to `DEVELOPMENT_STANDARD.md`
 - ❌ Mix Core logic with adapter-specific code (mem0, OpenClaw, etc.)
 - ❌ Add mandatory external services without ADR (Architectural Decision Record)
@@ -203,7 +218,7 @@ If starting work out of order, explicitly explain how it integrates with the min
 
 ### Key Files Structure
 
-```
+```text
 /workspace/
 ├── AGENTS.md                          # Cloud agent instructions
 ├── MANIFEST.md / MANIFEST-ru.md       # Project vision
@@ -273,12 +288,14 @@ Local agents and cloud agents (via Cursor Cloud) share the same standards:
 ## Updates & Maintenance
 
 This master prompt should be updated when:
+
 - `DEVELOPMENT_STANDARD.md` changes significantly
 - New architectural decisions are made
 - Repository structure changes
 - New mandatory workflows are introduced
 
 **Sync process**: Manual review and update. When updating:
+
 1. Read changed sections of `DEVELOPMENT_STANDARD.md`
 2. Update relevant sections here
 3. Update version number and timestamp at the top

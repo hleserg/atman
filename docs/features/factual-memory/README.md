@@ -55,7 +55,7 @@ atman
 
 Examples:
 
-```
+```text
 atman> add "User asked to implement memory" session_1 task request
 atman> search "user" --tags task
 atman> recent 5
@@ -146,15 +146,15 @@ Downstream: Experience Store, Identity Store, Reflection Engine, Session Manager
 
 ## Design principles
 
-1. Small, explicit API  
-2. No dependency on other Atman runtime components  
-3. New backends implement one port  
-4. Fully testable without network or API keys  
-5. Facts ≠ interpretations  
+1. Small, explicit API
+2. No dependency on other Atman runtime components
+3. New backends implement one port
+4. Fully testable without network or API keys
+5. Facts ≠ interpretations
 
 ## Layout (excerpt)
 
-```
+```text
 src/atman/
   cli.py
   core/models/fact.py
@@ -179,5 +179,5 @@ See the repository root.
 
 ---
 
-**Status:** MVP ready  
+**Status:** MVP ready
 **Version:** 0.1.0
