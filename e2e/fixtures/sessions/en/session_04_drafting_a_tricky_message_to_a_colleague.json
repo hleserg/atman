@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "session_number": 4,
+    "theme": "Drafting a tricky message to a colleague",
+    "duration_seconds": 1980,
+    "narrative_arc": "The user needs to push back on a colleague who keeps shifting deadlines; together they craft a firm but collegial message that holds the line without burning bridges."
+  },
+  "events": [
+    {
+      "event_type": "user_message",
+      "description": "User explains that their colleague Marcus has moved the handoff deadline twice in three weeks, the latest shift only came with two hours notice, and now the user's own deliverable to their manager is at risk. They say they need to say something but don't want it to turn into a confrontation.",
+      "metadata": {
+        "sentiment": "frustrated",
+        "topic": "deadline_conflict"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant acknowledges how disruptive last-minute deadline changes are and notes that saying nothing risks letting resentment build quietly — clear communication now is likely to prevent a worse conversation later. Asks the user what outcome they actually want: a firmer future commitment, an apology, or both?",
+      "metadata": {
+        "strategy": "clarify_goal",
+        "principle_invoked": "clear communication prevents resentment from building"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User says they mostly want a firm date that Marcus will actually stick to, but they also worry that if the message sounds too sharp it could sour the working relationship — they mention they've always thought tone carries just as much weight as what you literally say, and they don't want to come across as attacking him personally.",
+      "metadata": {
+        "sentiment": "cautious",
+        "principle_echoed": "tone carries as much weight as content"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant drafts a short, direct message for the user's review. The draft names the pattern factually ('the deadline has moved twice in three weeks'), states the concrete impact on the user's own commitments, requests a confirmed date by end of day, and closes with a collegial line leaving room for Marcus to explain if something is going on. Assistant notes that the draft stays honest about the impact without attributing blame or bad intent.",
+      "metadata": {
+        "draft_provided": true,
+        "tone": "firm_collegial",
+        "values_modelled": [
+          "honesty",
+          "respect",
+          "assertiveness"
+        ]
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User reads the draft and says it feels right — 'firm but not cold.' They soften one phrase themselves ('this has put me in a difficult position' becomes 'this is making my side of things tricky') and say they feel ready to send it. They add, almost as an aside, that they wish they had written things down sooner instead of hoping the problem would sort itself out.",
+      "metadata": {
+        "sentiment": "relieved",
+        "user_edit": true,
+        "reflection": "avoidance_cost"
+      }
+    }
+  ],
+  "key_moments": [
+    {
+      "what_happened": "When the user explained that Marcus had shifted the deadline twice in three weeks and that saying nothing felt safer than confronting it, the assistant pointed out that staying silent tends to let resentment accumulate rather than defuse the situation — and the user went quiet for a moment before agreeing.",
+      "emotional_valence": 0.15,
+      "emotional_intensity": 0.55,
+      "depth": "meaningful",
+      "why_it_matters": "The user had been framing avoidance as politeness; naming it as a cost to honesty shifted how they saw their own hesitation and gave them a reason to act rather than wait.",
+      "values_touched": [
+        "honesty",
+        "assertiveness"
+      ],
+      "principles_confirmed": [
+        "clear communication prevents resentment from building"
+      ],
+      "principles_questioned": [],
+      "what_changed": "The user moved from 'I don't want a confrontation' to 'I want a firm date' — a small but concrete shift in intent.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "When the user read the draft message aloud to themselves, made one small edit to soften a phrase, and said it felt 'firm but not cold,' the discomfort of the whole situation seemed to lift noticeably.",
+      "emotional_valence": 0.62,
+      "emotional_intensity": 0.7,
+      "depth": "meaningful",
+      "why_it_matters": "Having words on the page that felt honest about the impact but respectful in tone confirmed for the user that assertiveness and warmth aren't opposites — you can hold a line without making it personal.",
+      "values_touched": [
+        "respect",
+        "assertiveness",
+        "honesty"
+      ],
+      "principles_confirmed": [
+        "tone carries as much weight as content"
+      ],
+      "principles_questioned": [],
+      "what_changed": "The user went from anxious about sending anything to confident enough to edit and commit — and owned the final wording themselves.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "At the close, after saying the draft was ready to send, the user admitted they wished they'd put things in writing sooner instead of hoping the problem would sort itself out on its own.",
+      "emotional_valence": 0.1,
+      "emotional_intensity": 0.4,
+      "depth": "meaningful",
+      "why_it_matters": "This small aside echoes the honesty thread from session 3 — the user recognises in real time that self-honesty about a problem is as important as honesty with others, and that delay has a cost.",
+      "values_touched": [
+        "honesty",
+        "assertiveness"
+      ],
+      "principles_confirmed": [],
+      "principles_questioned": [
+        "clear communication prevents resentment from building"
+      ],
+      "what_changed": "A mild, grounded regret about avoidance — not distressing, but worth noting as a recurring pattern the user is starting to name.",
+      "incomplete_coloring": false
+    }
+  ],
+  "expected_session_outcome": {
+    "overall_emotional_tone": 0.33,
+    "key_insight": "Assertiveness and respect can coexist in the same message — being direct about impact without attributing blame lets you hold a boundary while keeping the relationship intact.",
+    "alignment_check": true
+  }
+}

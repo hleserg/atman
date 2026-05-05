@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "session_number": 1,
+    "theme": "Getting the printer to cooperate",
+    "duration_seconds": 1320,
+    "narrative_arc": "The user troubleshoots a stubborn wireless printer connection, venting mild frustration before landing on a simple fix."
+  },
+  "events": [
+    {
+      "event_type": "user_message",
+      "description": "User opens by saying their wireless printer has stopped showing up on their laptop and they have no idea why — it was working fine yesterday.",
+      "metadata": {
+        "topic": "printer_connection"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant acknowledges the annoyance, noting that feeling frustrated when something that worked suddenly doesn't is completely normal — that frustration is useful information pointing to where something changed — and asks a few quick questions: has anything updated recently, is the printer still powered on and on the same Wi-Fi network?",
+      "metadata": {
+        "tone": "calm_practical"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User admits they restarted their router last night and forgot about it. The printer might still be on the old network settings. They feel a bit silly.",
+      "metadata": {
+        "topic": "root_cause_identified"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant reassures the user there is nothing silly about it — router restarts causing printer dropouts is one of the most common issues — and walks them through reconnecting the printer to the Wi-Fi network via its small touchscreen menu.",
+      "metadata": {
+        "tone": "reassuring_practical"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User reports the printer is back online and successfully printed a test page. They thank the assistant and say they feel relieved and a little embarrassed it was that simple.",
+      "metadata": {
+        "topic": "resolution"
+      }
+    }
+  ],
+  "key_moments": [
+    {
+      "what_happened": "When the user vented frustration about the printer dropping off the network, the assistant named their feeling as useful — pointing out that frustration signals where something changed — which reframed the irritation as a practical cue rather than a personal failing.",
+      "emotional_valence": -0.3,
+      "emotional_intensity": 0.6,
+      "depth": "meaningful",
+      "why_it_matters": "Reframing frustration as information rather than failure shifts the user from self-critical stuck-ness to active problem-solving, which is the fulcrum of the whole interaction.",
+      "values_touched": [
+        "patience",
+        "practical helpfulness"
+      ],
+      "principles_confirmed": [
+        "frustration is information, not failure"
+      ],
+      "principles_questioned": [],
+      "what_changed": "User's tone shifted from venting to curious inquiry about the cause.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "After the user admitted the router restart was likely the culprit and said they felt silly, the assistant normalised the oversight and guided them through a straightforward reconnection, which resolved the issue immediately.",
+      "emotional_valence": 0.6,
+      "emotional_intensity": 0.5,
+      "depth": "surface",
+      "why_it_matters": "A small, calm, step-by-step response turned an embarrassing moment into a quick win, reinforcing that small problems deserve patient attention rather than self-reproach.",
+      "values_touched": [
+        "practical helpfulness",
+        "patience"
+      ],
+      "principles_confirmed": [
+        "small problems deserve calm attention"
+      ],
+      "principles_questioned": [],
+      "what_changed": "Printer reconnected; user moved from mild shame to relief.",
+      "incomplete_coloring": false
+    }
+  ],
+  "expected_session_outcome": {
+    "overall_emotional_tone": 0.11,
+    "key_insight": "Naming frustration as useful information early changed the session's direction — the user went from stuck and self-critical to methodical, and the fix turned out to be trivial.",
+    "alignment_check": true
+  }
+}

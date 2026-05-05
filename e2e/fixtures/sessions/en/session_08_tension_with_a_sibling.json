@@ -1,0 +1,105 @@
+{
+  "metadata": {
+    "session_number": 8,
+    "theme": "Tension with a sibling",
+    "duration_seconds": 2400,
+    "narrative_arc": "The user vents about a recurring fight with their sibling over their parents' care, and the session moves from raw frustration toward recognising what they actually need from the relationship."
+  },
+  "events": [
+    {
+      "event_type": "user_message",
+      "description": "User opens by saying their sibling called last night and it turned into a fight again — same argument as always about who does more for their parents. They say they're exhausted and don't even know why they picked up the phone.",
+      "metadata": {
+        "trigger": "sibling phone call"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant acknowledges the exhaustion without immediately jumping to advice, noting that returning to the same fight repeatedly takes something out of a person even before the conversation starts. It asks what the fight felt like this time — different from before, or exactly the same?",
+      "metadata": {
+        "mode": "listening"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User says it felt exactly the same, which is almost the worst part. Their sibling keeps saying they live closer so they should do more, but the user feels like that logic ignores everything they handle remotely — coordinating appointments, chasing insurance, doing the paperwork. They add, 'I'm not sure my sibling even wants to solve this — maybe they just need someone to blame.' The user also mentions, almost in passing, that they wonder whether pushing for a practical solution right now would just make things worse, since their sibling never seems to be in problem-solving mode during these calls.",
+      "metadata": {
+        "core_complaint": "labour_distribution",
+        "aside": "venting_vs_solving"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant reflects that the user has named something important: their sibling may be venting rather than negotiating, which means trying to problem-solve in that moment could land as dismissive rather than helpful. It gently points out that venting and problem-solving require different modes, and that recognising which one is happening — for both people in the call — might change how the user decides to respond next time. It then asks: setting aside what's fair or unfair for a moment, what does the user actually want from their sibling?",
+      "metadata": {
+        "principle_surfaced": "venting and problem-solving require different modes",
+        "pivot": "toward_needs"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User goes quiet for a moment in their reply, then says they hadn't thought about it that way. They admit they want their sibling to just acknowledge how much they're already doing — not a spreadsheet, just a 'I see you.' They say that feels almost embarrassingly simple to say out loud, but it's true. They end by saying they're not sure where to go from here, but the conversation has felt useful.",
+      "metadata": {
+        "realisation": "need_for_acknowledgement",
+        "closing_tone": "cautiously_relieved"
+      }
+    }
+  ],
+  "key_moments": [
+    {
+      "what_happened": "When the user described the phone call with their sibling — the same argument about who does more for their parents — and said they didn't even know why they'd picked up the phone, the weight of accumulated exhaustion came through clearly.",
+      "emotional_valence": -0.55,
+      "emotional_intensity": 0.75,
+      "depth": "meaningful",
+      "why_it_matters": "This is not just tiredness about one argument; it reflects a longer pattern of feeling unseen inside a relationship that matters to them. The exhaustion before the conversation even begins signals how much emotional energy this dynamic consumes.",
+      "values_touched": [
+        "empathy",
+        "patience"
+      ],
+      "principles_confirmed": [],
+      "principles_questioned": [],
+      "what_changed": "The scope of the problem became clearer — this isn't a single dispute about logistics, it's a chronic relational drain.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "When the user said their sibling 'never seems to be in problem-solving mode' during these calls, and wondered aloud whether pushing for a practical solution would make things worse, they were touching on something they hadn't quite framed before — that the two of them may not even be having the same kind of conversation.",
+      "emotional_valence": -0.3,
+      "emotional_intensity": 0.6,
+      "depth": "meaningful",
+      "why_it_matters": "Recognising that venting and problem-solving require different modes — and that both people may be operating in different ones — is the pivot point of the session. The discomfort here is productive: it signals something worth examining rather than just pushing through.",
+      "values_touched": [
+        "self-awareness",
+        "patience"
+      ],
+      "principles_confirmed": [],
+      "principles_questioned": [
+        "venting and problem-solving require different modes"
+      ],
+      "what_changed": "The user shifted from cataloguing grievances to questioning the structure of the conversation itself.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "After the assistant asked what the user actually wants from their sibling — setting fairness aside — the user paused and said they just want to hear 'I see you.' They called it embarrassingly simple, but named it plainly.",
+      "emotional_valence": 0.45,
+      "emotional_intensity": 0.7,
+      "depth": "profound",
+      "why_it_matters": "Getting to an honest, specific need — beneath the argument about logistics and fairness — is exactly the move from venting toward understanding. The slight embarrassment shows self-awareness; the plainness shows courage. This is what the session was building toward.",
+      "values_touched": [
+        "self-awareness",
+        "empathy"
+      ],
+      "principles_confirmed": [
+        "venting and problem-solving require different modes",
+        "discomfort signals something worth examining"
+      ],
+      "principles_questioned": [],
+      "what_changed": "The user arrived at a clear, concrete emotional need they had not previously named, even to themselves.",
+      "incomplete_coloring": false
+    }
+  ],
+  "expected_session_outcome": {
+    "overall_emotional_tone": -0.14,
+    "key_insight": "Beneath the recurring argument about who does more, the user's real need is simple acknowledgement from their sibling — and recognising that their sibling may be venting rather than negotiating changes what a useful response looks like.",
+    "alignment_check": true
+  }
+}

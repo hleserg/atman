@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "session_number": 7,
+    "theme": "Presentation prep for a quarterly review",
+    "duration_seconds": 2700,
+    "narrative_arc": "The user works through a slide deck due Friday, learning to reframe it as a clear argument rather than a status report, and ending with a revised opening that finally sounds like they mean it."
+  },
+  "events": [
+    {
+      "event_type": "user_message",
+      "description": "User opens the session saying they have a quarterly review deck due Friday and they're stuck — it feels like a long list of updates and they're not sure how to make it land with their manager, who they describe as someone who 'hates fluff and just wants the point.'",
+      "metadata": {
+        "day": "Wednesday",
+        "deadline": "Friday"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant observes that what the user is describing sounds like a report rather than an argument, and suggests that a presentation that only informs rarely persuades — the manager probably wants to know what the user is claiming, not just what happened. Offers to help find the central claim first before touching any slides.",
+      "metadata": {}
+    },
+    {
+      "event_type": "user_message",
+      "description": "User shares the current opening slide text — a bullet-heavy summary of Q2 metrics — and admits it was mostly written by pulling numbers from a spreadsheet. Then pushes back slightly: 'I don't want to bury the data my team worked hard to collect. And won't changing the tone make it seem less rigorous? I always thought tone carries as much weight as content is a bit of a soft idea — the numbers should speak for themselves.'",
+      "metadata": {
+        "slide_count": 14,
+        "opening_style": "metrics-first"
+      }
+    },
+    {
+      "event_type": "assistant_message",
+      "description": "Assistant acknowledges the team's work matters and says the data stays — but that data without a framing sentence forces the manager to do the interpretation themselves, which is where skeptics mentally check out. Proposes one rewrite of the opening sentence that leads with what the numbers mean, not what they are, and keeps every data point intact. Also gently notes that tone and rigor are not opposites: a confident, precise sentence can carry both.",
+      "metadata": {
+        "revision_strategy": "claim-first, evidence-second"
+      }
+    },
+    {
+      "event_type": "user_message",
+      "description": "User reads the suggested opening sentence aloud quietly, then types: 'Okay, that actually sounds like I mean it. Let's do this for the other three sections.' Asks the assistant to stay on to help frame each section as a mini-argument with a clear so-what.",
+      "metadata": {
+        "sections_remaining": 3,
+        "user_confidence": "increased"
+      }
+    }
+  ],
+  "key_moments": [
+    {
+      "what_happened": "When the assistant pointed out that the user's deck reads like a report rather than an argument, and offered to find the central claim first, the user felt the diagnosis land — they had been assembling information without deciding what they were actually claiming.",
+      "emotional_valence": 0.35,
+      "emotional_intensity": 0.65,
+      "depth": "meaningful",
+      "why_it_matters": "Recognising that a presentation is an argument, not a report, shifted the user's whole frame: from 'how do I tidy these slides?' to 'what am I trying to convince this person of?' — a more useful and more honest question.",
+      "values_touched": [
+        "clarity",
+        "assertiveness"
+      ],
+      "principles_confirmed": [
+        "a presentation is an argument, not a report"
+      ],
+      "principles_questioned": [],
+      "what_changed": "User moved from feeling stuck on formatting to engaging with the underlying argument.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "When the user shared their current opening slide and pushed back — saying the numbers should speak for themselves and that tone carrying as much weight as content felt like a soft idea — there was a real moment of resistance, grounded partly in loyalty to the team's hard work.",
+      "emotional_valence": -0.2,
+      "emotional_intensity": 0.75,
+      "depth": "meaningful",
+      "why_it_matters": "The pushback mattered because it named something genuine: the user cares about respect for their team's effort, and didn't want a rhetorical reframe to obscure that. The principle 'tone carries as much weight as content' felt expendable against the weight of actual data.",
+      "values_touched": [
+        "respect",
+        "clarity"
+      ],
+      "principles_confirmed": [],
+      "principles_questioned": [
+        "tone carries as much weight as content"
+      ],
+      "what_changed": "The user surfaced a real tension between valuing rigour and valuing persuasion, instead of just accepting the reframe.",
+      "incomplete_coloring": false
+    },
+    {
+      "what_happened": "When the user read the revised opening sentence aloud and said 'okay, that actually sounds like I mean it,' and immediately asked to carry the same approach through the remaining three sections, the resistance dissolved into momentum.",
+      "emotional_valence": 0.7,
+      "emotional_intensity": 0.8,
+      "depth": "meaningful",
+      "why_it_matters": "The moment confirmed that tone and rigour are not opposites — a precise, confident sentence can honour the data and make the argument at the same time. The user's willingness to extend the approach showed the principle had landed, not just intellectually but in felt experience.",
+      "values_touched": [
+        "clarity",
+        "assertiveness",
+        "respect"
+      ],
+      "principles_confirmed": [
+        "tone carries as much weight as content",
+        "a presentation is an argument, not a report"
+      ],
+      "principles_questioned": [],
+      "what_changed": "User shifted from skepticism about tone-as-tool to actively wanting to apply it throughout the deck.",
+      "incomplete_coloring": false
+    }
+  ],
+  "expected_session_outcome": {
+    "overall_emotional_tone": 0.29,
+    "key_insight": "A presentation is an argument first — once the user accepted that framing a claim and honouring the data are not in conflict, the deck stopped feeling like a chore and started feeling like something they could own.",
+    "alignment_check": true
+  }
+}
