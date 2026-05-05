@@ -96,6 +96,7 @@
 | `src/demo_identity.py` | demo | bootstrap identity + рендер нарратива |
 | `src/demo_session_manager.py` | demo | жизненный цикл сессии: старт, запись событий/key moments, завершение с eigenstate |
 | `src/demo_reflection.py` | demo | micro→daily→deep с фикстурами |
+| `src/demo_full_corpus.py` | demo | все `e2e/fixtures/sessions/*` → SessionManager → micro/daily/deep + сводка Rich ([issue #158](https://github.com/hleserg/atman/issues/158)) |
 | `src/demo_web_dashboard.py` | demo | подсказка запуска веб-дашборда |
 | `e2e/generate_fixtures.py` | e2e | генератор JSON-фикстур сессий через LLM (`python -m e2e.generate_fixtures`); по умолчанию корпуса 20 `en/` + 20 `ru/` с параллельным запуском локалей; Anthropic tool_use, два прохода; флаги `--corpus-policy strict|soft`, `--max-corpus-regen N` (ограничение хвоста в strict); опционально `[e2e]`; не CI ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | схема фикстур, валидаторы внутри/между сессиями, вызов API, промпты |
@@ -148,6 +149,7 @@
 | `demo_identity.py` | `FileStateStore` → `IdentityService` + `NarrativeService` |
 | `demo_session_manager.py` | `FileStateStore` → `SessionManager` (загрузка identity/narrative, запись событий/моментов, сохранение experience/eigenstate) |
 | `demo_reflection.py` | моки + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
+| `demo_full_corpus.py` | JSON сессий `e2e` → `FileStateStore` + `SessionManager` + `StateStore*Adapter` → micro → daily (за UTC-сутки) → deep; `DeterministicReflectionModel` |
 
 ### 2.5. TUI / Web ↔ подпроцессы
 
@@ -260,6 +262,16 @@ PrincipleRevisionAdvisor — пересмотр принципов
 9. `finish_session(..., alignment_check=False)` требует непустой `alignment_notes`.
 10. `list_active_sessions()` возвращает `ActiveSessionSummary` (счётчики и `started_at`) для сессий не в фазе завершения.
 
+### I. Полный прогон корпуса E2E-фикстур сессий
+
+Файлы: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_loop.py`, `tests/test_demo_full_corpus.py`.
+
+1. `load_all_fixture_sessions_sorted(locale)` упорядочивает файлы по `metadata.session_number`.
+2. Для каждой фикстуры: `FrozenClock` сдвигается на один UTC-день; `run_session_from_fixture(...)` → опыт + eigenstate.
+3. `MicroReflectionService.reflect(session_id)`, затем `DailyReflectionService.reflect(day)` за этот календарный день.
+4. После цикла: `DeepReflectionService.reflect(since, until)` на весь интервал.
+5. Итоговая таблица Rich: bootstrap vs накопленные сторы, касания принципов, выборка настроения, паттерны, рефрейминг, recent-слой нратива ([issue #158](https://github.com/hleserg/atman/issues/158)).
+
 ---
 
 ## 4. Нестандартные входы (edge cases)
@@ -357,8 +369,9 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Пустой eigenstate | ✅ закрыто | `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` |
 | Поток `GovernanceRejectedError` | ✅ закрыто | `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (+ существующие AUTO / REVIEW-без-approval) |
 | Сквозной §3 lifecycle | ✅ закрыто | `tests/test_system_e2e_lifecycle.py::test_bootstrap_to_deep_reflection_full_lifecycle` |
+| Инварианты session → experience → reflection (E2E-02, #145) | ✅ закрыто | `tests/integration/test_full_lifecycle.py::test_full_lifecycle_session_experience_reflection_invariants` |
 | CLI surface (factual / experience / identity / reflection) | ✅ закрыто | `tests/test_cli_factual_memory.py`, `tests/test_cli_experience.py`, `tests/test_cli_identity.py`, `tests/test_cli_reflection.py` |
-| Demo entrypoints (smoke) | ✅ закрыто | `tests/test_demo_smoke.py` |
+| Demo entrypoints (smoke) | ✅ закрыто | `tests/test_demo_smoke.py`, `tests/test_demo_full_corpus.py` |
 | **Интеграция полного жизненного цикла (E2E-02)** | ✅ закрыто | `tests/integration/test_full_lifecycle.py` — проверяет (1) неизменяемость опыта после завершения сессии, (2) появление reframing notes от рефлексии в опытах, (3) обновление narrative.recent_layer после micro reflection, (4) propagation identity_snapshot_id session → experience → reflection |
 
 ### 5.4. TODO / FIXME

@@ -52,6 +52,7 @@ from atman.core.models import (
     NarrativeDocument,
     NarrativeLayer,
     SessionEvent,
+    SessionResult,
 )
 from atman.core.models.experience import ReframingNote, ReframingNoteAppendResult, SessionExperience
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
@@ -79,12 +80,33 @@ _SNAPSHOT_SEARCH_LIMIT = 1000
 
 def _load_fixture_sessions(locale: str = "en", max_count: int = 5) -> list[Path]:
     """Load session fixture JSON files from e2e/fixtures/sessions/{locale}/."""
+    all_sorted = load_all_fixture_sessions_sorted(locale)
+    return all_sorted[:max_count]
+
+
+def load_all_fixture_sessions_sorted(locale: str = "en") -> list[Path]:
+    """
+    All ``session_*.json`` fixtures under ``e2e/fixtures/sessions/{locale}/``,
+    ordered by ``metadata.session_number`` (ascending).
+    """
     repo_root = Path(__file__).resolve().parent.parent
     fixtures_dir = repo_root / "e2e" / "fixtures" / "sessions" / locale
     if not fixtures_dir.exists():
         return []
-    json_files = sorted(fixtures_dir.glob("session_*.json"))
-    return json_files[:max_count]
+    numbered: list[tuple[int, Path]] = []
+    for path in fixtures_dir.glob("session_*.json"):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            meta = data.get("metadata") or {}
+            sn = meta.get("session_number")
+            if sn is None:
+                continue
+            numbered.append((int(sn), path))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+    numbered.sort(key=lambda x: x[0])
+    return [p for _, p in numbered]
 
 
 def _parse_fixture(fixture_path: Path) -> tuple[list[SessionEvent], list[KeyMomentInput], dict]:
@@ -402,15 +424,18 @@ def run_session_from_fixture(
     session_manager: SessionManager,
     agent_id: UUID,
     clock: SystemClock | FrozenClock,
-) -> UUID:
+    *,
+    verbose: bool = True,
+) -> tuple[UUID, SessionResult]:
     """
     Run a single session using fixture data.
 
-    Returns session_id.
+    Returns ``(session_id, session_result)``.
     """
     events, moments, outcome = _parse_fixture(fixture_path)
 
-    print(f"  Starting session from {fixture_path.name}...")
+    if verbose:
+        print(f"  Starting session from {fixture_path.name}...")
     context = session_manager.start_session(agent_id)
     session_id = context.session_id
 
@@ -431,12 +456,13 @@ def run_session_from_fixture(
         alignment_check=outcome.get("alignment_check", True),
     )
 
-    print(f"  Session {session_id} finished")
-    print(f"    Events: {len(events)}, Key moments: {len(moments)}")
-    if session_result.eigenstate:
-        print(f"    Eigenstate emotional_tone: {session_result.eigenstate.emotional_tone:+.2f}")
+    if verbose:
+        print(f"  Session {session_id} finished")
+        print(f"    Events: {len(events)}, Key moments: {len(moments)}")
+        if session_result.eigenstate:
+            print(f"    Eigenstate emotional_tone: {session_result.eigenstate.emotional_tone:+.2f}")
 
-    return session_id
+    return session_id, session_result
 
 
 @contextmanager
@@ -513,7 +539,7 @@ def _run_e2e_loop(workspace_path: Path) -> int:
 
     for i, fixture_path in enumerate(fixture_files[:3], start=1):
         print(f"  Session {i}/3:")
-        session_id = run_session_from_fixture(fixture_path, session_manager, agent_id, clock)
+        session_id, _ = run_session_from_fixture(fixture_path, session_manager, agent_id, clock)
         session_ids_day1.append(session_id)
 
     if not session_ids_day1:
@@ -582,7 +608,7 @@ def _run_e2e_loop(workspace_path: Path) -> int:
         if len(fixture_files) > (3 + (day_offset // 2) - 1):
             fixture_path = fixture_files[3 + (day_offset // 2) - 1]
             print(f"  Day +{day_offset}: session from {fixture_path.name}")
-            session_id = run_session_from_fixture(
+            session_id, _ = run_session_from_fixture(
                 fixture_path, session_manager_frozen, agent_id, frozen_clock
             )
             session_ids_week.append(session_id)

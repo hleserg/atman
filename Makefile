@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-webui-paced webui
+.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced webui
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -83,6 +83,13 @@ demo-session demo-session-paced:
 
 demo-session-fast:
 	ATMAN_DEMO_PACE=off python3 src/demo_session_manager.py
+
+# Full E2E corpus: all session JSON fixtures → session + micro + daily + deep (see docs/features/full-corpus-demo/README.md).
+demo-full-corpus demo-full-corpus-paced:
+	ATMAN_DEMO_PACE=1 PYTHONPATH=. python3 src/demo_full_corpus.py
+
+demo-full-corpus-fast:
+	ATMAN_DEMO_PACE=off PYTHONPATH=. python3 src/demo_full_corpus.py
 
 # Web Dashboard console hint (see docs/features/web-dashboard/README.md).
 demo-webui demo-webui-paced:
