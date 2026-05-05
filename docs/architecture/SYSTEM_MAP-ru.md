@@ -27,7 +27,7 @@
 | `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Самопредставление агента (ценности, привычки, принципы, цели, открытые вопросы) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
-| `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |
+| `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат, сводка активных | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
 | `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Йоды) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Решения governance для мутаций ядра нарратива | `GovernanceDecision`, `GovernanceMode` |
 
@@ -48,7 +48,7 @@
 | `core/services/identity_service.py` | Жизненный цикл identity: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Документ нарратива: создание, обновление, архивация, валидация | `NarrativeService` |
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции | `NarrativeRevisionService` |
-| `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate | `SessionManager`, `SessionNotFoundError`, `SessionAlreadyFinishedError` |
+| `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 
@@ -56,7 +56,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `core/exceptions.py` | `GovernanceRejectedError`, `NarrativePersistenceConflictError` |
+| `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Хуки аудита коммитов нарратива |
 | `core/reflection_event_audit.py` | Наблюдатели персистенса событий рефлексии |
@@ -239,6 +239,9 @@ PrincipleRevisionAdvisor — пересмотр принципов
 5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
 6. Оба сохраняются через `StateStore` (опыт immutable, eigenstate для следующей сессии).
 7. Ключевой инвариант: эмоциональная окраска ОБЯЗАНА быть (от реального переживания) или явно помечена неполной.
+8. `KeyMomentInput.recorded_at` копируется в `KeyMoment.when` для согласованной временной шкалы относительно валидации и `finish`.
+9. `finish_session(..., alignment_check=False)` требует непустой `alignment_notes`.
+10. `list_active_sessions()` возвращает `ActiveSessionSummary` (счётчики и `started_at`) для сессий не в фазе завершения.
 
 ---
 
@@ -253,10 +256,14 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Пустой `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` вне 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` вне -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
-| `KeyMomentInput` с нулевым valence/intensity без `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py:120-127` |
+| `KeyMomentInput` с нулевым valence/intensity без `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py` |
+| `alignment_check=False` с пустым `alignment_notes` | `SessionManager.finish_session` → `ValueError` | `core/services/session_manager.py` |
+| Повторный `finish_session` после успешного завершения | сессия снята с активного реестра → `SessionNotFoundError` | `core/services/session_manager.py` |
+| Конкурентный второй `finish_session` пока первый пишет в store | `SessionAlreadyFinishedError` | `core/services/session_manager.py` |
+| Лимит активных сессий | `SessionManager(..., max_active_sessions=n)` → `TooManyActiveSessionsError` в `start_session` | `core/services/session_manager.py` |
 | Невалидный UUID в CLI | try/except `UUID(...)` | `cli.py:50-54` |
 | Несуществующий файл опыта | `if not json_file.exists()` | `cli_experience.py:40-43` |
-| **GAP**: пустой `key_moments` в `SessionExperience` | проверяется в `SessionManager.finish_session` | `core/services/session_manager.py:155-156` |
+| **GAP**: пустой `key_moments` в `SessionExperience` | проверяется в `SessionManager.finish_session` | `core/services/session_manager.py` |
 | **GAP**: пустой eigenstate (`open_threads`, `dominant_themes`, `unresolved_tensions`) | дефолт пустой список | `core/models/narrative.py:50-59` |
 
 ### 4.2. Дубли / идемпотентность

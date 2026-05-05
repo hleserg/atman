@@ -4,12 +4,16 @@ Tests for Session Manager.
 Tests session lifecycle, key moment recording, and experience creation.
 """
 
+import threading
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 from atman.adapters.storage.file_state_store import FileStateStore
 from atman.core.models import (
+    ActiveSessionSummary,
     CoreValue,
     EmotionalDepth,
     Goal,
@@ -20,8 +24,14 @@ from atman.core.models import (
     NarrativeDocument,
     NarrativeLayer,
     SessionEvent,
+    SessionResult,
 )
-from atman.core.services import SessionManager, SessionNotFoundError
+from atman.core.services import (
+    SessionAlreadyFinishedError,
+    SessionManager,
+    SessionNotFoundError,
+    TooManyActiveSessionsError,
+)
 
 
 @pytest.fixture
@@ -234,40 +244,307 @@ def test_finish_session_without_key_moments_fails(session_manager):
         manager.finish_session(context.session_id)
 
 
-def test_key_moments_are_immutable_after_storage(session_manager, temp_storage):
-    """Test that original key moments don't mutate after storage."""
+def test_stored_experience_matches_recorded_key_moment(session_manager, temp_storage):
+    """Stored SessionExperience preserves key moment text and provenance."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
 
-    # Record key moment
     original_what = "Original event"
     moment = KeyMomentInput(
         what_happened=original_what,
         emotional_valence=0.5,
         emotional_intensity=0.7,
         depth=EmotionalDepth.MEANINGFUL,
-        why_it_matters="Testing immutability",
+        why_it_matters="Testing storage round-trip",
         values_touched=["honesty"],
     )
     manager.record_key_moment(context.session_id, moment)
 
-    # Finish session
     result = manager.finish_session(
         session_id=context.session_id,
         overall_emotional_tone=0.5,
     )
 
-    # Get stored experience
     experiences = temp_storage.list_recent_experiences(limit=1)
     stored_exp = experiences[0].experience
 
-    # Original moment should match stored
     assert result.key_moments[0].what_happened == original_what
     assert stored_exp.key_moments[0].what_happened == original_what
-
-    # Try to modify stored experience (should not affect original)
-    # This tests Pydantic immutability, not our code mutating things
     assert stored_exp.recorded_by == "session_manager"
+
+
+def test_record_event_does_not_mutate_caller_event(session_manager):
+    """record_event appends a copy; caller's SessionEvent.session_id is unchanged."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    wrong_id = uuid4()
+    event = SessionEvent(
+        session_id=wrong_id,
+        event_type="test_event",
+        description="Desc",
+    )
+    manager.record_event(context.session_id, event)
+    assert event.session_id == wrong_id
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.events[0].session_id == context.session_id
+
+
+def test_key_moment_when_uses_recorded_at_before_finish(session_manager):
+    """KeyMoment.when follows KeyMomentInput.recorded_at (temporal order vs session end)."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    past = datetime.now(UTC) - timedelta(hours=1)
+    moment = KeyMomentInput(
+        what_happened="Earlier moment",
+        recorded_at=past,
+        emotional_valence=0.1,
+        emotional_intensity=0.5,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Order matters",
+    )
+    manager.record_key_moment(context.session_id, moment)
+    result = manager.finish_session(context.session_id)
+    assert result.key_moments[0].when == past
+    assert result.key_moments[0].when < result.finished_at
+
+
+def test_finish_session_twice_second_raises_not_found(session_manager):
+    """After successful finish, session is removed; second finish is SessionNotFoundError."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+    manager.finish_session(context.session_id)
+    with pytest.raises(SessionNotFoundError):
+        manager.finish_session(context.session_id)
+
+
+def test_concurrent_finish_second_raises_already_finished(session_manager):
+    """While first finish holds persistence, second finish sees is_finished and raises."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+
+    started = threading.Event()
+    unblock = threading.Event()
+    real_create = manager._state_store.create_experience
+
+    def slow_create(rec):  # type: ignore[no-untyped-def]
+        started.set()
+        assert unblock.wait(timeout=10)
+        return real_create(rec)
+
+    errors: list[BaseException] = []
+
+    def run_finish() -> None:
+        try:
+            manager.finish_session(context.session_id)
+        except BaseException as e:
+            errors.append(e)
+
+    with patch.object(manager._state_store, "create_experience", side_effect=slow_create):
+        t = threading.Thread(target=run_finish)
+        t.start()
+        assert started.wait(timeout=2)
+        with pytest.raises(SessionAlreadyFinishedError):
+            manager.finish_session(context.session_id)
+        unblock.set()
+        t.join(timeout=5)
+    assert not errors
+
+
+def test_alignment_check_false_requires_notes(session_manager):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+    with pytest.raises(ValueError, match="alignment_notes"):
+        manager.finish_session(
+            context.session_id,
+            alignment_check=False,
+            alignment_notes="",
+        )
+    manager.finish_session(
+        context.session_id,
+        alignment_check=False,
+        alignment_notes="Drift: user pushed beyond stated values.",
+    )
+
+
+def test_max_active_sessions_limit(temp_storage, test_identity, test_narrative):
+    temp_storage.save_identity(test_identity)
+    temp_storage.save_narrative(test_narrative)
+    manager = SessionManager(temp_storage, max_active_sessions=1)
+    manager.start_session(test_identity.id)
+    with pytest.raises(TooManyActiveSessionsError):
+        manager.start_session(test_identity.id)
+
+
+def test_overall_emotional_tone_out_of_range_raises(session_manager):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+    with pytest.raises(ValueError, match="overall_emotional_tone"):
+        manager.finish_session(context.session_id, overall_emotional_tone=1.5)
+
+
+def test_create_eigenstate_empty_key_moments(session_manager):
+    manager, _agent_id = session_manager
+    sid = uuid4()
+    sr = SessionResult(
+        session_id=sid,
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        events=[],
+        key_moments=[],
+        overall_emotional_tone=0.0,
+    )
+    es = manager._create_eigenstate(sr)
+    assert es.emotional_intensity == 0.5
+    assert es.cognitive_load == 0.0
+
+
+def test_valence_zero_with_intensity_allowed_without_incomplete_flag(session_manager):
+    """High intensity with neutral valence is allowed (arousal without hedonic tone)."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Ambiguous affect",
+            emotional_valence=0.0,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="Still a felt moment",
+        ),
+    )
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.key_moments[0].how_i_felt.emotional_valence == 0.0
+    assert active.key_moments[0].how_i_felt.emotional_intensity == 0.6
+
+
+def test_list_active_sessions_returns_summaries(session_manager):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_event(
+        context.session_id,
+        SessionEvent(
+            session_id=context.session_id,
+            event_type="t",
+            description="e",
+        ),
+    )
+    summaries = manager.list_active_sessions()
+    assert len(summaries) == 1
+    s = summaries[0]
+    assert isinstance(s, ActiveSessionSummary)
+    assert s.session_id == context.session_id
+    assert s.events_count == 1
+    assert s.key_moments_count == 0
+
+
+def test_eigenstate_cognitive_load_from_event_count(session_manager):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    for i in range(10):
+        manager.record_event(
+            context.session_id,
+            SessionEvent(
+                session_id=context.session_id,
+                event_type="user_message",
+                description=f"e{i}",
+            ),
+        )
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="k",
+            emotional_valence=0.2,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="r",
+        ),
+    )
+    result = manager.finish_session(context.session_id)
+    assert result.eigenstate is not None
+    assert result.eigenstate.cognitive_load == 1.0
+
+
+def test_record_after_finish_raises(session_manager):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="x",
+            emotional_valence=0.1,
+            emotional_intensity=0.2,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="y",
+        ),
+    )
+    real_create = manager._state_store.create_experience
+    started = threading.Event()
+    unblock = threading.Event()
+
+    def slow_create(rec):  # type: ignore[no-untyped-def]
+        started.set()
+        assert unblock.wait(timeout=10)
+        return real_create(rec)
+
+    with patch.object(manager._state_store, "create_experience", side_effect=slow_create):
+        t = threading.Thread(
+            target=lambda: manager.finish_session(context.session_id),
+        )
+        t.start()
+        assert started.wait(timeout=2)
+        with pytest.raises(SessionAlreadyFinishedError):
+            manager.record_event(
+                context.session_id,
+                SessionEvent(
+                    session_id=context.session_id,
+                    event_type="t",
+                    description="late",
+                ),
+            )
+        unblock.set()
+        t.join(timeout=5)
 
 
 def test_resource_warning_can_be_recorded_as_key_moment(session_manager):

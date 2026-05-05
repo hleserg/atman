@@ -8,9 +8,10 @@ This demo shows the complete session lifecycle:
 3. Capture key moments with first-hand emotional coloring
 4. Finish session → create SessionExperience + Eigenstate
 
-No external services required - uses in-memory storage.
+No external services required — uses a temporary file workspace (unique per run).
 """
 
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -39,10 +40,10 @@ def main() -> None:
     )
     term.demo_pace()
 
-    # Setup storage
+    # Setup storage (ephemeral directory — avoids duplicate experiences on re-runs)
     term.print_section("Setup")
-    storage_path = "/tmp/atman-session-demo"
-    term.print_info(f"Using storage: {storage_path}")
+    storage_path = tempfile.mkdtemp(prefix="atman-session-demo-")
+    term.print_info(f"Using ephemeral workspace: {storage_path}")
     state_store = FileStateStore(workspace=Path(storage_path))
     session_manager = SessionManager(state_store)
     term.print_ok("Session Manager initialized")

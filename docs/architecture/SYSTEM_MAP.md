@@ -24,7 +24,7 @@ All paths are absolute relative to the repository root.
 | `core/models/experience.py` | Lived experience, key moments, reframing | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Agent's self-representation (values, habits, principles, goals, open questions) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
-| `core/models/session.py` | Session runtime models: context, events, key moment input, result | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |
+| `core/models/session.py` | Session runtime models: context, events, key moment input, result, active listing | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
 | `core/models/reflection.py` | Reflection processes, patterns, health assessment (Jahoda criteria) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Governance decisions for core narrative mutations | `GovernanceDecision`, `GovernanceMode` |
 
@@ -45,7 +45,7 @@ All paths are absolute relative to the repository root.
 | `core/services/identity_service.py` | Identity lifecycle: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Narrative document: create, update, archive, validate | `NarrativeService` |
 | `core/services/narrative_revision.py` | Narrative updates during reflection with concurrency control | `NarrativeRevisionService` |
-| `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate | `SessionManager`, `SessionNotFoundError`, `SessionAlreadyFinishedError` |
+| `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate (thread-safe registry, optional `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
 
@@ -53,7 +53,7 @@ All paths are absolute relative to the repository root.
 
 | File | Purpose |
 |------|---------|
-| `core/exceptions.py` | `GovernanceRejectedError`, `NarrativePersistenceConflictError` |
+| `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Narrative commit audit hooks |
 | `core/reflection_event_audit.py` | Reflection event persistence observers |
@@ -236,6 +236,9 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 5. `finish_session(...)` → creates `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
 6. Both stored via `StateStore` (experience immutable, eigenstate for next session).
 7. Key invariant: emotional coloring MUST be present (from real experiencing) or explicitly marked incomplete.
+8. `KeyMomentInput.recorded_at` is copied to `KeyMoment.when` so timestamps are stable relative to validation/finish ordering.
+9. `finish_session(..., alignment_check=False)` requires non-empty `alignment_notes`.
+10. `list_active_sessions()` returns `ActiveSessionSummary` (counts + `started_at`) for sessions not mid-finish.
 
 ---
 
@@ -250,10 +253,14 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 | Empty `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` outside 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` outside -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
-| `KeyMomentInput` with zero valence/intensity without `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py:120-127` |
+| `KeyMomentInput` with zero valence/intensity without `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py` |
+| `alignment_check=False` with blank `alignment_notes` | `SessionManager.finish_session` → `ValueError` | `core/services/session_manager.py` |
+| Second `finish_session` after successful completion | session removed from active map → `SessionNotFoundError` | `core/services/session_manager.py` |
+| Concurrent second `finish_session` while first is persisting | `SessionAlreadyFinishedError` | `core/services/session_manager.py` |
+| Active session cap | `SessionManager(..., max_active_sessions=n)` → `TooManyActiveSessionsError` on `start_session` | `core/services/session_manager.py` |
 | Invalid UUID in CLI | try/except `UUID(...)` | `cli.py:50-54` |
 | Missing experience file | `if not json_file.exists()` | `cli_experience.py:40-43` |
-| **GAP**: empty `key_moments` in `SessionExperience` | checked in `SessionManager.finish_session` | `core/services/session_manager.py:155-156` |
+| **GAP**: empty `key_moments` in `SessionExperience` | checked in `SessionManager.finish_session` | `core/services/session_manager.py` |
 | **GAP**: empty eigenstate (`open_threads`, `dominant_themes`, `unresolved_tensions`) | default empty list | `core/models/narrative.py:50-59` |
 
 ### 4.2. Duplicates / idempotency

@@ -15,10 +15,19 @@ Critical design principle:
 - Session Manager doesn't fabricate emotions - it records what was actually experienced
 """
 
+from __future__ import annotations
+
+import threading
 from datetime import UTC, datetime
 from uuid import UUID
 
+from atman.core.exceptions import (
+    SessionAlreadyFinishedError,
+    SessionNotFoundError,
+    TooManyActiveSessionsError,
+)
 from atman.core.models import (
+    ActiveSessionSummary,
     Eigenstate,
     ExperienceRecord,
     KeyMomentInput,
@@ -29,17 +38,8 @@ from atman.core.models import (
 )
 from atman.core.ports.state_store import StateStore
 
-
-class SessionNotFoundError(Exception):
-    """Raised when session is not found."""
-
-    pass
-
-
-class SessionAlreadyFinishedError(Exception):
-    """Raised when trying to modify a finished session."""
-
-    pass
+# Cap for eigenstate list fields; order is insertion-derived until salience ranking exists.
+MAX_EIGENSTATE_ITEMS = 5
 
 
 class SessionManager:
@@ -50,19 +50,21 @@ class SessionManager:
     - start_session: loads personality context
     - record_event: tracks raw events
     - record_key_moment: captures significant moments with emotional coloring
-    - finish_session: creates SessionExperience and Eigenstate
+    - finish_session: creates SessionExperience + Eigenstate
     """
 
-    def __init__(self, state_store: StateStore):
+    def __init__(self, state_store: StateStore, max_active_sessions: int | None = None) -> None:
         """
         Initialize Session Manager.
 
         Args:
             state_store: Storage for identity, narrative, experience, eigenstate
+            max_active_sessions: If set, ``start_session`` raises when this many sessions are active.
         """
         self._state_store = state_store
-        # Active sessions in memory
+        self._max_active_sessions = max_active_sessions
         self._active_sessions: dict[UUID, SessionResult] = {}
+        self._lock = threading.Lock()
 
     def start_session(self, agent_id: UUID) -> SessionContext:
         """
@@ -83,21 +85,18 @@ class SessionManager:
 
         Raises:
             ValueError: If identity or narrative not found
+            TooManyActiveSessionsError: If active session limit is exceeded
         """
-        # Load identity
         identity = self._state_store.load_identity(agent_id)
         if identity is None:
             raise ValueError(f"Identity not found for agent {agent_id}")
 
-        # Load narrative
         narrative = self._state_store.load_narrative(identity.id)
         if narrative is None:
             raise ValueError(f"Narrative not found for identity {identity.id}")
 
-        # Load last eigenstate (optional)
         last_eigenstate = self._state_store.load_latest_eigenstate()
 
-        # Create session context
         context = SessionContext(
             identity=identity,
             narrative=narrative,
@@ -106,13 +105,20 @@ class SessionManager:
             recent_reflections_summary="",  # Placeholder for future
         )
 
-        # Initialize session result tracking
-        self._active_sessions[context.session_id] = SessionResult(
-            session_id=context.session_id,
-            started_at=context.started_at,
-            events=[],
-            key_moments=[],
-        )
+        with self._lock:
+            if self._max_active_sessions is not None and len(self._active_sessions) >= (
+                self._max_active_sessions
+            ):
+                raise TooManyActiveSessionsError(
+                    f"Active session limit ({self._max_active_sessions}) reached; "
+                    "finish a session before starting another."
+                )
+            self._active_sessions[context.session_id] = SessionResult(
+                session_id=context.session_id,
+                started_at=context.started_at,
+                events=[],
+                key_moments=[],
+            )
 
         return context
 
@@ -130,14 +136,14 @@ class SessionManager:
             SessionNotFoundError: If session not found
             SessionAlreadyFinishedError: If session already finished
         """
-        session_result = self._active_sessions.get(session_id)
-        if session_result is None:
-            raise SessionNotFoundError(f"Session {session_id} not found")
-
-        # Ensure event belongs to this session
-        event.session_id = session_id
-
-        session_result.events.append(event)
+        event_copy = event.model_copy(update={"session_id": session_id})
+        with self._lock:
+            session_result = self._active_sessions.get(session_id)
+            if session_result is None:
+                raise SessionNotFoundError(f"Session {session_id} not found")
+            if session_result.is_finished:
+                raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
+            session_result.events.append(event_copy)
 
     def record_key_moment(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """
@@ -159,30 +165,31 @@ class SessionManager:
             SessionAlreadyFinishedError: If session already finished
             ValueError: If emotional coloring is missing without incomplete_coloring flag
         """
-        session_result = self._active_sessions.get(session_id)
-        if session_result is None:
-            raise SessionNotFoundError(f"Session {session_id} not found")
+        with self._lock:
+            session_result = self._active_sessions.get(session_id)
+            if session_result is None:
+                raise SessionNotFoundError(f"Session {session_id} not found")
+            if session_result.is_finished:
+                raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
 
-        # Validate emotional coloring
-        # If valence and intensity are both zero, require incomplete_coloring flag
-        if (
-            moment.emotional_valence == 0.0
-            and moment.emotional_intensity == 0.0
-            and not moment.incomplete_coloring
-        ):
-            raise ValueError(
-                "Key moment has no emotional coloring. "
-                "If coloring couldn't be captured, set incomplete_coloring=True"
-            )
+            # Both valence and intensity zero => no coloring unless incomplete_coloring.
+            # Valence 0 with intensity > 0 is allowed (arousal without hedonic tone).
+            if (
+                moment.emotional_valence == 0.0
+                and moment.emotional_intensity == 0.0
+                and not moment.incomplete_coloring
+            ):
+                raise ValueError(
+                    "Key moment has no emotional coloring. "
+                    "If coloring couldn't be captured, set incomplete_coloring=True"
+                )
 
-        # Convert input to KeyMoment
-        key_moment = moment.to_key_moment()
+            key_moment = moment.to_key_moment()
 
-        # Track incomplete coloring at session level
-        if moment.incomplete_coloring:
-            session_result.incomplete_coloring = True
+            if moment.incomplete_coloring:
+                session_result.incomplete_coloring = True
 
-        session_result.key_moments.append(key_moment)
+            session_result.key_moments.append(key_moment)
 
     def finish_session(
         self,
@@ -215,51 +222,51 @@ class SessionManager:
 
         Raises:
             SessionNotFoundError: If session not found
-            ValueError: If session has no key moments
+            SessionAlreadyFinishedError: If session was already finished
+            ValueError: If session has no key moments, tone out of range, or alignment contract
         """
-        session_result = self._active_sessions.get(session_id)
-        if session_result is None:
-            raise SessionNotFoundError(f"Session {session_id} not found")
+        with self._lock:
+            session_result = self._active_sessions.get(session_id)
+            if session_result is None:
+                raise SessionNotFoundError(f"Session {session_id} not found")
+            if session_result.is_finished:
+                raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
+            if not session_result.key_moments:
+                raise ValueError("Cannot finish session without key moments")
+            if not -1.0 <= overall_emotional_tone <= 1.0:
+                raise ValueError("overall_emotional_tone must be between -1.0 and 1.0")
+            if not alignment_check and not alignment_notes.strip():
+                raise ValueError(
+                    "alignment_notes is required when alignment_check=False "
+                    "(explain how experience diverged from identity)."
+                )
+            session_result.is_finished = True
 
-        # Validate session has key moments
-        if not session_result.key_moments:
-            raise ValueError("Cannot finish session without key moments")
-
-        # Validate emotional tone range
-        if not -1.0 <= overall_emotional_tone <= 1.0:
-            raise ValueError("overall_emotional_tone must be between -1.0 and 1.0")
-
-        # Update session result
         session_result.finished_at = datetime.now(UTC)
         session_result.overall_emotional_tone = overall_emotional_tone
         session_result.key_insight = key_insight
         session_result.alignment_check = alignment_check
         session_result.alignment_notes = alignment_notes
 
-        # Create SessionExperience
         experience = SessionExperience(
             session_id=session_id,
             timestamp=session_result.finished_at,
             key_moments=session_result.key_moments,
-            recorded_by="session_manager",  # Guarantees first-hand
-            importance=0.5,  # Default importance
-            salience=0.5,  # Default salience
+            recorded_by="session_manager",
+            importance=0.5,
+            salience=0.5,
             incomplete_coloring=session_result.incomplete_coloring,
         )
 
-        # Store experience
         experience_record = ExperienceRecord(experience=experience)
         self._state_store.create_experience(experience_record)
 
-        # Create Eigenstate
         eigenstate = self._create_eigenstate(session_result)
         session_result.eigenstate = eigenstate
-
-        # Store eigenstate
         self._state_store.save_eigenstate(eigenstate)
 
-        # Remove from active sessions
-        del self._active_sessions[session_id]
+        with self._lock:
+            self._active_sessions.pop(session_id, None)
 
         return session_result
 
@@ -267,13 +274,15 @@ class SessionManager:
         """
         Create eigenstate from session result.
 
+        Open threads, themes, and tensions are truncated to :data:`MAX_EIGENSTATE_ITEMS`
+        in encounter order until a salience-based ranking exists.
+
         Args:
             session_result: Session result to create eigenstate from
 
         Returns:
             Eigenstate: Created eigenstate
         """
-        # Calculate average emotional intensity from key moments
         if session_result.key_moments:
             avg_intensity = sum(
                 m.how_i_felt.emotional_intensity for m in session_result.key_moments
@@ -281,19 +290,19 @@ class SessionManager:
         else:
             avg_intensity = 0.5
 
-        # Extract open threads from events
+        n_events = len(session_result.events)
+        cognitive_load = min(1.0, float(n_events) / 10.0)
+
         open_threads = [
             e.description
             for e in session_result.events
             if e.event_type in ("unfinished", "open_question", "pending")
         ]
 
-        # Extract dominant themes from key moments
         dominant_themes = list(
             set(value for moment in session_result.key_moments for value in moment.values_touched)
         )
 
-        # Extract unresolved tensions
         unresolved_tensions = list(
             set(
                 principle
@@ -307,10 +316,10 @@ class SessionManager:
             timestamp=session_result.finished_at,
             emotional_tone=session_result.overall_emotional_tone,
             emotional_intensity=avg_intensity,
-            cognitive_load=0.5,  # Could be calculated from event complexity
-            open_threads=open_threads[:5],  # Limit to top 5
-            dominant_themes=dominant_themes[:5],  # Limit to top 5
-            unresolved_tensions=unresolved_tensions[:5],  # Limit to top 5
+            cognitive_load=cognitive_load,
+            open_threads=open_threads[:MAX_EIGENSTATE_ITEMS],
+            dominant_themes=dominant_themes[:MAX_EIGENSTATE_ITEMS],
+            unresolved_tensions=unresolved_tensions[:MAX_EIGENSTATE_ITEMS],
             session_summary=session_result.key_insight or "Session completed",
             key_insight=session_result.key_insight,
         )
@@ -319,19 +328,35 @@ class SessionManager:
         """
         Get active session by ID.
 
+        Sessions mid-finish (``is_finished``) are not returned as active.
+
         Args:
             session_id: UUID of the session
 
         Returns:
-            SessionResult | None: Session result if active, None otherwise
+            SessionResult | None: Session result if active and not finishing, None otherwise
         """
-        return self._active_sessions.get(session_id)
+        with self._lock:
+            session_result = self._active_sessions.get(session_id)
+            if session_result is None or session_result.is_finished:
+                return None
+            return session_result
 
-    def list_active_sessions(self) -> list[UUID]:
+    def list_active_sessions(self) -> list[ActiveSessionSummary]:
         """
-        List all active session IDs.
+        List active sessions with counts (avoids N+1 ``get_active_session`` calls).
 
         Returns:
-            list[UUID]: List of active session IDs
+            Summaries for sessions that are not mid-finish.
         """
-        return list(self._active_sessions.keys())
+        with self._lock:
+            return [
+                ActiveSessionSummary(
+                    session_id=sid,
+                    started_at=sr.started_at,
+                    events_count=len(sr.events),
+                    key_moments_count=len(sr.key_moments),
+                )
+                for sid, sr in self._active_sessions.items()
+                if not sr.is_finished
+            ]

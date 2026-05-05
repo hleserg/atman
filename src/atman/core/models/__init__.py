@@ -45,6 +45,7 @@ from atman.core.models.reflection import (
     ReflectionLevel,
 )
 from atman.core.models.session import (
+    ActiveSessionSummary,
     KeyMomentInput,
     SessionContext,
     SessionEvent,
@@ -52,6 +53,7 @@ from atman.core.models.session import (
 )
 
 __all__ = [
+    "ActiveSessionSummary",
     "ContextHalo",
     "CoreValue",
     "CriterionAssessment",

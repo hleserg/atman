@@ -18,6 +18,17 @@ from atman.core.models.identity import Identity
 from atman.core.models.narrative import Eigenstate, NarrativeDocument
 
 
+class ActiveSessionSummary(BaseModel):
+    """Lightweight view of an active session for listing without N+1 lookups."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: UUID = Field(description="Active session ID")
+    started_at: datetime = Field(description="When the session started")
+    events_count: int = Field(ge=0, description="Number of recorded events")
+    key_moments_count: int = Field(ge=0, description="Number of recorded key moments")
+
+
 class SessionContext(BaseModel):
     """
     Context loaded at session start.
@@ -57,14 +68,6 @@ class SessionContext(BaseModel):
     recent_reflections_summary: str = Field(
         default="", description="Brief summary of recent reflections"
     )
-
-    @field_validator("emotional_baseline")
-    @classmethod
-    def validate_emotional_baseline(cls, v: float) -> float:
-        """Ensure emotional baseline is in valid range."""
-        if not -1.0 <= v <= 1.0:
-            raise ValueError("emotional_baseline must be between -1.0 and 1.0")
-        return v
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -137,10 +140,20 @@ class KeyMomentInput(BaseModel):
     This is what Session Manager receives when something significant happens.
     CRITICAL: Emotional coloring MUST be present. If it can't be captured in the moment,
     use incomplete_coloring flag.
+
+    Semantics: emotional_valence can be 0.0 with emotional_intensity > 0 (arousal / salience
+    without clear hedonic tone). That is allowed. The ``incomplete_coloring`` flag is for
+    cases where labeling itself was uncertain, not for neutral-but-intense moments.
     """
 
     # WHAT HAPPENED
     what_happened: str = Field(min_length=1, description="Description of what actually happened")
+
+    # WHEN this input was captured (fixes KeyMoment.when vs validation ordering)
+    recorded_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When this input was captured; used as KeyMoment.when for temporal consistency",
+    )
 
     # HOW I FELT (MANDATORY - from actual experiencing)
     emotional_valence: float = Field(
@@ -188,22 +201,6 @@ class KeyMomentInput(BaseModel):
             raise ValueError("Field cannot be empty")
         return v.strip()
 
-    @field_validator("emotional_valence")
-    @classmethod
-    def validate_valence_range(cls, v: float) -> float:
-        """Ensure valence is in valid range."""
-        if not -1.0 <= v <= 1.0:
-            raise ValueError("emotional_valence must be between -1.0 and 1.0")
-        return v
-
-    @field_validator("emotional_intensity")
-    @classmethod
-    def validate_intensity_range(cls, v: float) -> float:
-        """Ensure intensity is in valid range."""
-        if not 0.0 <= v <= 1.0:
-            raise ValueError("emotional_intensity must be between 0.0 and 1.0")
-        return v
-
     @field_validator("values_touched", "principles_confirmed", "principles_questioned")
     @classmethod
     def validate_string_lists(cls, v: list[str]) -> list[str]:
@@ -218,7 +215,7 @@ class KeyMomentInput(BaseModel):
         """
         return KeyMoment(
             what_happened=self.what_happened,
-            when=datetime.now(UTC),
+            when=self.recorded_at,
             how_i_felt=FeltSense(
                 emotional_valence=self.emotional_valence,
                 emotional_intensity=self.emotional_intensity,
@@ -291,16 +288,14 @@ class SessionResult(BaseModel):
         description="True if some key moments couldn't be fully colored in the moment",
     )
 
+    # Lifecycle: set when finish_session commits to persisting (blocks duplicate finish / writes)
+    is_finished: bool = Field(
+        default=False,
+        description="True once finish_session has started persisting this session",
+    )
+
     # Eigenstate for next session
     eigenstate: Eigenstate | None = Field(default=None, description="Eigenstate at session end")
-
-    @field_validator("overall_emotional_tone")
-    @classmethod
-    def validate_tone_range(cls, v: float) -> float:
-        """Ensure tone is in valid range."""
-        if not -1.0 <= v <= 1.0:
-            raise ValueError("overall_emotional_tone must be between -1.0 and 1.0")
-        return v
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -313,6 +308,7 @@ class SessionResult(BaseModel):
                 "overall_emotional_tone": 0.3,
                 "alignment_check": True,
                 "incomplete_coloring": False,
+                "is_finished": False,
             }
         },
     )
