@@ -12,6 +12,11 @@ from atman.core.services.reflection_service import (
     DeepReflectionService,
     MicroReflectionService,
 )
+from atman.core.services.session_manager import (
+    SessionAlreadyFinishedError,
+    SessionManager,
+    SessionNotFoundError,
+)
 
 __all__ = [
     "DailyReflectionService",
@@ -22,4 +27,7 @@ __all__ = [
     "NarrativeRevisionService",
     "NarrativeService",
     "PrincipleRevisionAdvisor",
+    "SessionAlreadyFinishedError",
+    "SessionManager",
+    "SessionNotFoundError",
 ]

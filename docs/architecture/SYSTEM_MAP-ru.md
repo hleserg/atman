@@ -27,6 +27,7 @@
 | `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Самопредставление агента (ценности, привычки, принципы, цели, открытые вопросы) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
+| `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |
 | `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Йоды) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Решения governance для мутаций ядра нарратива | `GovernanceDecision`, `GovernanceMode` |
 
@@ -47,6 +48,7 @@
 | `core/services/identity_service.py` | Жизненный цикл identity: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Документ нарратива: создание, обновление, архивация, валидация | `NarrativeService` |
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции | `NarrativeRevisionService` |
+| `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate | `SessionManager`, `SessionNotFoundError`, `SessionAlreadyFinishedError` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 
@@ -92,6 +94,7 @@
 | `src/demo.py` | demo | демо факт-памяти |
 | `src/demo_experience_store.py` | demo | прогон Experience Store |
 | `src/demo_identity.py` | demo | bootstrap identity + рендер нарратива |
+| `src/demo_session_manager.py` | demo | жизненный цикл сессии: старт, запись событий/key moments, завершение с eigenstate |
 | `src/demo_reflection.py` | demo | micro→daily→deep с фикстурами |
 | `src/demo_web_dashboard.py` | demo | подсказка запуска веб-дашборда |
 
@@ -108,6 +111,7 @@
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | загрузка identity/narrative на старте, сохранение experience/eigenstate на завершении |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | оптимистическая блокировка |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
@@ -139,6 +143,7 @@
 | `demo.py` | `InMemoryBackend` + `FileBackend` для `FactualMemory` |
 | `demo_experience_store.py` | `JsonlExperienceStore` → `ExperienceService` |
 | `demo_identity.py` | `FileStateStore` → `IdentityService` + `NarrativeService` |
+| `demo_session_manager.py` | `FileStateStore` → `SessionManager` (загрузка identity/narrative, запись событий/моментов, сохранение experience/eigenstate) |
 | `demo_reflection.py` | моки + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 
 ### 2.5. TUI / Web ↔ подпроцессы
@@ -225,6 +230,16 @@ PrincipleRevisionAdvisor — пересмотр принципов
 2. Три слоя: CORE / RECENT / THREADS.
 3. Валидация first-person стиля.
 
+### H. Жизненный цикл сессии с first-hand опытом
+Файлы: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
+1. `SessionManager.start_session(agent_id)` → загружает identity, narrative, eigenstate → `SessionContext`.
+2. Во время сессии: `record_event(...)` отслеживает сырые события от нижнего агента.
+3. `record_key_moment(...)` фиксирует значимые моменты с обязательной эмоциональной окраской (valence/intensity/depth).
+4. Если окраска неполная → флаг `incomplete_coloring=True` (честность об ограничении).
+5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
+6. Оба сохраняются через `StateStore` (опыт immutable, eigenstate для следующей сессии).
+7. Ключевой инвариант: эмоциональная окраска ОБЯЗАНА быть (от реального переживания) или явно помечена неполной.
+
 ---
 
 ## 4. Нестандартные входы (edge cases)
@@ -238,9 +253,10 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Пустой `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` вне 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` вне -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
+| `KeyMomentInput` с нулевым valence/intensity без `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py:120-127` |
 | Невалидный UUID в CLI | try/except `UUID(...)` | `cli.py:50-54` |
 | Несуществующий файл опыта | `if not json_file.exists()` | `cli_experience.py:40-43` |
-| **GAP**: пустой `key_moments` в `SessionExperience` | проверки нет | `core/models/experience.py` |
+| **GAP**: пустой `key_moments` в `SessionExperience` | проверяется в `SessionManager.finish_session` | `core/services/session_manager.py:155-156` |
 | **GAP**: пустой eigenstate (`open_threads`, `dominant_themes`, `unresolved_tensions`) | дефолт пустой список | `core/models/narrative.py:50-59` |
 
 ### 4.2. Дубли / идемпотентность

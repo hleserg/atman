@@ -44,6 +44,12 @@ from atman.core.models.reflection import (
     ReflectionEvent,
     ReflectionLevel,
 )
+from atman.core.models.session import (
+    KeyMomentInput,
+    SessionContext,
+    SessionEvent,
+    SessionResult,
+)
 
 __all__ = [
     "ContextHalo",
@@ -66,6 +72,7 @@ __all__ = [
     "IdentitySnapshot",
     "JahodaCriterion",
     "KeyMoment",
+    "KeyMomentInput",
     "LayerType",
     "MoralOrientation",
     "NarrativeDocument",
@@ -81,5 +88,8 @@ __all__ = [
     "ReframingNote",
     "ReframingNoteAppendResult",
     "Relation",
+    "SessionContext",
+    "SessionEvent",
     "SessionExperience",
+    "SessionResult",
 ]

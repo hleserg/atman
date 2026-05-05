@@ -24,6 +24,7 @@ All paths are absolute relative to the repository root.
 | `core/models/experience.py` | Lived experience, key moments, reframing | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Agent's self-representation (values, habits, principles, goals, open questions) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
+| `core/models/session.py` | Session runtime models: context, events, key moment input, result | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |
 | `core/models/reflection.py` | Reflection processes, patterns, health assessment (Jahoda criteria) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Governance decisions for core narrative mutations | `GovernanceDecision`, `GovernanceMode` |
 
@@ -44,6 +45,7 @@ All paths are absolute relative to the repository root.
 | `core/services/identity_service.py` | Identity lifecycle: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Narrative document: create, update, archive, validate | `NarrativeService` |
 | `core/services/narrative_revision.py` | Narrative updates during reflection with concurrency control | `NarrativeRevisionService` |
+| `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate | `SessionManager`, `SessionNotFoundError`, `SessionAlreadyFinishedError` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
 
@@ -89,6 +91,7 @@ All paths are absolute relative to the repository root.
 | `src/demo.py` | demo | factual memory demo |
 | `src/demo_experience_store.py` | demo | Experience Store walkthrough |
 | `src/demo_identity.py` | demo | identity bootstrap + narrative render |
+| `src/demo_session_manager.py` | demo | session lifecycle: start, record events/key moments, finish with eigenstate |
 | `src/demo_reflection.py` | demo | micro→daily→deep with fixtures |
 | `src/demo_web_dashboard.py` | demo | web dashboard launch hint |
 
@@ -105,6 +108,7 @@ Connections between two or more parts. These are seams that may break independen
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start, stores experience/eigenstate at finish |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | optimistic locking |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | reads experience, updates recent layer |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
@@ -136,6 +140,7 @@ Connections between two or more parts. These are seams that may break independen
 | `demo.py` | `InMemoryBackend` + `FileBackend` for `FactualMemory` |
 | `demo_experience_store.py` | `JsonlExperienceStore` → `ExperienceService` |
 | `demo_identity.py` | `FileStateStore` → `IdentityService` + `NarrativeService` |
+| `demo_session_manager.py` | `FileStateStore` → `SessionManager` (loads identity/narrative, records events/moments, stores experience/eigenstate) |
 | `demo_reflection.py` | mocks + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 
 ### 2.5. TUI / Web ↔ subprocesses
@@ -222,6 +227,16 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 2. Three layers: CORE / RECENT / THREADS.
 3. First-person style validation.
 
+### H. Session lifecycle with first-hand experience
+Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
+1. `SessionManager.start_session(agent_id)` → loads identity, narrative, eigenstate → `SessionContext`.
+2. During session: `record_event(...)` tracks raw events from lower agent.
+3. `record_key_moment(...)` captures significant moments with mandatory emotional coloring (valence/intensity/depth).
+4. If coloring incomplete → flag `incomplete_coloring=True` (honest about limitation).
+5. `finish_session(...)` → creates `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
+6. Both stored via `StateStore` (experience immutable, eigenstate for next session).
+7. Key invariant: emotional coloring MUST be present (from real experiencing) or explicitly marked incomplete.
+
 ---
 
 ## 4. Non-standard inputs (edge cases)
@@ -235,9 +250,10 @@ Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py
 | Empty `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` outside 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` outside -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
+| `KeyMomentInput` with zero valence/intensity without `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py:120-127` |
 | Invalid UUID in CLI | try/except `UUID(...)` | `cli.py:50-54` |
 | Missing experience file | `if not json_file.exists()` | `cli_experience.py:40-43` |
-| **GAP**: empty `key_moments` in `SessionExperience` | no check | `core/models/experience.py` |
+| **GAP**: empty `key_moments` in `SessionExperience` | checked in `SessionManager.finish_session` | `core/services/session_manager.py:155-156` |
 | **GAP**: empty eigenstate (`open_threads`, `dominant_themes`, `unresolved_tensions`) | default empty list | `core/models/narrative.py:50-59` |
 
 ### 4.2. Duplicates / idempotency
