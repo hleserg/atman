@@ -93,6 +93,7 @@ All paths are absolute relative to the repository root.
 | `src/demo_identity.py` | demo | identity bootstrap + narrative render |
 | `src/demo_session_manager.py` | demo | session lifecycle: start, record events/key moments, finish with eigenstate |
 | `src/demo_reflection.py` | demo | micro→daily→deep with fixtures |
+| `src/demo_full_corpus.py` | demo | all `e2e/fixtures/sessions/*` → SessionManager → micro/daily/deep + Rich summary ([issue #158](https://github.com/hleserg/atman/issues/158)) |
 | `src/demo_web_dashboard.py` | demo | web dashboard launch hint |
 | `e2e/generate_fixtures.py` | e2e | LLM-backed session JSON fixture generator (`python -m e2e.generate_fixtures`); default 20 `en/` + 20 `ru/` corpora with parallel locale runs; Anthropic tool_use, two-pass skeleton + per-session; `--corpus-policy strict|soft`, `--max-corpus-regen N` (strict tail cap); optional extra `[e2e]`; not CI ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | fixture schema, intra/cross-session validators, API orchestration, prompts |
@@ -145,6 +146,7 @@ Connections between two or more parts. These are seams that may break independen
 | `demo_identity.py` | `FileStateStore` → `IdentityService` + `NarrativeService` |
 | `demo_session_manager.py` | `FileStateStore` → `SessionManager` (loads identity/narrative, records events/moments, stores experience/eigenstate) |
 | `demo_reflection.py` | mocks + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
+| `demo_full_corpus.py` | `e2e` session JSON → `FileStateStore` + `SessionManager` + `StateStore*Adapter` → micro → daily (per UTC day) → deep; `DeterministicReflectionModel` |
 
 ### 2.5. TUI / Web ↔ subprocesses
 
@@ -257,6 +259,16 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 9. `finish_session(..., alignment_check=False)` requires non-empty `alignment_notes`.
 10. `list_active_sessions()` returns `ActiveSessionSummary` (counts + `started_at`) for sessions not mid-finish.
 
+### I. Full corpus replay (all E2E session fixtures)
+
+Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_loop.py`, `tests/test_demo_full_corpus.py`.
+
+1. `load_all_fixture_sessions_sorted(locale)` orders fixtures by `metadata.session_number`.
+2. For each fixture: `FrozenClock` advances one UTC day; `run_session_from_fixture(...)` → experience + eigenstate.
+3. `MicroReflectionService.reflect(session_id)` then `DailyReflectionService.reflect(day)` on that calendar day.
+4. After the loop: `DeepReflectionService.reflect(since, until)` over the full span.
+5. Closing Rich table: bootstrap vs accumulated stores, principle touches, mood samples, patterns, reframing, narrative recent layer ([issue #158](https://github.com/hleserg/atman/issues/158)).
+
 ---
 
 ## 4. Non-standard inputs (edge cases)
@@ -354,8 +366,9 @@ Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/t
 | Empty eigenstate | ✅ closed | `tests/test_narrative_models.py::test_eigenstate_with_all_empty_collections_is_explicitly_marked` |
 | `GovernanceRejectedError` flow | ✅ closed | `tests/test_narrative_revision.py::test_governance_mode_locked_raises_governance_rejected_error` (+ pre-existing AUTO / REVIEW-without-approval tests) |
 | End-to-end §3 lifecycle | ✅ closed | `tests/test_system_e2e_lifecycle.py::test_bootstrap_to_deep_reflection_full_lifecycle` |
+| Session → experience → reflection invariants (E2E-02, #145) | ✅ closed | `tests/integration/test_full_lifecycle.py::test_full_lifecycle_session_experience_reflection_invariants` |
 | CLI surface (factual memory / experience / identity / reflection) | ✅ closed | `tests/test_cli_factual_memory.py`, `tests/test_cli_experience.py`, `tests/test_cli_identity.py`, `tests/test_cli_reflection.py` |
-| Demo entrypoints (smoke) | ✅ closed | `tests/test_demo_smoke.py` |
+| Demo entrypoints (smoke) | ✅ closed | `tests/test_demo_smoke.py`, `tests/test_demo_full_corpus.py` |
 | **Full lifecycle integration (E2E-02)** | ✅ closed | `tests/integration/test_full_lifecycle.py` — verifies (1) experience immutability after session finish, (2) reframing notes from reflection appear on experiences, (3) narrative.recent_layer updates after micro reflection, (4) identity_snapshot_id propagates session → experience → reflection |
 
 ### 5.4. TODO / FIXME
