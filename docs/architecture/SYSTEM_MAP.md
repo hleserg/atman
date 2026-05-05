@@ -23,7 +23,7 @@ All paths are absolute relative to the repository root.
 | `core/models/fact.py` | Verifiable facts and links between them | `FactRecord`, `Relation` |
 | `core/models/experience.py` | Lived experience, key moments, reframing | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Agent's self-representation (values, habits, principles, goals, open questions) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
-| `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
+| `core/models/narrative.py` | Self-narrative document (CORE/RECENT/THREADS) and eigenstate | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate` (`schema_version`, optional `identity_id`), `LayerType` |
 | `core/models/session.py` | Session runtime models: context, events, key moment input, result, active listing | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
 | `core/models/reflection.py` | Reflection processes, patterns, health assessment (Jahoda criteria) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Governance decisions for core narrative mutations | `GovernanceDecision`, `GovernanceMode` |
@@ -108,7 +108,7 @@ Connections between two or more parts. These are seams that may break independen
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
-| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start, stores experience/eigenstate at finish |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start; `IdentitySnapshot` on start; deterministic `SessionExperience.id` (uuid5 of `session_id`) for idempotent `finish_session`; eigenstate load scoped by `identity_id`; recent narrative update uses `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | optimistic locking |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | reads experience, updates recent layer |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
@@ -153,7 +153,7 @@ Connections between two or more parts. These are seams that may break independen
 
 ### 2.6. Reflection service chain
 
-```
+```text
 session ends
   ↓
 MicroReflectionService — reads ExperienceRepository
@@ -181,14 +181,18 @@ PrincipleRevisionAdvisor — principle revision
 ## 3. User scenarios
 
 ### A. Bootstrap a new agent
+
 Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `IdentityService.bootstrap_identity(agent_id)`.
 2. An honestly empty `Identity` is created with open questions.
 3. The first `IdentitySnapshot` is created with description "Bootstrap".
 4. `python -m atman.cli_identity` displays the identity.
 
 ### B. Record experience after a session
+
 Files: `docs/features/experience-store/`, `src/demo_experience_store.py`, `cli_experience.py`.
+
 1. During session — `KeyMoment` + `FeltSense` (valence, intensity, depth).
 2. End of session — `SessionExperience`.
 3. `ExperienceService.create_experience(...)` → write to JSONL/memory (immutable).
@@ -196,18 +200,22 @@ Files: `docs/features/experience-store/`, `src/demo_experience_store.py`, `cli_e
 5. Search by `values_touched`, depth, or date range.
 
 ### C. Micro reflection (after-session)
+
 Files: `docs/features/reflection-engine/`, `src/demo_reflection.py`, `cli_reflection.py`.
+
 1. `MicroReflectionService.reflect_micro(...)` takes recent experience + optional eigenstate.
 2. `ReflectionModel` (LLM or mock) generates a summary.
 3. Updates `NarrativeDocument.recent_layer` checking `expected_updated_at`.
 4. `NarrativeWriteAuditPort` records audit.
 
 ### D. Daily — pattern detection
+
 1. `DailyReflectionService.reflect_daily(...)` collects experience for the UTC day.
 2. `ReflectionModel` returns `list[PatternCandidate]`.
 3. Stored in `PatternStore` + `ReflectionEvent(level=DAILY)`.
 
 ### E. Deep reflection + health
+
 1. `DeepReflectionService.reflect_deep(...)`: experience + patterns + identity.
 2. Computes Jahoda criteria (autonomy, competence, integration, actualization, aspiration, purpose).
 3. `ReflectionModel` proposes narrative changes (core/recent).
@@ -215,20 +223,26 @@ Files: `docs/features/reflection-engine/`, `src/demo_reflection.py`, `cli_reflec
 5. Identity updated + narrative proposals + `HealthAssessment`.
 
 ### F. Factual memory: record and search
+
 Files: `docs/features/factual-memory/`, `src/demo.py`, `cli.py`.
+
 1. `add "..." session_042 task` — `FactRecord` with UUID.
 2. `search --tags task` — filter.
 3. `link <id1> <id2> "caused_by"` — relation.
 4. Facts are immutable; only relations may be added.
 
 ### G. Render NARRATIVE.md
+
 Files: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `NarrativeService.render_narrative_md(identity_id)`.
 2. Three layers: CORE / RECENT / THREADS.
 3. First-person style validation.
 
 ### H. Session lifecycle with first-hand experience
+
 Files: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
+
 1. `SessionManager.start_session(agent_id)` → loads identity, narrative, eigenstate → `SessionContext`.
 2. During session: `record_event(...)` tracks raw events from lower agent.
 3. `record_key_moment(...)` captures significant moments with mandatory emotional coloring (valence/intensity/depth).

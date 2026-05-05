@@ -279,24 +279,38 @@ Tests verify:
 ### Identity Store
 
 Session Manager **reads** at start:
+
 - Current identity (values, principles, emotional baseline)
-- Identity snapshots are created separately by Reflection Engine
+
+Session Manager **writes** at start:
+
+- `IdentitySnapshot` for provenance (who the agent was when the session began)
 
 ### Narrative Store
 
 Session Manager **reads** at start:
+
 - Current narrative (core + recent layers)
-- Narrative updates happen separately (micro reflection)
+
+Session Manager **writes** after a successful `finish_session`:
+
+- Updates the **recent** narrative layer with a short session summary (optimistic `updated_at` check on save to reduce silent overwrites)
 
 ### Experience Store
 
 Session Manager **writes** at end:
-- SessionExperience with `recorded_by="session_manager"`
+
+- `SessionExperience` with `recorded_by="session_manager"` and a **deterministic** experience id derived from `session_id` so retries after partial persistence do not create duplicates
 - This is the **only** component that writes first-hand experience
+
+### Eigenstate
+
+Session Manager **reads** the latest eigenstate **scoped by `identity_id`** when present so a switched identity in the same workspace does not inherit another agent’s cognitive snapshot.
 
 ### Reflection Engine
 
 Session Manager **prepares** for reflection:
+
 - Eigenstate provides starting point for next session
 - Experience is already colored - no need to guess emotions later
 
@@ -305,11 +319,13 @@ Session Manager **prepares** for reflection:
 ## Differences from Original Design
 
 **Before (Experience Processor):**
+
 - Experience written raw to mem0
 - Experience Processor would "guess" emotions later
 - Reflection worked with fabricated feelings
 
 **After (Session Manager):**
+
 - Experience colored in real-time
 - Session Manager is active experiencer
 - Reflection works with authentic first-hand records

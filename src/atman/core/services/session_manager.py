@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from atman.core.exceptions import (
     SessionAlreadyFinishedError,
@@ -40,6 +40,16 @@ from atman.core.ports.state_store import StateStore
 
 # Cap for eigenstate list fields; order is insertion-derived until salience ranking exists.
 MAX_EIGENSTATE_ITEMS = 5
+
+# Stable SessionExperience.id per session so ``finish_session`` retries do not duplicate records.
+_SESSION_EXPERIENCE_ID_NS = UUID("018e5a2b-7c3d-7b2a-9f01-2a3b4c5d6e7f")
+
+_NARRATIVE_SAVE_RETRIES = 5
+
+
+def deterministic_session_experience_id(session_id: UUID) -> UUID:
+    """Return the canonical ExperienceRecord id for a finished session."""
+    return uuid5(_SESSION_EXPERIENCE_ID_NS, str(session_id))
 
 
 class SessionManager:
@@ -100,22 +110,13 @@ class SessionManager:
         if narrative is None:
             raise ValueError(f"Narrative not found for identity {identity.id}")
 
-        last_eigenstate = self._state_store.load_latest_eigenstate()
+        last_eigenstate = self._state_store.load_latest_eigenstate(identity_id=identity.id)
 
-        # Create identity snapshot for provenance
         from atman.core.models.identity import IdentitySnapshot
-
-        snapshot = IdentitySnapshot(
-            identity_id=identity.id,
-            description="Session start snapshot",
-            identity_snapshot=identity,
-            change_summary="Snapshot for session lifecycle tracking",
-        )
-        stored_snapshot = self._state_store.create_identity_snapshot(snapshot)
 
         context = SessionContext(
             identity=identity,
-            identity_snapshot_id=stored_snapshot.id,
+            identity_snapshot_id=None,
             narrative=narrative,
             emotional_baseline=identity.emotional_baseline,
             last_eigenstate=last_eigenstate,
@@ -130,6 +131,14 @@ class SessionManager:
                     f"Active session limit ({self._max_active_sessions}) reached; "
                     "finish a session before starting another."
                 )
+            snapshot = IdentitySnapshot(
+                identity_id=identity.id,
+                description="Session start snapshot",
+                identity_snapshot=identity,
+                change_summary="Snapshot for session lifecycle tracking",
+            )
+            stored_snapshot = self._state_store.create_identity_snapshot(snapshot)
+            context = context.model_copy(update={"identity_snapshot_id": stored_snapshot.id})
             self._active_sessions[context.session_id] = SessionResult(
                 session_id=context.session_id,
                 started_at=context.started_at,
@@ -274,36 +283,38 @@ class SessionManager:
         session_result.alignment_check = alignment_check
         session_result.alignment_notes = alignment_notes
 
-        experience = SessionExperience(
-            session_id=session_id,
-            timestamp=session_result.finished_at,
-            key_moments=session_result.key_moments,
-            recorded_by="session_manager",
-            identity_snapshot_id=session_result.identity_snapshot_id,
-            importance=0.5,
-            salience=0.5,
-            incomplete_coloring=session_result.incomplete_coloring,
-        )
+        experience_id = deterministic_session_experience_id(session_id)
 
         # Persist experience, eigenstate, and update narrative
         # If this fails, rollback is_finished flag to allow retry
         try:
-            experience_record = ExperienceRecord(experience=experience)
-            self._state_store.create_experience(experience_record)
+            existing_record = self._state_store.get_experience(experience_id)
+            if existing_record is None:
+                experience = SessionExperience(
+                    id=experience_id,
+                    session_id=session_id,
+                    timestamp=session_result.finished_at,
+                    key_moments=session_result.key_moments,
+                    recorded_by="session_manager",
+                    identity_snapshot_id=session_result.identity_snapshot_id,
+                    importance=0.5,
+                    salience=0.5,
+                    incomplete_coloring=session_result.incomplete_coloring,
+                )
+                experience_record = ExperienceRecord(experience=experience)
+                self._state_store.create_experience(experience_record)
+            else:
+                if existing_record.experience.session_id != session_id:
+                    raise ValueError(
+                        f"Stored experience {experience_id} belongs to another session "
+                        f"({existing_record.experience.session_id}); refusing to proceed."
+                    )
 
             eigenstate = self._create_eigenstate(session_result)
             session_result.eigenstate = eigenstate
             self._state_store.save_eigenstate(eigenstate)
 
-            # Update recent narrative layer with session summary
-            # This ensures next start_session() sees updated context
-            if session_result.identity_id is not None:
-                narrative = self._state_store.load_narrative(session_result.identity_id)
-                if narrative is not None:
-                    # Build narrative summary from session
-                    narrative_update = self._build_narrative_update(session_result)
-                    narrative.update_recent_layer(narrative_update)
-                    self._state_store.save_narrative(narrative)
+            self._save_session_narrative_update(session_result)
 
         except Exception:
             # Rollback is_finished flag to allow retry of finish_session()
@@ -316,6 +327,35 @@ class SessionManager:
             self._active_sessions.pop(session_id, None)
 
         return session_result
+
+    def _save_session_narrative_update(self, session_result: SessionResult) -> None:
+        """Append session summary to recent narrative with optimistic concurrency."""
+        if session_result.identity_id is None:
+            return
+        identity_id = session_result.identity_id
+        update_text = self._build_narrative_update(session_result)
+        last_err: BaseException | None = None
+        for _ in range(_NARRATIVE_SAVE_RETRIES):
+            narrative = self._state_store.load_narrative(identity_id)
+            if narrative is None:
+                return
+            expected_at = narrative.updated_at
+            narrative.update_recent_layer(update_text)
+            try:
+                self._state_store.save_narrative(
+                    narrative,
+                    expected_updated_at=expected_at,
+                )
+                return
+            except ValueError as exc:
+                msg = str(exc)
+                if "updated_at mismatch" in msg:
+                    last_err = exc
+                    continue
+                raise
+        raise RuntimeError(
+            "Narrative concurrent update: exceeded retries; resolve conflict outside SessionManager."
+        ) from last_err
 
     def _build_narrative_update(self, session_result: SessionResult) -> str:
         """
@@ -388,20 +428,21 @@ class SessionManager:
             if e.event_type in ("unfinished", "open_question", "pending")
         ]
 
-        dominant_themes = list(
-            set(value for moment in session_result.key_moments for value in moment.values_touched)
-        )
+        dominant_flat = [
+            value for moment in session_result.key_moments for value in moment.values_touched
+        ]
+        dominant_themes = list(dict.fromkeys(dominant_flat))
 
-        unresolved_tensions = list(
-            set(
-                principle
-                for moment in session_result.key_moments
-                for principle in moment.principles_questioned
-            )
-        )
+        tension_flat = [
+            principle
+            for moment in session_result.key_moments
+            for principle in moment.principles_questioned
+        ]
+        unresolved_tensions = list(dict.fromkeys(tension_flat))
 
         return Eigenstate(
             session_id=session_result.session_id,
+            identity_id=session_result.identity_id,
             timestamp=session_result.finished_at,
             emotional_tone=session_result.overall_emotional_tone,
             emotional_intensity=avg_intensity,
@@ -429,7 +470,7 @@ class SessionManager:
             session_result = self._active_sessions.get(session_id)
             if session_result is None or session_result.is_finished:
                 return None
-            return session_result
+            return session_result.model_copy(deep=True)
 
     def list_active_sessions(self) -> list[ActiveSessionSummary]:
         """

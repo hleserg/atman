@@ -57,7 +57,7 @@ atman
 
 Примеры команд:
 
-```
+```text
 atman> add "Пользователь попросил реализовать память" session_1 task request
 ✓ Факт добавлен
 
@@ -423,7 +423,7 @@ class Mem0Backend(FactualMemory):
 
 ## Структура проекта
 
-```
+```text
 atman/
 ├── src/atman/
 │   ├── __init__.py

@@ -9,6 +9,7 @@ This directory contains Cursor IDE specific files and configurations for the Atm
 **Master prompt for local Cursor agents** (not cloud agents).
 
 This file provides:
+
 - Complete workflow guidelines
 - Links to all essential documentation  
 - Terminology discipline rules
@@ -25,6 +26,7 @@ This file provides:
 **Synchronization guide** for keeping the master prompt aligned with project standards.
 
 Describes:
+
 - What to sync (which sections from `DEVELOPMENT_STANDARD.md`)
 - When to sync (triggers and frequency)
 - How to sync (step-by-step process)
@@ -35,6 +37,7 @@ Describes:
 ## Why This Directory?
 
 `.cursor/` is the standard location for Cursor IDE specific files. It keeps:
+
 - IDE configuration separate from project code
 - Agent instructions accessible but non-intrusive
 - Sync documentation discoverable

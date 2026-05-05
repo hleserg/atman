@@ -248,12 +248,14 @@ pytest --cov=atman.core.models.experience --cov=atman.core.services.experience_s
 ### Core и Adapter
 
 **Core** (`atman/core/`):
+
 - доменные модели (FeltSense, KeyMoment, SessionExperience и др.);
 - порты (интерфейс StateStore);
 - сервисы (ExperienceService);
 - **без** прямых зависимостей от конкретного хранилища, LLM и внешних сервисов.
 
 **Adapters** (`atman/adapters/`):
+
 - реализация JSONL;
 - in-memory для тестов;
 - **реализуют** порт StateStore из Core.

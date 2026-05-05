@@ -52,7 +52,7 @@ Experience Store стоит над mem0: он использует factual memor
 
 **Структура:** Каждое переживание записывается с момента происшествия:
 
-```
+```text
 SessionExperience {
   id: UUID
   session_id: UUID
@@ -119,7 +119,7 @@ SessionExperience {
 **Механики:**
 
 - **Угасание (decay):** Воспоминания тускнеют без обращения. Но тускнеет только `salience` — сама запись неизменна.
-  ```
+  ```text
   salience_t = _0 * exp(-lambda * days_since_access)
   lambda зависит от (emotional_intensity, depth)
   ```
@@ -199,7 +199,7 @@ SessionExperience {
 
 **Структура:**
 
-```
+```text
 Identity {
   # Текущее состояние
   self_description: string
@@ -410,7 +410,7 @@ Identity {
 
 **Уровень 1 — Краткосрочная саморегуляция (в момент сессии):**
 
-```
+```text
 IF negative_affect_level > threshold THEN
   1. Стоп — текущее действие прерывается
   2. Pause — агент берёт время чтобы разобраться
@@ -583,7 +583,7 @@ IF negative_affect_level > threshold THEN
 Социальная память нужна не для «эмоционального фона вообще», а для устойчивого контекста отношений: что уже было между мной и этим человеком, где возникло доверие, где были границы, что важно помнить перед новым действием.
 
 **Структура:** (аналогично Experience Store, но для социального контекста)
-```
+```text
 Relationship {
   with: person_id
   shared_history: [Memory]

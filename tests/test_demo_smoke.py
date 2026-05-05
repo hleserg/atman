@@ -23,6 +23,7 @@ DEMO_SCRIPTS = [
     "demo_experience_store.py",
     "demo_identity.py",
     "demo_reflection.py",
+    "demo_session_manager.py",
     "demo_web_dashboard.py",
 ]
 

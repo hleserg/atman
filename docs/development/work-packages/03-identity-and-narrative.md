@@ -84,4 +84,3 @@ narrative validate ./demo-workspace/NARRATIVE.md
 - Не реализовывать deep reflection.
 - Не строить полноценный relation memory.
 - Не генерировать "красивую личность" из воздуха при bootstrap.
-

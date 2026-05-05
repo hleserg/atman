@@ -60,7 +60,7 @@ Experience Store stands above mem0: it uses factual memory as support, but adds 
 
 **Structure:** Each experience is recorded from the moment of occurrence:
 
-```
+```text
 SessionExperience {
   id: UUID
   session_id: UUID
@@ -129,7 +129,7 @@ SessionExperience {
 
 * **Decay:** Memories fade without access. But only `salience` fades — the record itself is unchanged.
 
-```
+```text
   salience_t = salience_0 * exp(-lambda * days_since_access)
   lambda depends on (emotional_intensity, depth)
 ```
@@ -215,7 +215,7 @@ SessionExperience {
 
 **Structure:**
 
-```
+```text
 Identity {
   # Current state
   self_description: string
@@ -438,7 +438,7 @@ A skill isn't equal to memory and isn't equal to principle. It's born from exper
 
 **Level 1 — Short-term self-regulation (in session moment):**
 
-```
+```text
 IF negative_affect_level > threshold THEN
   1. Stop — current action interrupted
   2. Pause — agent takes time to figure it out

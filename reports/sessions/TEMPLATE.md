@@ -6,6 +6,7 @@
 - topic: <short topic>
 
 ## Metrics
+
 - time_to_resolution: <number>
 - topic_revisits: <number>
 - my_errors_corrected: <number>
@@ -22,10 +23,13 @@
 - immediate_agreements: <number>
 
 ## Summary
-- 
+
+-
 
 ## Decisions
-- 
+
+-
 
 ## Follow-ups
-- 
+
+-

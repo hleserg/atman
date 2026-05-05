@@ -1,4 +1,5 @@
 # ATMAN
+
 ## Manifesto for AI Agent's Psychological Layer
 
 *April 2026*

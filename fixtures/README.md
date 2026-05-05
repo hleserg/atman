@@ -5,21 +5,27 @@ This directory contains sample experience data for testing and demonstration.
 ## Files
 
 ### experience1_competence_challenge.json
+
 A **meaningful** experience where the agent faces a competence challenge.
+
 - Two key moments showing progression from uncertainty to alignment
 - Demonstrates values: competence, honesty, service
 - Shows principle confirmation through action
 - Importance: 0.8, Salience: 0.9
 
 ### experience2_value_conflict.json
+
 A **profound** experience involving value conflict resolution.
+
 - Shows internal conflict between service and honesty
 - Demonstrates principle questioning and integration
 - High emotional intensity (0.8) and profound depth
 - Importance: 0.9, Salience: 1.0
 
 ### experience3_surface_technical.json
+
 A **surface** experience of routine technical assistance.
+
 - Low emotional intensity (0.3) and surface depth
 - Straightforward, no principle questioning
 - Lower importance: 0.3, Salience: 0.4

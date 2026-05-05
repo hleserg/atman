@@ -329,3 +329,24 @@ def test_load_latest_eigenstate_filters_by_session(store: StateStore) -> None:
 
     assert store.load_latest_eigenstate(session_id=sid) is not None
     assert store.load_latest_eigenstate(session_id=uuid4()) is None
+
+
+def test_load_latest_eigenstate_filters_by_identity(store: StateStore) -> None:
+    sid = uuid4()
+    iid = uuid4()
+    e = Eigenstate(
+        session_id=sid,
+        identity_id=iid,
+        emotional_tone=0.0,
+        emotional_intensity=0.0,
+        cognitive_load=0.0,
+        open_threads=[],
+        dominant_themes=[],
+        unresolved_tensions=[],
+        session_summary="s",
+        key_insight="k",
+    )
+    store.save_eigenstate(e)
+
+    assert store.load_latest_eigenstate(identity_id=iid) is not None
+    assert store.load_latest_eigenstate(identity_id=uuid4()) is None

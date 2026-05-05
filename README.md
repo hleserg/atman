@@ -1,6 +1,7 @@
 <img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/e7269c6f-f81a-4982-afa3-ed45e8fd1f84" />
 
 # Atman
+>
 > **Continuous Identity for Your Agents**
 
 [[ru](README-ru.md)] — *Russian version*
@@ -47,7 +48,7 @@ Under the hood — seven components: store of lived experiences, reflection engi
 
 ## Roadmap
 
-```
+```text
 ● Research              ✅ Complete
 ● Design                ✅ Complete
 ● Prototyping           ← We are here

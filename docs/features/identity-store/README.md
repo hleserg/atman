@@ -60,7 +60,7 @@ Narrative content must be first-person:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────┐
 │         Identity Service            │
 │   (bootstrap, update, snapshot)     │
@@ -155,7 +155,7 @@ Demo shows:
 
 ## Storage Layout
 
-```
+```text
 workspace/
 ├── identity.json                # Current identity
 ├── identity_snapshots/          # Versioned history

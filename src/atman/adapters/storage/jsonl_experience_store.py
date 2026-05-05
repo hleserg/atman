@@ -224,7 +224,7 @@ class JsonlExperienceStore(StateStore):
         """Not implemented - use FileStateStore for narrative operations."""
         raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
 
-    def save_narrative(self, narrative, expected_version=None):  # type: ignore
+    def save_narrative(self, narrative, expected_version=None, expected_updated_at=None):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
         raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
 
@@ -240,6 +240,6 @@ class JsonlExperienceStore(StateStore):
         """Not implemented - use FileStateStore for eigenstate operations."""
         raise NotImplementedError("Eigenstate operations not supported in JsonlExperienceStore")
 
-    def load_latest_eigenstate(self, session_id=None):  # type: ignore
+    def load_latest_eigenstate(self, session_id=None, identity_id=None):  # type: ignore
         """Not implemented - use FileStateStore for eigenstate operations."""
         raise NotImplementedError("Eigenstate operations not supported in JsonlExperienceStore")

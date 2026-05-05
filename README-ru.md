@@ -1,6 +1,7 @@
 <img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/e7269c6f-f81a-4982-afa3-ed45e8fd1f84" />
 
 # Atman
+>
 > **Непрерывная личность для ваших агентов**
 
 [[en](README.md)] — *English version*
@@ -47,7 +48,7 @@
 
 ## Дорожная карта
 
-```
+```text
 ● Исследование          ✅ Завершено
 ● Проектирование        ✅ Завершено
 ● Прототипирование      ← Мы здесь

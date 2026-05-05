@@ -247,7 +247,10 @@ class StateStore(ABC):
 
     @abstractmethod
     def save_narrative(
-        self, narrative: NarrativeDocument, expected_version: str | None = None
+        self,
+        narrative: NarrativeDocument,
+        expected_version: str | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> NarrativeDocument:
         """
         Save narrative document.
@@ -255,6 +258,7 @@ class StateStore(ABC):
         Args:
             narrative: Narrative to save
             expected_version: Expected schema version for optimistic locking
+            expected_updated_at: If set, must match the narrative on disk (detect concurrent edits)
 
         Returns:
             NarrativeDocument: Saved narrative
@@ -307,12 +311,17 @@ class StateStore(ABC):
         pass
 
     @abstractmethod
-    def load_latest_eigenstate(self, session_id: UUID | None = None) -> Eigenstate | None:
+    def load_latest_eigenstate(
+        self,
+        session_id: UUID | None = None,
+        identity_id: UUID | None = None,
+    ) -> Eigenstate | None:
         """
         Load the most recent eigenstate.
 
         Args:
             session_id: Optional session ID to load eigenstate for specific session
+            identity_id: If set, only return eigenstate stored for this identity (isolation)
 
         Returns:
             Eigenstate | None: Latest eigenstate if exists, None otherwise

@@ -60,7 +60,7 @@ Self-narrative имеет явную структуру:
 
 ## Архитектура
 
-```
+```text
 ┌─────────────────────────────────────┐
 │         Identity Service            │
 │   (bootstrap, update, snapshot)     │
@@ -155,7 +155,7 @@ make demo-identity-fast    # Мгновенный вывод
 
 ## Структура хранения
 
-```
+```text
 workspace/
 ├── identity.json                # Текущая идентичность
 ├── identity_snapshots/          # Версионированная история

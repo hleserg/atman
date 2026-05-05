@@ -55,7 +55,7 @@ atman
 
 Examples:
 
-```
+```text
 atman> add "User asked to implement memory" session_1 task request
 atman> search "user" --tags task
 atman> recent 5
@@ -154,7 +154,7 @@ Downstream: Experience Store, Identity Store, Reflection Engine, Session Manager
 
 ## Layout (excerpt)
 
-```
+```text
 src/atman/
   cli.py
   core/models/fact.py

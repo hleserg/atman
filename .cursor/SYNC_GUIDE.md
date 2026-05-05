@@ -7,6 +7,7 @@ This guide describes how to keep `.cursor/local-agent-master-prompt.md` synchron
 ## Why Synchronization Matters
 
 The local agent master prompt is derived from project standards. When standards change, the master prompt must be updated to ensure:
+
 - Local agents follow current conventions
 - No divergence between cloud and local agent behavior
 - Consistent terminology across all development
@@ -29,6 +30,7 @@ Monitor these sections for changes:
 ### Secondary Sources
 
 Also watch for significant changes in:
+
 - `docs/architecture/SYSTEM.md` — Component definitions, protocols
 - `AGENTS.md` — Repository structure, tool setup
 - `MANIFEST.md` — Core philosophy (rarely changes)
@@ -36,6 +38,7 @@ Also watch for significant changes in:
 ## When to Sync
 
 Trigger synchronization when:
+
 - [ ] New domain terms added to vocabulary
 - [ ] Architecture boundaries change (Core/Adapter split)
 - [ ] Implementation order is revised
@@ -62,6 +65,7 @@ git diff <last-sync-commit> HEAD -- docs/development/DEVELOPMENT_STANDARD.md
 ### Step 2: Review Impact
 
 Read the changed sections and ask:
+
 - Does this affect local agent workflow?
 - Does this change terminology or conventions?
 - Does this add new requirements?
@@ -90,6 +94,7 @@ Map changes from `DEVELOPMENT_STANDARD.md` to master prompt sections:
 ```
 
 Increment version:
+
 - **Major** (2.0): Breaking changes, complete restructure
 - **Minor** (1.1): New sections, significant additions
 - **Patch** (1.0.1): Clarifications, typo fixes
@@ -166,6 +171,7 @@ If cloud agents and local agents show different behavior:
 ## Questions?
 
 If synchronization is unclear or conflicts arise:
+
 1. Check this guide first
 2. Review both documents side-by-side
 3. Ask maintainer or create discussion issue

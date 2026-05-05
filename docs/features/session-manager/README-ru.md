@@ -279,24 +279,38 @@ pytest tests/ -v
 ### Identity Store
 
 Session Manager **читает** при старте:
+
 - Текущую идентичность (ценности, принципы, эмоциональный baseline)
-- Identity snapshots создаются отдельно Reflection Engine
+
+Session Manager **пишет** при старте:
+
+- `IdentitySnapshot` для провенанса (кто был агент в начале сессии)
 
 ### Narrative Store
 
 Session Manager **читает** при старте:
-- Текущий нарратив (core + recent layers)
-- Обновления нарратива происходят отдельно (micro reflection)
+
+- Текущий нарратив (слои core + recent)
+
+Session Manager **пишет** после успешного `finish_session`:
+
+- Обновляет слой **recent** кратким резюме сессии (при сохранении проверяется `updated_at`, чтобы снизить риск тихой перезаписи при конкуренции)
 
 ### Experience Store
 
 Session Manager **пишет** в конце:
-- SessionExperience с `recorded_by="session_manager"`
+
+- `SessionExperience` с `recorded_by="session_manager"` и **детерминированным** id опыта от `session_id`, чтобы повтор `finish_session` после частичного сбоя persistence не создавал дубликатов
 - Это **единственный** компонент, который пишет first-hand опыт
+
+### Eigenstate
+
+При старте подмешивается последний eigenstate **в области `identity_id`**, чтобы при смене личности в том же workspace не подтягивалось состояние другого агента.
 
 ### Reflection Engine
 
 Session Manager **готовит** для рефлексии:
+
 - Eigenstate даёт стартовую точку для следующей сессии
 - Опыт уже окрашен — не нужно угадывать эмоции позже
 
@@ -305,11 +319,13 @@ Session Manager **готовит** для рефлексии:
 ## Отличия от оригинального дизайна
 
 **До (Experience Processor):**
+
 - Опыт записывался сырым в mem0
 - Experience Processor должен был "угадывать" эмоции позже
 - Reflection работал с фабрикованными чувствами
 
 **После (Session Manager):**
+
 - Опыт окрашивается в реальном времени
 - Session Manager — активный переживающий
 - Reflection работает с аутентичными first-hand записями

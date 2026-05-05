@@ -15,6 +15,7 @@ from atman.adapters.storage.file_state_store import FileStateStore
 from atman.core.models import (
     ActiveSessionSummary,
     CoreValue,
+    Eigenstate,
     EmotionalDepth,
     Goal,
     GoalHorizon,
@@ -26,12 +27,14 @@ from atman.core.models import (
     SessionEvent,
     SessionResult,
 )
+from atman.core.ports.state_store import SessionExperienceQuery
 from atman.core.services import (
     SessionAlreadyFinishedError,
     SessionManager,
     SessionNotFoundError,
     TooManyActiveSessionsError,
 )
+from atman.core.services.session_manager import deterministic_session_experience_id
 
 
 @pytest.fixture
@@ -402,8 +405,10 @@ def test_max_active_sessions_limit(temp_storage, test_identity, test_narrative):
     temp_storage.save_narrative(test_narrative)
     manager = SessionManager(temp_storage, max_active_sessions=1)
     manager.start_session(test_identity.id)
+    snap_before = len(list(temp_storage.identity_snapshots_dir.glob("*.json")))
     with pytest.raises(TooManyActiveSessionsError):
         manager.start_session(test_identity.id)
+    assert len(list(temp_storage.identity_snapshots_dir.glob("*.json"))) == snap_before
 
 
 def test_overall_emotional_tone_out_of_range_raises(session_manager):
@@ -788,3 +793,119 @@ def test_finish_session_updates_recent_narrative(session_manager, temp_storage):
     context2 = manager.start_session(agent_id)
     assert context2.narrative.recent_layer.content == recent_content_after
     assert "Successfully delivered complex work" in context2.narrative.recent_layer.content
+
+
+def test_get_active_session_returns_detached_snapshot(session_manager):
+    """Mutations on the returned SessionResult must not affect the live registry."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    active1 = manager.get_active_session(context.session_id)
+    assert active1 is not None
+    manager.record_event(
+        context.session_id,
+        SessionEvent(
+            session_id=context.session_id,
+            event_type="t",
+            description="after snapshot",
+        ),
+    )
+    active2 = manager.get_active_session(context.session_id)
+    assert len(active2.events) == 1
+    assert len(active1.events) == 0
+
+
+def test_finish_session_retry_after_eigenstate_failure_does_not_duplicate_experience(
+    session_manager, temp_storage
+):
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+    manager.record_key_moment(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="partial persist",
+            emotional_valence=0.2,
+            emotional_intensity=0.3,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="idempotency",
+        ),
+    )
+    real_save = temp_storage.save_eigenstate
+    fail = {"once": True}
+
+    def flaky_save(es):  # type: ignore[no-untyped-def]
+        if fail["once"]:
+            fail["once"] = False
+            raise RuntimeError("eigenstate failed")
+        return real_save(es)
+
+    with (
+        patch.object(temp_storage, "save_eigenstate", side_effect=flaky_save),
+        pytest.raises(RuntimeError, match="eigenstate failed"),
+    ):
+        manager.finish_session(context.session_id)
+
+    assert manager.get_active_session(context.session_id) is not None
+    manager.finish_session(context.session_id)
+
+    rows = temp_storage.search_experiences(SessionExperienceQuery(context.session_id), limit=10)
+    assert len(rows) == 1
+    assert rows[0].experience.id == deterministic_session_experience_id(context.session_id)
+
+
+def test_start_session_ignores_eigenstate_from_different_identity(tmp_path):
+    """Same workspace file layout after switching identity must not leak prior eigenstate."""
+    from atman.adapters.storage.file_state_store import FileStateStore
+
+    store = FileStateStore(tmp_path / "st")
+    id_a = uuid4()
+    id_b = uuid4()
+    id_a_obj = Identity(
+        id=id_a,
+        self_description="A",
+        core_values=[
+            CoreValue(name="v", description="d", confidence=0.5),
+        ],
+        goals=[Goal(content="g", horizon=GoalHorizon.SHORT)],
+        emotional_baseline=0.0,
+    )
+    na = NarrativeDocument(
+        identity_id=id_a,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="ca"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="ra"),
+    )
+    store.save_identity(id_a_obj)
+    store.save_narrative(na)
+    es = Eigenstate(
+        session_id=uuid4(),
+        identity_id=id_a,
+        emotional_tone=0.1,
+        emotional_intensity=0.2,
+        cognitive_load=0.1,
+        open_threads=[],
+        dominant_themes=["t"],
+        unresolved_tensions=[],
+        session_summary="s",
+        key_insight="k",
+    )
+    store.save_eigenstate(es)
+
+    id_b_obj = Identity(
+        id=id_b,
+        self_description="B",
+        core_values=[
+            CoreValue(name="v", description="d", confidence=0.5),
+        ],
+        goals=[Goal(content="g", horizon=GoalHorizon.SHORT)],
+        emotional_baseline=0.0,
+    )
+    nb = NarrativeDocument(
+        identity_id=id_b,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="cb"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="rb"),
+    )
+    store.save_identity(id_b_obj)
+    store.save_narrative(nb)
+
+    mgr = SessionManager(store)
+    ctx = mgr.start_session(id_b)
+    assert ctx.last_eigenstate is None

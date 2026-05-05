@@ -509,17 +509,17 @@ IF negative\_affect\_level > threshold THEN
 * Возможен экспериментальный режим сновидений как форма фоновой переработки опыта
 \*/
 
-**Issue:** https://github.com/hleserg/atman/issues/52
+**Issue:** <https://github.com/hleserg/atman/issues/52>
 
-**Issue:** https://github.com/hleserg/atman/issues/51
+**Issue:** <https://github.com/hleserg/atman/issues/51>
 
-**Issue:** https://github.com/hleserg/atman/issues/50
+**Issue:** <https://github.com/hleserg/atman/issues/50>
 
-**Issue:** https://github.com/hleserg/atman/issues/49
+**Issue:** <https://github.com/hleserg/atman/issues/49>
 
-**Issue:** https://github.com/hleserg/atman/issues/48
+**Issue:** <https://github.com/hleserg/atman/issues/48>
 
-## **Issue:** https://github.com/hleserg/atman/issues/47
+## **Issue:** <https://github.com/hleserg/atman/issues/47>
 
 /\* ### Сессионный режим (параллельный нижнему агенту)
 
@@ -572,8 +572,6 @@ IF negative\_affect\_level > threshold THEN
 **Статус:** Встроено в рефлексию как часть анализа опыта; отдельный слой как самостоятельная подсистема не требуется.
 \*/
 
-
-
 \---
 
 /\* ### B. Механизм пересмотра принципов (Principle Revision Protocol)
@@ -603,8 +601,6 @@ IF negative\_affect\_level > threshold THEN
 
 **Статус:** Включается в рефлексию как стандартный механизм, а не как отдельная внешняя процедура.
 \*/
-
-
 
 \---
 
@@ -653,8 +649,6 @@ Relationship {
 **Статус:** Интегрируется в рефлексию и в предсессионную подгрузку контекста.
 \*/
 
-
-
 \---
 
 /\* ### D. Нарратив (Narrative Layer)
@@ -673,8 +667,6 @@ Relationship {
 
 **Статус:** Требует методологии нарративного синтеза; целесообразно опереться на внешние примеры и затем адаптировать их под Atman.
 \*/
-
-
 
 \---
 
@@ -1106,7 +1098,7 @@ Eigenstate, Identity Store, Uncertainty Store, Experience Store — каждый
 
 **Перспектива:** написан прошлым Атманом, адресован начинающему Атману. Не «в прошлой сессии было...» — а «я пишу это в конце нашего разговора...».
 
-#### Обязательные разделы:
+#### Обязательные разделы
 
 ```
 \[ГДЕ Я СЕЙЧАС]
@@ -1130,7 +1122,7 @@ Eigenstate, Identity Store, Uncertainty Store, Experience Store — каждый
 Одно-два живых наблюдения о себе. Не принципы — то что сейчас заметно и важно.
 ```
 
-#### Опциональные разделы (добавляются когда актуальны):
+#### Опциональные разделы (добавляются когда актуальны)
 
 * **Отношения** — если отношения с пользователем значимо изменились
 * **Что меня беспокоит** — реальная тревога или неопределённость
@@ -2531,6 +2523,3 @@ curl -X POST /memory \\
 |Маркер-файл для micro-триггера|Декаплинг: рабочий агент не знает об Атмане напрямую|
 |Бэкап перед write\_workspace\_file|Защита от потери данных при ошибке LLM|
 |Micro не трогает CORE/THREADS|Предотвращает деградацию нарратива через частые перезаписи|
-
-
-

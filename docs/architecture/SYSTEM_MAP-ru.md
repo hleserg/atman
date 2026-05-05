@@ -26,7 +26,7 @@
 | `core/models/fact.py` | Верифицируемые факты и связи между ними | `FactRecord`, `Relation` |
 | `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Самопредставление агента (ценности, привычки, принципы, цели, открытые вопросы) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
-| `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate`, `LayerType` |
+| `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate` (`schema_version`, опциональный `identity_id`), `LayerType` |
 | `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат, сводка активных | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
 | `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Йоды) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment` |
 | `core/models/governance.py` | Решения governance для мутаций ядра нарратива | `GovernanceDecision`, `GovernanceMode` |
@@ -111,7 +111,7 @@
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
-| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | загрузка identity/narrative на старте, сохранение experience/eigenstate на завершении |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | старт: identity/narrative + `IdentitySnapshot`; `finish_session`: детерминированный `SessionExperience.id` (uuid5 от `session_id`) для идемпотентных ретраев; загрузка eigenstate с фильтром `identity_id`; обновление recent narrative через `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | оптимистическая блокировка |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
@@ -156,7 +156,7 @@
 
 ### 2.6. Цепочка сервисов рефлексии
 
-```
+```text
 конец сессии
   ↓
 MicroReflectionService — читает ExperienceRepository
@@ -184,14 +184,18 @@ PrincipleRevisionAdvisor — пересмотр принципов
 ## 3. Пользовательские сценарии
 
 ### A. Bootstrap нового агента
+
 Файлы: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `IdentityService.bootstrap_identity(agent_id)`.
 2. Создаётся честная пустая `Identity` с открытыми вопросами.
 3. Создаётся первый `IdentitySnapshot` с описанием «Bootstrap».
 4. `python -m atman.cli_identity` показывает identity.
 
 ### B. Запись опыта после сессии
+
 Файлы: `docs/features/experience-store/`, `src/demo_experience_store.py`, `cli_experience.py`.
+
 1. Во время сессии — `KeyMoment` + `FeltSense` (валентность, интенсивность, глубина).
 2. Конец сессии — `SessionExperience`.
 3. `ExperienceService.create_experience(...)` → запись в JSONL/память (immutable).
@@ -199,18 +203,22 @@ PrincipleRevisionAdvisor — пересмотр принципов
 5. Поиск по `values_touched`, глубине, дате.
 
 ### C. Micro reflection (после сессии)
+
 Файлы: `docs/features/reflection-engine/`, `src/demo_reflection.py`, `cli_reflection.py`.
+
 1. `MicroReflectionService.reflect_micro(...)` берёт свежий опыт + опциональный eigenstate.
 2. `ReflectionModel` (LLM или мок) генерирует резюме.
 3. Обновляется `NarrativeDocument.recent_layer` с проверкой `expected_updated_at`.
 4. `NarrativeWriteAuditPort` пишет аудит.
 
 ### D. Daily — детекция паттернов
+
 1. `DailyReflectionService.reflect_daily(...)` собирает опыт за UTC-день.
 2. `ReflectionModel` возвращает `list[PatternCandidate]`.
 3. Запись в `PatternStore` + `ReflectionEvent(level=DAILY)`.
 
 ### E. Deep reflection + здоровье
+
 1. `DeepReflectionService.reflect_deep(...)`: опыт + паттерны + identity.
 2. Считаются критерии Йоды (autonomy, competence, integration, actualization, aspiration, purpose).
 3. `ReflectionModel` предлагает правки нарратива (core/recent).
@@ -218,20 +226,26 @@ PrincipleRevisionAdvisor — пересмотр принципов
 5. Обновляются identity + предложения по нарративу + `HealthAssessment`.
 
 ### F. Факт-память: запись и поиск
+
 Файлы: `docs/features/factual-memory/`, `src/demo.py`, `cli.py`.
+
 1. `add "..." session_042 task` — `FactRecord` с UUID.
 2. `search --tags task` — фильтрация.
 3. `link <id1> <id2> "caused_by"` — связь.
 4. Факты неизменяемы, добавляются только связи.
 
 ### G. Рендер NARRATIVE.md
+
 Файлы: `docs/features/identity-store/`, `src/demo_identity.py`, `cli_identity.py`.
+
 1. `NarrativeService.render_narrative_md(identity_id)`.
 2. Три слоя: CORE / RECENT / THREADS.
 3. Валидация first-person стиля.
 
 ### H. Жизненный цикл сессии с first-hand опытом
+
 Файлы: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
+
 1. `SessionManager.start_session(agent_id)` → загружает identity, narrative, eigenstate → `SessionContext`.
 2. Во время сессии: `record_event(...)` отслеживает сырые события от нижнего агента.
 3. `record_key_moment(...)` фиксирует значимые моменты с обязательной эмоциональной окраской (valence/intensity/depth).

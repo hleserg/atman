@@ -248,12 +248,14 @@ pytest --cov=atman.core.models.experience --cov=atman.core.services.experience_s
 ### Core vs Adapter
 
 **Core** (`atman/core/`):
+
 - Domain models (FeltSense, KeyMoment, SessionExperience, etc.)
 - Ports (StateStore interface)
 - Services (ExperienceService)
 - **No direct dependencies** on storage implementations, LLMs, or external services
 
 **Adapters** (`atman/adapters/`):
+
 - JSONL storage implementation
 - In-memory storage implementation
 - **Implements** the StateStore port from Core
