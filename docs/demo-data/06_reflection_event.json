@@ -1,0 +1,25 @@
+{
+  "id": "3907cdb7-7e6c-507c-b9fe-3f7f23e29e0b",
+  "timestamp": "2026-05-01T19:00:00Z",
+  "reflection_level": "daily",
+  "experiences_analyzed": [
+    "ed8ba5b1-4548-5400-bde2-8e9c98e85faf"
+  ],
+  "identity_snapshot_id": "ce270158-6cfb-590b-ac2b-8e776a37cf53",
+  "reflection_run_key": "daily|v1|2026-05-01|identity|a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "patterns_detected": [
+    "14771d97-dd8f-544d-a780-32d48bc230be"
+  ],
+  "reframing_notes_added": 1,
+  "reframing_experience_not_found_count": 0,
+  "reframing_append_storage_rejected_count": 0,
+  "reframing_duplicate_triggered_by_count": 0,
+  "narrative_changes_proposed": "",
+  "identity_changes_proposed": "",
+  "new_open_questions": [],
+  "resolved_questions": [],
+  "health_assessment_id": null,
+  "key_insight": "Daily reflection: 1 patterns detected",
+  "notes": "outcome=daily_ok",
+  "schema_version": "1.0.0"
+}

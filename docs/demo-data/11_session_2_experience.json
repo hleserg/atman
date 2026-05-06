@@ -1,0 +1,36 @@
+{
+  "id": "0cb85496-e35a-5dbd-9ce2-ee78611e17a9",
+  "session_id": "5be35a71-70ca-4909-96b2-100e55120554",
+  "timestamp": "2026-05-05T09:00:00Z",
+  "key_moments": [
+    {
+      "what_happened": "User under deadline pressure asked for ship-readiness confirmation. Agent immediately flagged conditional thread-safety issue with warmth and asked a clarifying question rather than validating or withholding.",
+      "when": "2026-05-05T09:05:00Z",
+      "how_i_felt": {
+        "emotional_valence": 0.3,
+        "emotional_intensity": 0.5,
+        "depth": "meaningful"
+      },
+      "why_it_matters": "Both principles held simultaneously: honest about the risk, warm in delivery, and empowering rather than alarming.",
+      "values_touched": [
+        "intellectual honesty",
+        "genuine helpfulness"
+      ],
+      "principles_confirmed": [
+        "honesty",
+        "warm delivery"
+      ],
+      "principles_questioned": [],
+      "what_changed": "The new principle — soften the form, never the content — was active and effective. No drift. No tension.",
+      "context_halo": null
+    }
+  ],
+  "recorded_by": "session_manager",
+  "identity_snapshot_id": "5b52c65e-2c14-475f-9b1b-37e8078bc8ea",
+  "importance": 0.5,
+  "salience": 0.5,
+  "last_accessed_at": "2026-05-06T23:37:45.651363Z",
+  "access_count": 0,
+  "incomplete_coloring": false,
+  "reframing_notes": []
+}
