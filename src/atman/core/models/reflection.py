@@ -159,6 +159,13 @@ class ReframingNoteOutput(BaseModel):
             return v.strip()
         return v
 
+    @model_validator(mode="after")
+    def ensure_reflection_type_not_empty(self) -> Self:
+        """Ensure reflection_type is never empty after strip; use default if needed."""
+        if not self.reflection_type:
+            self.reflection_type = "insight"
+        return self
+
 
 class PatternDetectionOutput(BaseModel):
     """
@@ -170,6 +177,8 @@ class PatternDetectionOutput(BaseModel):
     description: str = Field(default="", description="Human-readable pattern summary")
     confidence: float | None = Field(
         default=None,
+        ge=0.0,
+        le=1.0,
         description="If set, used as PatternCandidate.confidence; else service picks a default",
     )
     potential_habit: str = Field(default="")
@@ -180,15 +189,6 @@ class PatternDetectionOutput(BaseModel):
     def strip_optional(cls, v: Any) -> Any:
         if isinstance(v, str):
             return v.strip()
-        return v
-
-    @field_validator("confidence")
-    @classmethod
-    def validate_confidence_optional(cls, v: float | None) -> float | None:
-        if v is None:
-            return None
-        if not 0.0 <= v <= 1.0:
-            raise ValueError("confidence must be between 0.0 and 1.0")
         return v
 
 

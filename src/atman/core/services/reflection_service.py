@@ -385,7 +385,7 @@ class DailyReflectionService:
             if reframing_text and len(reframing_text) > 10:
                 note = ReframingNote(
                     reflection=reframing_text,
-                    reflection_type=reframing_out.reflection_type or "pattern",
+                    reflection_type=reframing_out.reflection_type,
                     triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
                 outcome = self.experience_repo.add_reframing_note(exp.id, note)
@@ -697,7 +697,7 @@ class DeepReflectionService:
             if reframing_text and len(reframing_text) > 10:
                 note = ReframingNote(
                     reflection=reframing_text,
-                    reflection_type=reframing_out.reflection_type or "growth",
+                    reflection_type=reframing_out.reflection_type,
                     triggered_by=reframing_trigger_key(run_key, exp.id),
                 )
                 outcome = self.experience_repo.add_reframing_note(exp.id, note)
