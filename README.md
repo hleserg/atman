@@ -113,6 +113,10 @@ pytest tests/ -v       # full test suite (or: uv run pytest tests/ -v)
 See **`AGENTS.md`** (*uv — рекомендуемый workflow*) for `uv run` and venv tips.
 Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) · Community standards: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) · Security: [`SECURITY.md`](SECURITY.md).
 
+## Safety & alignment
+
+For safety reviewers and alignment work: how major Atman building blocks map to drift detection, self-model stability under pressure, honest vs. retrospective experience claims, metacognition, and multi-criterion welfare checks — see [`docs/research/safety-relevance.md`](docs/research/safety-relevance.md).
+
 ---
 
 ## This Is Not Just a Tool
