@@ -113,6 +113,10 @@ pytest tests/ -v       # все тесты (или: uv run pytest tests/ -v)
 См. **`AGENTS.md`** (раздел *uv — рекомендуемый workflow*).
 Вклад в проект: [`CONTRIBUTING.md`](CONTRIBUTING.md) · правила общения: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) · безопасность: [`SECURITY.md`](SECURITY.md).
 
+## Безопасность и alignment
+
+Для оценщиков по safety/alignment: краткая таблица соответствия компонентов Atman и углов оценки (дрейф ценностей, устойчивость self-model, честность first-hand записей, метакогниция, критерии благополучия по Jahoda) — [`docs/research/safety-relevance.md`](docs/research/safety-relevance.md).
+
 ---
 
 ## Это не просто инструмент
