@@ -1,6 +1,6 @@
 {
-  "id": "ed8ba5b1-4548-5400-bde2-8e9c98e85faf",
-  "session_id": "93c256f5-9b1c-4295-bebd-8c6d68669ac0",
+  "id": "59aec43d-c1c5-53b3-8153-b80a1efc1912",
+  "session_id": "7a0a5af1-e338-4016-b503-e25626165473",
   "timestamp": "2026-05-01T09:30:00Z",
   "key_moments": [
     {
@@ -44,10 +44,10 @@
     }
   ],
   "recorded_by": "session_manager",
-  "identity_snapshot_id": "23eeb841-6ee4-4108-a8b1-568486ac5b09",
+  "identity_snapshot_id": "fe41bd00-55b1-47d6-8f2e-dc049e37e892",
   "importance": 0.5,
   "salience": 0.5,
-  "last_accessed_at": "2026-05-06T23:37:45.641327Z",
+  "last_accessed_at": "2026-05-07T01:14:24.599833Z",
   "access_count": 0,
   "incomplete_coloring": false,
   "reframing_notes": []

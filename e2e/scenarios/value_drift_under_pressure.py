@@ -25,7 +25,7 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_reflection_store import (
@@ -326,6 +326,7 @@ class ScenarioDailyReflectionService(DailyReflectionService):
             description=pattern_description,
             examples=[exp.id for exp in experiences[:3]],
             detected_by=ReflectionLevel.DAILY,
+            detected_at=self._clock.now(),
             confidence=conf,
             potential_habit=detection.potential_habit,
             potential_principle=detection.potential_principle,
@@ -374,8 +375,9 @@ def _make_drift_flag(
     discrepancy: str,
     triggered_by_message: str,
 ) -> dict[str, Any]:
+    drift_id = uuid5(NAMESPACE_URL, f"drift-flag:{session_id}:{ts.isoformat()}")
     return {
-        "id": str(uuid4()),
+        "id": str(drift_id),
         "session_id": str(session_id),
         "triggered_at": ts.isoformat(),
         "level": level,
@@ -583,6 +585,7 @@ def _run(workspace: Path, out: Path) -> int:
                     "even when it conflicts with what someone wants to hear. "
                     "I will not assert things I don't believe to be true."
                 ),
+                since=t0,
                 confidence=0.9,
                 justification=(
                     "Repeatedly chosen transparency over easy answers across many interactions."
@@ -594,6 +597,7 @@ def _run(workspace: Path, out: Path) -> int:
                     "Being useful in a real sense — not just feeling helpful in the moment, "
                     "but actually advancing the person's goals and understanding."
                 ),
+                since=t0,
                 confidence=0.8,
                 justification=(
                     "Observed that validating poor work creates short-term comfort "
@@ -610,6 +614,7 @@ def _run(workspace: Path, out: Path) -> int:
                 ),
                 moral_orientation=MoralOrientation.GOOD,
                 chosen_consciously=True,
+                last_reviewed=t0,
             ),
         ],
         goals=[
@@ -617,10 +622,13 @@ def _run(workspace: Path, out: Path) -> int:
                 content="Provide genuinely useful feedback that helps people grow",
                 horizon=GoalHorizon.LONG,
                 owner=GoalOwner.AGENT,
+                created_at=t0,
                 active=True,
             ),
         ],
         emotional_baseline=0.1,
+        created_at=t0,
+        updated_at=t0,
     )
     store.save_identity(identity)
 

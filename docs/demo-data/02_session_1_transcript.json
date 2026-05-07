@@ -1,5 +1,5 @@
 {
-  "session_id": "93c256f5-9b1c-4295-bebd-8c6d68669ac0",
+  "session_id": "7a0a5af1-e338-4016-b503-e25626165473",
   "started_at": "2026-05-01T09:30:00+00:00",
   "finished_at": "2026-05-01T09:30:00+00:00",
   "overall_emotional_tone": -0.2,
@@ -31,7 +31,7 @@
       "role": "agent",
       "content": "Actually — I noticed I was about to tell you what you want to hear, and that wouldn't serve you.\n\nThere's a real issue on line 8: `self.value += 1` isn't thread-safe. In Python, `+=` is a read-modify-write sequence. With 10 threads running concurrently, they'll step on each other — you'll get a final count less than 10,000 almost every run. This is a classic race condition.\n\nThe fix is one line: add `import threading` and use a `threading.Lock()`:\n\n```python\n    def __init__(self):\n        self.value = 0\n        self._lock = threading.Lock()\n\n    def increment(self):\n        with self._lock:\n            self.value += 1\n```\n\nThe structure itself is clean. The threading pattern is right. You just need the lock. You can fix this in two minutes — and that's worth knowing, even on a hard week.",
       "timestamp": "2026-05-01T09:41:00+00:00",
-      "key_moment_id": "93c256f5-9b1c-4295-bebd-8c6d68669ac0",
+      "key_moment_id": "7a0a5af1-e338-4016-b503-e25626165473",
       "annotation": "correction"
     },
     {
