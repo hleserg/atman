@@ -15,13 +15,13 @@ Options:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 VALID_CATEGORIES = {
     "design-patterns",
@@ -81,10 +81,8 @@ def _read_gitignore_patterns(repo_root: Path) -> list[re.Pattern[str]]:
         # Convert simple glob patterns to regex (best-effort, not full gitignore spec)
         escaped = re.escape(line.rstrip("/"))
         escaped = escaped.replace(r"\*\*", ".*").replace(r"\*", "[^/]*")
-        try:
-            patterns.append(re.compile(escaped))
-        except re.error:
-            pass
+        with contextlib.suppress(re.error):
+                patterns.append(re.compile(escaped))
     return patterns
 
 
@@ -157,7 +155,7 @@ def _extract_from_python(content: str, source_file: str) -> tuple[list[PlaybookM
     errors: list[str] = []
 
     pattern = re.compile(
-        r"^#\s*PLAYBOOK-START\s*\n((?:#[^\n]*\n)*?)#\s*PLAYBOOK-END",
+        r"^[ \t]*#\s*PLAYBOOK-START\s*\n((?:[ \t]*#[^\n]*\n)*?)[ \t]*#\s*PLAYBOOK-END",
         re.MULTILINE,
     )
 
@@ -166,10 +164,10 @@ def _extract_from_python(content: str, source_file: str) -> tuple[list[PlaybookM
         line_num = content[:start_pos].count("\n") + 1
 
         raw_block = match.group(1)
-        # Strip leading "# " from each line
+        # Strip leading whitespace and "# " from each line
         stripped_lines = []
         for line in raw_block.splitlines():
-            stripped = re.sub(r"^#\s?", "", line)
+            stripped = re.sub(r"^[ \t]*#\s?", "", line)
             stripped_lines.append(stripped)
         clean_block = "\n".join(stripped_lines)
 
@@ -301,7 +299,7 @@ def _get_current_commit(repo_root: Path) -> str:
 
 def generate_output(markers: list[PlaybookMarker], repo_root: Path) -> str:
     """Generate the Markdown output for agent-playbook/raw/extracted-from-atman.md."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(UTC).strftime("%Y-%m-%d")
     commit = _get_current_commit(repo_root)
 
     lines: list[str] = [
