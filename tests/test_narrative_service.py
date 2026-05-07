@@ -421,7 +421,7 @@ def test_generate_core_layer_includes_principles_and_open_questions():
         identity = Identity(
             id=uuid4(),
             self_description="I learn.",
-            principles=[Principle(statement="Always be honest.", source="session_1")],
+            principles=[Principle(statement="Always be honest.")],
             open_questions=[OpenQuestion(question="What is the right tradeoff here?")],
         )
         doc = service.create_narrative(identity)
