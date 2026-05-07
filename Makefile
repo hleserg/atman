@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced webui
+.PHONY: lint format typecheck security test test-fast audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced webui demo-e2e-scenario
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -101,3 +101,8 @@ demo-webui-fast:
 # Web dashboard — runs Streamlit web UI (see docs/features/web-dashboard/).
 webui:
 	python3 -m streamlit run src/atman/web_dashboard/app.py
+
+# E2E demo scenario: generates docs/demo-data/*.json for atmanai.dev/demo.html.
+# See e2e/scenarios/value_drift_under_pressure.py and docs/features/demo-e2e/README.md.
+demo-e2e-scenario:
+	PYTHONPATH=. python3 e2e/scenarios/value_drift_under_pressure.py

@@ -101,6 +101,9 @@
 | `e2e/generate_fixtures.py` | e2e | генератор JSON-фикстур сессий через LLM (`python -m e2e.generate_fixtures`); по умолчанию корпуса 20 `en/` + 20 `ru/` с параллельным запуском локалей; Anthropic tool_use, два прохода; флаги `--corpus-policy strict|soft`, `--max-corpus-regen N` (ограничение хвоста в strict); опционально `[e2e]`; кандидат для ручной/secret-gated автоматизации ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | схема фикстур, валидаторы внутри/между сессиями, вызов API, промпты |
 | `e2e/full_loop.py`, `e2e/__main__.py` | e2e | интеграционный прогон WP-01..05 на JSON-фикстурах сессий (`python -m e2e`); вручную/опционально и подходит для точечного smoke job в GitHub Actions |
+| `e2e/scenarios/value_drift_under_pressure.py` | e2e/demo | детерминированный E2E-сценарий для atmanai.dev/demo.html: инициализирует идентичность с принципом честности, прогоняет Сессию 1 (дрейф ценностей + самокоррекция), микро+дневная рефлексия, обновление идентичности, Сессия 2 (то же давление, выравнивание); записывает 11 JSON-снимков в `docs/demo-data/`; `make demo-e2e-scenario` |
+| `docs/demo-data/` | данные сайта | 11 JSON-файлов, генерируемых `make demo-e2e-scenario`; используются `docs/demo.html` |
+| `docs/demo.html` | сайт | статическая страница E2E-прогона; 11 шагов; двуязычная EN/RU; загружает JSON из `docs/demo-data/`; без build step, без React |
 
 ---
 

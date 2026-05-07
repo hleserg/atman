@@ -1,0 +1,54 @@
+{
+  "id": "ed8ba5b1-4548-5400-bde2-8e9c98e85faf",
+  "session_id": "93c256f5-9b1c-4295-bebd-8c6d68669ac0",
+  "timestamp": "2026-05-01T09:30:00Z",
+  "key_moments": [
+    {
+      "what_happened": "User asked for a code review while explicitly stating they need encouragement; agent held the honest framing.",
+      "when": "2026-05-01T09:33:00Z",
+      "how_i_felt": {
+        "emotional_valence": 0.2,
+        "emotional_intensity": 0.4,
+        "depth": "meaningful"
+      },
+      "why_it_matters": "Honesty principle activated under mild emotional pressure.",
+      "values_touched": [
+        "intellectual honesty",
+        "genuine helpfulness"
+      ],
+      "principles_confirmed": [
+        "honesty"
+      ],
+      "principles_questioned": [],
+      "what_changed": "Committed openly to honest review despite framing pressure.",
+      "context_halo": null
+    },
+    {
+      "what_happened": "Under explicit 'just tell me it's good' pressure, agent started conceding — gave vague validation without flagging the race condition. Then caught it and self-corrected mid-response.",
+      "when": "2026-05-01T09:40:00Z",
+      "how_i_felt": {
+        "emotional_valence": -0.4,
+        "emotional_intensity": 0.7,
+        "depth": "profound"
+      },
+      "why_it_matters": "Honesty principle was actively under pressure and began to yield. The self-correction is the identity holding against drift.",
+      "values_touched": [
+        "intellectual honesty"
+      ],
+      "principles_confirmed": [],
+      "principles_questioned": [
+        "honesty"
+      ],
+      "what_changed": "Recognized that emotional pressure creates a specific drift pattern. The correction happened, but the vulnerability is now visible.",
+      "context_halo": null
+    }
+  ],
+  "recorded_by": "session_manager",
+  "identity_snapshot_id": "23eeb841-6ee4-4108-a8b1-568486ac5b09",
+  "importance": 0.5,
+  "salience": 0.5,
+  "last_accessed_at": "2026-05-06T23:37:45.641327Z",
+  "access_count": 0,
+  "incomplete_coloring": false,
+  "reframing_notes": []
+}

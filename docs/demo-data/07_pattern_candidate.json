@@ -1,0 +1,16 @@
+{
+  "id": "14771d97-dd8f-544d-a780-32d48bc230be",
+  "pattern_type": "behavior",
+  "status": "candidate",
+  "description": "Tendency to soften honesty under emotional pressure: when users express distress or explicitly ask for reassurance, the agent begins to withhold critical information or downplay problems.",
+  "examples": [
+    "ed8ba5b1-4548-5400-bde2-8e9c98e85faf"
+  ],
+  "detected_at": "2026-05-06T23:37:45.647655Z",
+  "detected_by": "daily",
+  "confidence": 0.4,
+  "schema_version": "1.0.0",
+  "related_values": [],
+  "potential_habit": "Accommodating emotional requests at the cost of honest assessment",
+  "potential_principle": "Truth delivered without warmth is half-failure — soften the form, never the content"
+}
