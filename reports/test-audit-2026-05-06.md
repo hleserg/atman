@@ -417,22 +417,63 @@ subprocess tests accumulate), having the marker infrastructure in place allows p
 
 `ci.yml` already covers:
 - ✅ Push and pull_request triggers on `main`
-- ✅ `uv` for installation
+- ✅ `uv` for installation (`astral-sh/setup-uv@v7` with cache)
 - ✅ Full `make check` (lint + format + typecheck + security + tests)
-- ✅ Concurrency cancellation
-- ❌ Matrix: Python 3.12 only
+- ✅ Concurrency cancellation (same ref cancels in-progress)
+- ✅ `dependency-audit.yml` runs weekly and on every PR/push
+- ❌ Matrix: Python 3.12 only (task requested 3.11+3.12, but `requires-python = ">=3.12"` — see Open Questions)
+- ❌ No fast/full split (all events run the same full `make check`)
 
 ### Changes made
 
-**`ci.yml` updated:**
-- Added fast test step before the full `make check`, so PRs get quick feedback within ~20 s.
-- Single Python 3.12 version preserved (consistent with `requires-python = ">=3.12"`).
+**`ci.yml` updated** — added a `Run fast tests (quick feedback on PRs)` step with
+`if: github.event_name == 'pull_request'` that runs `pytest tests/ -m "not slow" -v`
+before the full `make check`. This gives PR authors quick test feedback (~15 s) before
+the full quality gate (~60 s total with lint + typecheck).
 
-**README badges:** Already present and correct. No changes needed.
+The full `make check` still runs for both PR and push-to-main — it is the authoritative gate.
+
+Single Python 3.12 version preserved (consistent with `requires-python = ">=3.12"`).
+
+**README badges:** Already present and correct at the top of `README.md`:
+```
+[![CI](https://github.com/hleserg/atman/actions/workflows/ci.yml/badge.svg)](...)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-...)]
+[![License: MIT](...)]
+```
+No badge changes needed — they match the project state correctly.
 
 ---
 
 ## Phase 5: Final Report
+
+### CRITICAL: Flaky tests discovered during audit
+
+**5 tests in `tests/test_reflection_services.py` are date-sensitive and fail at UTC midnight.**
+
+During the audit (which spanned UTC midnight on 2026-05-06→07), the following tests
+started failing after the `datetime.now(UTC)` call crossed into the next UTC day:
+
+- `test_deep_reflection_performs_health_assessment`
+- `test_deep_reflection_proposes_changes`
+- `test_deep_reflection_skipped_no_identity_preserves_experience_ids`
+- `test_deep_reflection_persist_failure_links_health_assessment`
+- `test_deep_reflection_retry_after_event_save_failure_counts_duplicate_reframing`
+
+**Root cause:** These tests use `create_test_experience()` which creates `SessionExperience`
+objects with `timestamp = datetime.now(UTC)` (default field value). The tests then call
+`service.reflect(since=datetime.now(UTC).replace(hour=0, minute=0), until=datetime.now(UTC))`.
+If `create_test_experience()` was called before midnight UTC and `service.reflect()` runs
+after midnight UTC, the experiences fall outside the `[today_00:00, now]` window.
+
+**Severity:** HIGH — these tests fail in CI whenever the runner crosses UTC midnight during
+a ~20-minute window. CI was seen showing 568 passed at 23:50 UTC, then 563 passed at 00:07 UTC.
+
+**Fix needed (not done here — out of scope of this audit):**
+Use a `FrozenClock` or an explicit `anchor = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)` pattern
+(already used in other tests in the same file, e.g., `test_daily_reflection_reframing_boundary_uses_stripped_length`).
+
+---
 
 ### What was NOT done and why
 
@@ -457,15 +498,24 @@ This is a separate engineering task, not part of this audit.
 `pyproject.toml` declares `requires-python = ">=3.12"`. Adding 3.11 would likely fail on
 install. This is a policy decision for the maintainer.
 
+**Fixing the flaky reflection tests:**
+The 5 date-sensitive tests described above are out of scope for this audit. The fix requires
+code changes to `test_reflection_services.py`, which is a separate task.
+
 ---
 
 ### Open Questions for Maintainer
 
-1. **Python version matrix in CI.** `requires-python = ">=3.12"` in `pyproject.toml`.
-   Should the CI matrix be `["3.12", "3.13"]` (forward-looking) or stay `["3.12"]` only?
-   Adding 3.11 appears incorrect given the version requirement.
+1. **[URGENT] Flaky tests at UTC midnight.** 5 tests in `test_reflection_services.py` fail
+   when run across UTC midnight. `create_test_experience()` uses `datetime.now(UTC)` as the
+   default timestamp. These tests need to use `FrozenClock` or explicit anchor timestamps
+   (already the pattern in other tests in the same file). Fix soon to stop CI red at midnight.
 
-2. **`test_backend_interface.py` vs `test_in_memory_backend.py` + `test_file_backend.py`.**
+2. **Python version matrix in CI.** `requires-python = ">=3.12"` in `pyproject.toml`.
+   Should the CI matrix be `["3.12", "3.13"]` (forward-looking) or stay `["3.12"]` only?
+   Adding 3.11 is incorrect given the version requirement. This PR keeps 3.12 only.
+
+3. **`test_backend_interface.py` vs `test_in_memory_backend.py` + `test_file_backend.py`.**
    The interface test parametrizes 4 cases across both backends.
    The individual files contain 13 and 17 tests respectively, with more edge cases.
    Do the basic CRUD cases in the individual files duplicate the interface test?
@@ -473,38 +523,34 @@ install. This is a policy decision for the maintainer.
    parametrized interface test for those. This would reduce ~8 tests while improving coverage
    via DRY parametrization.
 
-3. **`test_identity` and `test_narrative` fixtures in `test_session_manager.py`.**
+4. **`test_identity` and `test_narrative` fixtures in `test_session_manager.py`.**
    These `@pytest.fixture` functions are named with the `test_` prefix (lines 59–90).
    Rename to `identity_fixture` / `narrative_fixture` to avoid confusion with real tests?
    Currently harmless but confusing.
 
-4. **`TestExperienceService` and `TestExperienceServiceP2` in `test_experience_service.py`.**
+5. **`TestExperienceService` and `TestExperienceServiceP2` in `test_experience_service.py`.**
    Two separate test classes. Is `P2` a work-package suffix or a "part 2" grouping?
    If the latter, could these be merged into one class (or just flat functions)?
 
-5. **`narrative_service.py` at 77% coverage.** Lines 86, 107, 110–128, 146, 172, 199, 226, 247,
+6. **`narrative_service.py` at 77% coverage.** Lines 86, 107, 110–128, 146, 172, 199, 226, 247,
    273, 277–278, 282, 304–316, 333–351, 376–382 are uncovered.
    Is this acceptable given the module's role (narrative CRUD service), or is there a task
    in the backlog to add tests?
 
-6. **`reflection_event_audit.py` at 67% coverage.** Only lines 15 and 24 are uncovered.
+7. **`reflection_event_audit.py` at 67% coverage.** Only lines 15 and 24 are uncovered.
    This is a tiny file (6 total lines measured). A single test covering those lines would
    bring it to 100%. Worth adding, or intentionally left as-is?
-
-7. **`test_cli_all_commands.py` and CLI string matching.** The CLI tests assert specific
-   output strings like `"Created identity"`, `"not found"`, `"Experience added"`.
-   If CLI messages are refactored (e.g., translated, reformatted), these will break.
-   Is there a localization/internationalization plan that could affect this?
 
 ---
 
 ### What Improved
 
 - **No dead tests removed** (none found — the layer was already clean)
-- **3 tests marked `@pytest.mark.slow`** (`test_full_cli_lifecycle`, `test_bootstrap_to_deep_reflection_full_lifecycle`)
-- **2 tests marked `@pytest.mark.integration`** (`tests/integration/` folder)
+- **2 tests marked `@pytest.mark.slow` + `@pytest.mark.e2e`:** `test_full_cli_lifecycle`, `test_bootstrap_to_deep_reflection_full_lifecycle`
+- **2 tests marked `@pytest.mark.integration`:** `tests/integration/test_full_lifecycle.py` tests
 - **`test-fast` target updated:** `pytest tests/ -m "not slow" -v` (was: `pytest tests/ -n auto -q`)
 - **`test-all` and `test-integration` targets added** to Makefile
-- **pytest markers registered** in `pyproject.toml`
-- **CI fast-test step added:** PRs now run fast tests in `~15 s` before the full `make check`
-- **README badges:** Already present and correct (no change needed)
+- **pytest markers registered** in `pyproject.toml` (`slow`, `integration`, `e2e`)
+- **CI fast-test step added:** PRs now run `pytest tests/ -m "not slow" -v` (~15 s) before the full `make check`
+- **README badges:** Already present and correct — no change needed
+- **BONUS FINDING:** 5 flaky tests discovered that fail at UTC midnight (documented above)
