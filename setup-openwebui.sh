@@ -16,10 +16,20 @@
 
 set -e
 
-OPENWEBUI_PORT=3000
-OLLAMA_HOST="host.docker.internal"
-OLLAMA_PORT=11434
-DATA_DIR="$HOME/openwebui-data"
+OPENWEBUI_PORT="${ATMAN_OPENWEBUI_PORT:-3000}"
+OLLAMA_HOST="${ATMAN_OPENWEBUI_OLLAMA_HOST:-host.docker.internal}"
+OLLAMA_PORT="${ATMAN_OLLAMA_PORT:-11434}"
+DATA_DIR="${ATMAN_OPENWEBUI_DATA_DIR:-$HOME/openwebui-data}"
+LAN_ACCESS=false
+case "${ATMAN_OPENWEBUI_ENABLE_LAN:-0}" in
+    1|true|TRUE|yes|YES)
+        LAN_ACCESS=true
+        OPENWEBUI_BIND_ADDRESS="0.0.0.0"
+        ;;
+    *)
+        OPENWEBUI_BIND_ADDRESS="127.0.0.1"
+        ;;
+esac
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -45,6 +55,14 @@ log "Проверяем окружение..."
 
 if ! grep -qi microsoft /proc/version 2>/dev/null; then
     warn "Скрипт не обнаружил WSL-окружение. Продолжаем, но LAN-проброс порта работает только в WSL2."
+fi
+
+if $LAN_ACCESS; then
+    warn "LAN-доступ включён явно через ATMAN_OPENWEBUI_ENABLE_LAN=1."
+    warn "Убедись, что первый admin-пользователь Open WebUI уже создан или сеть доверенная."
+else
+    log "LAN-доступ отключён по умолчанию: Open WebUI будет доступен только с localhost."
+    info "После создания первого admin можно включить LAN: ATMAN_OPENWEBUI_ENABLE_LAN=1 ./setup-openwebui.sh"
 fi
 
 # -----------------------------------------------------------------------------
@@ -122,9 +140,9 @@ services:
     container_name: open-webui
     restart: unless-stopped
 
-    # Слушаем на всех интерфейсах WSL — нужно для проброса в Windows
+    # По умолчанию слушаем только localhost; LAN включается явным opt-in.
     ports:
-      - "0.0.0.0:${OPENWEBUI_PORT}:8080"
+      - "${OPENWEBUI_BIND_ADDRESS}:${OPENWEBUI_PORT}:8080"
 
     volumes:
       - ${DATA_DIR}:/app/backend/data
@@ -137,8 +155,8 @@ services:
       # - OPENAI_API_KEY=sk-...
       # - OPENAI_API_BASE_URL=https://api.openai.com/v1
 
-      # Безопасность: первый зарегистрированный пользователь станет admin
-      # Для внутренней сети можно отключить регистрацию после первого входа
+      # Безопасность: первый зарегистрированный пользователь станет admin.
+      # Не открывай LAN-доступ до создания первого admin на localhost.
       - WEBUI_AUTH=true
 
       # Название в интерфейсе
@@ -253,18 +271,22 @@ log "PowerShell скрипт создан: $PORT_FORWARD_SCRIPT"
 # -----------------------------------------------------------------------------
 # 9. Пробуем запустить netsh прямо сейчас через cmd.exe
 # -----------------------------------------------------------------------------
-log "Пробуем автоматически применить проброс порта..."
+if $LAN_ACCESS; then
+    log "Пробуем автоматически применить проброс порта..."
 
-if command -v cmd.exe &>/dev/null 2>&1; then
-    # Пробуем через powershell.exe из WSL
-    if command -v powershell.exe &>/dev/null 2>&1; then
-        powershell.exe -Command "
-            netsh interface portproxy add v4tov4 listenport=${OPENWEBUI_PORT} listenaddress=0.0.0.0 connectport=${OPENWEBUI_PORT} connectaddress=${WSL_IP} 2>&1
-            netsh advfirewall firewall add rule name='Open WebUI WSL2' dir=in action=allow protocol=TCP localport=${OPENWEBUI_PORT} 2>&1
-        " 2>/dev/null && log "Проброс порта применён автоматически ✓" || warn "Не удалось применить автоматически — нужны права администратора"
+    if command -v cmd.exe &>/dev/null 2>&1; then
+        # Пробуем через powershell.exe из WSL
+        if command -v powershell.exe &>/dev/null 2>&1; then
+            powershell.exe -Command "
+                netsh interface portproxy add v4tov4 listenport=${OPENWEBUI_PORT} listenaddress=0.0.0.0 connectport=${OPENWEBUI_PORT} connectaddress=${WSL_IP} 2>&1
+                netsh advfirewall firewall add rule name='Open WebUI WSL2' dir=in action=allow protocol=TCP localport=${OPENWEBUI_PORT} 2>&1
+            " 2>/dev/null && log "Проброс порта применён автоматически ✓" || warn "Не удалось применить автоматически — нужны права администратора"
+        fi
+    else
+        warn "cmd.exe недоступен — запусти PowerShell скрипт вручную (см. ниже)"
     fi
 else
-    warn "cmd.exe недоступен — запусти PowerShell скрипт вручную (см. ниже)"
+    warn "Пропускаю автоматический LAN-проброс. Он включается только через ATMAN_OPENWEBUI_ENABLE_LAN=1."
 fi
 
 # -----------------------------------------------------------------------------
@@ -276,6 +298,14 @@ cat > "$REFRESH_SCRIPT" << 'RFEOF'
 #!/bin/bash
 # Запускай этот скрипт после каждого перезапуска WSL
 # Обновляет проброс порта с актуальным IP WSL
+case "${ATMAN_OPENWEBUI_ENABLE_LAN:-0}" in
+    1|true|TRUE|yes|YES) ;;
+    *)
+        echo "[!] LAN-проброс отключён по умолчанию."
+        echo "[!] После создания первого admin запусти: ATMAN_OPENWEBUI_ENABLE_LAN=1 $0"
+        exit 0
+        ;;
+esac
 WSL_IP=$(hostname -I | awk '{print $1}')
 PORT=3000
 echo "[+] WSL IP: $WSL_IP"
@@ -299,21 +329,24 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║                    ГОТОВО!                               ║"
 echo "╠══════════════════════════════════════════════════════════╣"
-echo -e "║  Open WebUI в WSL:   ${BLUE}http://${WSL_IP}:${OPENWEBUI_PORT}${NC}"
-echo -e "║  (Windows доступ после проброса порта)"
+echo -e "║  Open WebUI локально: ${BLUE}http://localhost:${OPENWEBUI_PORT}${NC}"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║  СЛЕДУЮЩИЕ ШАГИ:                                         ║"
 echo "║                                                           ║"
-echo "║  1. Запусти PowerShell от Администратора в Windows       ║"
-echo "║     и выполни:                                           ║"
-echo -e "║     ${YELLOW}powershell -ExecutionPolicy Bypass -File${NC}"
-echo -e "║     ${YELLOW}\\\\wsl\$\\Ubuntu\\home\\$USER\\openwebui\\windows-port-forward.ps1${NC}"
-echo "║                                                           ║"
-echo "║  2. Открой в браузере на ЛЮБОМ устройстве сети:         ║"
-echo "║     http://<IP_Windows_машины>:${OPENWEBUI_PORT}                  ║"
-echo "║                                                           ║"
-echo "║  3. После каждого перезапуска WSL запусти:              ║"
-echo "║     ~/openwebui/refresh-port-forward.sh                  ║"
+echo "║  1. Создай первого admin-пользователя на localhost.      ║"
+if $LAN_ACCESS; then
+    echo "║  2. LAN включён: при необходимости запусти PowerShell    ║"
+    echo "║     от Администратора и выполни:                         ║"
+    echo -e "║     ${YELLOW}powershell -ExecutionPolicy Bypass -File${NC}"
+    echo -e "║     ${YELLOW}\\\\wsl\$\\Ubuntu\\home\\$USER\\openwebui\\windows-port-forward.ps1${NC}"
+    echo "║  3. После перезапуска WSL:                               ║"
+    echo "║     ATMAN_OPENWEBUI_ENABLE_LAN=1 ~/openwebui/refresh-port-forward.sh ║"
+else
+    echo "║  2. LAN отключён по умолчанию, чтобы первый admin        ║"
+    echo "║     не мог быть захвачен из сети.                         ║"
+    echo "║  3. После создания admin включай LAN явно:               ║"
+    echo "║     ATMAN_OPENWEBUI_ENABLE_LAN=1 ./setup-openwebui.sh    ║"
+fi
 echo "║                                                           ║"
 echo "║  Логи контейнера:                                        ║"
 echo "║     sudo docker compose -f ~/openwebui/docker-compose.yml logs -f  ║"

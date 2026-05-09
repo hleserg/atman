@@ -80,15 +80,16 @@ curl http://localhost:11434/api/embed -d '{
 ### OpenWebUI (Chat Interface)
 | Параметр | Значение |
 |----------|----------|
-| WSL URL | `http://172.31.192.143:3000` |
-| Windows URL | `http://localhost:3000` (после проброса) |
-| LAN URL | `http://<Windows_IP>:3000` |
+| Local URL | `http://localhost:3000` |
+| WSL URL | disabled by default |
+| LAN URL | opt-in only: `ATMAN_OPENWEBUI_ENABLE_LAN=1 ./setup-openwebui.sh` |
 
 **Настройка Ollama в UI:**
 - Base URL: `http://host.docker.internal:11434` (уже настроено)
 
 **First Login:**
 - Первый зарегистрированный пользователь = Admin
+- Поэтому LAN-проброс выключен по умолчанию. Сначала создайте admin на `localhost`, затем включайте LAN явно.
 
 ---
 
@@ -181,6 +182,12 @@ curl http://localhost:3000/health
 ## 🌐 Windows Port Forward (LAN Access)
 
 ### Настройка доступа из локальной сети
+По умолчанию `setup-openwebui.sh` не открывает LAN-доступ. Включайте его только после создания первого admin-пользователя:
+
+```bash
+ATMAN_OPENWEBUI_ENABLE_LAN=1 ./setup-openwebui.sh
+```
+
 **PowerShell (Admin):**
 ```powershell
 # Проброс порта WSL -> Windows
@@ -192,7 +199,7 @@ New-NetFirewallRule -DisplayName "Open WebUI WSL2" -Direction Inbound -Protocol 
 
 ### Обновление после перезапуска WSL
 ```bash
-~/openwebui/refresh-port-forward.sh
+ATMAN_OPENWEBUI_ENABLE_LAN=1 ~/openwebui/refresh-port-forward.sh
 ```
 
 ---
