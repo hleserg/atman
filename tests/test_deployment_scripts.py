@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OPENWEBUI_SETUP = REPO_ROOT / "setup-openwebui.sh"
 
@@ -17,7 +16,7 @@ def test_openwebui_defaults_to_localhost_only() -> None:
     """Open WebUI must not expose the first-admin registration flow to LAN by default."""
     script = _openwebui_setup_text()
 
-    assert 'ATMAN_OPENWEBUI_ENABLE_LAN:-0' in script
+    assert "ATMAN_OPENWEBUI_ENABLE_LAN:-0" in script
     assert 'OPENWEBUI_BIND_ADDRESS="127.0.0.1"' in script
     assert '- "${OPENWEBUI_BIND_ADDRESS}:${OPENWEBUI_PORT}:8080"' in script
     assert '- "0.0.0.0:${OPENWEBUI_PORT}:8080"' not in script
