@@ -22,6 +22,17 @@ class FactStatus(StrEnum):
     INVALIDATED = "invalidated"
 
 
+# Migration map for legacy FactStatus string values persisted before E25.
+# Old values (E24.1, commit 2314b86) → new values introduced in this branch.
+# Used by FactRecord.status field validator on load to keep persisted JSONL
+# files (default ~/.atman/facts.jsonl) backward compatible.
+_LEGACY_FACT_STATUS_ALIASES: dict[str, str] = {
+    "outdated": FactStatus.SUPERSEDED.value,
+    "retracted": FactStatus.INVALIDATED.value,
+    "uncertain": FactStatus.DISPUTED.value,
+}
+
+
 class FactRecord(BaseModel):
     """
     Проверяемый факт без интерпретаций.
@@ -67,6 +78,19 @@ class FactRecord(BaseModel):
     def validate_tags(cls, v: list[str]) -> list[str]:
         """Нормализация тегов."""
         return [tag.strip().lower() for tag in v if tag.strip()]
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def migrate_legacy_status(cls, v: object) -> object:
+        """Map legacy FactStatus string values to current ones.
+
+        Older persisted facts may carry pre-E25 status values
+        ("outdated", "retracted", "uncertain"). Translate them to the
+        current vocabulary so loading does not silently drop records.
+        """
+        if isinstance(v, str):
+            return _LEGACY_FACT_STATUS_ALIASES.get(v, v)
+        return v
 
     @field_validator("confirmation_count")
     @classmethod

@@ -7,7 +7,6 @@ a cognitive tension signal (small, not overwhelming).
 
 import re
 from dataclasses import dataclass
-from typing import ClassVar
 from uuid import UUID
 
 from atman.core.models.fact import FactRecord, FactStatus
@@ -39,14 +38,14 @@ class ConflictDetector:
     """
 
     # Simple contradiction patterns (can be expanded)
-    NEGATION_PATTERNS: ClassVar[list[str]] = [
+    NEGATION_PATTERNS: tuple[str, ...] = (
         r"\bnot\b",
         r"\bno longer\b",
         r"\bnever\b",
         r"\bcancelled\b",
         r"\bremoved\b",
         r"\bdeprecated\b",
-    ]
+    )
 
     def __init__(
         self,
@@ -67,25 +66,18 @@ class ConflictDetector:
         """
         Check a new fact against existing facts for conflicts.
 
-        Only ACTIVE facts on both sides are considered — DISPUTED,
-        SUPERSEDED, and INVALIDATED facts represent already-resolved
-        states and are not surfaced as fresh cognitive tension.
-
         Args:
             fact: The fact to check
 
         Returns:
             list[FactConflict]: Detected conflicts
         """
-        if fact.status != FactStatus.ACTIVE:
+        if fact.status == FactStatus.INVALIDATED:
             return []
 
         conflicts: list[FactConflict] = []
 
-        # Get candidate facts with similar tags or content; ``search`` with
-        # ``include_invalidated=False`` already filters non-ACTIVE
-        # candidates server-side, so no per-candidate status check is
-        # needed below.
+        # Get candidate facts with similar tags or content
         candidates = self.factual_memory.search(
             query=fact.content[:50],  # First 50 chars as query
             tags=fact.tags[:2] if fact.tags else None,
@@ -95,6 +87,8 @@ class ConflictDetector:
 
         for candidate in candidates:
             if candidate.id == fact.id:
+                continue
+            if candidate.status == FactStatus.INVALIDATED:
                 continue
 
             conflict = self._detect_conflict(fact, candidate)
@@ -123,7 +117,7 @@ class ConflictDetector:
         for i, fact1 in enumerate(active_facts):
             for fact2 in active_facts[i + 1 :]:
                 # Avoid duplicate checks (order doesn't matter)
-                a, b = sorted([fact1.id, fact2.id])
+                a, b = sorted((fact1.id, fact2.id))
                 pair: tuple[UUID, UUID] = (a, b)
                 if pair in checked:
                     continue

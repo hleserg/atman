@@ -248,6 +248,42 @@ class TestOllamaEmbeddingAdapter:
         ):
             adapter.embed("test")
 
+    def test_embed_raises_on_empty_embeddings_list(self, adapter: OllamaEmbeddingAdapter) -> None:
+        """Empty ``embeddings: []`` from Ollama raises RuntimeError, not IndexError.
+
+        Regression for Devin Review BUG_pr-review-job…0001 on PR #414: a fallback
+        of ``data.get("embeddings", [[]])[0]`` would raise ``IndexError`` when the
+        key is *present* with an empty list, because dict.get returns the actual
+        empty list (not the default).
+        """
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"embeddings": []}).encode("utf-8")
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = mock_response
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_context),
+            pytest.raises(RuntimeError, match="Empty embedding"),
+        ):
+            adapter.embed("test")
+
+    def test_embed_uses_embeddings_array_when_embedding_key_absent(
+        self, adapter: OllamaEmbeddingAdapter, mock_768_embedding: list[float]
+    ) -> None:
+        """Newer Ollama versions return ``embeddings: [[...]]`` with no
+        ``embedding`` key. The adapter must accept that shape."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"embeddings": [mock_768_embedding]}).encode(
+            "utf-8"
+        )
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = mock_response
+
+        with patch("urllib.request.urlopen", return_value=mock_context):
+            result = adapter.embed("test")
+
+        assert result == mock_768_embedding
+
     # ==========================================================================
     # Similarity Tests
     # ==========================================================================

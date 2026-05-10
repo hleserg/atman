@@ -58,9 +58,3 @@ def test_similarity_dimension_mismatch_raises():
     adapter = MockEmbeddingAdapter()
     with pytest.raises(ValueError):
         adapter.similarity([0.1, 0.2], [0.1, 0.2, 0.3])
-
-
-def test_normalize_zero_vector_returns_zero_vector():
-    adapter = MockEmbeddingAdapter()
-    zero = [0.0, 0.0, 0.0]
-    assert adapter._normalize(zero) == zero

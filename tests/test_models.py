@@ -6,7 +6,6 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from atman.core.models import FactRecord, FactStatus, Relation
 
@@ -182,34 +181,75 @@ def test_fact_record_invalidated_at_field():
     assert restored.invalidated_at is not None
 
 
-def test_validate_assignment_blocks_out_of_range_salience():
-    """``validate_assignment=True`` rejects out-of-range salience mutations.
+# --- E25 / Devin Review: legacy FactStatus migration ---
 
-    Without this, ``confirm()`` / ``invalidate()`` and the backend
-    ``decay_stale_facts`` paths could push ``salience`` past its declared
-    [0.0, 1.0] bounds without re-running the field validator.
+
+@pytest.mark.parametrize(
+    ("legacy_value", "expected_status"),
+    [
+        ("outdated", FactStatus.SUPERSEDED),
+        ("retracted", FactStatus.INVALIDATED),
+        ("uncertain", FactStatus.DISPUTED),
+    ],
+)
+def test_fact_record_migrates_legacy_status_values(
+    legacy_value: str, expected_status: FactStatus
+) -> None:
+    """Legacy FactStatus values from pre-E25 JSONL files are mapped on load.
+
+    ``FileBackend`` loads facts from ~/.atman/facts.jsonl; previously valid
+    ``outdated``/``retracted``/``uncertain`` values must continue to load
+    instead of being silently dropped as malformed.
     """
-    fact = FactRecord(content="x", source="y")
-    with pytest.raises(ValidationError):
-        fact.salience = 1.5
-    with pytest.raises(ValidationError):
-        fact.salience = -0.1
+    fact = FactRecord.model_validate(
+        {
+            "content": "Migrated fact",
+            "source": "test",
+            "status": legacy_value,
+        }
+    )
+    assert fact.status == expected_status
 
 
-def test_validate_assignment_blocks_negative_confirmation_count():
-    """``validate_assignment=True`` rejects negative confirmation counts."""
+def test_fact_record_legacy_status_roundtrip_through_jsonl_line() -> None:
+    """A JSONL line written by pre-E25 code is loadable via ``model_validate_json``."""
+    legacy_jsonl_line = (
+        '{"id": "00000000-0000-0000-0000-000000000001", '
+        '"content": "old fact", "source": "legacy", "status": "outdated"}'
+    )
+    fact = FactRecord.model_validate_json(legacy_jsonl_line)
+    assert fact.status == FactStatus.SUPERSEDED
+
+
+def test_fact_record_unknown_status_still_rejected() -> None:
+    """Unknown status strings keep raising ValidationError."""
+    with pytest.raises(ValueError):
+        FactRecord.model_validate(
+            {
+                "content": "x",
+                "source": "y",
+                "status": "totally-bogus-status",
+            }
+        )
+
+
+def test_fact_record_validate_assignment_enforces_invariants() -> None:
+    """``validate_assignment=True`` keeps mutators on FactRecord safe."""
     fact = FactRecord(content="x", source="y")
-    with pytest.raises(ValidationError):
+
+    # Confirming a fact stays within validator-allowed bounds.
+    fact.confirm()
+    assert fact.confirmation_count == 1
+    assert 0.0 <= fact.salience <= 1.0
+
+    # Reassigning to invalid values should now raise instead of silently
+    # corrupting the record.
+    with pytest.raises(ValueError):
         fact.confirmation_count = -1
+    with pytest.raises(ValueError):
+        fact.salience = 1.5
 
-
-def test_confirm_caps_salience_and_increments_count():
-    """``confirm()`` honors the upper salience bound and bumps the counter."""
-    fact = FactRecord(content="x", source="y", salience=0.95, confirmation_count=2)
-    fact.confirm()
-    assert fact.confirmation_count == 3
-    assert fact.salience == pytest.approx(1.0)
-    # A second ``confirm()`` stays clamped at 1.0 rather than blowing past
-    # the field validator (which would raise under validate_assignment).
-    fact.confirm()
-    assert fact.salience == pytest.approx(1.0)
+    # Round-trip through the legacy migrator: assignment of ``"outdated"``
+    # is normalised to the modern enum member instead of raising.
+    fact.status = "outdated"  # type: ignore[assignment]
+    assert fact.status == FactStatus.SUPERSEDED

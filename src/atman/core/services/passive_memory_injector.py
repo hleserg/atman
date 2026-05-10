@@ -176,16 +176,17 @@ class PassiveMemoryInjector:
         """
         surfaced: list[SurfacedMemory] = []
 
-        # Query recent experiences via the StateStore port.
-        # Note: This is a simplified version - full implementation would
-        # need experience embeddings or text-based search.
-        records = self.state_store.list_recent_experiences(limit=limit * 2)
+        # Query experiences via state_store. ExperienceQuery is a marker base
+        # class (no constructor args); pull a candidate window via the
+        # ``limit`` kwarg of search_experiences and rerank by embedding
+        # similarity below.
+        experience_records = self.state_store.search_experiences(limit=limit * 2)
 
         # Score by embedding similarity
         query_embedding = self.embedding.embed(context_text)
 
         scored: list[tuple[SessionExperience, float]] = []
-        for record in records:
+        for record in experience_records:
             exp = record.experience
             if working_memory and working_memory.has(exp.id):
                 continue

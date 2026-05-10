@@ -12,20 +12,6 @@ from atman.core.models import FactRecord
 from atman.core.models.fact import FactStatus
 
 
-def validate_decay_factor(decay_factor: float) -> None:
-    """Validate ``decay_factor`` lies in the closed interval ``[0.0, 1.0]``.
-
-    Adapters call this at the entry of ``decay_stale_facts`` so an
-    out-of-range value surfaces as a clear ``ValueError`` instead of
-    propagating into a Pydantic ``salience <= 1.0`` validation failure
-    deep in the model layer.
-    """
-    if not 0.0 <= decay_factor <= 1.0:
-        raise ValueError(
-            f"decay_factor must satisfy 0.0 <= decay_factor <= 1.0, got {decay_factor!r}"
-        )
-
-
 class FactualMemory(ABC):
     """
     Интерфейс для работы с factual memory storage.
@@ -101,17 +87,12 @@ class FactualMemory(ABC):
 
         Args:
             fact_id: ID of the fact to invalidate
-            status: New non-ACTIVE status (defaults to INVALIDATED). Passing
-                FactStatus.ACTIVE is rejected with ValueError because
-                invalidation must move a fact out of the ACTIVE lifecycle.
+            status: New status (defaults to INVALIDATED)
             note: Reason for invalidation
             superseded_by: ID of fact that replaces this one
 
         Returns:
             FactRecord | None: Updated fact or None if not found
-
-        Raises:
-            ValueError: If status is FactStatus.ACTIVE
         """
         pass
 
@@ -133,19 +114,11 @@ class FactualMemory(ABC):
         """
         Confirm a fact, increasing its confirmation count and salience.
 
-        Only ACTIVE facts can be confirmed. Confirmation is a signal that
-        the fact is still observed in fresh evidence — a non-ACTIVE fact
-        (DISPUTED, SUPERSEDED, INVALIDATED) has already exited the active
-        lifecycle and resurrecting it via a confirmation bump would be
-        semantically wrong (e.g. an INVALIDATED fact's salience must stay
-        at 0.0 unless it is explicitly re-activated through a separate API).
-
         Args:
             fact_id: ID of the fact to confirm
 
         Returns:
-            bool: True if the fact was found AND ACTIVE and got confirmed.
-                False if the fact was not found or is not ACTIVE.
+            bool: True if fact was found and confirmed
         """
         pass
 
@@ -156,17 +129,10 @@ class FactualMemory(ABC):
 
         Args:
             before: Cutoff time - facts not confirmed since this time are decayed
-            decay_factor: Factor to multiply salience by; MUST satisfy
-                ``0.0 <= decay_factor <= 1.0``. Out-of-range values raise
-                ``ValueError`` so a confused caller does not trip the
-                ``salience <= 1.0`` Pydantic field validator with a less
-                descriptive error.
+            decay_factor: Factor to multiply salience by (0.0-1.0)
 
         Returns:
             int: Number of facts decayed
-
-        Raises:
-            ValueError: If ``decay_factor`` is outside ``[0.0, 1.0]``.
         """
         pass
 

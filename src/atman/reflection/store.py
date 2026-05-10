@@ -8,22 +8,31 @@ Requires psycopg2 and a configured database connection.
 import os
 import warnings
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-try:
-    import psycopg  # type: ignore[import-untyped,import-not-found]
-
-    _PSYCOPG_AVAILABLE = True
-except ImportError:
-    psycopg = None  # type: ignore[assignment]
-    _PSYCOPG_AVAILABLE = False
-    warnings.warn(
-        "psycopg not installed. ReflectionStore requires PostgreSQL support. "
-        "Install with: pip install psycopg[binary]",
-        ImportWarning,
-        stacklevel=2,
-    )
+if TYPE_CHECKING:
+    import psycopg
+    from psycopg import sql
+    from psycopg.rows import class_row
+    from psycopg.types.json import Jsonb
+else:
+    try:
+        import psycopg
+        from psycopg import sql
+        from psycopg.rows import class_row
+        from psycopg.types.json import Jsonb
+    except ImportError:
+        psycopg = None
+        sql = None
+        class_row = None
+        Jsonb = None
+        warnings.warn(
+            "psycopg not installed. ReflectionStore requires PostgreSQL support. "
+            "Install with: pip install psycopg[binary]",
+            ImportWarning,
+            stacklevel=2,
+        )
 
 from atman.reflection.models import ReflectionEvent, ReflectionLevel
 
@@ -67,7 +76,7 @@ class ReflectionStore:
         self.db_url = db_url or os.environ.get(
             "ATMAN_DB_URL", "postgresql://atman@localhost:5432/atman"
         )
-        self._conn: Any | None = None
+        self._conn: psycopg.Connection[Any] | None = None
         self._closed = False
 
     def connect(self) -> None:
@@ -128,11 +137,11 @@ class ReflectionStore:
         agent_id = self._get_agent_context()
         if agent_id:
             self._conn.execute(
-                psycopg.sql.SQL("SET LOCAL atman.current_agent = %s"),
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
                 [agent_id],
             )
 
-        query = psycopg.sql.SQL("""
+        query = sql.SQL("""
             INSERT INTO public.reflections (
                 agent_id, level, created_at, session_id, period_start, period_end,
                 content, summary, experience_refs, reframing_note_ids,
@@ -158,7 +167,7 @@ class ReflectionStore:
                     event.model_provider,
                     event.model_name,
                     event.schema_version,
-                    event.metadata,
+                    Jsonb(event.metadata),
                 ],
             )
             result = cur.fetchone()
@@ -184,11 +193,11 @@ class ReflectionStore:
         agent_id = self._get_agent_context()
         if agent_id:
             self._conn.execute(
-                psycopg.sql.SQL("SET LOCAL atman.current_agent = %s"),
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
                 [agent_id],
             )
 
-        query = psycopg.sql.SQL("""
+        query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
                    content, summary, experience_refs, reframing_note_ids,
                    model_provider, model_name, schema_version, metadata
@@ -196,9 +205,15 @@ class ReflectionStore:
             WHERE id = %s
         """)
 
-        with self._conn.cursor(row_factory=psycopg.rows.class_row(ReflectionEvent)) as cur:
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
             cur.execute(query, [reflection_id])
-            return cur.fetchone()
+            row = cur.fetchone()
+        # Read methods run inside an implicit transaction (autocommit is
+        # off by default). Commit so the connection does not stay
+        # ``idle in transaction`` and block VACUUM / hit
+        # idle_in_transaction_session_timeout.
+        self._conn.commit()
+        return row
 
     def list_by_session(self, session_id: UUID) -> list[ReflectionEvent]:
         """
@@ -216,11 +231,11 @@ class ReflectionStore:
         agent_id = self._get_agent_context()
         if agent_id:
             self._conn.execute(
-                psycopg.sql.SQL("SET LOCAL atman.current_agent = %s"),
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
                 [agent_id],
             )
 
-        query = psycopg.sql.SQL("""
+        query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
                    content, summary, experience_refs, reframing_note_ids,
                    model_provider, model_name, schema_version, metadata
@@ -229,9 +244,11 @@ class ReflectionStore:
             ORDER BY created_at DESC
         """)
 
-        with self._conn.cursor(row_factory=psycopg.rows.class_row(ReflectionEvent)) as cur:
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
             cur.execute(query, [str(session_id)])
-            return cur.fetchall()
+            rows = cur.fetchall()
+        self._conn.commit()
+        return rows
 
     def list_recent(self, agent_id: UUID, limit: int = 10) -> list[ReflectionEvent]:
         """
@@ -250,11 +267,11 @@ class ReflectionStore:
         context_agent_id = self._get_agent_context()
         if context_agent_id:
             self._conn.execute(
-                psycopg.sql.SQL("SET LOCAL atman.current_agent = %s"),
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
                 [context_agent_id],
             )
 
-        query = psycopg.sql.SQL("""
+        query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
                    content, summary, experience_refs, reframing_note_ids,
                    model_provider, model_name, schema_version, metadata
@@ -264,9 +281,11 @@ class ReflectionStore:
             LIMIT %s
         """)
 
-        with self._conn.cursor(row_factory=psycopg.rows.class_row(ReflectionEvent)) as cur:
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
             cur.execute(query, [str(agent_id), limit])
-            return cur.fetchall()
+            rows = cur.fetchall()
+        self._conn.commit()
+        return rows
 
     def list_by_level(
         self, agent_id: UUID, level: ReflectionLevel, since: datetime | None = None
@@ -288,12 +307,12 @@ class ReflectionStore:
         context_agent_id = self._get_agent_context()
         if context_agent_id:
             self._conn.execute(
-                psycopg.sql.SQL("SET LOCAL atman.current_agent = %s"),
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
                 [context_agent_id],
             )
 
         if since:
-            query = psycopg.sql.SQL("""
+            query = sql.SQL("""
                 SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
                        content, summary, experience_refs, reframing_note_ids,
                        model_provider, model_name, schema_version, metadata
@@ -303,7 +322,7 @@ class ReflectionStore:
             """)
             params = [str(agent_id), level.value, since]
         else:
-            query = psycopg.sql.SQL("""
+            query = sql.SQL("""
                 SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
                        content, summary, experience_refs, reframing_note_ids,
                        model_provider, model_name, schema_version, metadata
@@ -313,6 +332,8 @@ class ReflectionStore:
             """)
             params = [str(agent_id), level.value]
 
-        with self._conn.cursor(row_factory=psycopg.rows.class_row(ReflectionEvent)) as cur:
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
             cur.execute(query, params)
-            return cur.fetchall()
+            rows = cur.fetchall()
+        self._conn.commit()
+        return rows
