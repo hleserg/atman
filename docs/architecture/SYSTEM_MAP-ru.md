@@ -39,7 +39,10 @@
 | `core/ports/clock.py` | Доменные часы для воспроизводимости | `ClockPort` (Protocol) |
 | `core/ports/state_store.py` | Хранилище опыта/identity/нарратива | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
 | `core/ports/reflection.py` | Зависимости Reflection Engine; `ReflectionModel` возвращает DTO (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
-| **`core/ports/reflection_store.py`** | **E27**: Интерфейс таблицы PostgreSQL `reflections` | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
+| `core/ports/embedding.py` (E24.6) | Текстовые эмбеддинги для семантического поиска | `EmbeddingPort` (Protocol) |
+| `core/ports/memory_middleware.py` (E24) | Контекст всплытия памяти вокруг сессии | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
+| `core/ports/memory_usage_log.py` (E24.10) | Аудит-лог всплытий и использования памяти | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
+| `core/ports/reflection_store.py` (E27) | Интерфейс таблицы PostgreSQL `reflections` | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
 
 ### 1.3. Сервисы (`src/atman/core/services/`)
 
@@ -52,6 +55,10 @@
 | `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
+| `core/services/conflict_detector.py` (E24.5) | Детекция противоречий между активными фактами; сигнал когнитивного напряжения | `ConflictDetector`, `FactConflict` |
+| `core/services/emotional_echo.py` (E24.7) | Эмоциональный фон из недавнего опыта (recency × intensity) | `EmotionalEcho`, `EchoItem` |
+| `core/services/passive_memory_injector.py` (E24.6, E24.8) | Всплытие фактов/опыта по embedding-сходству + 1-hop расширение по графу | `PassiveMemoryInjector`, `SurfacedMemory` |
+| `core/services/session_working_memory.py` (E24.9) | Внутрисессионный LRU-кэш всплывшего, чтобы не дублировать поиск | `SessionWorkingMemory`, `CachedItem` |
 
 ### 1.4. Утилиты ядра
 
@@ -69,6 +76,10 @@
 |------|----------------|-----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные эмбеддинги через SHA-256; без внешних зависимостей; для тестов/CI |
+| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | локальные BM25-разрежённые векторы через хеш-фичи фиксированной размерности (Unicode-токенайзер); статистика из `embed_batch`/`embed_with_corpus` переиспользуется последующими `embed` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama HTTP `/api/embeddings`; настраиваются host/model/timeout |
+| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | список в памяти (append-only, без вытеснения); фильтрация по item/usage_type/времени |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) |
@@ -131,6 +142,9 @@
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
 | `DeepReflectionService` ↔ все рефлексионные порты | `core/services/reflection_service.py` | здоровье + апдейт identity и нарратива |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | анализ паттернов в контексте identity |
+| `ConflictDetector` ↔ `FactualMemory` | `core/services/conflict_detector.py` → `core/ports/memory_backend.py` | DI; лёгкая детекция противоречий по ACTIVE-кандидатам из `search()` |
+| `EmotionalEcho` ↔ `StateStore` | `core/services/emotional_echo.py` → `core/ports/state_store.py` | DI; окно `lookback_days` через `search_experiences` |
+| `PassiveMemoryInjector` ↔ `EmbeddingPort` + `FactualMemory` + `StateStore` | `core/services/passive_memory_injector.py` → `core/ports/embedding.py`, `core/ports/memory_backend.py`, `core/ports/state_store.py` | DI; top-K сходство + ассоциативное расширение на 1 шаг по графу; опциональный кэш `SessionWorkingMemory` |
 
 ### 2.2. Адаптер ↔ порт
 
@@ -140,7 +154,9 @@
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
-| **`InMemoryReflectionStore`** | **`ReflectionStore`** (E27) |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |
+| `InMemoryUsageLog` | `MemoryUsageLog` |
+| `InMemoryReflectionStore` (`adapters/storage/in_memory_postgres_reflection_store.py`) | `ReflectionStore` (E27) |
 
 ### 2.2a. Адаптер агента ↔ сервисы
 

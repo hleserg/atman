@@ -2,6 +2,7 @@
 Unit-тесты для InMemoryBackend.
 """
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -165,8 +166,8 @@ def test_clear(backend):
 def test_search_excludes_invalidated_by_default(backend):
     """E24.1 AC-3: search() with no args returns only ACTIVE facts."""
     active = backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search()
     assert len(results) == 1
@@ -176,8 +177,8 @@ def test_search_excludes_invalidated_by_default(backend):
 def test_search_includes_invalidated_when_requested(backend):
     """E24.1 AC-4: search(include_invalidated=True) returns all facts."""
     backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search(include_invalidated=True)
     assert len(results) == 2
@@ -190,13 +191,13 @@ def test_invalidate_fact_creates_bidirectional_relations(backend):
 
     result = backend.invalidate_fact(
         old_fact.id,
-        status=FactStatus.OUTDATED,
+        status=FactStatus.SUPERSEDED,
         note="replaced by new",
         superseded_by=new_fact.id,
     )
 
     assert result is not None
-    assert result.status == FactStatus.OUTDATED
+    assert result.status == FactStatus.SUPERSEDED
     assert result.superseded_by == new_fact.id
     assert result.invalidation_note == "replaced by new"
     assert result.invalidated_at is not None
@@ -216,24 +217,37 @@ def test_invalidate_fact_creates_bidirectional_relations(backend):
 
 def test_invalidate_fact_nonexistent_returns_none(backend):
     """E24.1: invalidate_fact returns None for unknown fact_id."""
-    result = backend.invalidate_fact(uuid4(), status=FactStatus.RETRACTED, note="n/a")
+    result = backend.invalidate_fact(uuid4(), status=FactStatus.INVALIDATED, note="n/a")
     assert result is None
 
 
 def test_invalidate_fact_without_superseded_by(backend):
     """E24.1: invalidation without superseded_by sets status fields only."""
-    fact = backend.add_fact(FactRecord(content="Uncertain fact", source="test"))
-    result = backend.invalidate_fact(fact.id, status=FactStatus.UNCERTAIN, note="doubted")
+    fact = backend.add_fact(FactRecord(content="Disputed fact", source="test"))
+    result = backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="doubted")
 
     assert result is not None
-    assert result.status == FactStatus.UNCERTAIN
+    assert result.status == FactStatus.DISPUTED
     assert result.superseded_by is None
     assert result.invalidation_note == "doubted"
-    assert result.invalidated_at is not None
+    # DISPUTED populates ``disputed_at`` instead of ``invalidated_at``.
+    assert result.disputed_at is not None
+    assert result.invalidated_at is None
 
     retrieved = backend.get_fact(fact.id)
     assert retrieved is not None
     assert len([r for r in retrieved.relations if r.relation_type == "superseded_by"]) == 0
+
+
+def test_invalidate_fact_invalidated_status_sets_invalidated_at(backend):
+    """INVALIDATED / SUPERSEDED populate ``invalidated_at``, not ``disputed_at``."""
+    fact = backend.add_fact(FactRecord(content="To be retracted", source="test"))
+    result = backend.invalidate_fact(fact.id, status=FactStatus.INVALIDATED, note="wrong")
+
+    assert result is not None
+    assert result.status == FactStatus.INVALIDATED
+    assert result.invalidated_at is not None
+    assert result.disputed_at is None
 
 
 def test_list_invalidated(backend):
@@ -242,8 +256,8 @@ def test_list_invalidated(backend):
     f2 = backend.add_fact(FactRecord(content="Fact 2", source="test"))
     backend.add_fact(FactRecord(content="Active fact", source="test"))
 
-    backend.invalidate_fact(f1.id, status=FactStatus.OUTDATED, note="old")
-    backend.invalidate_fact(f2.id, status=FactStatus.RETRACTED, note="wrong")
+    backend.invalidate_fact(f1.id, status=FactStatus.SUPERSEDED, note="old")
+    backend.invalidate_fact(f2.id, status=FactStatus.INVALIDATED, note="wrong")
 
     invalidated = backend.list_invalidated()
     assert len(invalidated) == 2
@@ -256,10 +270,10 @@ def test_list_invalidated_with_since_filter(backend):
     from datetime import UTC, datetime
 
     f1 = backend.add_fact(FactRecord(content="Old invalidated", source="test"))
-    backend.invalidate_fact(f1.id, status=FactStatus.OUTDATED, note="old")
+    backend.invalidate_fact(f1.id, status=FactStatus.SUPERSEDED, note="old")
 
     f2 = backend.add_fact(FactRecord(content="New invalidated", source="test"))
-    backend.invalidate_fact(f2.id, status=FactStatus.RETRACTED, note="new")
+    backend.invalidate_fact(f2.id, status=FactStatus.INVALIDATED, note="new")
 
     all_invalidated = backend.list_invalidated()
     assert len(all_invalidated) == 2
@@ -272,12 +286,117 @@ def test_list_invalidated_with_since_filter(backend):
     assert len(backend.list_invalidated(since=future)) == 0
 
 
+def test_list_invalidated_includes_disputed_facts(backend):
+    """DISPUTED facts must appear in list_invalidated and respect since-filter."""
+    from datetime import UTC, datetime, timedelta
+
+    fact = backend.add_fact(FactRecord(content="To be disputed", source="test"))
+    backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="not sure")
+
+    # Without filter, DISPUTED facts are included.
+    listed = backend.list_invalidated()
+    assert len(listed) == 1
+    assert listed[0].id == fact.id
+    assert listed[0].status == FactStatus.DISPUTED
+
+    # ``since`` uses the effective lifecycle timestamp; a moment in the
+    # past selects the disputed fact, a moment in the future excludes it.
+    listed_since_past = backend.list_invalidated(since=datetime(2000, 1, 1, tzinfo=UTC))
+    assert len(listed_since_past) == 1
+
+    listed_since_future = backend.list_invalidated(since=datetime.now(UTC) + timedelta(days=1))
+    assert listed_since_future == []
+
+
+def test_list_invalidated_sorts_disputed_and_invalidated_together(backend):
+    """Sort key uses the effective lifecycle timestamp regardless of status."""
+    f_disputed = backend.add_fact(FactRecord(content="d", source="test"))
+    backend.invalidate_fact(f_disputed.id, status=FactStatus.DISPUTED, note="?")
+
+    f_invalidated = backend.add_fact(FactRecord(content="i", source="test"))
+    backend.invalidate_fact(f_invalidated.id, status=FactStatus.INVALIDATED, note="x")
+
+    listed = backend.list_invalidated()
+    assert {f.id for f in listed} == {f_disputed.id, f_invalidated.id}
+    # Most recently stamped fact comes first; the second invalidate call
+    # ran after the first, so the INVALIDATED fact should top the list.
+    assert listed[0].id == f_invalidated.id
+
+
 def test_invalidate_lifecycle(backend):
     """E24.1: full lifecycle — add, invalidate, search, list_invalidated."""
     fact = backend.add_fact(FactRecord(content="Lifecycle test", source="test"))
     assert len(backend.search(query="lifecycle")) == 1
 
-    backend.invalidate_fact(fact.id, status=FactStatus.OUTDATED, note="done")
+    backend.invalidate_fact(fact.id, status=FactStatus.SUPERSEDED, note="done")
     assert len(backend.search(query="lifecycle")) == 0
     assert len(backend.search(query="lifecycle", include_invalidated=True)) == 1
     assert len(backend.list_invalidated()) == 1
+
+
+# ---------------------------------------------------------------------------
+# E24.3: confirm_fact / decay_stale_facts (port-level contract via in-memory)
+# ---------------------------------------------------------------------------
+
+
+def test_confirm_fact_increments_count_and_bumps_salience(backend):
+    """confirm_fact: storage layer mirrors FactRecord.confirm() semantics."""
+    fact = backend.add_fact(FactRecord(content="Confirmable", source="t", salience=0.5))
+    assert fact.confirmation_count == 0
+    assert fact.last_confirmed_at is None
+
+    assert backend.confirm_fact(fact.id) is True
+
+    refreshed = backend.get_fact(fact.id)
+    assert refreshed is not None
+    assert refreshed.confirmation_count == 1
+    assert refreshed.last_confirmed_at is not None
+    # confirm() bumps salience by 0.1, capped at 1.0
+    assert refreshed.salience == pytest.approx(0.6)
+
+
+def test_confirm_fact_returns_false_for_unknown_id(backend):
+    """confirm_fact: missing ID is a clean ``False`` (no exception)."""
+    assert backend.confirm_fact(uuid4()) is False
+
+
+def test_decay_stale_facts_only_decays_active_and_stale(backend):
+    """decay_stale_facts: skips non-ACTIVE facts and recently-confirmed ones."""
+    # ``before`` is the cutoff: facts with last_confirmed_at < before (or None) decay.
+    # Pick a cutoff in the past so the upcoming confirm() lands AFTER it.
+    before_cutoff = datetime.now(UTC) - timedelta(hours=1)
+    stale = backend.add_fact(FactRecord(content="Never confirmed stale", source="t", salience=0.8))
+    fresh = backend.add_fact(FactRecord(content="Just confirmed", source="t", salience=0.8))
+    backend.confirm_fact(fresh.id)  # last_confirmed_at = now > before_cutoff
+    invalidated = backend.add_fact(
+        FactRecord(content="Stale but invalidated", source="t", salience=0.8)
+    )
+    backend.invalidate_fact(invalidated.id, status=FactStatus.INVALIDATED, note="gone")
+
+    decayed = backend.decay_stale_facts(before=before_cutoff, decay_factor=0.5)
+    # Only the never-confirmed ACTIVE fact decays. The fresh one was confirmed
+    # AFTER ``before_cutoff`` and the invalidated one is non-ACTIVE.
+    assert decayed == 1
+
+    refreshed_stale = backend.get_fact(stale.id)
+    refreshed_fresh = backend.get_fact(fresh.id)
+    assert refreshed_stale is not None
+    assert refreshed_fresh is not None
+    assert refreshed_stale.salience == pytest.approx(0.4)
+    # confirm() bumped fresh from 0.8 → 0.9, decay must NOT touch it
+    assert refreshed_fresh.salience == pytest.approx(0.9)
+
+
+def test_decay_stale_facts_clamps_salience_at_zero_lower_bound(backend):
+    """decay_stale_facts: lower clamp prevents negative salience."""
+    fact = backend.add_fact(FactRecord(content="Tiny salience", source="t", salience=0.001))
+    decayed = backend.decay_stale_facts(before=datetime.now(UTC), decay_factor=0.0)
+    assert decayed == 1
+    refreshed = backend.get_fact(fact.id)
+    assert refreshed is not None
+    assert refreshed.salience == 0.0
+
+
+def test_decay_stale_facts_returns_zero_when_nothing_to_decay(backend):
+    """decay_stale_facts: empty store returns ``0`` and is safe to call."""
+    assert backend.decay_stale_facts(before=datetime.now(UTC)) == 0

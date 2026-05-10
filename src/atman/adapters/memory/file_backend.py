@@ -19,6 +19,7 @@ from uuid import UUID
 from atman.core.models import FactRecord, Relation
 from atman.core.models.fact import FactStatus
 from atman.core.ports import FactualMemory
+from atman.core.ports.memory_backend import validate_decay_factor
 
 
 class FileBackend(FactualMemory):
@@ -165,6 +166,43 @@ class FileBackend(FactualMemory):
 
         return results
 
+    def confirm_fact(self, fact_id: UUID) -> bool:
+        """Confirm an ACTIVE fact and persist changes.
+
+        Returns ``False`` for unknown ids and for non-ACTIVE facts —
+        confirming a DISPUTED/SUPERSEDED/INVALIDATED fact would resurrect
+        its salience, which violates the lifecycle contract.
+        """
+        with self._storage_lock():
+            updated_facts = self._read_facts_from_disk()
+            fact = updated_facts.get(fact_id)
+            if fact is None or fact.status != FactStatus.ACTIVE:
+                self._facts = updated_facts
+                return False
+            fact.confirm()
+            self._save_facts(updated_facts)
+            self._facts = updated_facts
+        return True
+
+    def decay_stale_facts(self, before: datetime, decay_factor: float = 0.5) -> int:
+        """Decay salience of stale facts and persist changes."""
+        validate_decay_factor(decay_factor)
+        count = 0
+        with self._storage_lock():
+            updated_facts = self._read_facts_from_disk()
+            for fact in updated_facts.values():
+                # Skip invalidated facts
+                if fact.status != FactStatus.ACTIVE:
+                    continue
+                # Decay if never confirmed or last confirmation was before cutoff
+                if fact.last_confirmed_at is None or fact.last_confirmed_at < before:
+                    fact.salience = max(0.0, fact.salience * decay_factor)
+                    count += 1
+            if count > 0:
+                self._save_facts(updated_facts)
+            self._facts = updated_facts
+        return count
+
     def link(self, source_id: UUID, target_id: UUID, relation_type: str) -> bool:
         """Создает связь между фактами и сохраняет в файл."""
         with self._storage_lock():
@@ -196,11 +234,13 @@ class FileBackend(FactualMemory):
         self,
         fact_id: UUID,
         *,
-        status: FactStatus,
-        note: str,
+        status: FactStatus | None = None,
+        note: str = "",
         superseded_by: UUID | None = None,
     ) -> FactRecord | None:
         """Invalidates a fact by setting its status and metadata."""
+        if status == FactStatus.ACTIVE:
+            raise ValueError("invalidate_fact rejects FactStatus.ACTIVE")
         with self._storage_lock():
             updated_facts = self._read_facts_from_disk()
             fact = updated_facts.get(fact_id)
@@ -209,9 +249,20 @@ class FileBackend(FactualMemory):
                 return None
 
             now = datetime.now(UTC)
-            fact.status = status
+            new_status = status or FactStatus.INVALIDATED
+            fact.status = new_status
             fact.invalidation_note = note
-            fact.invalidated_at = now
+            # DISPUTED populates ``disputed_at``; INVALIDATED / SUPERSEDED
+            # populate ``invalidated_at``. Terminal states (INVALIDATED /
+            # SUPERSEDED) also drop salience to zero, matching
+            # :meth:`InMemoryBackend.invalidate_fact` and
+            # :meth:`FactRecord.invalidate`; DISPUTED is provisional and
+            # keeps salience unchanged so a later confirm() can restore it.
+            if new_status == FactStatus.DISPUTED:
+                fact.disputed_at = now
+            else:
+                fact.invalidated_at = now
+                fact.salience = 0.0
             fact.superseded_by = superseded_by
 
             if superseded_by is not None:
@@ -230,17 +281,28 @@ class FileBackend(FactualMemory):
         return fact.model_copy(deep=True)
 
     def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
-        """Returns all invalidated (non-ACTIVE) facts."""
-        results = [
-            fact
-            for fact in self._facts.values()
-            if fact.status != FactStatus.ACTIVE
-            and (
-                since is None or (fact.invalidated_at is not None and fact.invalidated_at >= since)
-            )
-        ]
+        """
+        Returns all non-ACTIVE facts (INVALIDATED, SUPERSEDED, DISPUTED).
+
+        Filters and sorts by the effective lifecycle timestamp so DISPUTED
+        facts (whose timestamp lives in ``disputed_at`` rather than
+        ``invalidated_at``) are surfaced correctly.
+        """
+        results: list[FactRecord] = []
+        for fact in self._facts.values():
+            if fact.status == FactStatus.ACTIVE:
+                continue
+            ts = fact.effective_lifecycle_timestamp
+            if since is not None and (ts is None or ts < since):
+                continue
+            results.append(fact)
+        # ``datetime.min`` is naive while every populated lifecycle timestamp
+        # is timezone-aware (created with ``datetime.now(UTC)``). Comparing the
+        # two raises ``TypeError`` in Python 3, so use the UTC-aware sentinel
+        # to keep the sort total even for facts with no lifecycle timestamp.
+        _NAIVE_FALLBACK = datetime.min.replace(tzinfo=UTC)
         results.sort(
-            key=lambda f: f.invalidated_at if f.invalidated_at is not None else datetime.min,
+            key=lambda f: f.effective_lifecycle_timestamp or _NAIVE_FALLBACK,
             reverse=True,
         )
         return [f.model_copy(deep=True) for f in results]
