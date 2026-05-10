@@ -90,9 +90,7 @@ def test_eval_schema_creation_and_permissions():
 
         # Step 3: Verify roles exist
         for role in ["atman_eval_owner", "atman_eval_writer", "atman_eval_reader"]:
-            cur = conn.execute(
-                "SELECT 1 FROM pg_roles WHERE rolname = %s;", (role,)
-            )
+            cur = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s;", (role,))
             assert cur.fetchone() is not None, f"Role '{role}' not created"
 
         # Step 4: Verify tables exist
@@ -240,7 +238,10 @@ def test_role_permissions():
                 # Expected: reader should not be able to insert
                 conn.rollback()
                 conn.execute("RESET ROLE;")
-        except (psycopg.errors.InvalidAuthorizationSpecification, psycopg.errors.InsufficientPrivilege):  # type: ignore[name-defined]
+        except (
+            psycopg.errors.InvalidAuthorizationSpecification,
+            psycopg.errors.InsufficientPrivilege,
+        ):  # type: ignore[name-defined]
             # Role doesn't exist or current user can't switch to it
             # This is acceptable in limited test environments
             conn.rollback()

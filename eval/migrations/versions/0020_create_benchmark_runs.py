@@ -131,19 +131,20 @@ def upgrade() -> None:
     ).fetchone()
     if not result:
         import warnings
+
         warnings.warn(
             "Table public.identity_snapshots does not exist. "
             "Foreign key constraint will be deferred. Run main migrations first.",
             UserWarning,
             stacklevel=2,
         )
-    
+
     # Create the partitioned parent table
     op.execute(_CREATE_TABLE_SQL)
 
     # Create partitions for current and next month using bounds computation
     current_start, current_end, next_start, next_end = _get_partition_bounds()
-    
+
     # Extract year/month from start dates for suffix
     now = datetime.now(UTC)
     current_suffix = f"{now.year:04d}_{now.month:02d}"
@@ -156,6 +157,12 @@ def upgrade() -> None:
 
     op.execute(_create_partition_sql(current_suffix, current_start, current_end))
     op.execute(_create_partition_sql(next_suffix, next_start, next_end))
+
+    # Create DEFAULT partition as safety net for dates outside partition ranges
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
+        PARTITION OF eval.benchmark_runs DEFAULT;
+    """)
 
 
 def downgrade() -> None:

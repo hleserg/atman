@@ -74,3 +74,7 @@ GRANT SELECT ON eval.benchmark_runs TO atman_eval_reader;
 -- CREATE TABLE eval.benchmark_runs_2026_06
 --     PARTITION OF eval.benchmark_runs
 --     FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+-- ── DEFAULT partition (safety net) ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
+    PARTITION OF eval.benchmark_runs DEFAULT;
