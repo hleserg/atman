@@ -41,7 +41,7 @@ echo "  ╔═══════════════════════
 echo "  ║         Atman Memory Stack Setup             ║"
 echo "  ║                                              ║"
 echo "  ║  PostgreSQL 16 + pgvector                    ║"
-echo "  ║  Qdrant · Ollama · qwen3:14b                 ║"
+echo "  ║  Qdrant · Ollama · qwen3.5:9b                ║"
 echo "  ║  qwen3-embedding:1.5b · Flash Attention      ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -298,7 +298,7 @@ elif echo "${GPU_INFO}" | grep -qi "cpu"; then
     warn "RTX 5070 Ti / Blackwell: обновите Ollama или попробуйте OLLAMA_VULKAN=1"
     warn "Продолжаю установку — можно исправить позже"
 else
-    warn "Статус GPU неизвестен — проверьте вручную: ollama run qwen3:14b"
+    warn "Статус GPU неизвестен — проверьте вручную: ollama run ${OLLAMA_LLM_MODEL}"
 fi
 
 # ── 5. Скачиваем модели ───────────────────────────────────────────────────────

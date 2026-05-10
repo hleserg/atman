@@ -6,6 +6,7 @@
 .secrets
 *.secrets
 *secrets*
+!gen-secrets.sh
 
 # Сгенерированные файлы (создаются из шаблонов)
 ../docker-compose.yml
@@ -17,6 +18,7 @@
 # Бэкапы
 *.sql.gz
 *.sql
+!schema.sql
 
 # Временные файлы
 *.tmp
