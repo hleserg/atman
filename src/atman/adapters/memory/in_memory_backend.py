@@ -5,9 +5,11 @@ In-memory адаптер для Factual Memory.
 Все данные хранятся в памяти и теряются при завершении процесса.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from atman.core.models import FactRecord, Relation
+from atman.core.models.fact import FactStatus
 from atman.core.ports import FactualMemory
 
 
@@ -34,7 +36,12 @@ class InMemoryBackend(FactualMemory):
         return fact.model_copy(deep=True) if fact else None
 
     def search(
-        self, query: str | None = None, tags: list[str] | None = None, limit: int = 10
+        self,
+        query: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 10,
+        *,
+        include_invalidated: bool = False,
     ) -> list[FactRecord]:
         """
         Ищет факты по запросу и тегам.
@@ -48,11 +55,12 @@ class InMemoryBackend(FactualMemory):
         normalized_tags = [t.lower() for t in tags] if tags else None
 
         for fact in self._facts.values():
-            # Проверка совпадения по запросу
+            if not include_invalidated and fact.status != FactStatus.ACTIVE:
+                continue
+
             if normalized_query and normalized_query not in fact.content.lower():
                 continue
 
-            # Проверка совпадения по тегам
             if normalized_tags:
                 fact_tags_lower = [t.lower() for t in fact.tags]
                 if not all(tag in fact_tags_lower for tag in normalized_tags):
@@ -87,6 +95,51 @@ class InMemoryBackend(FactualMemory):
     def clear(self) -> None:
         """Очищает все факты из памяти. Полезно для тестов."""
         self._facts.clear()
+
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus,
+        note: str,
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
+        """Invalidates a fact by setting its status and metadata."""
+        fact = self._facts.get(fact_id)
+        if fact is None:
+            return None
+
+        now = datetime.now(UTC)
+        fact.status = status
+        fact.invalidation_note = note
+        fact.invalidated_at = now
+        fact.superseded_by = superseded_by
+
+        if superseded_by is not None:
+            new_fact = self._facts.get(superseded_by)
+            if new_fact is not None:
+                fact.relations.append(
+                    Relation(target_id=superseded_by, relation_type="superseded_by")
+                )
+                new_fact.relations.append(Relation(target_id=fact_id, relation_type="supersedes"))
+
+        return fact.model_copy(deep=True)
+
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
+        """Returns all invalidated (non-ACTIVE) facts."""
+        results = [
+            fact
+            for fact in self._facts.values()
+            if fact.status != FactStatus.ACTIVE
+            and (
+                since is None or (fact.invalidated_at is not None and fact.invalidated_at >= since)
+            )
+        ]
+        results.sort(
+            key=lambda f: f.invalidated_at if f.invalidated_at is not None else datetime.min,
+            reverse=True,
+        )
+        return [f.model_copy(deep=True) for f in results]
 
     def count(self) -> int:
         """Возвращает количество фактов в памяти."""
