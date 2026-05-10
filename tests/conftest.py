@@ -6,16 +6,6 @@ import httpx
 import pytest
 
 
-@pytest.fixture(scope="session")
-def ollama_available() -> bool:
-    """Probe Ollama API; return True if reachable, False otherwise."""
-    try:
-        resp = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
-        return resp.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return False
-
-
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],

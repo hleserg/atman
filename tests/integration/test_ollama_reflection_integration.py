@@ -66,7 +66,7 @@ def _make_identity() -> Identity:
     )
 
 
-def _make_narrative(identity_id: None = None) -> NarrativeDocument:
+def _make_narrative() -> NarrativeDocument:
     """Create a minimal valid NarrativeDocument."""
     return NarrativeDocument(
         identity_id=uuid4(),
