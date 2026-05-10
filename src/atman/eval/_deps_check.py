@@ -29,4 +29,3 @@ def _check_eval_deps_installed() -> None:
             + "). Install with:\n\n    pip install 'atman[eval]'\n\n"
             "or with uv:\n\n    uv sync --extra eval\n"
         )
-
