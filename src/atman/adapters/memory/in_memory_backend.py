@@ -120,6 +120,8 @@ class InMemoryBackend(FactualMemory):
         fact = self._facts.get(fact_id)
         if fact is None:
             return False
+        if fact.status != FactStatus.ACTIVE:
+            return False
         fact.confirm()
         return True
 

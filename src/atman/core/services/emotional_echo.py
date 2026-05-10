@@ -157,8 +157,10 @@ class EmotionalEcho:
                 if echo.emotional_valence < -0.2
                 else "neutral"
             )
+            truncated = echo.what_happened[:80]
+            ellipsis = "..." if len(echo.what_happened) > 80 else ""
             parts.append(
-                f"- {echo.what_happened[:80]}... "
+                f"- {truncated}{ellipsis} "
                 f"({tone}, intensity: {echo.emotional_intensity:.1f})"
             )
 

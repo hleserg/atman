@@ -173,6 +173,9 @@ class FileBackend(FactualMemory):
             if fact is None:
                 self._facts = updated_facts
                 return False
+            if fact.status != FactStatus.ACTIVE:
+                self._facts = updated_facts
+                return False
             fact.confirm()
             self._save_facts(updated_facts)
             self._facts = updated_facts
