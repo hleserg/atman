@@ -381,6 +381,7 @@ Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_l
 | `e48a060`, `83df039` | ruff lint/format/type fixes | mostly closed |
 | `6a9f28f` | Session Manager recent narrative update replaced the whole recent layer instead of appending; regression test added | covered (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | Open WebUI setup exposed first-admin registration to LAN by default | covered (`tests/test_deployment_scripts.py`) |
+| `b47abcb` | `eval.benchmark_runs` only created a current-month partition, so inserts with `started_at=NOW()` would fail after the month boundary | covered (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`) |
 
 ### 5.2. From code inspection
 

@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS eval.benchmark_runs_YYYY_MM
 
 ALTER TABLE eval.benchmark_runs_YYYY_MM OWNER TO atman_eval_owner;
 
+-- ── Default partition safety net ────────────────────────────────────────────
+-- Prevents otherwise-valid inserts from failing at the next calendar boundary
+-- before a monthly partition maintenance job exists.
+CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
+    PARTITION OF eval.benchmark_runs DEFAULT;
+
+ALTER TABLE eval.benchmark_runs_default OWNER TO atman_eval_owner;
+
 -- ── Indexes on the partitioned root (inherited by every partition) ──────────
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_benchmark_started
     ON eval.benchmark_runs (benchmark_id, started_at DESC);

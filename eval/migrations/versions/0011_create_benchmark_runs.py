@@ -7,9 +7,10 @@ Create Date: 2026-05-10
 Second migration of epic E0 (#189). Creates the central registry of every
 benchmark execution: ``eval.benchmark_runs``, partitioned by
 ``RANGE (started_at)`` with one initial monthly partition for the current
-month. Three indexes are created on the partitioned root and inherited by
-every partition: ``(benchmark_id, started_at DESC)``, ``(git_sha)``, and a
-GIN index on the ``metrics_json`` JSONB column.
+month and a default partition as a write-safety net for future months until
+partition maintenance exists. Three indexes are created on the partitioned
+root and inherited by every partition: ``(benchmark_id, started_at DESC)``,
+``(git_sha)``, and a GIN index on the ``metrics_json`` JSONB column.
 
 Partition key requirement: PostgreSQL requires the partition key to be part
 of every UNIQUE / PRIMARY KEY constraint on a partitioned table. We therefore
@@ -75,6 +76,32 @@ CREATE INDEX IF NOT EXISTS idx_benchmark_runs_metrics_gin
 """
 
 
+# PLAYBOOK-START
+# id: default-partition-write-safety-net
+# category: failure-modes
+# title: Default Partition as Write Safety Net
+# status: draft
+#
+# Pattern: for time-range partitioned write paths, create explicit near-term
+# partitions for expected hot data and a DEFAULT partition for out-of-window
+# rows. Writes continue when partition maintenance lags or the clock crosses
+# a boundary before the next partition is created.
+#
+# Why generalizable: scheduled partition creation is operationally fragile.
+# Without a catch-all partition, otherwise-valid inserts can start failing at
+# a calendar boundary and break batch jobs or user workflows.
+#
+# Trade-offs: rows captured by the default partition may need to be moved into
+# proper range partitions before creating those future partitions.
+# PLAYBOOK-END
+_CREATE_DEFAULT_PARTITION_SQL = """
+CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
+    PARTITION OF eval.benchmark_runs DEFAULT;
+
+ALTER TABLE eval.benchmark_runs_default OWNER TO atman_eval_owner;
+"""
+
+
 _GRANTS_SQL = """
 GRANT SELECT, INSERT, UPDATE ON eval.benchmark_runs TO atman_eval_writer;
 GRANT SELECT ON eval.benchmark_runs TO atman_eval_reader;
@@ -116,6 +143,7 @@ def upgrade() -> None:
     """
     op.execute(_CREATE_PARENT_SQL)
     op.execute(_current_month_partition_sql())
+    op.execute(_CREATE_DEFAULT_PARTITION_SQL)
     op.execute(_CREATE_INDEXES_SQL)
     op.execute(_GRANTS_SQL)
 
