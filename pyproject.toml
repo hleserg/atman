@@ -31,6 +31,16 @@ webui = [
 e2e = [
     "anthropic>=0.42.0",
 ]
+# Eval subsystem — see docs/architecture/PROD_EVAL_BOUNDARY.md
+# Production users should NOT install this extra. Required by
+# `import atman.eval` (see src/atman/eval/_deps_check.py) and by the
+# eval/migrations/* tooling (alembic, psycopg).
+eval = [
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0",
+    "click>=8.1",
+]
 
 [project.scripts]
 atman = "atman.cli:main"
