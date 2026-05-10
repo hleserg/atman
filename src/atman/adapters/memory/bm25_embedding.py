@@ -1,13 +1,7 @@
 """
 BM25EmbeddingAdapter - pure Python BM25-based sparse embeddings.
 
-Implements BM25 text scoring as a sparse embedding using the **feature
-hashing trick** so that all calls to :meth:`embed` return vectors of the
-same fixed dimension. This makes individually-embedded vectors directly
-comparable via :meth:`similarity`, which is the contract expected by the
-``EmbeddingPort`` protocol and consumers like
-:class:`PassiveMemoryInjector`.
-
+Implements BM25 text scoring as a form of sparse embedding.
 Zero external dependencies, suitable for lightweight deployments.
 """
 
@@ -19,27 +13,19 @@ from typing import override
 
 from atman.core.ports.embedding import EmbeddingPort
 
-# Word characters in Unicode-aware mode; covers Latin, Cyrillic, Greek,
-# Arabic, CJK, etc. Underscore is excluded.
-_TOKEN_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
+DEFAULT_DIMENSION = 1024
 
 
 class BM25EmbeddingAdapter(EmbeddingPort):
     """
-    BM25-based embedding adapter using feature hashing.
+    BM25-based embedding adapter.
 
-    Each token is hashed to one of ``dimension`` slots, so every call to
-    :meth:`embed` returns a vector of the same fixed length. When a corpus
-    has been observed via :meth:`embed_batch` or :meth:`embed_with_corpus`,
-    the document-frequency statistics collected from that corpus are used
-    for proper BM25 weighting on subsequent :meth:`embed` calls. Otherwise
-    a TF-only weight is used.
+    Uses BM25 scoring with a fixed vocabulary derived from text.
+    Produces sparse vector representations suitable for lexical similarity.
 
     This is NOT a neural embedding - it's a classical IR approach
     that requires no external dependencies or model downloads.
     """
-
-    DEFAULT_DIMENSION = 1024
 
     def __init__(
         self,
@@ -53,62 +39,106 @@ class BM25EmbeddingAdapter(EmbeddingPort):
         Args:
             k1: BM25 term frequency saturation parameter
             b: BM25 document length normalization parameter
-            dimension: Fixed output vector dimension; tokens are hashed
-                into this many slots so that all embeddings are
-                directly comparable.
+            dimension: Fixed output vector dimension. Tokens are mapped to
+                buckets via a deterministic hash so that vectors produced by
+                independent ``embed()`` calls are directly comparable via
+                ``similarity()``.  ``embed_with_corpus()`` keeps using a
+                vocabulary-derived dimension for backward compatibility.
         """
         if dimension <= 0:
             raise ValueError("dimension must be positive")
         self.k1 = k1
         self.b = b
-        self._dimension = dimension
-        # Document frequencies, keyed by hashed slot index.
-        self._doc_freqs: Counter[int] = Counter()
+        self._fixed_dimension = dimension
+        self._vocab: dict[str, int] = {}
+        self._doc_freqs: Counter = Counter()
         self._avg_doc_len = 0.0
         self._num_docs = 0
-        # Term -> slot index, populated lazily during tokenization. Useful
-        # for tests / introspection; semantically just a memoization of
-        # ``_term_index``.
-        self._vocab: dict[str, int] = {}
+        self._dimension = dimension
 
     @override
     def embed(self, text: str) -> list[float]:
         """
-        Generate a fixed-dimension BM25 vector for ``text``.
+        Generate BM25-weighted term vector for ``text``.
 
-        If the adapter has previously seen a corpus via
-        :meth:`embed_batch` or :meth:`embed_with_corpus`, IDF from that
-        corpus is applied; otherwise a TF-only weight is used.
+        Vectors are produced into a **fixed** ``dimension`` by hashing each
+        token into a bucket (``hashing trick``).  This makes vectors from two
+        independent ``embed()`` calls directly comparable via
+        ``similarity()`` — the previous implementation rebuilt a per-call
+        vocabulary, which violated the ``EmbeddingPort`` contract because
+        every call returned a vector of a different length.
+
+        For single-text embedding we have no corpus statistics, so the
+        weight degenerates to BM25's TF component (with ``avg_doc_len``
+        equal to the document's own length).  For corpus-aware weighting
+        use ``embed_with_corpus`` or ``embed_batch``.
         """
         tokens = self._tokenize(text)
-        return self._embed_tokens(tokens)
+        if not tokens:
+            return [0.0] * self._fixed_dimension
+
+        term_counts = Counter(tokens)
+        doc_len = len(tokens)
+
+        vector = [0.0] * self._fixed_dimension
+        for term, count in term_counts.items():
+            idx = self._hash_bucket(term)
+            # Without corpus stats, fall back to BM25's TF component only
+            # (avg_doc_len == doc_len so the length-normalisation term
+            # vanishes).
+            vector[idx] += self._tf_weight(count, doc_len, doc_len)
+
+        return vector
 
     def embed_with_corpus(self, text: str, corpus_docs: list[str]) -> list[float]:
         """
-        Generate BM25 embedding for ``text`` using ``corpus_docs`` for IDF.
+        Generate BM25 embedding using corpus statistics.
 
         Args:
             text: The text to embed
             corpus_docs: The corpus for IDF calculation
 
         Returns:
-            list[float]: BM25-weighted vector of length :meth:`dimension`.
+            list[float]: BM25-weighted vector
         """
+        # Build corpus statistics
         all_tokens = [self._tokenize(doc) for doc in corpus_docs]
         self._build_corpus_stats(all_tokens)
-        return self._embed_tokens(self._tokenize(text))
+
+        # Embed the target text
+        tokens = self._tokenize(text)
+        term_counts = Counter(tokens)
+        doc_len = len(tokens)
+
+        vector = [0.0] * self._dimension
+        for term, count in term_counts.items():
+            if term in self._vocab:
+                idx = self._vocab[term]
+                idf = self._idf(term)
+                tf = self._tf_weight(count, doc_len, self._avg_doc_len)
+                vector[idx] = idf * tf
+
+        return vector
 
     @override
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple texts using shared corpus stats."""
+        """Generate embeddings for multiple texts using shared corpus stats.
+
+        Returns vectors of the configured ``dimension`` (the same dimension
+        ``embed()`` uses), so vectors from ``embed`` and ``embed_batch``
+        are mutually comparable via ``similarity()``.
+        """
+        if not texts:
+            return []
+
         all_tokens = [self._tokenize(text) for text in texts]
-        self._build_corpus_stats(all_tokens)
-        return [self._embed_tokens(tokens) for tokens in all_tokens]
+        self._build_corpus_doc_freqs(all_tokens)
+        return [self._embed_hashed_with_stats(tokens) for tokens in all_tokens]
 
     @override
     def dimension(self) -> int:
-        """Return the (fixed) embedding dimension."""
-        return self._dimension
+        """Return the fixed embedding dimension."""
+        return self._fixed_dimension
 
     @override
     def model_name(self) -> str:
@@ -130,70 +160,100 @@ class BM25EmbeddingAdapter(EmbeddingPort):
 
         return dot_product / (norm1 * norm2)
 
-    def _tokenize(self, text: str) -> list[str]:
+    def _hash_bucket(self, token: str) -> int:
+        """Map a token to a stable bucket index in ``[0, dimension)``.
+
+        Uses MD5 truncated to 4 bytes as a fast, deterministic, non-random
+        hash (Python's built-in ``hash()`` is randomised per process and
+        therefore unsuitable for vectors that must be comparable across
+        processes or persisted).  MD5 is *not* used here for security; we
+        rely only on the function's uniform distribution.
         """
-        Lowercase and split into Unicode word tokens.
+        digest = hashlib.md5(token.encode("utf-8"), usedforsecurity=False).digest()
+        return int.from_bytes(digest[:4], "little") % self._fixed_dimension
 
-        Uses a Unicode-aware regex so non-Latin scripts (Cyrillic, Greek,
-        CJK, …) are tokenised correctly. Tokens shorter than 3 characters
-        are dropped to suppress noise from particles like English ``a`` /
-        ``an`` / Russian ``я`` while still keeping useful short words such
-        as ``CI`` (≥ 2 chars survives once lowercased to ``ci`` only if
-        we relaxed this; current behaviour preserves the original
-        > 2-char filter).
+    def _build_corpus_doc_freqs(self, all_tokens: list[list[str]]) -> None:
+        """Build document-frequency statistics for IDF without disturbing
+        ``self._vocab``/``self._dimension`` (which are kept consistent with
+        the hashing-trick output dimension).
         """
-        text = text.lower()
-        tokens = _TOKEN_RE.findall(text)
-        return [t for t in tokens if len(t) > 2]
-
-    def _term_index(self, term: str) -> int:
-        """Stable hash of ``term`` into ``[0, dimension)``."""
-        cached = self._vocab.get(term)
-        if cached is not None:
-            return cached
-        # md5 is used as a fast, well-distributed non-cryptographic hash.
-        digest = hashlib.md5(term.encode("utf-8"), usedforsecurity=False).digest()
-        idx = int.from_bytes(digest[:8], "big") % self._dimension
-        self._vocab[term] = idx
-        return idx
-
-    def _build_corpus_stats(self, all_tokens: list[list[str]]) -> None:
-        """Build corpus-wide statistics for BM25 (keyed by hashed slot)."""
         self._doc_freqs = Counter()
         total_len = 0
         for tokens in all_tokens:
-            unique_indices = {self._term_index(t) for t in tokens}
-            self._doc_freqs.update(unique_indices)
+            self._doc_freqs.update(set(tokens))
             total_len += len(tokens)
         self._num_docs = len(all_tokens)
         self._avg_doc_len = total_len / self._num_docs if self._num_docs > 0 else 0.0
 
-    def _embed_tokens(self, tokens: list[str]) -> list[float]:
-        """Embed a tokenised document into a fixed-dim BM25 vector."""
+    def _embed_hashed_with_stats(self, tokens: list[str]) -> list[float]:
+        """Embed pre-tokenised text using corpus IDF and the hashing trick."""
+        if not tokens:
+            return [0.0] * self._fixed_dimension
+
         term_counts = Counter(tokens)
         doc_len = len(tokens)
-        vector = [0.0] * self._dimension
-        use_corpus = self._num_docs > 0
-
+        vector = [0.0] * self._fixed_dimension
         for term, count in term_counts.items():
-            idx = self._term_index(term)
-            if use_corpus:
-                idf = self._idf_by_index(idx)
-                tf = self._tf_weight(count, doc_len, self._avg_doc_len)
-                vector[idx] += idf * tf
-            else:
-                vector[idx] += self._tf_weight(count, doc_len, doc_len)
+            idx = self._hash_bucket(term)
+            idf = self._idf(term)
+            tf = self._tf_weight(count, doc_len, self._avg_doc_len)
+            vector[idx] += idf * tf
         return vector
 
-    def _idf_by_index(self, idx: int) -> float:
-        df = self._doc_freqs.get(idx, 0)
-        if df == 0:
-            return 0.0
-        return math.log((self._num_docs - df + 0.5) / (df + 0.5) + 1.0)
+    def _tokenize(self, text: str) -> list[str]:
+        """Simple tokenization: lowercase Unicode word characters only.
+
+        Uses ``[^\\W_]+`` so Cyrillic, CJK and other Unicode letters are kept
+        alongside ASCII alphanumerics; underscores and other punctuation are
+        excluded.  Short tokens (<=2 chars) are dropped as noise.
+        """
+        text = text.lower()
+        tokens = re.findall(r"[^\W_]+", text, flags=re.UNICODE)
+        return [t for t in tokens if len(t) > 2]
+
+    def _build_corpus_stats(self, all_tokens: list[list[str]]) -> None:
+        """Build corpus-wide statistics for BM25."""
+        # Build vocabulary
+        all_terms: set[str] = set()
+        for tokens in all_tokens:
+            all_terms.update(tokens)
+
+        self._vocab = {term: idx for idx, term in enumerate(sorted(all_terms))}
+        self._dimension = len(self._vocab)
+
+        # Document frequencies
+        self._doc_freqs = Counter()
+        total_len = 0
+        for tokens in all_tokens:
+            unique_terms = set(tokens)
+            self._doc_freqs.update(unique_terms)
+            total_len += len(tokens)
+
+        self._num_docs = len(all_tokens)
+        self._avg_doc_len = total_len / self._num_docs if self._num_docs > 0 else 0.0
+
+    def _embed_with_stats(self, tokens: list[str]) -> list[float]:
+        """Embed tokens using existing corpus stats."""
+        term_counts = Counter(tokens)
+        doc_len = len(tokens)
+
+        vector = [0.0] * self._dimension
+        for term, count in term_counts.items():
+            if term in self._vocab:
+                idx = self._vocab[term]
+                idf = self._idf(term)
+                tf = self._tf_weight(count, doc_len, self._avg_doc_len)
+                vector[idx] = idf * tf
+
+        return vector
 
     def _idf(self, term: str) -> float:
-        """Calculate IDF for a term using the most recently observed corpus."""
-        return self._idf_by_index(self._term_index(term))
+        """Calculate IDF for a term."""
+        df = self._doc_freqs.get(term, 0)
+        if df == 0:
+            return 0.0
+        # Standard BM25 IDF with smoothing
+        return math.log((self._num_docs - df + 0.5) / (df + 0.5) + 1.0)
 
     def _tf_weight(self, term_freq: int, doc_len: int, avg_doc_len: float) -> float:
         """Calculate BM25 term frequency weight."""

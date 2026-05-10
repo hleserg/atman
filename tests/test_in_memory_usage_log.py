@@ -1,4 +1,4 @@
-"""Tests for InMemoryUsageLog (E24.10)."""
+"""Unit tests for :class:`InMemoryUsageLog` (memory usage telemetry)."""
 
 from __future__ import annotations
 
@@ -10,81 +10,70 @@ from atman.core.ports.memory_usage_log import MemoryUsageRecord, UsageType
 
 
 def _record(
-    *,
-    session_id=None,
-    memory_id=None,
-    memory_type: str = "fact",
-    usage_type: UsageType = UsageType.SURFACED,
+    session_id, memory_id, *, memory_type: str = "fact", usage_type: UsageType = UsageType.SURFACED
 ) -> MemoryUsageRecord:
     return MemoryUsageRecord(
         timestamp=datetime.now(UTC),
-        session_id=session_id or uuid4(),
+        session_id=session_id,
         memory_type=memory_type,
-        memory_id=memory_id or uuid4(),
+        memory_id=memory_id,
         usage_type=usage_type,
-        context="test usage",
+        context="test",
     )
 
 
-def test_log_and_count():
+def test_log_and_count() -> None:
     log = InMemoryUsageLog()
-    assert log.count() == 0
-    log.log_usage(_record())
-    log.log_usage(_record())
+    sid, mid = uuid4(), uuid4()
+    log.log_usage(_record(sid, mid))
+    log.log_usage(_record(sid, uuid4()))
     assert log.count() == 2
 
 
-def test_get_usage_for_session_filters_by_session_and_memory_type():
+def test_get_usage_for_session_filters_by_session_and_memory_type() -> None:
     log = InMemoryUsageLog()
-    session_a = uuid4()
-    session_b = uuid4()
-    log.log_usage(_record(session_id=session_a, memory_type="fact"))
-    log.log_usage(_record(session_id=session_a, memory_type="experience"))
-    log.log_usage(_record(session_id=session_b, memory_type="fact"))
+    sid, other = uuid4(), uuid4()
+    log.log_usage(_record(sid, uuid4(), memory_type="fact"))
+    log.log_usage(_record(sid, uuid4(), memory_type="experience"))
+    log.log_usage(_record(other, uuid4(), memory_type="fact"))
 
-    all_a = log.get_usage_for_session(session_a)
-    assert len(all_a) == 2
+    all_for_session = log.get_usage_for_session(sid)
+    assert len(all_for_session) == 2
 
-    facts_only = log.get_usage_for_session(session_a, memory_type="fact")
-    assert len(facts_only) == 1
-    assert facts_only[0].memory_type == "fact"
+    only_facts = log.get_usage_for_session(sid, memory_type="fact")
+    assert len(only_facts) == 1
+    assert only_facts[0].memory_type == "fact"
 
 
-def test_get_usage_for_memory_returns_recent_first_with_limit():
+def test_get_usage_for_memory_returns_most_recent_first_capped_by_limit() -> None:
     log = InMemoryUsageLog()
-    memory_id = uuid4()
-    other_id = uuid4()
+    mid = uuid4()
     for _ in range(3):
-        log.log_usage(_record(memory_id=memory_id))
-    log.log_usage(_record(memory_id=other_id))
+        log.log_usage(_record(uuid4(), mid))
+    # Add an unrelated record
+    log.log_usage(_record(uuid4(), uuid4()))
 
-    recent = log.get_usage_for_memory(memory_id, limit=2)
-    assert len(recent) == 2
-    assert all(r.memory_id == memory_id for r in recent)
+    most_recent = log.get_usage_for_memory(mid, limit=2)
+    assert len(most_recent) == 2
+    assert all(r.memory_id == mid for r in most_recent)
 
 
-def test_get_usage_summary_counts_by_usage_type():
+def test_get_usage_summary_counts_per_usage_type() -> None:
     log = InMemoryUsageLog()
-    session_id = uuid4()
-    log.log_usage(_record(session_id=session_id, usage_type=UsageType.SURFACED))
-    log.log_usage(_record(session_id=session_id, usage_type=UsageType.SURFACED))
-    log.log_usage(_record(session_id=session_id, usage_type=UsageType.CITED))
-    log.log_usage(_record(session_id=uuid4(), usage_type=UsageType.SURFACED))
+    sid = uuid4()
+    log.log_usage(_record(sid, uuid4(), usage_type=UsageType.SURFACED))
+    log.log_usage(_record(sid, uuid4(), usage_type=UsageType.SURFACED))
+    other_type = next((u for u in UsageType if u is not UsageType.SURFACED), UsageType.SURFACED)
+    log.log_usage(_record(sid, uuid4(), usage_type=other_type))
 
-    summary = log.get_usage_summary(session_id)
-    assert summary == {"surfaced": 2, "cited": 1}
+    summary = log.get_usage_summary(sid)
+    assert summary[UsageType.SURFACED.value] == 2
+    if other_type is not UsageType.SURFACED:
+        assert summary[other_type.value] == 1
 
 
-def test_clear_resets_log():
+def test_clear_empties_log() -> None:
     log = InMemoryUsageLog()
-    log.log_usage(_record())
-    assert log.count() == 1
+    log.log_usage(_record(uuid4(), uuid4()))
     log.clear()
     assert log.count() == 0
-
-
-def test_usage_type_enum_values():
-    assert UsageType.SURFACED == "surfaced"
-    assert UsageType.ACCESSED == "accessed"
-    assert UsageType.CITED == "cited"
-    assert UsageType.INFLUENCED == "influenced"

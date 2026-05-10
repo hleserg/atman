@@ -2,14 +2,13 @@
 OllamaEmbeddingAdapter - embedding via Ollama API.
 
 Requires running Ollama instance with an embedding model.
-Default model: qwen3-embedding:1.5b (lightweight, good quality)
+Default model: qwen3-embedding:4b (lightweight, good quality)
 """
 
 import json
 import math
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import override
 
@@ -21,11 +20,11 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
     Embedding adapter using Ollama API.
 
     Requires Ollama to be running locally or at configured host.
-    Default model is qwen3-embedding:1.5b for good quality/speed balance.
+    Default model is qwen3-embedding:4b for good quality/speed balance.
 
     Environment variables:
         OLLAMA_HOST: Ollama server URL (default: http://localhost:11434)
-        OLLAMA_EMBED_MODEL: Model name (default: qwen3-embedding:1.5b)
+        OLLAMA_EMBED_MODEL: Model name (default: qwen3-embedding:4b)
     """
 
     def __init__(
@@ -39,13 +38,16 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
 
         Args:
             base_url: Ollama server URL (defaults to OLLAMA_HOST env var or localhost)
-            model: Model name (defaults to OLLAMA_EMBED_MODEL env var or qwen3-embedding:1.5b)
+            model: Model name (defaults to OLLAMA_EMBED_MODEL env var or qwen3-embedding:4b)
             timeout: Request timeout in seconds
         """
-        self.base_url = base_url or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        if urllib.parse.urlparse(self.base_url).scheme not in {"http", "https"}:
-            raise ValueError("OllamaEmbeddingAdapter only supports http/https URLs")
-        self.model = model or os.environ.get("OLLAMA_EMBED_MODEL", "qwen3-embedding:1.5b")
+        resolved_url = base_url or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        if not resolved_url.startswith(("http://", "https://")):
+            raise ValueError(
+                f"OllamaEmbeddingAdapter base_url must be http(s)://, got {resolved_url!r}"
+            )
+        self.base_url = resolved_url
+        self.model = model or os.environ.get("OLLAMA_EMBED_MODEL", "qwen3-embedding:4b")
         self.timeout = timeout
         self._dimension: int | None = None
 
@@ -73,18 +75,19 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         )
 
         try:
-            # Scheme validated in __init__; safe to call urlopen.
+            # ``url`` is built from ``self.base_url`` (configured Ollama endpoint,
+            # validated as ``http(s)://...`` at construction) — the file:// /
+            # custom-scheme attack surface B310 warns about does not apply.
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
-                # Ollama returns the vector under "embedding" for single-input
-                # responses and under "embeddings" for batch responses. Use
-                # ``or`` so the case where ``embeddings`` is present but an
-                # empty list still falls through to the empty-vector
-                # RuntimeError below instead of raising IndexError.
+                # Ollama returns the vector under "embedding" for single inputs;
+                # newer servers may return ``"embeddings": [[...]]`` or even an
+                # explicit empty list. Normalize both shapes without indexing
+                # into a possibly empty list.
                 embedding = data.get("embedding")
                 if not embedding:
-                    embeddings = data.get("embeddings") or [[]]
-                    embedding = embeddings[0]
+                    embeddings = data.get("embeddings") or []
+                    embedding = embeddings[0] if embeddings else []
                 if not embedding:
                     raise RuntimeError("Empty embedding received from Ollama")
                 return embedding
@@ -117,19 +120,17 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         )
 
         try:
-            # Scheme validated in __init__; safe to call urlopen.
+            # See `embed`: ``url`` derives from ``self.base_url``, which the
+            # constructor restricts to http(s) endpoints.
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
                 embeddings = data.get("embeddings", [])
                 if not embeddings:
                     raise RuntimeError("Empty embeddings received from Ollama")
-                # Defensive: Ollama's API contract is 1:1 input->vector but a
-                # silent drop or duplication on the server side would otherwise
-                # leak as a misaligned ``zip(texts, embeddings)`` downstream.
                 if len(embeddings) != len(texts):
                     raise RuntimeError(
                         f"Ollama batch embedding length mismatch: "
-                        f"got {len(embeddings)} vectors for {len(texts)} inputs"
+                        f"sent {len(texts)} texts, received {len(embeddings)} vectors"
                     )
                 return embeddings
         except urllib.error.URLError as e:
@@ -171,7 +172,7 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         try:
             url = f"{self.base_url}/api/tags"
             req = urllib.request.Request(url, method="GET")
-            # Scheme validated in __init__; safe to call urlopen.
+            # See `embed`: ``url`` is built from ``self.base_url``.
             with urllib.request.urlopen(req, timeout=5.0) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
                 models = data.get("models", [])

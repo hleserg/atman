@@ -47,14 +47,9 @@ class InMemoryUsageLog(MemoryUsageLog):
         limit: int = 50,
     ) -> list[MemoryUsageRecord]:
         """Get usage history for a specific memory item."""
-        if limit <= 0:
-            # Guard against Python's ``-0 == 0`` slice semantics: a naive
-            # ``results[-limit:]`` for ``limit=0`` would be ``results[0:]``
-            # i.e. the whole list, which violates the ``limit`` contract.
-            return []
         results = [r for r in self._records if r.memory_id == memory_id]
-        # Return most recent first.
-        return list(reversed(results[-limit:]))
+        # Return most recent first
+        return results[-limit:][::-1]
 
     @override
     def get_usage_summary(

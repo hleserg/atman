@@ -54,22 +54,24 @@ class EmbeddingPort(Protocol):
         Return the name of the embedding model used.
 
         Returns:
-            str: The model identifier (e.g., "qwen3-embedding:1.5b")
+            str: The model identifier (e.g., "qwen3-embedding:4b")
         """
         pass
 
     @abstractmethod
     def similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """
-        Calculate similarity between two embedding vectors.
+        Compute a similarity score between two embedding vectors.
 
-        Default is cosine similarity, but implementations may vary.
+        Implementations should return a value where higher means more similar
+        (e.g. cosine similarity in [-1.0, 1.0]) and should raise ValueError
+        when the vectors have incompatible dimensions.
 
         Args:
-            vec1: First embedding vector
-            vec2: Second embedding vector
+            vec1: First embedding vector.
+            vec2: Second embedding vector.
 
         Returns:
-            float: Similarity score (typically -1.0 to 1.0)
+            float: Similarity score between the two vectors.
         """
         pass

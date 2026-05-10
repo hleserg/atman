@@ -78,9 +78,9 @@
 |------|----------------|-----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
-| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 768-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:768d"` |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 2560-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:768d"` |
 | `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
-| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `qwen3-embedding:1.5b` (768-мерные); `model_name()` возвращает настроенную модель; доступен `health_check()` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `qwen3-embedding:4b` (2560-мерные); `model_name()` возвращает настроенную модель; доступен `health_check()` |
 | `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory трекинг использования |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта |
@@ -369,6 +369,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `e48a060`, `83df039` | Правки ruff lint/format/type | в основном закрыто |
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
+| `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`) |
 
 ### 5.2. Из инспекции кода
 

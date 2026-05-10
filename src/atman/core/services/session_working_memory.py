@@ -3,14 +3,8 @@ SessionWorkingMemory - in-session cache for surfaced content.
 
 Prevents repeated searches by caching already-surfaced facts and experiences.
 Acts as a short-term working memory during active sessions.
-
-The cache is backed by :class:`collections.OrderedDict`, which gives O(1)
-LRU bookkeeping: ``move_to_end`` promotes accessed items in constant time
-and ``popitem(last=False)`` evicts the oldest entry without a separate
-parallel list of access order.
 """
 
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
@@ -46,12 +40,8 @@ class SessionWorkingMemory:
             max_size: Maximum number of items to cache (LRU eviction)
         """
         self.max_size = max_size
-        # ``OrderedDict`` lets us treat insertion order as access order:
-        # ``move_to_end`` on read marks an item as MRU and
-        # ``popitem(last=False)`` evicts the LRU entry. Both ops are O(1),
-        # whereas a parallel ``list[UUID]`` required O(n) ``remove`` /
-        # ``pop(0)`` calls.
-        self._cache: OrderedDict[UUID, CachedItem] = OrderedDict()
+        self._cache: dict[UUID, CachedItem] = {}
+        self._access_order: list[UUID] = []
 
     def has(self, item_id: UUID) -> bool:
         """Check if an item is already in working memory."""
@@ -60,10 +50,12 @@ class SessionWorkingMemory:
     def get(self, item_id: UUID) -> CachedItem | None:
         """Get item from working memory if present."""
         item = self._cache.get(item_id)
-        if item is not None:
+        if item:
             item.access_count += 1
-            # Mark as most recently used (move to end of OrderedDict).
-            self._cache.move_to_end(item_id)
+            # Update access order (move to end = most recent)
+            if item_id in self._access_order:
+                self._access_order.remove(item_id)
+            self._access_order.append(item_id)
         return item
 
     def add_fact(self, fact: FactRecord) -> None:
@@ -79,6 +71,7 @@ class SessionWorkingMemory:
             content=fact.content[:200],  # Truncate for memory efficiency
         )
         self._cache[fact.id] = cached
+        self._access_order.append(fact.id)
 
     def add_experience(self, experience: SessionExperience) -> None:
         """Add an experience to working memory."""
@@ -96,6 +89,7 @@ class SessionWorkingMemory:
             content=summary,
         )
         self._cache[experience.id] = cached
+        self._access_order.append(experience.id)
 
     def add_facts_batch(self, facts: list[FactRecord]) -> list[FactRecord]:
         """
@@ -116,21 +110,24 @@ class SessionWorkingMemory:
 
         Returns items in LRU order (least recently accessed first).
         """
-        return [
-            item
-            for item in self._cache.values()
-            if item_type is None or item.item_type == item_type
-        ]
+        items = []
+        for item_id in self._access_order:
+            item = self._cache[item_id]
+            if item_type is None or item.item_type == item_type:
+                items.append(item)
+        return items
 
     def clear(self) -> None:
         """Clear all items from working memory."""
         self._cache.clear()
+        self._access_order.clear()
 
     def size(self) -> int:
         """Return number of items in cache."""
         return len(self._cache)
 
     def _evict_if_needed(self) -> None:
-        """Evict oldest item if cache is at capacity (O(1))."""
-        if len(self._cache) >= self.max_size:
-            self._cache.popitem(last=False)
+        """Evict oldest item if cache is at capacity."""
+        if len(self._cache) >= self.max_size and self._access_order:
+            oldest_id = self._access_order.pop(0)
+            self._cache.pop(oldest_id, None)
