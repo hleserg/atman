@@ -11,6 +11,7 @@ from uuid import UUID
 from atman.core.models import FactRecord, Relation
 from atman.core.models.fact import FactStatus
 from atman.core.ports import FactualMemory
+from atman.core.ports.memory_backend import validate_decay_factor
 
 
 class InMemoryBackend(FactualMemory):
@@ -151,6 +152,7 @@ class InMemoryBackend(FactualMemory):
 
     def decay_stale_facts(self, before: datetime, decay_factor: float = 0.5) -> int:
         """Decay salience of facts not confirmed since before the given time."""
+        validate_decay_factor(decay_factor)
         count = 0
         for fact in self._facts.values():
             if fact.status != FactStatus.ACTIVE:

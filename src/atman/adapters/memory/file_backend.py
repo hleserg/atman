@@ -19,6 +19,7 @@ from uuid import UUID
 from atman.core.models import FactRecord, Relation
 from atman.core.models.fact import FactStatus
 from atman.core.ports import FactualMemory
+from atman.core.ports.memory_backend import validate_decay_factor
 
 
 class FileBackend(FactualMemory):
@@ -180,6 +181,7 @@ class FileBackend(FactualMemory):
 
     def decay_stale_facts(self, before: datetime, decay_factor: float = 0.5) -> int:
         """Decay salience of stale facts and persist changes."""
+        validate_decay_factor(decay_factor)
         count = 0
         with self._storage_lock():
             updated_facts = self._read_facts_from_disk()

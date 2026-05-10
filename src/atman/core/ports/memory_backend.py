@@ -12,6 +12,20 @@ from atman.core.models import FactRecord
 from atman.core.models.fact import FactStatus
 
 
+def validate_decay_factor(decay_factor: float) -> None:
+    """Validate ``decay_factor`` lies in the closed interval ``[0.0, 1.0]``.
+
+    Adapters call this at the entry of ``decay_stale_facts`` so an
+    out-of-range value surfaces as a clear ``ValueError`` instead of
+    propagating into a Pydantic ``salience <= 1.0`` validation failure
+    deep in the model layer.
+    """
+    if not 0.0 <= decay_factor <= 1.0:
+        raise ValueError(
+            f"decay_factor must satisfy 0.0 <= decay_factor <= 1.0, got {decay_factor!r}"
+        )
+
+
 class FactualMemory(ABC):
     """
     Интерфейс для работы с factual memory storage.
@@ -134,10 +148,17 @@ class FactualMemory(ABC):
 
         Args:
             before: Cutoff time - facts not confirmed since this time are decayed
-            decay_factor: Factor to multiply salience by (0.0-1.0)
+            decay_factor: Factor to multiply salience by; MUST satisfy
+                ``0.0 <= decay_factor <= 1.0``. Out-of-range values raise
+                ``ValueError`` so a confused caller does not trip the
+                ``salience <= 1.0`` Pydantic field validator with a less
+                descriptive error.
 
         Returns:
             int: Number of facts decayed
+
+        Raises:
+            ValueError: If ``decay_factor`` is outside ``[0.0, 1.0]``.
         """
         pass
 
