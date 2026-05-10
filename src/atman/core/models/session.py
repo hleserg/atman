@@ -11,7 +11,7 @@ These models represent the session runtime that experiences sessions in real-tim
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from atman.core.models.experience import EmotionalDepth, FeltSense, KeyMoment
 from atman.core.models.identity import Identity
@@ -193,6 +193,12 @@ class KeyMomentInput(BaseModel):
         description="True if couldn't fully capture emotional coloring in the moment",
     )
 
+    # FACT REFERENCES (E24.2) - facts that shaped this moment
+    fact_refs: list[UUID] = Field(
+        default_factory=list,
+        description="IDs of facts that were read/used during this moment",
+    )
+
     @field_validator("what_happened", "why_it_matters")
     @classmethod
     def validate_not_empty(cls, v: str) -> str:
@@ -226,6 +232,7 @@ class KeyMomentInput(BaseModel):
             principles_confirmed=self.principles_confirmed,
             principles_questioned=self.principles_questioned,
             what_changed=self.what_changed,
+            fact_refs=self.fact_refs,
         )
 
     model_config = ConfigDict(
@@ -306,6 +313,9 @@ class SessionResult(BaseModel):
     identity_id: UUID | None = Field(
         default=None, description="ID of the identity this session belongs to"
     )
+
+    # Private: track facts read during session (E24.2)
+    _facts_read: set[UUID] = PrivateAttr(default_factory=set)
 
     model_config = ConfigDict(
         validate_assignment=True,

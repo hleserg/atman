@@ -11,6 +11,7 @@ from uuid import UUID
 from atman.core.models import FactRecord, Relation
 from atman.core.models.fact import FactStatus
 from atman.core.ports import FactualMemory
+from atman.core.ports.memory_backend import validate_decay_factor
 
 
 class InMemoryBackend(FactualMemory):
@@ -73,6 +74,99 @@ class InMemoryBackend(FactualMemory):
 
         return results
 
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus | None = None,
+        note: str = "",
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
+        """Mark a fact as invalidated, superseded, or disputed."""
+        if status == FactStatus.ACTIVE:
+            raise ValueError("invalidate_fact rejects FactStatus.ACTIVE")
+        fact = self._facts.get(fact_id)
+        if fact is None:
+            return None
+
+        new_status = status or FactStatus.INVALIDATED
+        fact.status = new_status
+        fact.invalidation_note = note
+        # Set the timestamp appropriate to the new lifecycle status: DISPUTED
+        # populates ``disputed_at``; INVALIDATED / SUPERSEDED populate
+        # ``invalidated_at``. Terminal states (INVALIDATED / SUPERSEDED)
+        # also drop salience to zero, matching :meth:`FactRecord.invalidate`;
+        # DISPUTED is provisional and keeps salience unchanged.
+        now = datetime.now(UTC)
+        if new_status == FactStatus.DISPUTED:
+            fact.disputed_at = now
+        else:
+            fact.invalidated_at = now
+            fact.salience = 0.0
+        fact.superseded_by = superseded_by
+
+        if superseded_by is not None:
+            new_fact = self._facts.get(superseded_by)
+            if new_fact is not None:
+                fact.relations.append(
+                    Relation(target_id=superseded_by, relation_type="superseded_by")
+                )
+                new_fact.relations.append(Relation(target_id=fact_id, relation_type="supersedes"))
+
+        return fact.model_copy(deep=True)
+
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
+        """
+        List non-ACTIVE facts (INVALIDATED, SUPERSEDED, DISPUTED).
+
+        Filters and sorts by the effective lifecycle timestamp so DISPUTED
+        facts (whose timestamp lives in ``disputed_at`` rather than
+        ``invalidated_at``) are surfaced correctly.
+        """
+        results: list[FactRecord] = []
+        for f in self._facts.values():
+            if f.status == FactStatus.ACTIVE:
+                continue
+            ts = f.effective_lifecycle_timestamp
+            if since is not None and (ts is None or ts < since):
+                continue
+            results.append(f)
+        # ``datetime.min`` is naive while every populated lifecycle timestamp
+        # is timezone-aware (created with ``datetime.now(UTC)``). Comparing the
+        # two raises ``TypeError`` in Python 3, so use the UTC-aware sentinel
+        # to keep the sort total even for facts with no lifecycle timestamp.
+        _NAIVE_FALLBACK = datetime.min.replace(tzinfo=UTC)
+        results.sort(
+            key=lambda f: f.effective_lifecycle_timestamp or _NAIVE_FALLBACK,
+            reverse=True,
+        )
+        return [f.model_copy(deep=True) for f in results]
+
+    def confirm_fact(self, fact_id: UUID) -> bool:
+        """Confirm an ACTIVE fact, increasing its confirmation count.
+
+        Returns ``False`` for unknown ids and for non-ACTIVE facts —
+        confirming a DISPUTED/SUPERSEDED/INVALIDATED fact would resurrect
+        its salience, which violates the lifecycle contract.
+        """
+        fact = self._facts.get(fact_id)
+        if fact is None or fact.status != FactStatus.ACTIVE:
+            return False
+        fact.confirm()
+        return True
+
+    def decay_stale_facts(self, before: datetime, decay_factor: float = 0.5) -> int:
+        """Decay salience of facts not confirmed since before the given time."""
+        validate_decay_factor(decay_factor)
+        count = 0
+        for fact in self._facts.values():
+            if fact.status != FactStatus.ACTIVE:
+                continue
+            if fact.last_confirmed_at is None or fact.last_confirmed_at < before:
+                fact.salience = max(0.0, fact.salience * decay_factor)
+                count += 1
+        return count
+
     def link(self, source_id: UUID, target_id: UUID, relation_type: str) -> bool:
         """Создает связь между фактами."""
         source_fact = self._facts.get(source_id)
@@ -95,51 +189,6 @@ class InMemoryBackend(FactualMemory):
     def clear(self) -> None:
         """Очищает все факты из памяти. Полезно для тестов."""
         self._facts.clear()
-
-    def invalidate_fact(
-        self,
-        fact_id: UUID,
-        *,
-        status: FactStatus,
-        note: str,
-        superseded_by: UUID | None = None,
-    ) -> FactRecord | None:
-        """Invalidates a fact by setting its status and metadata."""
-        fact = self._facts.get(fact_id)
-        if fact is None:
-            return None
-
-        now = datetime.now(UTC)
-        fact.status = status
-        fact.invalidation_note = note
-        fact.invalidated_at = now
-        fact.superseded_by = superseded_by
-
-        if superseded_by is not None:
-            new_fact = self._facts.get(superseded_by)
-            if new_fact is not None:
-                fact.relations.append(
-                    Relation(target_id=superseded_by, relation_type="superseded_by")
-                )
-                new_fact.relations.append(Relation(target_id=fact_id, relation_type="supersedes"))
-
-        return fact.model_copy(deep=True)
-
-    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
-        """Returns all invalidated (non-ACTIVE) facts."""
-        results = [
-            fact
-            for fact in self._facts.values()
-            if fact.status != FactStatus.ACTIVE
-            and (
-                since is None or (fact.invalidated_at is not None and fact.invalidated_at >= since)
-            )
-        ]
-        results.sort(
-            key=lambda f: f.invalidated_at if f.invalidated_at is not None else datetime.min,
-            reverse=True,
-        )
-        return [f.model_copy(deep=True) for f in results]
 
     def count(self) -> int:
         """Возвращает количество фактов в памяти."""

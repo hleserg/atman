@@ -2,7 +2,9 @@
 Core ports для Atman.
 """
 
+from atman.core.ports.embedding import EmbeddingPort
 from atman.core.ports.memory_backend import FactualMemory
+from atman.core.ports.memory_usage_log import MemoryUsageLog, MemoryUsageRecord, UsageType
 from atman.core.ports.reflection import (
     ExperienceRepository,
     HealthAssessmentStore,
@@ -26,11 +28,14 @@ from atman.core.ports.state_store import (
 __all__ = [
     "DateRangeQuery",
     "DepthQuery",
+    "EmbeddingPort",
     "ExperienceQuery",
     "ExperienceRepository",
     "FactualMemory",
     "HealthAssessmentStore",
     "IdentityRepository",
+    "MemoryUsageLog",
+    "MemoryUsageRecord",
     "NarrativeRepository",
     "NarrativeWriteAuditPort",
     "PatternStore",
@@ -39,5 +44,6 @@ __all__ = [
     "ReflectionModel",
     "SessionExperienceQuery",
     "StateStore",
+    "UsageType",
     "ValuesTouchedQuery",
 ]
