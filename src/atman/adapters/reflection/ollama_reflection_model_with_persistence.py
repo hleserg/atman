@@ -5,8 +5,8 @@ This adapter wraps OllamaReflectionModel and automatically persists
 generated reflection content to the PostgreSQL ReflectionStore.
 """
 
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
 from atman.adapters.reflection.ollama_reflection_model import OllamaReflectionModel
 from atman.core.models.experience import SessionExperience
@@ -22,6 +22,7 @@ from atman.core.models.reflection import (
 )
 from atman.core.ports.reflection import ReflectionModel
 from atman.reflection.models import ReflectionEvent as PersistenceReflectionEvent
+from atman.reflection.models import ReflectionLevel as PersistenceReflectionLevel
 from atman.reflection.store import ReflectionStore
 
 
@@ -97,7 +98,7 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         try:
             event = PersistenceReflectionEvent(
                 agent_id=agent_id,
-                level=level,
+                level=PersistenceReflectionLevel(level.value),
                 content=content,
                 summary=summary,
                 experience_refs=experience_refs or [],
@@ -199,7 +200,9 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
                         agent_id=agent_uuid,
                         level=ReflectionLevel.DAILY,
                         content=output.description,
-                        summary=output.description[:100] if len(output.description) > 100 else output.description,
+                        summary=output.description[:100]
+                        if len(output.description) > 100
+                        else output.description,
                         experience_refs=[e.id for e in experiences],
                     )
                 except (ValueError, TypeError):
@@ -229,7 +232,7 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         )
 
         if output.body:
-            agent_id = str(current_narrative.agent_id)
+            agent_id = str(current_narrative.identity_id)
             try:
                 agent_uuid = UUID(agent_id)
                 self._persist_reflection(
@@ -264,7 +267,7 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         output = self.base_model.assess_health_criterion(identity, experiences, criterion)
 
         # Persist health assessment as a reflection
-        agent_id = str(identity.agent_id)
+        agent_id = str(identity.id)
         try:
             agent_uuid = UUID(agent_id)
             content = f"Health assessment for {criterion.value}: score={output.score}"

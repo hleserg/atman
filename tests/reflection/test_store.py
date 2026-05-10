@@ -1,9 +1,10 @@
 """Tests for ReflectionStore."""
 
-import pytest
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, Mock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
+
+import pytest
 
 from atman.reflection.models import ReflectionEvent, ReflectionLevel
 
@@ -157,7 +158,7 @@ class TestReflectionStore:
         mock_conn = MagicMock()
         mock_conn.closed = False
         mock_cursor = MagicMock()
-        mock_cursor.row_factory = lambda cls: (lambda row: expected_event)
+        mock_cursor.row_factory = lambda cls: lambda row: expected_event
         mock_cursor.fetchone.return_value = expected_event
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_psycopg.connect.return_value = mock_conn
