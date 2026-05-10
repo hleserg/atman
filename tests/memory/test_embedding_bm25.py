@@ -33,29 +33,38 @@ class TestBM25EmbeddingAdapter:
 
     def test_tokenizer_keeps_cyrillic(self, adapter: BM25EmbeddingAdapter) -> None:
         """Tokens like ``пользователь`` survive lowercasing + tokenization."""
-        # Russian-only sentence — every kept token should be Cyrillic.
+        # Russian-only sentence — the resulting vector must be non-zero, which
+        # only happens if Cyrillic word characters survive the tokenizer.
         vector = adapter.embed("Пользователь подтвердил результат задачи")
-        # The adapter uses a self-vocabulary equal to unique tokens > 2 chars.
-        assert adapter._dimension > 0
-        assert all(any(ord(ch) > 127 for ch in tok) for tok in adapter._vocab)
-        assert len(vector) == adapter._dimension
+        assert len(vector) == adapter.dimension()
+        assert any(component != 0.0 for component in vector)
+        # Every produced token must be Cyrillic (no ASCII spillover).
+        tokens = adapter._tokenize("Пользователь подтвердил результат задачи")
+        assert tokens, "tokenizer must keep Cyrillic content"
+        assert all(any(ord(ch) > 127 for ch in tok) for tok in tokens)
 
     def test_tokenizer_keeps_cjk(self, adapter: BM25EmbeddingAdapter) -> None:
         """CJK ideographs are preserved by ``[^\\W_]+`` with re.UNICODE."""
-        adapter.embed("机器学习 是 人工智能 的 子领域")
-        assert adapter._dimension > 0
+        vector = adapter.embed("机器学习 是 人工智能 的 子领域")
+        assert len(vector) == adapter.dimension()
+        assert any(component != 0.0 for component in vector)
+        tokens = adapter._tokenize("机器学习 是 人工智能 的 子领域")
+        # CJK tokens are kept (every kept token contains an ideograph).
+        assert tokens
+        assert any(any(0x4E00 <= ord(ch) <= 0x9FFF for ch in tok) for tok in tokens)
 
     def test_tokenizer_drops_underscores_and_short_tokens(
         self, adapter: BM25EmbeddingAdapter
     ) -> None:
         """Underscores and ``<= 2`` char tokens are stripped as noise."""
-        adapter.embed("a b cd hello_world __dunder__ longer")
+        tokens = adapter._tokenize("a b cd hello_world __dunder__ longer")
         # ``a``, ``b``, ``cd`` are too short; underscores split ``hello_world``.
-        assert "a" not in adapter._vocab
-        assert "cd" not in adapter._vocab
-        assert "hello" in adapter._vocab
-        assert "world" in adapter._vocab
-        assert "longer" in adapter._vocab
+        assert "a" not in tokens
+        assert "b" not in tokens
+        assert "cd" not in tokens
+        assert "hello" in tokens
+        assert "world" in tokens
+        assert "longer" in tokens
 
     def test_similarity_identical_vectors(self, adapter: BM25EmbeddingAdapter) -> None:
         """Cosine similarity of a non-zero vector with itself is ``1.0``."""
@@ -66,3 +75,18 @@ class TestBM25EmbeddingAdapter:
         """Empty input produces a zero vector and similarity is ``0.0``."""
         empty = adapter.embed("")
         assert adapter.similarity(empty, empty) == 0.0
+
+    def test_embed_calls_share_dimension_for_similarity(
+        self, adapter: BM25EmbeddingAdapter
+    ) -> None:
+        """
+        Independent ``embed()`` calls must yield vectors of identical length
+        so that ``similarity()`` can compare them — prior to E25 the adapter
+        rebuilt the vocabulary on every call, which silently broke this.
+        """
+        v1 = adapter.embed("alpha beta gamma")
+        v2 = adapter.embed("delta epsilon zeta")
+        assert len(v1) == len(v2) == adapter.dimension()
+        # similarity must run without raising and stay within [-1, 1].
+        score = adapter.similarity(v1, v2)
+        assert -1.0 <= score <= 1.0
