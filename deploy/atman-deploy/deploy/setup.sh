@@ -226,6 +226,12 @@ ${DOCKER} exec -i "${PG_CONTAINER}" \
     psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
     < "${SCRIPT_DIR}/schema.sql"
 
+# Установить пароль для роли приложения (создаётся schema.sql)
+${DOCKER} exec "${PG_CONTAINER}" \
+    psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+    -c "ALTER ROLE atman_app PASSWORD '${ATMAN_APP_PASSWORD}';" > /dev/null
+ok "Пароль atman_app установлен"
+
 COUNT=$(${DOCKER} exec "${PG_CONTAINER}" \
     psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
     -t -A -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';")

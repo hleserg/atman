@@ -42,6 +42,10 @@ class FactRecord(BaseModel):
     """
 
     id: UUID = Field(default_factory=uuid4)
+    agent_id: UUID | None = Field(
+        default=None,
+        description="Агент-владелец факта. None для in-memory/file бэкендов.",
+    )
     content: str = Field(min_length=1, description="Содержание факта")
     source: str = Field(min_length=1, description="Источник факта")
     tags: list[str] = Field(default_factory=list, description="Теги для категоризации")

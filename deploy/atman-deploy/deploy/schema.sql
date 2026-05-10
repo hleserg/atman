@@ -33,60 +33,56 @@ CREATE INDEX IF NOT EXISTS idx_agent_snapshots_agent
 
 -- ── Factual Memory ────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS facts (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    agent_id   UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    content    TEXT NOT NULL,
-    source     TEXT NOT NULL,
-    tags       TEXT[] NOT NULL DEFAULT '{}',
-    embedding  halfvec(2560),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    metadata   JSONB NOT NULL DEFAULT '{}'
+DO $$ BEGIN
+    CREATE TYPE fact_status AS ENUM ('active', 'disputed', 'superseded', 'invalidated');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.facts (
+    id                  UUID PRIMARY KEY,
+    agent_id            UUID NOT NULL,
+    content             TEXT NOT NULL,
+    source              TEXT NOT NULL,
+    tags                TEXT[] NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata            JSONB NOT NULL DEFAULT '{}',
+    status              fact_status NOT NULL DEFAULT 'active',
+    invalidated_at      TIMESTAMPTZ,
+    invalidation_note   TEXT NOT NULL DEFAULT '',
+    superseded_by       UUID REFERENCES public.facts(id),
+    disputed_at         TIMESTAMPTZ,
+    confirmation_count  INTEGER NOT NULL DEFAULT 0 CHECK (confirmation_count >= 0),
+    last_confirmed_at   TIMESTAMPTZ,
+    salience            FLOAT NOT NULL DEFAULT 0.5 CHECK (salience BETWEEN 0.0 AND 1.0),
+    embedding           halfvec(2560)
 );
-COMMENT ON TABLE facts IS 'Фактическая память. Факты без интерпретаций.';
-COMMENT ON COLUMN facts.embedding IS 'Вектор qwen3-embedding:4b, 2560 dims.';
+COMMENT ON TABLE public.facts IS 'Фактическая память. Факты без интерпретаций. Изолированы по agent_id через RLS.';
+COMMENT ON COLUMN public.facts.embedding IS 'halfvec(2560) — qwen3-embedding:4b. NULL при недоступности модели, система деградирует на ILIKE.';
 
-CREATE INDEX IF NOT EXISTS idx_facts_agent     ON facts(agent_id);
-CREATE INDEX IF NOT EXISTS idx_facts_tags      ON facts USING GIN(tags);
-CREATE INDEX IF NOT EXISTS idx_facts_embedding ON facts USING hnsw(embedding halfvec_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_facts_fts       ON facts USING GIN(to_tsvector('russian', content));
+CREATE INDEX IF NOT EXISTS idx_facts_agent_status ON public.facts(agent_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_facts_tags         ON public.facts USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_facts_content_trgm ON public.facts USING GIN(content gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_facts_embedding    ON public.facts USING hnsw(embedding halfvec_cosine_ops)
+    WHERE embedding IS NOT NULL;
 
-ALTER TABLE facts ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS facts_isolation ON facts;
-CREATE POLICY facts_isolation ON facts
+ALTER TABLE public.facts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.facts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS facts_isolation ON public.facts;
+CREATE POLICY facts_isolation ON public.facts
     USING (agent_id = NULLIF(current_setting('atman.current_agent', TRUE), '')::UUID);
 
-CREATE TABLE IF NOT EXISTS fact_relations (
-    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    agent_id       UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    source_fact_id UUID NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
-    target_fact_id UUID NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
-    relation_type  TEXT NOT NULL,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT no_self_relation CHECK (source_fact_id != target_fact_id)
+CREATE TABLE IF NOT EXISTS public.fact_relations (
+    source_id       UUID NOT NULL REFERENCES public.facts(id) ON DELETE CASCADE,
+    target_id       UUID NOT NULL REFERENCES public.facts(id) ON DELETE CASCADE,
+    relation_type   TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    PRIMARY KEY (source_id, target_id, relation_type)
 );
-COMMENT ON COLUMN fact_relations.relation_type IS 'led_to, confirms, contradicts, supports';
+COMMENT ON TABLE public.fact_relations IS 'Граф связей между фактами. Cascade-delete при удалении факта.';
 
-CREATE INDEX IF NOT EXISTS idx_fact_rel_agent  ON fact_relations(agent_id);
-CREATE INDEX IF NOT EXISTS idx_fact_rel_source ON fact_relations(source_fact_id);
-CREATE INDEX IF NOT EXISTS idx_fact_rel_target ON fact_relations(target_fact_id);
-
-ALTER TABLE fact_relations ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS fact_relations_isolation ON fact_relations;
-CREATE POLICY fact_relations_isolation ON fact_relations
-    USING (agent_id = NULLIF(current_setting('atman.current_agent', TRUE), '')::UUID);
-
--- Sharing заложен но выключен (active DEFAULT FALSE)
-CREATE TABLE IF NOT EXISTS fact_sharing (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    from_agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    to_agent_id   UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    fact_id       UUID NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
-    active        BOOLEAN NOT NULL DEFAULT FALSE,
-    shared_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT no_self_sharing CHECK (from_agent_id != to_agent_id)
-);
-COMMENT ON TABLE fact_sharing IS 'Шаринг фактов между агентами. active=FALSE пока не нужно.';
+CREATE INDEX IF NOT EXISTS idx_fact_relations_source ON public.fact_relations(source_id);
+CREATE INDEX IF NOT EXISTS idx_fact_relations_target ON public.fact_relations(target_id);
 
 -- ── Sessions ─────────────────────────────────────────────────────────────────
 
@@ -450,6 +446,30 @@ WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_metrics_agent
     ON memory_quality_metrics(agent_id);
+
+-- ── Application Role ─────────────────────────────────────────────────────────
+
+DO $$ BEGIN
+    CREATE ROLE atman_app LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+COMMENT ON ROLE atman_app IS 'Non-superuser application role. RLS is enforced for this role. Set password with: ALTER ROLE atman_app PASSWORD ''...'';';
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.facts              TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.fact_relations     TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sessions           TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.experiences        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.key_moments        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reframing_notes    TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reflections        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.identity           TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.identity_snapshots TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.narrative          TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.memory_access_log  TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.quality_alerts     TO atman_app;
+GRANT SELECT, INSERT               ON public.agents               TO atman_app;
+GRANT SELECT, INSERT               ON public.agent_snapshots      TO atman_app;
 
 -- Обновление метрик (вызывать по расписанию)
 CREATE OR REPLACE FUNCTION refresh_quality_metrics()

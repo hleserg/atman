@@ -398,13 +398,13 @@ CREATE TABLE IF NOT EXISTS facts (
     content    TEXT NOT NULL,
     source     TEXT NOT NULL,
     tags       TEXT[] NOT NULL DEFAULT '{}',
-    embedding  VECTOR(768),
+    embedding  halfvec(2560),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     metadata   JSONB NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_facts_agent     ON facts(agent_id);
 CREATE INDEX IF NOT EXISTS idx_facts_tags      ON facts USING GIN(tags);
-CREATE INDEX IF NOT EXISTS idx_facts_embedding ON facts USING hnsw(embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_facts_embedding ON facts USING hnsw(embedding halfvec_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_facts_fts       ON facts USING GIN(to_tsvector('russian', content));
 
 ALTER TABLE facts ENABLE ROW LEVEL SECURITY;
@@ -488,7 +488,7 @@ CREATE TABLE IF NOT EXISTS key_moments (
     experience_id        UUID NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     agent_id             UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     what_happened        TEXT NOT NULL,
-    embedding            VECTOR(768),
+    embedding            halfvec(2560),
     emotional_valence    FLOAT NOT NULL CHECK (emotional_valence BETWEEN -1 AND 1),
     emotional_intensity  FLOAT NOT NULL CHECK (emotional_intensity BETWEEN 0 AND 1),
     depth                TEXT NOT NULL CHECK (depth IN ('surface','meaningful','profound')),
@@ -501,7 +501,7 @@ CREATE TABLE IF NOT EXISTS key_moments (
 );
 CREATE INDEX IF NOT EXISTS idx_km_experience ON key_moments(experience_id);
 CREATE INDEX IF NOT EXISTS idx_km_agent      ON key_moments(agent_id);
-CREATE INDEX IF NOT EXISTS idx_km_embedding  ON key_moments USING hnsw(embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_km_embedding  ON key_moments USING hnsw(embedding halfvec_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_km_values     ON key_moments USING GIN(values_touched);
 CREATE INDEX IF NOT EXISTS idx_km_depth      ON key_moments(agent_id, depth);
 
@@ -626,7 +626,7 @@ CREATE TABLE IF NOT EXISTS memory_access_log (
         'relation_traverse','narrative_read'
     )),
     query_text      TEXT,
-    query_embedding VECTOR(768),
+    query_embedding halfvec(2560),
     filters         JSONB NOT NULL DEFAULT '{}',
     result_count    INT NOT NULL DEFAULT 0,
     top_score       FLOAT,
@@ -735,6 +735,27 @@ BEGIN
     RETURN cnt;
 END;
 $$;
+
+-- ── Application Role ──────────────────────────────────────────────────────────
+DO \$\$ BEGIN
+    CREATE ROLE atman_app LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END \$\$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.facts              TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.fact_relations     TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sessions           TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.experiences        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.key_moments        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reframing_notes    TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reflections        TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.identity           TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.identity_snapshots TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.narrative          TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.memory_access_log  TO atman_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.quality_alerts     TO atman_app;
+GRANT SELECT, INSERT               ON public.agents               TO atman_app;
+GRANT SELECT, INSERT               ON public.agent_snapshots      TO atman_app;
 
 SQL
 

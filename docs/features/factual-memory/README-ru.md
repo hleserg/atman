@@ -16,7 +16,7 @@ make demo-factual
 
 `make demo-factual` по умолчанию делает короткие паузы между шагами (`ATMAN_DEMO_PACE=1`). Мгновенный вывод: `make demo-factual-fast` или `ATMAN_DEMO_PACE=off python3 src/demo.py`. Вывод в консоль — **Rich** через `atman.term` (см. **`AGENTS.md`**).
 
-Интерактивный CLI (по умолчанию `~/.atman/facts.jsonl`): `python3 -m atman.cli` или установленная команда `atman`.
+Интерактивный CLI: `python3 -m atman.cli` или установленная команда `atman`. Бэкенд определяется конфигом (по умолчанию PostgreSQL).
 
 ## Обзор
 
@@ -128,6 +128,99 @@ memory.add_fact(fact)
 # Данные сохраняются автоматически
 # При следующем запуске они будут загружены
 ```
+
+## Выбор бэкенда
+
+Бэкенд настраивается в `src/atman/config.py`, **не через переменные окружения** — чтобы выбор был явным и версионировался в git.
+
+```python
+# src/atman/config.py
+class MemorySettings(BaseModel):
+    backend: str = "postgres"   # ← меняй здесь
+    file_path: str = "~/.atman/facts.jsonl"
+```
+
+| Значение | Класс | Когда использовать |
+|---|---|---|
+| `"postgres"` | `PostgresFactualMemory` | Продакшн, интеграционные тесты |
+| `"file"` | `FileBackend` | Локальная работа без PostgreSQL |
+| `"inmemory"` | `InMemoryBackend` | Быстрые unit-тесты, прототипирование |
+
+Фабрика `build_memory_backend()` из `atman.config` создаёт нужный экземпляр. CLI и все точки входа используют её автоматически.
+
+## PostgreSQL бэкенд
+
+### Требования
+
+- PostgreSQL 16+ с расширениями `pgvector` и `pg_trgm`
+- `psycopg[binary]` (входит в `.[dev]`)
+- Применённая миграция `migrations/versions/0002_create_facts_table.sql`
+
+### Подключение
+
+`DATABASE_URL` читается из `.env` через pydantic-settings:
+
+```
+DATABASE_URL=postgresql://atman_app:PASSWORD@localhost:5432/atman
+```
+
+### Применить миграцию (один раз)
+
+```bash
+# Через Docker (если PostgreSQL в контейнере)
+docker exec atman-postgres psql -U atman -d atman \
+    -f /dev/stdin < migrations/versions/0002_create_facts_table.sql
+
+# Или напрямую если psql доступен
+psql "$ATMAN_ADMIN_DATABASE_URL" -f migrations/versions/0002_create_facts_table.sql
+```
+
+### Роли PostgreSQL
+
+Система использует две роли:
+
+| Роль | Назначение | Суперпользователь |
+|---|---|---|
+| `atman` | Владелец таблиц, миграции | Да |
+| `atman_app` | Приложение, `DATABASE_URL` | **Нет** |
+
+Разделение ролей критично: PostgreSQL суперпользователь обходит RLS безусловно, поэтому приложение должно подключаться как `atman_app`.
+
+Роль `atman_app` создаётся автоматически миграцией. Пароль устанавливается скриптом деплоя.
+
+### Семантический поиск и graceful degradation
+
+`PostgresFactualMemory` принимает опциональный `EmbeddingPort`:
+
+```python
+from atman.adapters.memory.postgres_backend import PostgresFactualMemory
+from atman.adapters.memory.ollama_embedding import OllamaEmbeddingAdapter
+
+mem = PostgresFactualMemory(
+    db_url="postgresql://atman_app:...@localhost:5432/atman",
+    embedding=OllamaEmbeddingAdapter(),   # опционально
+)
+```
+
+- Если `embedding` передан и Ollama доступна → поиск через `halfvec(2560)` cosine similarity (HNSW индекс)
+- Если Ollama недоступна или упала → автоматический fallback на `ILIKE` текстовый поиск, `warnings.warn`
+- Факты без эмбеддинга хранятся нормально, метрика `facts_without_embedding` считает их
+
+### Row-Level Security (RLS)
+
+Каждый агент видит только свои факты. Изоляция реализована на уровне PostgreSQL:
+
+```sql
+CREATE POLICY facts_isolation ON public.facts
+    USING (agent_id = NULLIF(current_setting('atman.current_agent', TRUE), '')::UUID);
+```
+
+Перед каждым запросом адаптер устанавливает контекст:
+```python
+conn.execute("SELECT set_config('atman.current_agent', %s, true)", [agent_id])
+```
+
+`agent_id` берётся из переменной окружения `ATMAN_CURRENT_AGENT`.
 
 ## Архитектура
 
