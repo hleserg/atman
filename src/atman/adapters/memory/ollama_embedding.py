@@ -41,7 +41,12 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
             model: Model name (defaults to OLLAMA_EMBED_MODEL env var or qwen3-embedding:1.5b)
             timeout: Request timeout in seconds
         """
-        self.base_url = base_url or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        resolved_url = base_url or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        if not resolved_url.startswith(("http://", "https://")):
+            raise ValueError(
+                f"OllamaEmbeddingAdapter base_url must be http(s)://, got {resolved_url!r}"
+            )
+        self.base_url = resolved_url
         self.model = model or os.environ.get("OLLAMA_EMBED_MODEL", "qwen3-embedding:1.5b")
         self.timeout = timeout
         self._dimension: int | None = None
@@ -70,7 +75,10 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            # ``url`` is built from ``self.base_url`` (configured Ollama endpoint,
+            # validated as ``http(s)://...`` at construction) — the file:// /
+            # custom-scheme attack surface B310 warns about does not apply.
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
                 # Ollama returns embedding in "embedding" field for single input
                 embedding = data.get("embedding") or data.get("embeddings", [[]])[0]
@@ -106,7 +114,9 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            # See `embed`: ``url`` derives from ``self.base_url``, which the
+            # constructor restricts to http(s) endpoints.
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
                 embeddings = data.get("embeddings", [])
                 if not embeddings:
@@ -151,7 +161,8 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         try:
             url = f"{self.base_url}/api/tags"
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5.0) as response:
+            # See `embed`: ``url`` is built from ``self.base_url``.
+            with urllib.request.urlopen(req, timeout=5.0) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
                 models = data.get("models", [])
                 return any(m.get("name") == self.model for m in models)
