@@ -11,7 +11,7 @@ These models represent the session runtime that experiences sessions in real-tim
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from atman.core.models.experience import EmotionalDepth, FeltSense, KeyMoment
 from atman.core.models.identity import Identity
@@ -313,6 +313,14 @@ class SessionResult(BaseModel):
     identity_id: UUID | None = Field(
         default=None, description="ID of the identity this session belongs to"
     )
+
+    # Fact IDs that were surfaced/read during the session.  Stored as a
+    # ``PrivateAttr`` so it is excluded from ``model_dump`` / serialization
+    # and survives ``model_copy`` (private attrs are copied across), but is
+    # not part of the public schema.  Populated by
+    # ``SessionManager._note_facts_read`` and consumed at ``finish_session``
+    # to back-link the resulting experience to source facts.
+    _facts_read: set[UUID] = PrivateAttr(default_factory=set)
 
     model_config = ConfigDict(
         validate_assignment=True,

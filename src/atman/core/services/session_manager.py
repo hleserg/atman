@@ -256,9 +256,10 @@ class SessionManager:
             if session_result.is_finished:
                 raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
 
-            # Store fact IDs in session metadata for aggregation at finish
-            if not hasattr(session_result, "_facts_read"):
-                session_result._facts_read = set()
+            # Store fact IDs in session metadata for aggregation at finish.
+            # ``SessionResult._facts_read`` is a declared ``PrivateAttr`` so
+            # this assignment is bypassed by Pydantic validation but still
+            # tracked across ``model_copy``.
             session_result._facts_read.update(fact_ids)
 
     def finish_session(
@@ -337,8 +338,7 @@ class SessionManager:
                 for moment in session_result.key_moments:
                     fact_refs_set.update(moment.fact_refs)
                 # Also include any facts noted via _note_facts_read
-                if hasattr(session_result, "_facts_read"):
-                    fact_refs_set.update(session_result._facts_read)
+                fact_refs_set.update(session_result._facts_read)
 
                 experience = SessionExperience(
                     id=experience_id,

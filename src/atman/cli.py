@@ -152,8 +152,12 @@ def cmd_invalidate(backend: FactualMemory, args: list[str]) -> None:
 
 
 def cmd_list_invalidated(backend: FactualMemory, args: list[str]) -> None:
-    """Выводит список недействительных фактов."""
+    """Выводит список недействительных фактов (опционально ограниченный)."""
+    limit: int | None = int(args[0]) if args and args[0].isdigit() else None
+
     facts = backend.list_invalidated()
+    if limit is not None:
+        facts = facts[:limit]
 
     if facts:
         print_ok(f"Недействительных фактов: {len(facts)}")

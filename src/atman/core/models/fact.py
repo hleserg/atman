@@ -22,6 +22,17 @@ class FactStatus(StrEnum):
     INVALIDATED = "invalidated"
 
 
+# Backward-compatibility map for FactStatus values that existed in pre-E25
+# JSONL fact stores (commit 2314b86).  Old values are silently translated
+# during ``model_validate`` so previously persisted facts keep loading after
+# the rename.
+_LEGACY_FACT_STATUS_MAP: dict[str, str] = {
+    "outdated": FactStatus.SUPERSEDED.value,
+    "retracted": FactStatus.INVALIDATED.value,
+    "uncertain": FactStatus.DISPUTED.value,
+}
+
+
 class FactRecord(BaseModel):
     """
     Проверяемый факт без интерпретаций.
@@ -53,6 +64,21 @@ class FactRecord(BaseModel):
     salience: float = Field(
         default=0.5, ge=0.0, le=1.0, description="Current salience score (0.0-1.0)"
     )
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def migrate_legacy_status(cls, v: object) -> object:
+        """Translate legacy status string values into current FactStatus members.
+
+        Pre-E25 fact stores used ``outdated``/``retracted``/``uncertain``;
+        loading those records after the rename would otherwise drop them via
+        ``FileBackend._read_facts_from_disk`` which catches ``ValueError`` and
+        skips lines.  Mapping the strings here keeps existing JSONL data
+        readable without forcing an external migration.
+        """
+        if isinstance(v, str) and v in _LEGACY_FACT_STATUS_MAP:
+            return _LEGACY_FACT_STATUS_MAP[v]
+        return v
 
     @field_validator("content", "source")
     @classmethod
@@ -99,6 +125,7 @@ class FactRecord(BaseModel):
         self.salience = min(1.0, self.salience + 0.1)
 
     model_config = ConfigDict(
+        validate_assignment=True,
         json_schema_extra={
             "example": {
                 "content": "Пользователь попросил реализовать factual memory adapter",
@@ -109,7 +136,7 @@ class FactRecord(BaseModel):
                 "confirmation_count": 1,
                 "salience": 0.5,
             }
-        }
+        },
     )
 
 

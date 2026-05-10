@@ -57,3 +57,22 @@ class EmbeddingPort(Protocol):
             str: The model identifier (e.g., "qwen3-embedding:1.5b")
         """
         pass
+
+    @abstractmethod
+    def similarity(self, vec1: list[float], vec2: list[float]) -> float:
+        """
+        Compute a similarity score between two embedding vectors.
+
+        Implementations typically return cosine similarity in ``[-1.0, 1.0]``
+        (or ``[0.0, 1.0]`` for non-negative vectors).  Callers such as
+        ``PassiveMemoryInjector`` rely on this method, so adapters MUST
+        implement it.
+
+        Args:
+            vec1: First embedding vector
+            vec2: Second embedding vector
+
+        Returns:
+            float: Similarity score for the pair of vectors
+        """
+        pass
