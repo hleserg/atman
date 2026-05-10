@@ -132,6 +132,9 @@ Connections between two or more parts. These are seams that may break independen
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
 | `DeepReflectionService` ↔ all reflection ports | `core/services/reflection_service.py` | health + identity + narrative update |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | analyzes patterns in identity context |
+| `ConflictDetector` ↔ `FactualMemory` | `core/services/conflict_detector.py` → `core/ports/memory_backend.py` | DI; lightweight contradiction scan over ACTIVE candidates returned by `search()` |
+| `EmotionalEcho` ↔ `StateStore` | `core/services/emotional_echo.py` → `core/ports/state_store.py` | DI; `lookback_days` window via `search_experiences` |
+| `PassiveMemoryInjector` ↔ `EmbeddingPort` + `FactualMemory` + `StateStore` | `core/services/passive_memory_injector.py` → `core/ports/embedding.py`, `core/ports/memory_backend.py`, `core/ports/state_store.py` | DI; top-K similarity + 1-hop associative graph expansion; optional `SessionWorkingMemory` cache |
 
 ### 2.2. Adapter ↔ port
 
@@ -141,6 +144,8 @@ Connections between two or more parts. These are seams that may break independen
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | corresponding ports |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |
+| `InMemoryUsageLog` | `MemoryUsageLog` |
 
 ### 2.3. CLI ↔ service
 

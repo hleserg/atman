@@ -135,6 +135,9 @@
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
 | `DeepReflectionService` ↔ все рефлексионные порты | `core/services/reflection_service.py` | здоровье + апдейт identity и нарратива |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | анализ паттернов в контексте identity |
+| `ConflictDetector` ↔ `FactualMemory` | `core/services/conflict_detector.py` → `core/ports/memory_backend.py` | DI; лёгкая детекция противоречий по ACTIVE-кандидатам из `search()` |
+| `EmotionalEcho` ↔ `StateStore` | `core/services/emotional_echo.py` → `core/ports/state_store.py` | DI; окно `lookback_days` через `search_experiences` |
+| `PassiveMemoryInjector` ↔ `EmbeddingPort` + `FactualMemory` + `StateStore` | `core/services/passive_memory_injector.py` → `core/ports/embedding.py`, `core/ports/memory_backend.py`, `core/ports/state_store.py` | DI; top-K сходство + ассоциативное расширение на 1 шаг по графу; опциональный кэш `SessionWorkingMemory` |
 
 ### 2.2. Адаптер ↔ порт
 
@@ -144,6 +147,8 @@
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |
+| `InMemoryUsageLog` | `MemoryUsageLog` |
 
 ### 2.3. CLI ↔ сервис
 
