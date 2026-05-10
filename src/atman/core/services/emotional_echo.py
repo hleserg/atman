@@ -6,10 +6,10 @@ sorted by recency × intensity for emotional continuity.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from atman.core.models.experience import EmotionalDepth
-from atman.core.ports.state_store import StateStore
+from atman.core.ports.state_store import DateRangeQuery, StateStore
 
 
 @dataclass
@@ -75,20 +75,17 @@ class EmotionalEcho:
         if current_time is None:
             current_time = datetime.now(UTC)
 
-        # Query recent experiences using lookback window
-        from datetime import timedelta
-
-        since = current_time - timedelta(days=self.lookback_days)
-
-        # Use list_recent_experiences to get recent experiences, then filter by date
-        experience_records = self.state_store.list_recent_experiences(limit=100)
-        experiences = [
-            exp.experience for exp in experience_records if exp.experience.timestamp >= since
-        ]
+        # Query experiences within the lookback window via the StateStore port.
+        query = DateRangeQuery(
+            start_date=current_time - timedelta(days=self.lookback_days),
+            end_date=current_time,
+        )
+        records = self.state_store.search_experiences(query, limit=50)
 
         # Filter and score
         echoes: list[EchoItem] = []
-        for exp in experiences:
+        for record in records:
+            exp = record.experience
             if exclude_session_id and str(exp.session_id) == exclude_session_id:
                 continue
 
@@ -157,10 +154,15 @@ class EmotionalEcho:
                 if echo.emotional_valence < -0.2
                 else "neutral"
             )
-            parts.append(
-                f"- {echo.what_happened[:80]}... "
-                f"({tone}, intensity: {echo.emotional_intensity:.1f})"
+            # Only append the truncation indicator when the original
+            # ``what_happened`` actually overflows the display budget;
+            # otherwise short moments would misleadingly read as truncated.
+            display = (
+                f"{echo.what_happened[:80]}..."
+                if len(echo.what_happened) > 80
+                else echo.what_happened
             )
+            parts.append(f"- {display} ({tone}, intensity: {echo.emotional_intensity:.1f})")
 
         return "\n".join(parts)
 

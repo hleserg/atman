@@ -5,6 +5,7 @@ Produces consistent, reproducible embeddings based on text content hash.
 No external dependencies required.
 """
 
+import hashlib
 import math
 from typing import override
 
@@ -19,29 +20,24 @@ class MockEmbeddingAdapter(EmbeddingPort):
     - Same text always produces same embedding
     - Different texts produce different embeddings
     - No external services required
-
-    Uses 768-dimensional vectors to match qwen3-embedding:1.5b dimensions.
     """
 
     _DIMENSION = 768
-    _MODEL_NAME = "mock-embedding:768d"
 
     @override
     def embed(self, text: str) -> list[float]:
         """Generate deterministic embedding from text hash.
 
-        Uses hash(text) % 2^31 as seed for deterministic pseudo-random generation.
+        Uses SHAKE-128 (SHA-3 XOF) so each dimension gets 4 distinct bytes,
+        avoiding the wrap-around collisions that a fixed-length digest would cause.
         """
-        # Use hash modulo 2^31 as seed (per E25 spec)
-        seed = hash(text) % (2**31)
+        digest_bytes = self._DIMENSION * 4
+        hash_bytes = hashlib.shake_128(text.encode("utf-8")).digest(digest_bytes)
 
-        # Generate embedding values using deterministic pseudo-random sequence
         embedding: list[float] = []
-        for _i in range(self._DIMENSION):
-            # Linear congruential generator for deterministic sequence
-            seed = (seed * 1103515245 + 12345) % (2**31)
-            # Convert to float in range [-1, 1]
-            value = (seed / (2**30)) - 1.0
+        for i in range(self._DIMENSION):
+            chunk = hash_bytes[i * 4 : i * 4 + 4]
+            value = int.from_bytes(chunk, "big") / 0xFFFFFFFF * 2.0 - 1.0
             embedding.append(value)
 
         # Normalize to unit vector
@@ -59,8 +55,8 @@ class MockEmbeddingAdapter(EmbeddingPort):
 
     @override
     def model_name(self) -> str:
-        """Return the mock model name."""
-        return self._MODEL_NAME
+        """Return model identifier."""
+        return "mock-embedding:768d"
 
     @override
     def similarity(self, vec1: list[float], vec2: list[float]) -> float:

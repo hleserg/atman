@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from atman.core.models import FactRecord, SessionExperience
+from atman.core.models.fact import FactStatus
 from atman.core.ports import EmbeddingPort, FactualMemory
 from atman.core.ports.state_store import StateStore
 from atman.core.services.session_working_memory import SessionWorkingMemory
@@ -143,7 +144,7 @@ class PassiveMemoryInjector:
 
             for relation in fact.relations:
                 related_fact = self.factual_memory.get_fact(relation.target_id)
-                if related_fact and related_fact.status.value == "active":
+                if related_fact and related_fact.status == FactStatus.ACTIVE:
                     related.append(related_fact)
 
         # Deduplicate
@@ -175,20 +176,16 @@ class PassiveMemoryInjector:
         """
         surfaced: list[SurfacedMemory] = []
 
-        # Query experiences via state_store
-        # Get recent experiences and filter by embedding similarity
-        from atman.core.ports.state_store import ExperienceQuery
-
-        query = ExperienceQuery()
-        all_records = self.state_store.search_experiences(query)
-        # Take more than needed for scoring, will filter later
-        experience_records = all_records[: limit * 4] if all_records else []
+        # Query recent experiences via the StateStore port.
+        # Note: This is a simplified version - full implementation would
+        # need experience embeddings or text-based search.
+        records = self.state_store.list_recent_experiences(limit=limit * 2)
 
         # Score by embedding similarity
         query_embedding = self.embedding.embed(context_text)
 
         scored: list[tuple[SessionExperience, float]] = []
-        for record in experience_records:
+        for record in records:
             exp = record.experience
             if working_memory and working_memory.has(exp.id):
                 continue

@@ -2,8 +2,10 @@
 Unit-тесты для FileBackend.
 """
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from uuid import uuid4
 
 import pytest
 
@@ -295,8 +297,8 @@ def test_add_fact_duplicate_id_raises_with_clear_message(temp_file, backend):
 def test_search_excludes_invalidated_by_default(backend):
     """E24.1 AC-3: search() returns only ACTIVE facts when invalidated facts exist."""
     active = backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.DISPUTED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search()
     assert len(results) == 1
@@ -304,10 +306,10 @@ def test_search_excludes_invalidated_by_default(backend):
 
 
 def test_search_includes_invalidated_when_requested(backend):
-    """E24.1 AC-4: search(include_invalidated=True) returns all facts including OUTDATED."""
+    """E24.1 AC-4: search(include_invalidated=True) returns all facts including SUPERSEDED."""
     backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.DISPUTED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search(include_invalidated=True)
     assert len(results) == 2
@@ -320,13 +322,13 @@ def test_invalidate_fact_creates_bidirectional_relations(backend):
 
     result = backend.invalidate_fact(
         old_fact.id,
-        status=FactStatus.DISPUTED,
+        status=FactStatus.SUPERSEDED,
         note="replaced",
         superseded_by=new_fact.id,
     )
 
     assert result is not None
-    assert result.status == FactStatus.DISPUTED
+    assert result.status == FactStatus.SUPERSEDED
     assert result.superseded_by == new_fact.id
     assert result.invalidation_note == "replaced"
     assert result.invalidated_at is not None
@@ -359,7 +361,7 @@ def test_invalidate_fact_persistence(temp_file):
     new_fact = backend1.add_fact(FactRecord(content="Replacement", source="test"))
     backend1.invalidate_fact(
         fact.id,
-        status=FactStatus.DISPUTED,
+        status=FactStatus.SUPERSEDED,
         note="persisted",
         superseded_by=new_fact.id,
     )
@@ -367,7 +369,7 @@ def test_invalidate_fact_persistence(temp_file):
     backend2 = FileBackend(temp_file)
     retrieved = backend2.get_fact(fact.id)
     assert retrieved is not None
-    assert retrieved.status == FactStatus.DISPUTED
+    assert retrieved.status == FactStatus.SUPERSEDED
     assert retrieved.invalidation_note == "persisted"
     assert retrieved.superseded_by == new_fact.id
     assert retrieved.invalidated_at is not None
@@ -382,7 +384,7 @@ def test_list_invalidated(backend):
     f2 = backend.add_fact(FactRecord(content="Fact 2", source="test"))
     backend.add_fact(FactRecord(content="Active fact", source="test"))
 
-    backend.invalidate_fact(f1.id, status=FactStatus.DISPUTED, note="old")
+    backend.invalidate_fact(f1.id, status=FactStatus.SUPERSEDED, note="old")
     backend.invalidate_fact(f2.id, status=FactStatus.INVALIDATED, note="wrong")
 
     invalidated = backend.list_invalidated()
@@ -391,12 +393,158 @@ def test_list_invalidated(backend):
     assert invalidated[1].id == f1.id
 
 
+def test_list_invalidated_includes_disputed_facts(backend):
+    """DISPUTED facts must appear in list_invalidated and respect since-filter."""
+    from datetime import UTC, datetime, timedelta
+
+    fact = backend.add_fact(FactRecord(content="To be disputed", source="test"))
+    backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="not sure")
+
+    listed = backend.list_invalidated()
+    assert len(listed) == 1
+    assert listed[0].id == fact.id
+    assert listed[0].status == FactStatus.DISPUTED
+
+    listed_since_past = backend.list_invalidated(since=datetime(2000, 1, 1, tzinfo=UTC))
+    assert len(listed_since_past) == 1
+
+    listed_since_future = backend.list_invalidated(since=datetime.now(UTC) + timedelta(days=1))
+    assert listed_since_future == []
+
+
 def test_invalidate_lifecycle(backend):
     """E24.1: full lifecycle — add, invalidate, search, list_invalidated."""
     fact = backend.add_fact(FactRecord(content="Lifecycle test", source="test"))
     assert len(backend.search(query="lifecycle")) == 1
 
-    backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="done")
+    backend.invalidate_fact(fact.id, status=FactStatus.SUPERSEDED, note="done")
     assert len(backend.search(query="lifecycle")) == 0
     assert len(backend.search(query="lifecycle", include_invalidated=True)) == 1
     assert len(backend.list_invalidated()) == 1
+
+
+def test_invalidate_terminal_status_drops_salience_to_zero(backend):
+    """Terminal lifecycle states (INVALIDATED / SUPERSEDED) zero salience.
+
+    Mirrors :meth:`InMemoryBackend.invalidate_fact` and
+    :meth:`FactRecord.invalidate` so consumers see consistent post-invalidation
+    salience regardless of which adapter is wired in.
+    """
+    high_salience = FactRecord(content="High salience", source="test", salience=0.9)
+    fact = backend.add_fact(high_salience)
+    assert fact.salience == pytest.approx(0.9)
+
+    invalidated = backend.invalidate_fact(fact.id, status=FactStatus.INVALIDATED, note="stale")
+    assert invalidated is not None
+    assert invalidated.salience == 0.0
+
+    superseded_target = backend.add_fact(FactRecord(content="Replaces", source="test"))
+    superseded_source = backend.add_fact(
+        FactRecord(content="Source 2", source="test", salience=0.8)
+    )
+    result = backend.invalidate_fact(
+        superseded_source.id,
+        status=FactStatus.SUPERSEDED,
+        note="replaced",
+        superseded_by=superseded_target.id,
+    )
+    assert result is not None
+    assert result.salience == 0.0
+
+
+def test_invalidate_disputed_keeps_salience(backend):
+    """DISPUTED is provisional; salience is intentionally preserved."""
+    fact = backend.add_fact(FactRecord(content="Maybe wrong", source="test", salience=0.7))
+
+    disputed = backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="under review")
+    assert disputed is not None
+    assert disputed.salience == pytest.approx(0.7)
+
+
+def test_list_invalidated_sort_handles_missing_lifecycle_timestamp(backend):
+    """Sort key uses a UTC-aware fallback so naive/aware comparison can't crash.
+
+    A non-ACTIVE fact constructed without a lifecycle timestamp would otherwise
+    blow up the sort with ``TypeError: can't compare offset-naive and
+    offset-aware datetimes``.
+    """
+    seeded = backend.add_fact(FactRecord(content="seeded", source="test"))
+    backend.invalidate_fact(seeded.id, status=FactStatus.INVALIDATED, note="real")
+
+    # Inject a non-ACTIVE fact with no lifecycle timestamp directly via the
+    # in-memory map. This simulates legacy data where timestamps were never
+    # populated; the sort fallback must not crash.
+    legacy = FactRecord(content="legacy", source="test", status=FactStatus.INVALIDATED)
+    backend._facts[legacy.id] = legacy
+
+    listed = backend.list_invalidated()
+    assert len(listed) == 2
+
+
+# ---------------------------------------------------------------------------
+# E24.3: confirm_fact / decay_stale_facts (disk persistence + cache refresh)
+# ---------------------------------------------------------------------------
+
+
+def test_confirm_fact_persists_to_disk(backend, temp_file):
+    """confirm_fact: a fresh FileBackend reading the same file sees the bump."""
+    fact = backend.add_fact(FactRecord(content="Persist me", source="t", salience=0.4))
+    assert backend.confirm_fact(fact.id) is True
+
+    # Independent reader proves the change reached disk, not just the cache.
+    reader = FileBackend(temp_file)
+    refreshed = reader.get_fact(fact.id)
+    assert refreshed is not None
+    assert refreshed.confirmation_count == 1
+    assert refreshed.last_confirmed_at is not None
+    assert refreshed.salience == pytest.approx(0.5)
+
+
+def test_confirm_fact_returns_false_for_unknown_id(backend):
+    """confirm_fact: missing ID is a clean ``False`` and does not write."""
+    assert backend.confirm_fact(uuid4()) is False
+
+
+def test_decay_stale_facts_persists_and_skips_non_active(backend, temp_file):
+    """decay_stale_facts: persists changes, skips non-ACTIVE facts."""
+    # Cutoff in the past so ``confirm_fact(fresh.id)`` lands after it.
+    before_cutoff = datetime.now(UTC) - timedelta(hours=1)
+    stale = backend.add_fact(FactRecord(content="Stale", source="t", salience=0.8))
+    fresh = backend.add_fact(FactRecord(content="Fresh", source="t", salience=0.8))
+    backend.confirm_fact(fresh.id)
+    invalidated = backend.add_fact(
+        FactRecord(content="Stale invalidated", source="t", salience=0.8)
+    )
+    backend.invalidate_fact(invalidated.id, status=FactStatus.INVALIDATED, note="gone")
+
+    decayed = backend.decay_stale_facts(before=before_cutoff, decay_factor=0.5)
+    assert decayed == 1
+
+    reader = FileBackend(temp_file)
+    refreshed_stale = reader.get_fact(stale.id)
+    refreshed_fresh = reader.get_fact(fresh.id)
+    refreshed_inv = reader.get_fact(invalidated.id)
+    assert refreshed_stale is not None
+    assert refreshed_fresh is not None
+    assert refreshed_inv is not None
+    assert refreshed_stale.salience == pytest.approx(0.4)
+    # confirm() bumped fresh to 0.9; decay does not touch it.
+    assert refreshed_fresh.salience == pytest.approx(0.9)
+    # Invalidated facts are zeroed by invalidate_fact, not by decay.
+    assert refreshed_inv.salience == 0.0
+
+
+def test_decay_stale_facts_skips_disk_write_when_count_is_zero(backend, temp_file):
+    """decay_stale_facts: when no fact decays, mtime stays stable (no write)."""
+    fact = backend.add_fact(FactRecord(content="Just confirmed", source="t", salience=0.6))
+    backend.confirm_fact(fact.id)
+
+    mtime_before = temp_file.stat().st_mtime_ns
+
+    decayed = backend.decay_stale_facts(
+        before=datetime.now(UTC) - timedelta(days=30), decay_factor=0.5
+    )
+    assert decayed == 0
+    # The implementation guards _save_facts behind `if count > 0`, so the
+    # JSONL file must not be rewritten.
+    assert temp_file.stat().st_mtime_ns == mtime_before
