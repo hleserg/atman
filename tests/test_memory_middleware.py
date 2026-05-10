@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import override
+from typing_extensions import override
 from uuid import UUID, uuid4
 
 from atman.core.ports.memory_middleware import MemoryContext, MemoryMiddlewarePort
