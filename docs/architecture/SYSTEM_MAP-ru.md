@@ -351,6 +351,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `b530f36` | Сохранение связей в `FileBackend` — добавлен regression-тест | покрыто (`tests/test_file_backend.py`) |
 | `e48a060`, `83df039` | Правки ruff lint/format/type | в основном закрыто |
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
+| `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
 
 ### 5.2. Из инспекции кода
 
@@ -376,6 +377,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | CLI surface (factual / experience / identity / reflection) | ✅ закрыто | `tests/test_cli_factual_memory.py`, `tests/test_cli_experience.py`, `tests/test_cli_identity.py`, `tests/test_cli_reflection.py` |
 | Demo entrypoints (smoke) | ✅ закрыто | `tests/test_demo_smoke.py`, `tests/test_demo_full_corpus.py` |
 | **Интеграция полного жизненного цикла (E2E-02)** | ✅ закрыто | `tests/integration/test_full_lifecycle.py` — проверяет (1) неизменяемость опыта после завершения сессии, (2) появление reframing notes от рефлексии в опытах, (3) обновление narrative.recent_layer после micro reflection, (4) propagation identity_snapshot_id session → experience → reflection |
+| Open WebUI LAN exposure default | ✅ закрыто | `tests/test_deployment_scripts.py` |
 
 ### 5.4. TODO / FIXME
 
