@@ -130,8 +130,13 @@ class InMemoryBackend(FactualMemory):
             if since is not None and (ts is None or ts < since):
                 continue
             results.append(f)
+        # ``datetime.min`` is naive while every populated lifecycle timestamp
+        # is timezone-aware (created with ``datetime.now(UTC)``). Comparing the
+        # two raises ``TypeError`` in Python 3, so use the UTC-aware sentinel
+        # to keep the sort total even for facts with no lifecycle timestamp.
+        _NAIVE_FALLBACK = datetime.min.replace(tzinfo=UTC)
         results.sort(
-            key=lambda f: f.effective_lifecycle_timestamp or datetime.min,
+            key=lambda f: f.effective_lifecycle_timestamp or _NAIVE_FALLBACK,
             reverse=True,
         )
         return [f.model_copy(deep=True) for f in results]

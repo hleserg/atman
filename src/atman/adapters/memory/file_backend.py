@@ -246,11 +246,16 @@ class FileBackend(FactualMemory):
             fact.status = new_status
             fact.invalidation_note = note
             # DISPUTED populates ``disputed_at``; INVALIDATED / SUPERSEDED
-            # populate ``invalidated_at``.
+            # populate ``invalidated_at``. Terminal states (INVALIDATED /
+            # SUPERSEDED) also drop salience to zero, matching
+            # :meth:`InMemoryBackend.invalidate_fact` and
+            # :meth:`FactRecord.invalidate`; DISPUTED is provisional and
+            # keeps salience unchanged so a later confirm() can restore it.
             if new_status == FactStatus.DISPUTED:
                 fact.disputed_at = now
             else:
                 fact.invalidated_at = now
+                fact.salience = 0.0
             fact.superseded_by = superseded_by
 
             if superseded_by is not None:
@@ -284,8 +289,13 @@ class FileBackend(FactualMemory):
             if since is not None and (ts is None or ts < since):
                 continue
             results.append(fact)
+        # ``datetime.min`` is naive while every populated lifecycle timestamp
+        # is timezone-aware (created with ``datetime.now(UTC)``). Comparing the
+        # two raises ``TypeError`` in Python 3, so use the UTC-aware sentinel
+        # to keep the sort total even for facts with no lifecycle timestamp.
+        _NAIVE_FALLBACK = datetime.min.replace(tzinfo=UTC)
         results.sort(
-            key=lambda f: f.effective_lifecycle_timestamp or datetime.min,
+            key=lambda f: f.effective_lifecycle_timestamp or _NAIVE_FALLBACK,
             reverse=True,
         )
         return [f.model_copy(deep=True) for f in results]

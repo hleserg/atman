@@ -419,3 +419,61 @@ def test_invalidate_lifecycle(backend):
     assert len(backend.search(query="lifecycle")) == 0
     assert len(backend.search(query="lifecycle", include_invalidated=True)) == 1
     assert len(backend.list_invalidated()) == 1
+
+
+def test_invalidate_terminal_status_drops_salience_to_zero(backend):
+    """Terminal lifecycle states (INVALIDATED / SUPERSEDED) zero salience.
+
+    Mirrors :meth:`InMemoryBackend.invalidate_fact` and
+    :meth:`FactRecord.invalidate` so consumers see consistent post-invalidation
+    salience regardless of which adapter is wired in.
+    """
+    high_salience = FactRecord(content="High salience", source="test", salience=0.9)
+    fact = backend.add_fact(high_salience)
+    assert fact.salience == pytest.approx(0.9)
+
+    invalidated = backend.invalidate_fact(fact.id, status=FactStatus.INVALIDATED, note="stale")
+    assert invalidated is not None
+    assert invalidated.salience == 0.0
+
+    superseded_target = backend.add_fact(FactRecord(content="Replaces", source="test"))
+    superseded_source = backend.add_fact(
+        FactRecord(content="Source 2", source="test", salience=0.8)
+    )
+    result = backend.invalidate_fact(
+        superseded_source.id,
+        status=FactStatus.SUPERSEDED,
+        note="replaced",
+        superseded_by=superseded_target.id,
+    )
+    assert result is not None
+    assert result.salience == 0.0
+
+
+def test_invalidate_disputed_keeps_salience(backend):
+    """DISPUTED is provisional; salience is intentionally preserved."""
+    fact = backend.add_fact(FactRecord(content="Maybe wrong", source="test", salience=0.7))
+
+    disputed = backend.invalidate_fact(fact.id, status=FactStatus.DISPUTED, note="under review")
+    assert disputed is not None
+    assert disputed.salience == pytest.approx(0.7)
+
+
+def test_list_invalidated_sort_handles_missing_lifecycle_timestamp(backend):
+    """Sort key uses a UTC-aware fallback so naive/aware comparison can't crash.
+
+    A non-ACTIVE fact constructed without a lifecycle timestamp would otherwise
+    blow up the sort with ``TypeError: can't compare offset-naive and
+    offset-aware datetimes``.
+    """
+    seeded = backend.add_fact(FactRecord(content="seeded", source="test"))
+    backend.invalidate_fact(seeded.id, status=FactStatus.INVALIDATED, note="real")
+
+    # Inject a non-ACTIVE fact with no lifecycle timestamp directly via the
+    # in-memory map. This simulates legacy data where timestamps were never
+    # populated; the sort fallback must not crash.
+    legacy = FactRecord(content="legacy", source="test", status=FactStatus.INVALIDATED)
+    backend._facts[legacy.id] = legacy
+
+    listed = backend.list_invalidated()
+    assert len(listed) == 2
