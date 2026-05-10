@@ -20,6 +20,31 @@ from atman.core.models import KeyMomentInput
 from atman.core.models.experience import EmotionalDepth
 
 
+# PLAYBOOK-START
+# id: error-returning-tool-callbacks
+# category: design-patterns
+# title: Error-Returning Tool Callbacks for LLM Self-Correction
+# status: draft
+#
+# Pattern: tool functions exposed to an LLM agent never raise — instead
+# they validate inputs and return either a success message or a
+# human-readable error string. Validation errors (out-of-range numbers,
+# missing prerequisites like an active session) and downstream service
+# exceptions are converted to "Error: …" return values. The LLM sees the
+# error in the conversation, can read it, and retries the tool call with
+# corrected arguments.
+#
+# Why generalizable: applies to any LLM-agent framework with tool use
+# (Pydantic AI, OpenAI function-calling, Anthropic tool use, MCP
+# servers). Raising exceptions inside a tool aborts the agent run and
+# loses the LLM's ability to self-correct; returning structured error
+# strings keeps the run alive and gives the LLM the signal it needs.
+#
+# Trade-offs: errors are observable to the model but easier to overlook
+# in production logs — pair with out-of-band logging when used at scale.
+# Also requires explicit input validation up-front, since you can't rely
+# on Pydantic's "raise on invalid" behavior.
+# PLAYBOOK-END
 def record_key_moment(
     ctx: RunContext[AtmanDeps],
     what_happened: str,

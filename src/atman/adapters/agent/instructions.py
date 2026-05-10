@@ -18,6 +18,33 @@ from uuid import UUID
 from atman.adapters.agent.deps import AtmanDeps
 
 
+# PLAYBOOK-START
+# id: dynamic-prompt-from-state-with-truncation
+# category: design-patterns
+# title: Dynamic LLM System Prompt from Persistent State with Truncation
+# status: draft
+#
+# Pattern: build the agent's system prompt at every run from current
+# persistent state (identity / narrative / preferences / memory layers)
+# rather than freezing it at agent construction. Each state field is
+# rendered with a per-section character budget, and overflowing text is
+# truncated with a stable suffix ("…") so the prompt stays under the
+# model's effective context window. A bootstrap variant is rendered when
+# state is absent.
+#
+# Why generalizable: any LLM agent whose behavior should evolve with
+# stored state (RAG agents, personal assistants, character chat bots,
+# customer-support agents with knowledge bases) needs this. Hard-coding
+# the system prompt loses adaptability; loading state without truncation
+# eventually blows the context window. Rendering on every run with
+# per-section budgets resolves both.
+#
+# Trade-offs: re-renders cost a state read per run (cheap for in-memory
+# stores, more expensive for remote DBs — cache or pass via dependency
+# container). Truncation is lossy by design; pair with summarization
+# upstream (e.g. periodic narrative compression) to keep the meaningful
+# content under budget.
+# PLAYBOOK-END
 def build_instructions(deps: AtmanDeps) -> str:
     """
     Build dynamic agent instructions from current identity and narrative.
