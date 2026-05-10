@@ -10,7 +10,7 @@ from atman.adapters.memory.mock_embedding import MockEmbeddingAdapter
 from atman.adapters.storage.in_memory_state_store import InMemoryStateStore
 from atman.core.models import KeyMoment, SessionExperience
 from atman.core.models.experience import EmotionalDepth, ExperienceRecord, FeltSense
-from atman.core.models.fact import FactRecord, Relation
+from atman.core.models.fact import FactRecord, FactStatus, Relation
 from atman.core.services.passive_memory_injector import PassiveMemoryInjector
 from atman.core.services.session_working_memory import SessionWorkingMemory
 
@@ -164,6 +164,47 @@ def test_surface_for_context_expands_via_associative_links():
     assert sources == {"similarity", "associative"}
     ids = {s.item.id for s in surfaced}
     assert ids == {seed.id, target.id}
+
+
+def test_surface_for_context_skips_non_active_associative_neighbors():
+    """Associative expansion must compare via FactStatus enum, not raw string.
+
+    Regression: a previous version compared ``status.value == "active"`` which
+    would silently break if the enum's wire value were ever renamed. Non-ACTIVE
+    neighbors (DISPUTED / INVALIDATED / SUPERSEDED) must not bleed back into
+    the surfaced set.
+    """
+    backend = InMemoryBackend()
+    disputed_target = backend.add_fact(FactRecord(content="disputed target body", source="t"))
+    invalidated_target = backend.add_fact(FactRecord(content="invalidated target body", source="t"))
+    seed = backend.add_fact(
+        FactRecord(
+            content="seed body content",
+            source="t",
+            relations=[
+                Relation(target_id=disputed_target.id, relation_type="related_to"),
+                Relation(target_id=invalidated_target.id, relation_type="related_to"),
+            ],
+        )
+    )
+    backend.invalidate_fact(disputed_target.id, status=FactStatus.DISPUTED, note="conflict")
+    backend.invalidate_fact(invalidated_target.id, status=FactStatus.INVALIDATED, note="stale")
+
+    embed = _StaticEmbedding()
+    embed.add("seed", [1.0, 0.0, 0.0, 0.0])
+    embed.add("seed body content", [1.0, 0.0, 0.0, 0.0])
+
+    injector = PassiveMemoryInjector(
+        embedding=embed,
+        factual_memory=backend,
+        state_store=InMemoryStateStore(),
+        top_k_similarity=1,
+        min_similarity_threshold=0.5,
+        associative_expand=True,
+    )
+    surfaced = injector.surface_for_context("seed")
+    ids = {s.item.id for s in surfaced}
+    assert ids == {seed.id}, "DISPUTED/INVALIDATED neighbors must be filtered out"
 
 
 def test_surface_for_context_returns_high_similarity_match():

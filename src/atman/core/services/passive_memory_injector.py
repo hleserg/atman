@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from atman.core.models import FactRecord, SessionExperience
+from atman.core.models.fact import FactStatus
 from atman.core.ports import EmbeddingPort, FactualMemory
 from atman.core.ports.state_store import StateStore
 from atman.core.services.session_working_memory import SessionWorkingMemory
@@ -143,7 +144,7 @@ class PassiveMemoryInjector:
 
             for relation in fact.relations:
                 related_fact = self.factual_memory.get_fact(relation.target_id)
-                if related_fact and related_fact.status.value == "active":
+                if related_fact and related_fact.status == FactStatus.ACTIVE:
                     related.append(related_fact)
 
         # Deduplicate
