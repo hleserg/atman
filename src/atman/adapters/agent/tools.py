@@ -65,7 +65,8 @@ def record_key_moment(
             depth=EmotionalDepth(depth),
         )
         ctx.deps.session_manager.record_key_moment(ctx.deps.session_id, key_moment)
-        return f"Key moment recorded: {what_happened[:50]}..."
+        summary = what_happened if len(what_happened) <= 50 else f"{what_happened[:50]}..."
+        return f"Key moment recorded: {summary}"
     except Exception as e:
         return f"Error recording key moment: {e!s}"
 
@@ -92,7 +93,8 @@ def log_experience(
     # This is a simplified version - normally SessionManager handles this
     # via finish_session which creates a complete SessionExperience
     _ = ctx, key_insight  # currently unused; reserved for future direct-log path
+    summary = description if len(description) <= 30 else f"{description[:30]}..."
     return (
         "Experience logging is handled automatically at session end. "
-        f"Use record_key_moment to capture significant moments: {description[:30]}..."
+        f"Use record_key_moment to capture significant moments: {summary}"
     )

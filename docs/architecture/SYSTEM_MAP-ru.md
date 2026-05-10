@@ -75,7 +75,7 @@
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
 | `adapters/reflection/fixture_loader.py` | — | загрузка фикстур для демо |
 | `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | конфигурация Pydantic AI модели и агента (E26-R1, E26-R2, E26-R4) |
-| `adapters/agent/deps.py` (`AtmanDeps`) | — | замороженный DI-контейнер: `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore` для Pydantic AI агента |
+| `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | замороженный DI-контейнер: `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; фабрика `from_config` переносит валидированные лимиты из `AgentConfig` |
 | `adapters/agent/instructions.py` (`build_instructions`) | — | строит динамический system prompt из текущей `Identity` + `NarrativeDocument` (обрезается по `AtmanDeps.truncate_narrative_*`) |
 | `adapters/agent/tools.py` (`record_key_moment`, `log_experience`) | — | Pydantic AI инструменты: запись key moments и подсказка по завершению сессии |
 

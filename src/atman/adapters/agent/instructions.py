@@ -33,6 +33,14 @@ def build_instructions(deps: AtmanDeps) -> str:
     - Core values and principles
     - Current goals
     - Narrative core and recent layers (truncated)
+
+    Note:
+        This helper takes :class:`AtmanDeps` directly (not a Pydantic AI
+        ``RunContext[AtmanDeps]``) so it can be unit-tested without
+        constructing a full ``RunContext``. When wiring this into a
+        Pydantic AI ``Agent(instructions=...)`` argument, pass a thin
+        wrapper such as ``lambda ctx: build_instructions(ctx.deps)`` —
+        do **not** pass ``build_instructions`` itself.
     """
     # Load current identity
     identity = deps.state_store.load_identity(deps.agent_id)
@@ -40,8 +48,10 @@ def build_instructions(deps: AtmanDeps) -> str:
     if not identity:
         return _build_bootstrap_instructions(deps.agent_id)
 
-    # Load current narrative
-    narrative = deps.state_store.load_narrative(deps.agent_id)
+    # Load current narrative — keyed off identity.id to follow the same
+    # convention as session_manager (in case agent_id ever diverges from
+    # identity.id in the future).
+    narrative = deps.state_store.load_narrative(identity.id)
 
     # Build instructions
     parts = ["# Who I Am\n"]
@@ -57,17 +67,18 @@ def build_instructions(deps: AtmanDeps) -> str:
         for value in identity.core_values[:5]:  # Limit to top 5
             parts.append(f"- **{value.name}**: {value.description}\n")
 
-    # Principles
-    if identity.principles:
+    # Principles — only emit the header if at least one principle survives
+    # the chosen_consciously filter, so we never produce a dangling header.
+    conscious_principles = [p for p in identity.principles if p.chosen_consciously][:5]
+    if conscious_principles:
         parts.append("\n## Guiding Principles\n")
-        conscious_principles = [p for p in identity.principles if p.chosen_consciously][:5]
         for principle in conscious_principles:
             parts.append(f"- {principle.statement}\n")
 
-    # Goals
-    if identity.goals:
+    # Goals — same rule: skip the header when no goals are active.
+    active_goals = [g for g in identity.goals if g.active][:3]
+    if active_goals:
         parts.append("\n## Current Goals\n")
-        active_goals = [g for g in identity.goals if g.active][:3]
         for goal in active_goals:
             parts.append(f"- {goal.content}\n")
 

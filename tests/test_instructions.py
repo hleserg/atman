@@ -294,3 +294,38 @@ class TestBuildInstructions:
 
         assert "Active goal" in instructions
         assert "Inactive goal" not in instructions
+
+    def test_skips_empty_principles_and_goals_headers(self):
+        """No header should be emitted if every principle is unconscious or every goal inactive."""
+        agent_id = uuid4()
+        deps = _create_deps(agent_id)
+
+        identity = Identity(
+            id=agent_id,
+            self_description="Test",
+            core_values=[],
+            principles=[
+                Principle(
+                    statement="Observed but not chosen",
+                    chosen_consciously=False,
+                ),
+            ],
+            goals=[
+                Goal(
+                    content="Old goal",
+                    active=False,
+                ),
+            ],
+            habits=[],
+            priorities=[],
+            open_questions=[],
+        )
+        deps.state_store.save_identity(identity)
+
+        instructions = build_instructions(deps)
+
+        assert "Guiding Principles" not in instructions
+        assert "Current Goals" not in instructions
+        assert "Observed but not chosen" not in instructions
+        assert "Old goal" not in instructions
+        assert "Inactive goal" not in instructions

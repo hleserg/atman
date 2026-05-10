@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from atman.adapters.agent.config import AgentConfig
     from atman.core.ports.state_store import StateStore
     from atman.core.services.experience_service import ExperienceService
     from atman.core.services.identity_service import IdentityService
@@ -62,3 +63,38 @@ class AtmanDeps:
 
     truncate_narrative_core: int = 1000
     """Max chars for narrative core_layer (risk mitigation E26-R2)"""
+
+    @classmethod
+    def from_config(
+        cls,
+        *,
+        config: AgentConfig,
+        session_manager: SessionManager,
+        identity_service: IdentityService,
+        experience_service: ExperienceService,
+        micro_reflection: MicroReflectionService,
+        state_store: StateStore,
+        agent_id: UUID,
+        session_id: UUID | None = None,
+    ) -> AtmanDeps:
+        """
+        Build :class:`AtmanDeps` from a validated :class:`AgentConfig`.
+
+        ``AtmanDeps`` is a plain frozen dataclass and accepts any ``int`` for
+        its truncation/limit fields, while :class:`AgentConfig` enforces
+        ``gt=0`` via Pydantic. Callers should prefer this factory so the
+        limits used at runtime are guaranteed to have already been validated,
+        instead of constructing :class:`AtmanDeps` directly with raw integers.
+        """
+        return cls(
+            session_manager=session_manager,
+            identity_service=identity_service,
+            experience_service=experience_service,
+            micro_reflection=micro_reflection,
+            state_store=state_store,
+            agent_id=agent_id,
+            session_id=session_id,
+            max_tool_calls=config.max_tool_calls,
+            truncate_narrative_recent=config.truncate_narrative_recent,
+            truncate_narrative_core=config.truncate_narrative_core,
+        )

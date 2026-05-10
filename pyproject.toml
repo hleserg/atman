@@ -11,8 +11,6 @@ dependencies = [
     "rich>=13.7.0",
     "textual>=0.86.0",
     "httpx>=0.28.0",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.32.0",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +30,10 @@ dev = [
 ]
 webui = [
     "streamlit>=1.30.0",
+]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
 ]
 e2e = [
     "anthropic>=0.42.0",

@@ -72,7 +72,7 @@ All paths are absolute relative to the repository root.
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | deterministic mock |
 | `adapters/reflection/fixture_loader.py` | — | load fixtures for demos |
 | `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | Pydantic AI model + agent runtime config (E26-R1, E26-R2, E26-R4) |
-| `adapters/agent/deps.py` (`AtmanDeps`) | — | frozen DI container wiring `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore` for the Pydantic AI agent |
+| `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | frozen DI container wiring `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; `from_config` factory transfers validated limits from `AgentConfig` |
 | `adapters/agent/instructions.py` (`build_instructions`) | — | builds dynamic system prompt from current `Identity` + `NarrativeDocument` (truncated per `AtmanDeps.truncate_narrative_*`) |
 | `adapters/agent/tools.py` (`record_key_moment`, `log_experience`) | — | Pydantic AI tools for recording key moments / pointing log_experience at the session-end flow |
 

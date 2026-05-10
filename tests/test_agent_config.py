@@ -123,6 +123,41 @@ class TestAtmanDeps:
         assert deps.truncate_narrative_recent == 3000
         assert deps.truncate_narrative_core == 1500
 
+    def test_from_config_transfers_validated_limits(self):
+        """AtmanDeps.from_config copies validated limits from AgentConfig."""
+        state_store = InMemoryStateStore()
+        experience_service = ExperienceService(InMemoryExperienceStore())
+        event_store = InMemoryReflectionEventStore()
+        narrative_revision = NarrativeRevisionService(
+            narrative_repo=state_store,  # type: ignore[arg-type]
+            reflection_model=MockReflectionModel(),
+            narrative_audit=NoOpNarrativeWriteAudit(),
+        )
+        config = AgentConfig(
+            max_tool_calls=42,
+            truncate_narrative_recent=2500,
+            truncate_narrative_core=1250,
+        )
+
+        deps = AtmanDeps.from_config(
+            config=config,
+            session_manager=SessionManager(state_store),
+            identity_service=IdentityService(state_store),
+            experience_service=experience_service,
+            micro_reflection=MicroReflectionService(
+                experience_repo=experience_service,  # type: ignore[arg-type]
+                narrative_revision=narrative_revision,
+                event_store=event_store,
+            ),
+            state_store=state_store,
+            agent_id=uuid4(),
+        )
+
+        assert deps.max_tool_calls == 42
+        assert deps.truncate_narrative_recent == 2500
+        assert deps.truncate_narrative_core == 1250
+        assert deps.session_id is None
+
 
 class TestAgentConfig:
     """Tests for AgentConfig model."""
