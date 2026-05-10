@@ -25,6 +25,8 @@ repos:
           - opentelemetry-api>=1.20.0
           - respx>=0.21.1
           - psycopg[binary]>=3.1
+          - alembic>=1.13
+          - sqlalchemy>=2.0
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3

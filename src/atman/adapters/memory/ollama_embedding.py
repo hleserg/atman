@@ -149,7 +149,7 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
 
     @override
     def model_name(self) -> str:
-        """Return the configured Ollama model name."""
+        """Return model identifier."""
         return self.model
 
     @override
