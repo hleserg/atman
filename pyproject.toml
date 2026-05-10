@@ -7,9 +7,12 @@ readme = "README.md"
 
 dependencies = [
     "pydantic>=2.0.0",
+    "pydantic-ai>=1.88.0,<2.0",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "httpx>=0.28.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
 ]
 
 [project.optional-dependencies]
