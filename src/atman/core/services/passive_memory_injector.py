@@ -176,12 +176,11 @@ class PassiveMemoryInjector:
         """
         surfaced: list[SurfacedMemory] = []
 
-        # Query experiences via state_store.
-        # ``ExperienceQuery`` is a marker base class (no constructor args);
-        # callers pass concrete subclasses or ``None`` and rely on the
-        # ``limit`` kwarg.  Use ``list_recent_experiences`` here since we
-        # only need the most recent candidates to score by similarity.
-        experience_records = self.state_store.list_recent_experiences(limit=limit * 2)
+        # Query experiences via state_store. ExperienceQuery is a marker base
+        # class (no constructor args); pull a candidate window via the
+        # ``limit`` kwarg of search_experiences and rerank by embedding
+        # similarity below.
+        experience_records = self.state_store.search_experiences(limit=limit * 2)
 
         # Score by embedding similarity
         query_embedding = self.embedding.embed(context_text)

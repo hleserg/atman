@@ -8,23 +8,31 @@ Requires psycopg2 and a configured database connection.
 import os
 import warnings
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-try:
+if TYPE_CHECKING:
     import psycopg
     from psycopg import sql
     from psycopg.rows import class_row
     from psycopg.types.json import Jsonb
-except ImportError:
-    psycopg = None  # type: ignore[assignment]
-    Jsonb = None  # type: ignore[assignment,misc]
-    warnings.warn(
-        "psycopg not installed. ReflectionStore requires PostgreSQL support. "
-        "Install with: pip install psycopg[binary]",
-        ImportWarning,
-        stacklevel=2,
-    )
+else:
+    try:
+        import psycopg
+        from psycopg import sql
+        from psycopg.rows import class_row
+        from psycopg.types.json import Jsonb
+    except ImportError:
+        psycopg = None
+        sql = None
+        class_row = None
+        Jsonb = None
+        warnings.warn(
+            "psycopg not installed. ReflectionStore requires PostgreSQL support. "
+            "Install with: pip install psycopg[binary]",
+            ImportWarning,
+            stacklevel=2,
+        )
 
 from atman.reflection.models import ReflectionEvent, ReflectionLevel
 
@@ -110,23 +118,6 @@ class ReflectionStore:
         """Get current agent ID from environment for RLS policy."""
         return os.environ.get("ATMAN_CURRENT_AGENT")
 
-    def _apply_agent_context(self) -> bool:
-        """Issue ``SET LOCAL atman.current_agent`` for the current request.
-
-        Returns ``True`` when the SET LOCAL was executed (and therefore an
-        implicit transaction has been opened) so the caller can decide
-        whether it still needs to ``commit()`` afterwards.
-        """
-        agent_id = self._get_agent_context()
-        if not agent_id:
-            return False
-        assert self._conn is not None
-        self._conn.execute(
-            sql.SQL("SET LOCAL atman.current_agent = %s"),
-            [agent_id],
-        )
-        return True
-
     def add(self, event: ReflectionEvent) -> ReflectionEvent:
         """
         Add a reflection event to storage.
@@ -143,7 +134,12 @@ class ReflectionStore:
         if self._conn is None or self._conn.closed:
             raise RuntimeError("Database connection not established. Call connect() first.")
 
-        self._apply_agent_context()
+        agent_id = self._get_agent_context()
+        if agent_id:
+            self._conn.execute(
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
+                [agent_id],
+            )
 
         query = sql.SQL("""
             INSERT INTO public.reflections (
@@ -154,40 +150,29 @@ class ReflectionStore:
             RETURNING id
         """)
 
-        # ``metadata`` is a JSONB column; psycopg3 does not auto-adapt plain
-        # ``dict`` values for JSONB so we wrap it explicitly.  ``Jsonb`` is
-        # ``None`` only when psycopg failed to import (in which case we
-        # already raised ImportError in __init__), but guard for tests that
-        # patch psycopg with a mock.
-        metadata_value: Any = Jsonb(event.metadata) if Jsonb is not None else event.metadata
-
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    query,
-                    [
-                        str(event.agent_id),
-                        event.level.value,
-                        event.created_at,
-                        str(event.session_id) if event.session_id else None,
-                        event.period_start,
-                        event.period_end,
-                        event.content,
-                        event.summary,
-                        event.experience_refs,
-                        event.reframing_note_ids,
-                        event.model_provider,
-                        event.model_name,
-                        event.schema_version,
-                        metadata_value,
-                    ],
-                )
-                result = cur.fetchone()
-                if result:
-                    event.id = result[0]
-        except BaseException:
-            self._conn.rollback()
-            raise
+        with self._conn.cursor() as cur:
+            cur.execute(
+                query,
+                [
+                    str(event.agent_id),
+                    event.level.value,
+                    event.created_at,
+                    str(event.session_id) if event.session_id else None,
+                    event.period_start,
+                    event.period_end,
+                    event.content,
+                    event.summary,
+                    event.experience_refs,
+                    event.reframing_note_ids,
+                    event.model_provider,
+                    event.model_name,
+                    event.schema_version,
+                    Jsonb(event.metadata),
+                ],
+            )
+            result = cur.fetchone()
+            if result:
+                event.id = result[0]
 
         self._conn.commit()
         return event
@@ -205,7 +190,12 @@ class ReflectionStore:
         if self._conn is None or self._conn.closed:
             raise RuntimeError("Database connection not established. Call connect() first.")
 
-        opened_tx = self._apply_agent_context()
+        agent_id = self._get_agent_context()
+        if agent_id:
+            self._conn.execute(
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
+                [agent_id],
+            )
 
         query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
@@ -215,19 +205,14 @@ class ReflectionStore:
             WHERE id = %s
         """)
 
-        try:
-            with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
-                cur.execute(query, [reflection_id])
-                row = cur.fetchone()
-        except BaseException:
-            if opened_tx:
-                self._conn.rollback()
-            raise
-
-        # Close the implicit transaction opened by SET LOCAL so the
-        # connection does not stay in ``idle in transaction``.
-        if opened_tx:
-            self._conn.commit()
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
+            cur.execute(query, [reflection_id])
+            row = cur.fetchone()
+        # Read methods run inside an implicit transaction (autocommit is
+        # off by default). Commit so the connection does not stay
+        # ``idle in transaction`` and block VACUUM / hit
+        # idle_in_transaction_session_timeout.
+        self._conn.commit()
         return row
 
     def list_by_session(self, session_id: UUID) -> list[ReflectionEvent]:
@@ -243,7 +228,12 @@ class ReflectionStore:
         if self._conn is None or self._conn.closed:
             raise RuntimeError("Database connection not established. Call connect() first.")
 
-        opened_tx = self._apply_agent_context()
+        agent_id = self._get_agent_context()
+        if agent_id:
+            self._conn.execute(
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
+                [agent_id],
+            )
 
         query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
@@ -254,17 +244,10 @@ class ReflectionStore:
             ORDER BY created_at DESC
         """)
 
-        try:
-            with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
-                cur.execute(query, [str(session_id)])
-                rows = cur.fetchall()
-        except BaseException:
-            if opened_tx:
-                self._conn.rollback()
-            raise
-
-        if opened_tx:
-            self._conn.commit()
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
+            cur.execute(query, [str(session_id)])
+            rows = cur.fetchall()
+        self._conn.commit()
         return rows
 
     def list_recent(self, agent_id: UUID, limit: int = 10) -> list[ReflectionEvent]:
@@ -281,7 +264,12 @@ class ReflectionStore:
         if self._conn is None or self._conn.closed:
             raise RuntimeError("Database connection not established. Call connect() first.")
 
-        opened_tx = self._apply_agent_context()
+        context_agent_id = self._get_agent_context()
+        if context_agent_id:
+            self._conn.execute(
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
+                [context_agent_id],
+            )
 
         query = sql.SQL("""
             SELECT id, agent_id, level, created_at, session_id, period_start, period_end,
@@ -293,17 +281,10 @@ class ReflectionStore:
             LIMIT %s
         """)
 
-        try:
-            with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
-                cur.execute(query, [str(agent_id), limit])
-                rows = cur.fetchall()
-        except BaseException:
-            if opened_tx:
-                self._conn.rollback()
-            raise
-
-        if opened_tx:
-            self._conn.commit()
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
+            cur.execute(query, [str(agent_id), limit])
+            rows = cur.fetchall()
+        self._conn.commit()
         return rows
 
     def list_by_level(
@@ -323,7 +304,12 @@ class ReflectionStore:
         if self._conn is None or self._conn.closed:
             raise RuntimeError("Database connection not established. Call connect() first.")
 
-        opened_tx = self._apply_agent_context()
+        context_agent_id = self._get_agent_context()
+        if context_agent_id:
+            self._conn.execute(
+                sql.SQL("SET LOCAL atman.current_agent = %s"),
+                [context_agent_id],
+            )
 
         if since:
             query = sql.SQL("""
@@ -346,15 +332,8 @@ class ReflectionStore:
             """)
             params = [str(agent_id), level.value]
 
-        try:
-            with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
-                cur.execute(query, params)
-                rows = cur.fetchall()
-        except BaseException:
-            if opened_tx:
-                self._conn.rollback()
-            raise
-
-        if opened_tx:
-            self._conn.commit()
+        with self._conn.cursor(row_factory=class_row(ReflectionEvent)) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        self._conn.commit()
         return rows

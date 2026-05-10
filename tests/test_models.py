@@ -6,7 +6,6 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from atman.core.models import FactRecord, FactStatus, Relation
 
@@ -182,37 +181,38 @@ def test_fact_record_invalidated_at_field():
     assert restored.invalidated_at is not None
 
 
-# --- E25: legacy FactStatus migration (backward compatibility) ---
+# --- E25 / Devin Review: legacy FactStatus migration ---
 
 
-def test_fact_record_legacy_status_outdated_maps_to_superseded():
-    """E25: legacy ``"outdated"`` strings load as ``FactStatus.SUPERSEDED``.
+@pytest.mark.parametrize(
+    ("legacy_value", "expected_status"),
+    [
+        ("outdated", FactStatus.SUPERSEDED),
+        ("retracted", FactStatus.INVALIDATED),
+        ("uncertain", FactStatus.DISPUTED),
+    ],
+)
+def test_fact_record_migrates_legacy_status_values(
+    legacy_value: str, expected_status: FactStatus
+) -> None:
+    """Legacy FactStatus values from pre-E25 JSONL files are mapped on load.
 
-    Pre-E25 JSONL fact stores (commit 2314b86) used ``"outdated"`` /
-    ``"retracted"`` / ``"uncertain"`` values.  ``model_validate`` must keep
-    accepting those payloads without silent data loss.
+    ``FileBackend`` loads facts from ~/.atman/facts.jsonl; previously valid
+    ``outdated``/``retracted``/``uncertain`` values must continue to load
+    instead of being silently dropped as malformed.
     """
-    payload = {"content": "old fact", "source": "legacy", "status": "outdated"}
-    fact = FactRecord.model_validate(payload)
-    assert fact.status == FactStatus.SUPERSEDED
+    fact = FactRecord.model_validate(
+        {
+            "content": "Migrated fact",
+            "source": "test",
+            "status": legacy_value,
+        }
+    )
+    assert fact.status == expected_status
 
 
-def test_fact_record_legacy_status_retracted_maps_to_invalidated():
-    """E25: legacy ``"retracted"`` maps to ``FactStatus.INVALIDATED``."""
-    payload = {"content": "wrong fact", "source": "legacy", "status": "retracted"}
-    fact = FactRecord.model_validate(payload)
-    assert fact.status == FactStatus.INVALIDATED
-
-
-def test_fact_record_legacy_status_uncertain_maps_to_disputed():
-    """E25: legacy ``"uncertain"`` maps to ``FactStatus.DISPUTED``."""
-    payload = {"content": "fuzzy fact", "source": "legacy", "status": "uncertain"}
-    fact = FactRecord.model_validate(payload)
-    assert fact.status == FactStatus.DISPUTED
-
-
-def test_fact_record_legacy_status_roundtrip_through_jsonl_line():
-    """E25: a JSONL line written by pre-E25 code is loadable via ``model_validate_json``."""
+def test_fact_record_legacy_status_roundtrip_through_jsonl_line() -> None:
+    """A JSONL line written by pre-E25 code is loadable via ``model_validate_json``."""
     legacy_jsonl_line = (
         '{"id": "00000000-0000-0000-0000-000000000001", '
         '"content": "old fact", "source": "legacy", "status": "outdated"}'
@@ -221,19 +221,35 @@ def test_fact_record_legacy_status_roundtrip_through_jsonl_line():
     assert fact.status == FactStatus.SUPERSEDED
 
 
-def test_fact_record_unknown_status_still_rejected():
-    """E25: only the documented legacy values are translated; other strings fail."""
-    payload = {"content": "x", "source": "y", "status": "totally-bogus"}
-    with pytest.raises(ValidationError):
-        FactRecord.model_validate(payload)
+def test_fact_record_unknown_status_still_rejected() -> None:
+    """Unknown status strings keep raising ValidationError."""
+    with pytest.raises(ValueError):
+        FactRecord.model_validate(
+            {
+                "content": "x",
+                "source": "y",
+                "status": "totally-bogus-status",
+            }
+        )
 
 
-def test_fact_record_validate_assignment_enforced():
-    """E25: ``FactRecord`` runs validators on attribute assignment.
-
-    With ``validate_assignment=True``, mutating ``status`` to a legacy value
-    triggers the migration validator and lands on the modern enum member.
-    """
+def test_fact_record_validate_assignment_enforces_invariants() -> None:
+    """``validate_assignment=True`` keeps mutators on FactRecord safe."""
     fact = FactRecord(content="x", source="y")
+
+    # Confirming a fact stays within validator-allowed bounds.
+    fact.confirm()
+    assert fact.confirmation_count == 1
+    assert 0.0 <= fact.salience <= 1.0
+
+    # Reassigning to invalid values should now raise instead of silently
+    # corrupting the record.
+    with pytest.raises(ValueError):
+        fact.confirmation_count = -1
+    with pytest.raises(ValueError):
+        fact.salience = 1.5
+
+    # Round-trip through the legacy migrator: assignment of ``"outdated"``
+    # is normalised to the modern enum member instead of raising.
     fact.status = "outdated"  # type: ignore[assignment]
     assert fact.status == FactStatus.SUPERSEDED

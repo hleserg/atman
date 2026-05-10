@@ -1,10 +1,16 @@
 """
 Tests for BM25EmbeddingAdapter.
 
-Covers the EmbeddingPort surface added in E25 (``model_name`` and Unicode
-tokenization) so the adapter remains a drop-in for ``MockEmbeddingAdapter``
-and ``OllamaEmbeddingAdapter``.
+Covers Devin Review fixes for PR #414:
+- ``model_name`` is implemented (Protocol contract).
+- ``_tokenize`` accepts non-ASCII input (Cyrillic, CJK).
+- ``embed`` returns vectors of a fixed ``dimension`` so independent
+  ``embed()`` calls are directly comparable via ``similarity()`` (the
+  previous implementation rebuilt the vocabulary on every call, which
+  silently broke that contract).
 """
+
+from __future__ import annotations
 
 import pytest
 
@@ -12,46 +18,50 @@ from atman.adapters.memory.bm25_embedding import BM25EmbeddingAdapter
 
 
 class TestBM25EmbeddingAdapter:
-    """Cover the EmbeddingPort surface implemented by BM25."""
+    """Unit tests for the BM25 sparse embedding adapter."""
 
     @pytest.fixture
     def adapter(self) -> BM25EmbeddingAdapter:
         return BM25EmbeddingAdapter()
 
     def test_implements_embedding_port_methods(self, adapter: BM25EmbeddingAdapter) -> None:
-        """BM25 adapter exposes every method ``EmbeddingPort`` declares."""
+        """BM25 adapter satisfies the EmbeddingPort method contract."""
         for name in ("embed", "embed_batch", "dimension", "model_name", "similarity"):
-            assert hasattr(adapter, name), f"BM25EmbeddingAdapter is missing {name!r}"
+            assert callable(getattr(adapter, name)), f"missing method: {name}"
 
-    def test_model_name_encodes_parameters(self) -> None:
-        """``model_name`` includes ``k1`` / ``b`` so artifacts are traceable."""
-        adapter = BM25EmbeddingAdapter(k1=1.2, b=0.8)
-        name = adapter.model_name()
-        assert "bm25" in name
-        assert "1.2" in name
-        assert "0.8" in name
+    def test_model_name_is_set(self, adapter: BM25EmbeddingAdapter) -> None:
+        """``model_name`` returns a stable identifier for telemetry/logs."""
+        assert adapter.model_name() == "bm25-sparse"
 
-    def test_tokenizer_keeps_cyrillic(self, adapter: BM25EmbeddingAdapter) -> None:
-        """Tokens like ``пользователь`` survive lowercasing + tokenization."""
-        # Russian-only sentence — the resulting vector must be non-zero, which
-        # only happens if Cyrillic word characters survive the tokenizer.
-        vector = adapter.embed("Пользователь подтвердил результат задачи")
-        assert len(vector) == adapter.dimension()
-        assert any(component != 0.0 for component in vector)
-        # Every produced token must be Cyrillic (no ASCII spillover).
-        tokens = adapter._tokenize("Пользователь подтвердил результат задачи")
-        assert tokens, "tokenizer must keep Cyrillic content"
-        assert all(any(ord(ch) > 127 for ch in tok) for tok in tokens)
+    def test_embed_ascii_returns_nonempty_vector(self, adapter: BM25EmbeddingAdapter) -> None:
+        """English text produces a non-empty BM25 vector (regression baseline)."""
+        vec = adapter.embed("the quick brown fox jumps over the lazy dog")
+        assert len(vec) == adapter.dimension()
+        assert any(v != 0.0 for v in vec)
 
-    def test_tokenizer_keeps_cjk(self, adapter: BM25EmbeddingAdapter) -> None:
-        """CJK ideographs are preserved by ``[^\\W_]+`` with re.UNICODE."""
-        vector = adapter.embed("机器学习 是 人工智能 的 子领域")
-        assert len(vector) == adapter.dimension()
-        assert any(component != 0.0 for component in vector)
-        tokens = adapter._tokenize("机器学习 是 人工智能 的 子领域")
-        # CJK tokens are kept (every kept token contains an ideograph).
-        assert tokens
-        assert any(any(0x4E00 <= ord(ch) <= 0x9FFF for ch in tok) for tok in tokens)
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Пользователь попросил реализовать факты",  # Cyrillic
+            "我喜欢猫和狗",  # Chinese
+            "café résumé naïve",  # Latin with diacritics
+        ],
+    )
+    def test_embed_non_ascii_text_produces_tokens(
+        self, adapter: BM25EmbeddingAdapter, text: str
+    ) -> None:
+        """Non-ASCII tokens must not be silently dropped by the tokenizer.
+
+        With the previous ``[a-z0-9]+`` pattern, Cyrillic/CJK input produced
+        zero tokens and an empty embedding vector. The Unicode-aware
+        ``[^\\W_]+`` tokenizer fixes this.
+        """
+        tokens = adapter._tokenize(text)
+        assert tokens, f"tokenizer dropped all tokens for {text!r}"
+
+        vec = adapter.embed(text)
+        assert len(vec) == adapter.dimension()
+        assert any(v != 0.0 for v in vec)
 
     def test_tokenizer_drops_underscores_and_short_tokens(
         self, adapter: BM25EmbeddingAdapter
@@ -66,23 +76,28 @@ class TestBM25EmbeddingAdapter:
         assert "world" in tokens
         assert "longer" in tokens
 
+    def test_similarity_dimension_mismatch_raises(self, adapter: BM25EmbeddingAdapter) -> None:
+        """``similarity`` rejects vectors with mismatched dimensions."""
+        with pytest.raises(ValueError):
+            adapter.similarity([1.0, 0.0, 0.0], [1.0, 0.0])
+
+    def test_similarity_zero_vectors_returns_zero(self, adapter: BM25EmbeddingAdapter) -> None:
+        """Zero-norm vectors get a defined similarity of 0.0."""
+        assert adapter.similarity([0.0, 0.0], [0.0, 0.0]) == 0.0
+
     def test_similarity_identical_vectors(self, adapter: BM25EmbeddingAdapter) -> None:
         """Cosine similarity of a non-zero vector with itself is ``1.0``."""
         vec = adapter.embed("the quick brown fox jumps over the lazy dog")
         assert adapter.similarity(vec, vec) == pytest.approx(1.0)
-
-    def test_similarity_zero_vector(self, adapter: BM25EmbeddingAdapter) -> None:
-        """Empty input produces a zero vector and similarity is ``0.0``."""
-        empty = adapter.embed("")
-        assert adapter.similarity(empty, empty) == 0.0
 
     def test_embed_calls_share_dimension_for_similarity(
         self, adapter: BM25EmbeddingAdapter
     ) -> None:
         """
         Independent ``embed()`` calls must yield vectors of identical length
-        so that ``similarity()`` can compare them — prior to E25 the adapter
-        rebuilt the vocabulary on every call, which silently broke this.
+        so that ``similarity()`` can compare them — prior to the E25 fix the
+        adapter rebuilt the vocabulary on every call, which silently broke
+        that contract.
         """
         v1 = adapter.embed("alpha beta gamma")
         v2 = adapter.embed("delta epsilon zeta")

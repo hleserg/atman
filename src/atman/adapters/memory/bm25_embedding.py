@@ -27,6 +27,8 @@ class BM25EmbeddingAdapter(EmbeddingPort):
     that requires no external dependencies or model downloads.
     """
 
+    _MODEL_NAME = "bm25-sparse"
+
     def __init__(
         self,
         k1: float = 1.5,
@@ -142,13 +144,8 @@ class BM25EmbeddingAdapter(EmbeddingPort):
 
     @override
     def model_name(self) -> str:
-        """Return a stable identifier for this adapter.
-
-        BM25 is parameterised by ``k1``/``b`` rather than a downloadable model,
-        so the identifier encodes those parameters for traceability when
-        embeddings are mixed across adapters.
-        """
-        return f"bm25(k1={self.k1},b={self.b})"
+        """Return the BM25 adapter identifier."""
+        return self._MODEL_NAME
 
     @override
     def similarity(self, vec1: list[float], vec2: list[float]) -> float:

@@ -63,16 +63,15 @@ class EmbeddingPort(Protocol):
         """
         Compute a similarity score between two embedding vectors.
 
-        Implementations typically return cosine similarity in ``[-1.0, 1.0]``
-        (or ``[0.0, 1.0]`` for non-negative vectors).  Callers such as
-        ``PassiveMemoryInjector`` rely on this method, so adapters MUST
-        implement it.
+        Implementations should return a value where higher means more similar
+        (e.g. cosine similarity in [-1.0, 1.0]) and should raise ValueError
+        when the vectors have incompatible dimensions.
 
         Args:
-            vec1: First embedding vector
-            vec2: Second embedding vector
+            vec1: First embedding vector.
+            vec2: Second embedding vector.
 
         Returns:
-            float: Similarity score for the pair of vectors
+            float: Similarity score between the two vectors.
         """
         pass

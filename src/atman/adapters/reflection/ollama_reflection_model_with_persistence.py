@@ -5,8 +5,7 @@ This adapter wraps OllamaReflectionModel and automatically persists
 generated reflection content to the PostgreSQL ReflectionStore.
 """
 
-import contextlib
-import warnings
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -24,8 +23,9 @@ from atman.core.models.reflection import (
 )
 from atman.core.ports.reflection import ReflectionModel
 from atman.reflection.models import ReflectionEvent as PersistenceReflectionEvent
-from atman.reflection.models import ReflectionLevel as PersistenceReflectionLevel
 from atman.reflection.store import ReflectionStore
+
+_logger = logging.getLogger(__name__)
 
 
 class OllamaReflectionModelWithPersistence(ReflectionModel):
@@ -97,36 +97,33 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         if not self._persistence_enabled or self.reflection_store is None:
             return
 
-        # The persistence module owns its own ``ReflectionLevel`` mirror of
-        # the domain enum (the StrEnum values are kept identical between
-        # ``atman.core.models.reflection`` and ``atman.reflection.models``).
-        # Convert at the boundary so Pyright sees a single concrete type.
-        event = PersistenceReflectionEvent(
-            agent_id=agent_id,
-            level=PersistenceReflectionLevel(level.value),
-            content=content,
-            summary=summary,
-            experience_refs=experience_refs or [],
-            reframing_note_ids=reframing_note_ids or [],
-            session_id=session_id,
-            period_start=period_start,
-            period_end=period_end,
-            model_provider="ollama",
-            model_name=self.base_model.model,
-        )
         try:
-            self.reflection_store.add(event)
-        except Exception as exc:
-            # Persistence is best-effort: a database outage must not break the
-            # reflection pipeline, but the error must still be visible.
-            warnings.warn(
-                f"ReflectionStore persistence failed: {exc!r}",
-                RuntimeWarning,
-                stacklevel=2,
+            # Two ReflectionLevel enums currently coexist (core.models.reflection
+            # and reflection.models). They are intentionally kept in sync but
+            # pyright cannot prove the equivalence; coerce via .value so the
+            # persistence model re-validates.
+            event = PersistenceReflectionEvent(
+                agent_id=agent_id,
+                level=level.value,  # type: ignore[arg-type]
+                content=content,
+                summary=summary,
+                experience_refs=experience_refs or [],
+                reframing_note_ids=reframing_note_ids or [],
+                session_id=session_id,
+                period_start=period_start,
+                period_end=period_end,
+                model_provider="ollama",
+                model_name=self.base_model.model,
             )
+            self.reflection_store.add(event)
+        except Exception:
+            # Persistence is best-effort: never let a store failure surface
+            # back into the reflection model's caller. Log so operators can
+            # diagnose dropped writes.
+            _logger.exception("Failed to persist reflection event to ReflectionStore")
 
     def close(self) -> None:
-        """Close resources, ensuring both layers are released."""
+        """Close resources, ensuring both the base model and reflection store are released."""
         try:
             self.base_model.close()
         finally:
@@ -134,14 +131,17 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
                 self.reflection_store.close()
 
     def __enter__(self) -> "OllamaReflectionModelWithPersistence":
-        """Context manager entry that rolls back if either layer fails to open."""
+        """Context manager entry.
+
+        If the reflection store fails to connect after the base model has
+        already been entered, clean up the base model so its httpx client
+        is not leaked.
+        """
         self.base_model.__enter__()
         if self.reflection_store is not None:
             try:
                 self.reflection_store.connect()
-            except Exception:
-                # Roll back the base model so its httpx client is not leaked
-                # if the reflection store cannot be opened.
+            except BaseException:
                 self.base_model.__exit__(None, None, None)
                 raise
         return self
@@ -152,7 +152,11 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
-        """Context manager exit that always closes both layers."""
+        """Context manager exit.
+
+        Always close the reflection store even if the base model's exit
+        raises, to avoid leaking the PostgreSQL connection.
+        """
         try:
             self.base_model.__exit__(exc_type, exc_val, exc_tb)
         finally:
@@ -251,23 +255,21 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
             current_narrative, recent_experiences, reflection_level
         )
 
-        if output.body and current_narrative.identity_id is not None:
-            # NOTE: ``NarrativeDocument`` carries ``identity_id``; the
-            # PostgreSQL schema treats ``agents.id`` and ``identity.id`` as
-            # potentially distinct, but the file-based stores enforce
-            # ``identity.id == agent_id``.  We persist using ``identity_id``
-            # as the agent identifier; in PostgreSQL deployments the
-            # caller is expected to ensure these UUIDs are aligned (or
-            # the FK violation will be swallowed by ``_persist_reflection``
-            # and logged).
-            with contextlib.suppress(ValueError, TypeError):
+        if output.body:
+            # NarrativeDocument tracks identity_id; use that as the agent
+            # identifier for persistence purposes.
+            agent_id = str(current_narrative.identity_id)
+            try:
+                agent_uuid = UUID(agent_id)
                 self._persist_reflection(
-                    agent_id=current_narrative.identity_id,
+                    agent_id=agent_uuid,
                     level=reflection_level,
                     content=output.body,
                     summary="Narrative update proposal",
                     experience_refs=[e.id for e in recent_experiences],
                 )
+            except (ValueError, TypeError):
+                pass
 
         return output
 
@@ -290,11 +292,12 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
         """
         output = self.base_model.assess_health_criterion(identity, experiences, criterion)
 
-        # Persist health assessment as a reflection.  See the note in
-        # ``propose_narrative_update`` about ``identity.id`` vs
-        # ``agents.id``: file-based stores keep them aligned, the
-        # PostgreSQL schema may not.
-        with contextlib.suppress(ValueError, TypeError):
+        # Persist health assessment as a reflection. Identity exposes ``id``
+        # rather than ``agent_id``; treat the identity id as the agent
+        # reference for persistence.
+        agent_id = str(identity.id)
+        try:
+            agent_uuid = UUID(agent_id)
             content = f"Health assessment for {criterion.value}: score={output.score}"
             if output.evidence:
                 content += f"\nEvidence: {', '.join(output.evidence)}"
@@ -302,11 +305,13 @@ class OllamaReflectionModelWithPersistence(ReflectionModel):
                 content += f"\nConcerns: {', '.join(output.concerns)}"
 
             self._persist_reflection(
-                agent_id=identity.id,
+                agent_id=agent_uuid,
                 level=ReflectionLevel.DEEP,
                 content=content,
                 summary=f"Health assessment: {criterion.value}",
                 experience_refs=[e.id for e in experiences],
             )
+        except (ValueError, TypeError):
+            pass
 
         return output
