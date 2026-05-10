@@ -80,8 +80,14 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
             # custom-scheme attack surface B310 warns about does not apply.
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
-                # Ollama returns embedding in "embedding" field for single input
-                embedding = data.get("embedding") or data.get("embeddings", [[]])[0]
+                # Ollama returns the vector under "embedding" for single inputs;
+                # newer servers may return ``"embeddings": [[...]]`` or even an
+                # explicit empty list. Normalize both shapes without indexing
+                # into a possibly empty list.
+                embedding = data.get("embedding")
+                if not embedding:
+                    embeddings = data.get("embeddings") or []
+                    embedding = embeddings[0] if embeddings else []
                 if not embedding:
                     raise RuntimeError("Empty embedding received from Ollama")
                 return embedding
