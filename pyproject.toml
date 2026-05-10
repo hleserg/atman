@@ -18,6 +18,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=6.0.0",
     "pytest-xdist>=3.5.0",
+    "respx>=0.21.1",
     "ruff>=0.11.0",
     "pyright>=1.1.0",
     "bandit>=1.8.0",
@@ -56,6 +57,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks integration tests (multiple real components, no mocks)",
     "e2e: marks full end-to-end scenarios",
+    "requires_ollama: marks tests that need a running Ollama instance",
 ]
 
 [tool.coverage.run]

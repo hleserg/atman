@@ -1,5 +1,12 @@
 """
 Tests for OllamaReflectionModel.
+
+Covers:
+- Configuration from env (TestOllamaReflectionModelConfig)
+- _call_with_retry retry logic (TestCallWithRetry)
+- Four reflection methods: happy path + error propagation (TestReflectionMethods)
+- Context manager semantics (TestContextManager)
+- respx-based transport tests (TestCallWithRetryRespx)
 """
 
 import json
@@ -8,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import respx
 from pydantic import BaseModel
 
 from atman.adapters.reflection.exceptions import OllamaReflectionError
@@ -344,3 +352,151 @@ class TestReflectionMethods:
             assert result.evidence == ["shows growth"]
             assert result.concerns == ["limited data"]
             mock_post.assert_called_once()
+
+    # ---- Error propagation tests (2nd per method) ----
+
+    def test_generate_reframing_note_error(self) -> None:
+        """Test generate_reframing_note propagates OllamaReflectionError."""
+        mock_resp = self._make_mock_response("not json{")
+
+        with (
+            OllamaReflectionModel() as model,
+            patch.object(model._client, "post", return_value=mock_resp),
+            pytest.raises(OllamaReflectionError) as exc_info,
+        ):
+            model.generate_reframing_note(MagicMock(), {})
+
+        assert exc_info.value.attempts == 2
+
+    def test_detect_pattern_error(self) -> None:
+        """Test detect_pattern propagates OllamaReflectionError."""
+        mock_resp = self._make_mock_response("not json{")
+
+        with (
+            OllamaReflectionModel() as model,
+            patch.object(model._client, "post", return_value=mock_resp),
+            pytest.raises(OllamaReflectionError) as exc_info,
+        ):
+            model.detect_pattern([], {})
+
+        assert exc_info.value.attempts == 2
+
+    def test_propose_narrative_update_error(self) -> None:
+        """Test propose_narrative_update propagates OllamaReflectionError."""
+        mock_resp = self._make_mock_response("not json{")
+
+        with (
+            OllamaReflectionModel() as model,
+            patch.object(model._client, "post", return_value=mock_resp),
+            pytest.raises(OllamaReflectionError) as exc_info,
+        ):
+            model.propose_narrative_update(MagicMock(), [], MagicMock())
+
+        assert exc_info.value.attempts == 2
+
+    def test_assess_health_criterion_error(self) -> None:
+        """Test assess_health_criterion propagates OllamaReflectionError."""
+        mock_resp = self._make_mock_response("not json{")
+
+        with (
+            OllamaReflectionModel() as model,
+            patch.object(model._client, "post", return_value=mock_resp),
+            pytest.raises(OllamaReflectionError) as exc_info,
+        ):
+            model.assess_health_criterion(MagicMock(), [], MagicMock())
+
+        assert exc_info.value.attempts == 2
+
+
+class TestCallWithRetryRespx:
+    """Tests for _call_with_retry using respx to mock the HTTP transport."""
+
+    def _ollama_response(self, content: str) -> dict[str, object]:
+        """Build a minimal Ollama /api/chat response body."""
+        return {"message": {"content": content}}
+
+    @respx.mock
+    def test_respx_success_first_attempt(self) -> None:
+        """Test successful first-attempt via respx transport mock."""
+        route = respx.post("http://localhost:11434/api/chat").mock(
+            return_value=httpx.Response(
+                200,
+                json=self._ollama_response(
+                    json.dumps({"result": "ok", "score": 0.9}),
+                ),
+            ),
+        )
+
+        with OllamaReflectionModel() as model:
+            result = model._call_with_retry(
+                [OllamaMessage(role="user", content="test")],
+                MockOutput,
+            )
+
+        assert result.result == "ok"
+        assert result.score == 0.9
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_respx_retry_on_bad_json(self) -> None:
+        """Test retry when first response has bad JSON, second is valid."""
+        route = respx.post("http://localhost:11434/api/chat").mock(
+            side_effect=[
+                httpx.Response(200, json=self._ollama_response("not-json{")),
+                httpx.Response(
+                    200,
+                    json=self._ollama_response(
+                        json.dumps({"result": "retried", "score": 0.5}),
+                    ),
+                ),
+            ],
+        )
+
+        with OllamaReflectionModel() as model:
+            result = model._call_with_retry(
+                [OllamaMessage(role="user", content="test")],
+                MockOutput,
+            )
+
+        assert result.result == "retried"
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_respx_failure_after_retries(self) -> None:
+        """Test OllamaReflectionError after two bad responses via respx."""
+        respx.post("http://localhost:11434/api/chat").mock(
+            return_value=httpx.Response(200, json=self._ollama_response("bad{")),
+        )
+
+        with OllamaReflectionModel() as model:
+            with pytest.raises(OllamaReflectionError) as exc_info:
+                model._call_with_retry(
+                    [OllamaMessage(role="user", content="test")],
+                    MockOutput,
+                )
+
+            assert exc_info.value.attempts == 2
+
+    @respx.mock
+    def test_respx_http_500_then_success(self) -> None:
+        """Test retry on HTTP 500 followed by success via respx."""
+        route = respx.post("http://localhost:11434/api/chat").mock(
+            side_effect=[
+                httpx.Response(500, text="Internal Server Error"),
+                httpx.Response(
+                    200,
+                    json=self._ollama_response(
+                        json.dumps({"result": "recovered", "score": 1.0}),
+                    ),
+                ),
+            ],
+        )
+
+        with OllamaReflectionModel() as model:
+            result = model._call_with_retry(
+                [OllamaMessage(role="user", content="test")],
+                MockOutput,
+            )
+
+        assert result.result == "recovered"
+        assert route.call_count == 2
