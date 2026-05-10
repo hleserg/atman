@@ -40,6 +40,7 @@ class InMemoryBackend(FactualMemory):
         query: str | None = None,
         tags: list[str] | None = None,
         limit: int = 10,
+        *,
         include_invalidated: bool = False,
     ) -> list[FactRecord]:
         """
@@ -54,15 +55,12 @@ class InMemoryBackend(FactualMemory):
         normalized_tags = [t.lower() for t in tags] if tags else None
 
         for fact in self._facts.values():
-            # Skip invalidated facts unless explicitly included
-            if not include_invalidated and fact.status == FactStatus.INVALIDATED:
+            if not include_invalidated and fact.status != FactStatus.ACTIVE:
                 continue
 
-            # Проверка совпадения по запросу
             if normalized_query and normalized_query not in fact.content.lower():
                 continue
 
-            # Проверка совпадения по тегам
             if normalized_tags:
                 fact_tags_lower = [t.lower() for t in fact.tags]
                 if not all(tag in fact_tags_lower for tag in normalized_tags):
@@ -75,21 +73,48 @@ class InMemoryBackend(FactualMemory):
 
         return results
 
-    def invalidate_fact(self, fact_id: UUID, reason: str) -> bool:
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus | None = None,
+        note: str = "",
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
         """Mark a fact as invalidated."""
         fact = self._facts.get(fact_id)
         if fact is None:
-            return False
-        fact.invalidate(reason)
-        return True
+            return None
 
-    def list_invalidated(self, limit: int = 10) -> list[FactRecord]:
+        fact.status = status or FactStatus.INVALIDATED
+        fact.invalidation_note = note
+        fact.invalidated_at = datetime.now(UTC)
+        fact.superseded_by = superseded_by
+
+        if superseded_by is not None:
+            new_fact = self._facts.get(superseded_by)
+            if new_fact is not None:
+                fact.relations.append(
+                    Relation(target_id=superseded_by, relation_type="superseded_by")
+                )
+                new_fact.relations.append(
+                    Relation(target_id=fact_id, relation_type="supersedes")
+                )
+
+        return fact.model_copy(deep=True)
+
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
         """List invalidated facts."""
-        invalidated = [
-            f for f in self._facts.values() if f.status == FactStatus.INVALIDATED
+        results = [
+            f for f in self._facts.values()
+            if f.status != FactStatus.ACTIVE
+            and (since is None or (f.invalidated_at is not None and f.invalidated_at >= since))
         ]
-        invalidated.sort(key=lambda f: f.invalidated_at or datetime.min, reverse=True)
-        return [f.model_copy(deep=True) for f in invalidated[:limit]]
+        results.sort(
+            key=lambda f: f.invalidated_at if f.invalidated_at is not None else datetime.min,
+            reverse=True,
+        )
+        return [f.model_copy(deep=True) for f in results]
 
     def confirm_fact(self, fact_id: UUID) -> bool:
         """Confirm a fact, increasing its confirmation count."""
@@ -103,10 +128,8 @@ class InMemoryBackend(FactualMemory):
         """Decay salience of facts not confirmed since before the given time."""
         count = 0
         for fact in self._facts.values():
-            # Skip invalidated facts
-            if fact.status == FactStatus.INVALIDATED:
+            if fact.status != FactStatus.ACTIVE:
                 continue
-            # Decay if never confirmed or last confirmation was before cutoff
             if fact.last_confirmed_at is None or fact.last_confirmed_at < before:
                 fact.salience = max(0.0, fact.salience * decay_factor)
                 count += 1

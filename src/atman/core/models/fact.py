@@ -41,7 +41,7 @@ class FactRecord(BaseModel):
     # Fact lifecycle and validity fields (E24.1)
     status: FactStatus = Field(default=FactStatus.ACTIVE, description="Lifecycle status")
     invalidated_at: datetime | None = Field(default=None, description="When fact was invalidated")
-    invalidated_reason: str | None = Field(default=None, description="Reason for invalidation")
+    invalidation_note: str = Field(default="", description="Reason or context for invalidation")
     superseded_by: UUID | None = Field(default=None, description="ID of fact that replaces this one")
     disputed_at: datetime | None = Field(default=None, description="When fact was marked disputed")
 
@@ -86,7 +86,7 @@ class FactRecord(BaseModel):
         """Mark this fact as invalidated with a reason."""
         self.status = FactStatus.INVALIDATED
         self.invalidated_at = datetime.now(UTC)
-        self.invalidated_reason = reason
+        self.invalidation_note = reason
         self.salience = 0.0
 
     def confirm(self) -> None:

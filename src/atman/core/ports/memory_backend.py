@@ -9,6 +9,7 @@ from datetime import datetime
 from uuid import UUID
 
 from atman.core.models import FactRecord
+from atman.core.models.fact import FactStatus
 
 
 class FactualMemory(ABC):
@@ -55,6 +56,7 @@ class FactualMemory(ABC):
         query: str | None = None,
         tags: list[str] | None = None,
         limit: int = 10,
+        *,
         include_invalidated: bool = False,
     ) -> list[FactRecord]:
         """
@@ -72,26 +74,35 @@ class FactualMemory(ABC):
         pass
 
     @abstractmethod
-    def invalidate_fact(self, fact_id: UUID, reason: str) -> bool:
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus | None = None,
+        note: str = "",
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
         """
         Mark a fact as invalidated with a reason.
 
         Args:
             fact_id: ID of the fact to invalidate
-            reason: Reason for invalidation
+            status: New status (defaults to INVALIDATED)
+            note: Reason for invalidation
+            superseded_by: ID of fact that replaces this one
 
         Returns:
-            bool: True if fact was found and invalidated
+            FactRecord | None: Updated fact or None if not found
         """
         pass
 
     @abstractmethod
-    def list_invalidated(self, limit: int = 10) -> list[FactRecord]:
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
         """
         List invalidated facts.
 
         Args:
-            limit: Maximum number of results
+            since: Only return facts invalidated since this time
 
         Returns:
             list[FactRecord]: List of invalidated facts

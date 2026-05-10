@@ -137,6 +137,7 @@ class FileBackend(FactualMemory):
         query: str | None = None,
         tags: list[str] | None = None,
         limit: int = 10,
+        *,
         include_invalidated: bool = False,
     ) -> list[FactRecord]:
         """Ищет факты по запросу и тегам."""
@@ -146,8 +147,7 @@ class FileBackend(FactualMemory):
         normalized_tags = [t.lower() for t in tags] if tags else None
 
         for fact in self._facts.values():
-            # Skip invalidated facts unless explicitly included
-            if not include_invalidated and fact.status == FactStatus.INVALIDATED:
+            if not include_invalidated and fact.status != FactStatus.ACTIVE:
                 continue
 
             if normalized_query and normalized_query not in fact.content.lower():
@@ -164,27 +164,6 @@ class FileBackend(FactualMemory):
                 break
 
         return results
-
-    def invalidate_fact(self, fact_id: UUID, reason: str) -> bool:
-        """Mark a fact as invalidated and persist changes."""
-        with self._storage_lock():
-            updated_facts = self._read_facts_from_disk()
-            fact = updated_facts.get(fact_id)
-            if fact is None:
-                self._facts = updated_facts
-                return False
-            fact.invalidate(reason)
-            self._save_facts(updated_facts)
-            self._facts = updated_facts
-        return True
-
-    def list_invalidated(self, limit: int = 10) -> list[FactRecord]:
-        """List invalidated facts sorted by invalidation time."""
-        invalidated = [
-            f for f in self._facts.values() if f.status == FactStatus.INVALIDATED
-        ]
-        invalidated.sort(key=lambda f: f.invalidated_at or datetime.min, reverse=True)
-        return [f.model_copy(deep=True) for f in invalidated[:limit]]
 
     def confirm_fact(self, fact_id: UUID) -> bool:
         """Confirm a fact and persist changes."""
@@ -206,7 +185,7 @@ class FileBackend(FactualMemory):
             updated_facts = self._read_facts_from_disk()
             for fact in updated_facts.values():
                 # Skip invalidated facts
-                if fact.status == FactStatus.INVALIDATED:
+                if fact.status != FactStatus.ACTIVE:
                     continue
                 # Decay if never confirmed or last confirmation was before cutoff
                 if fact.last_confirmed_at is None or fact.last_confirmed_at < before:
@@ -243,6 +222,59 @@ class FileBackend(FactualMemory):
         sorted_facts = sorted(self._facts.values(), key=lambda f: f.created_at, reverse=True)
 
         return [f.model_copy(deep=True) for f in sorted_facts[:limit]]
+
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus | None = None,
+        note: str = "",
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
+        """Invalidates a fact by setting its status and metadata."""
+        with self._storage_lock():
+            updated_facts = self._read_facts_from_disk()
+            fact = updated_facts.get(fact_id)
+            if fact is None:
+                self._facts = updated_facts
+                return None
+
+            now = datetime.now(UTC)
+            fact.status = status or FactStatus.INVALIDATED
+            fact.invalidation_note = note
+            fact.invalidated_at = now
+            fact.superseded_by = superseded_by
+
+            if superseded_by is not None:
+                new_fact = updated_facts.get(superseded_by)
+                if new_fact is not None:
+                    fact.relations.append(
+                        Relation(target_id=superseded_by, relation_type="superseded_by")
+                    )
+                    new_fact.relations.append(
+                        Relation(target_id=fact_id, relation_type="supersedes")
+                    )
+
+            self._save_facts(updated_facts)
+            self._facts = updated_facts
+
+        return fact.model_copy(deep=True)
+
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
+        """Returns all invalidated (non-ACTIVE) facts."""
+        results = [
+            fact
+            for fact in self._facts.values()
+            if fact.status != FactStatus.ACTIVE
+            and (
+                since is None or (fact.invalidated_at is not None and fact.invalidated_at >= since)
+            )
+        ]
+        results.sort(
+            key=lambda f: f.invalidated_at if f.invalidated_at is not None else datetime.min,
+            reverse=True,
+        )
+        return [f.model_copy(deep=True) for f in results]
 
     def count(self) -> int:
         """Возвращает количество фактов."""

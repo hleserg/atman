@@ -142,9 +142,9 @@ def cmd_invalidate(backend: FactualMemory, args: list[str]) -> None:
         return
 
     reason = " ".join(args[1:])
-    success = backend.invalidate_fact(fact_id, reason)
+    result = backend.invalidate_fact(fact_id, note=reason)
 
-    if success:
+    if result:
         print_ok(f"Факт {fact_id} помечен как недействительный")
         print_info(f"Причина: {reason}")
     else:
@@ -153,16 +153,14 @@ def cmd_invalidate(backend: FactualMemory, args: list[str]) -> None:
 
 def cmd_list_invalidated(backend: FactualMemory, args: list[str]) -> None:
     """Выводит список недействительных фактов."""
-    limit = int(args[0]) if args and args[0].isdigit() else 10
-
-    facts = backend.list_invalidated(limit=limit)
+    facts = backend.list_invalidated()
 
     if facts:
         print_ok(f"Недействительных фактов: {len(facts)}")
         for fact in facts:
             print_fact(fact, prefix="  ")
-            if fact.invalidated_reason:
-                print_info(f"    Причина: {fact.invalidated_reason}")
+            if fact.invalidation_note:
+                print_info(f"    Причина: {fact.invalidation_note}")
     else:
         print_err("Недействительных фактов нет")
 

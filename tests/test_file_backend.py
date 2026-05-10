@@ -8,7 +8,7 @@ from tempfile import NamedTemporaryFile
 import pytest
 
 from atman.adapters.memory import FileBackend
-from atman.core.models import FactRecord
+from atman.core.models import FactRecord, FactStatus
 
 
 @pytest.fixture
@@ -287,3 +287,116 @@ def test_add_fact_duplicate_id_raises_with_clear_message(temp_file, backend):
 
     with pytest.raises(ValueError, match=str(fact.id)):
         backend.add_fact(fact)
+
+
+# --- E24.1: FactStatus, invalidation, search filtering ---
+
+
+def test_search_excludes_invalidated_by_default(backend):
+    """E24.1 AC-3: search() returns only ACTIVE facts when invalidated facts exist."""
+    active = backend.add_fact(FactRecord(content="Active fact", source="test"))
+    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
+    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+
+    results = backend.search()
+    assert len(results) == 1
+    assert results[0].id == active.id
+
+
+def test_search_includes_invalidated_when_requested(backend):
+    """E24.1 AC-4: search(include_invalidated=True) returns all facts including OUTDATED."""
+    backend.add_fact(FactRecord(content="Active fact", source="test"))
+    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
+    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+
+    results = backend.search(include_invalidated=True)
+    assert len(results) == 2
+
+
+def test_invalidate_fact_creates_bidirectional_relations(backend):
+    """E24.1 AC-5: invalidate_fact with superseded_by creates relations on both facts."""
+    old_fact = backend.add_fact(FactRecord(content="Old fact", source="test"))
+    new_fact = backend.add_fact(FactRecord(content="New fact", source="test"))
+
+    result = backend.invalidate_fact(
+        old_fact.id,
+        status=FactStatus.OUTDATED,
+        note="replaced",
+        superseded_by=new_fact.id,
+    )
+
+    assert result is not None
+    assert result.status == FactStatus.OUTDATED
+    assert result.superseded_by == new_fact.id
+    assert result.invalidation_note == "replaced"
+    assert result.invalidated_at is not None
+
+    retrieved_old = backend.get_fact(old_fact.id)
+    assert retrieved_old is not None
+    superseded_by_rels = [r for r in retrieved_old.relations if r.relation_type == "superseded_by"]
+    assert len(superseded_by_rels) == 1
+    assert superseded_by_rels[0].target_id == new_fact.id
+
+    retrieved_new = backend.get_fact(new_fact.id)
+    assert retrieved_new is not None
+    supersedes_rels = [r for r in retrieved_new.relations if r.relation_type == "supersedes"]
+    assert len(supersedes_rels) == 1
+    assert supersedes_rels[0].target_id == old_fact.id
+
+
+def test_invalidate_fact_nonexistent_returns_none(backend):
+    """E24.1: invalidate_fact returns None for unknown fact_id."""
+    from uuid import uuid4
+
+    result = backend.invalidate_fact(uuid4(), status=FactStatus.RETRACTED, note="n/a")
+    assert result is None
+
+
+def test_invalidate_fact_persistence(temp_file):
+    """E24.1: invalidation state persists across FileBackend instances."""
+    backend1 = FileBackend(temp_file)
+    fact = backend1.add_fact(FactRecord(content="Persistent invalidation", source="test"))
+    new_fact = backend1.add_fact(FactRecord(content="Replacement", source="test"))
+    backend1.invalidate_fact(
+        fact.id,
+        status=FactStatus.OUTDATED,
+        note="persisted",
+        superseded_by=new_fact.id,
+    )
+
+    backend2 = FileBackend(temp_file)
+    retrieved = backend2.get_fact(fact.id)
+    assert retrieved is not None
+    assert retrieved.status == FactStatus.OUTDATED
+    assert retrieved.invalidation_note == "persisted"
+    assert retrieved.superseded_by == new_fact.id
+    assert retrieved.invalidated_at is not None
+
+    superseded_by_rels = [r for r in retrieved.relations if r.relation_type == "superseded_by"]
+    assert len(superseded_by_rels) == 1
+
+
+def test_list_invalidated(backend):
+    """E24.1: list_invalidated returns non-ACTIVE facts sorted by invalidated_at desc."""
+    f1 = backend.add_fact(FactRecord(content="Fact 1", source="test"))
+    f2 = backend.add_fact(FactRecord(content="Fact 2", source="test"))
+    backend.add_fact(FactRecord(content="Active fact", source="test"))
+
+    backend.invalidate_fact(f1.id, status=FactStatus.OUTDATED, note="old")
+    backend.invalidate_fact(f2.id, status=FactStatus.RETRACTED, note="wrong")
+
+    invalidated = backend.list_invalidated()
+    assert len(invalidated) == 2
+    assert invalidated[0].id == f2.id
+    assert invalidated[1].id == f1.id
+
+
+def test_invalidate_lifecycle(backend):
+    """E24.1: full lifecycle — add, invalidate, search, list_invalidated."""
+    fact = backend.add_fact(FactRecord(content="Lifecycle test", source="test"))
+    assert len(backend.search(query="lifecycle")) == 1
+
+    backend.invalidate_fact(fact.id, status=FactStatus.OUTDATED, note="done")
+    assert len(backend.search(query="lifecycle")) == 0
+    assert len(backend.search(query="lifecycle", include_invalidated=True)) == 1
+    assert len(backend.list_invalidated()) == 1
