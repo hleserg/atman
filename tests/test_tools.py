@@ -191,6 +191,35 @@ class TestRecordKeyMoment:
         assert "Error" in result
         assert "emotional_intensity" in result
 
+    def test_record_key_moment_rejects_both_zero_emotional_coloring(self):
+        """Both valence=0 and intensity=0 must yield an LLM-actionable error.
+
+        ``SessionManager.record_key_moment`` raises ``ValueError`` for this
+        combination and tells callers to ``set incomplete_coloring=True``,
+        but the agent tool doesn't expose that flag — so it must intercept
+        the case itself and return guidance the LLM can actually act on.
+        """
+        agent_id = uuid4()
+        deps, _ = _create_deps_with_session(agent_id)
+
+        ctx = _make_run_context(deps)
+
+        result = record_key_moment(
+            ctx,
+            what_happened="Something neutral",
+            why_it_matters="Routine",
+            emotional_valence=0.0,
+            emotional_intensity=0.0,
+        )
+
+        assert result.startswith("Error: ")
+        assert "emotional_valence" in result
+        assert "emotional_intensity" in result
+        assert "0.0" in result
+        # Must NOT leak the SessionManager-internal flag name to the LLM,
+        # since the tool surface doesn't expose it.
+        assert "incomplete_coloring" not in result
+
     def test_record_key_moment_invalid_depth(self):
         """Test error with invalid depth value."""
         agent_id = uuid4()

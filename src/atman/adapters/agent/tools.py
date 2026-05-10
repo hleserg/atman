@@ -81,6 +81,18 @@ def record_key_moment(
     if not 0.0 <= emotional_intensity <= 1.0:
         return f"Error: emotional_intensity must be between 0.0 and 1.0, got {emotional_intensity}"
 
+    # Reject the both-zero case here with an LLM-actionable message. The
+    # underlying SessionManager raises ValueError("set incomplete_coloring=True")
+    # for this combination, but the agent has no way to set that flag through
+    # this tool, so we surface a more useful instruction instead.
+    if emotional_valence == 0.0 and emotional_intensity == 0.0:
+        return (
+            "Error: emotional_valence and emotional_intensity cannot both be 0.0. "
+            "Provide non-zero emotional coloring "
+            "(valence in [-1.0, 1.0], intensity in (0.0, 1.0]) "
+            "to record a key moment."
+        )
+
     try:
         key_moment = KeyMomentInput(
             what_happened=what_happened,

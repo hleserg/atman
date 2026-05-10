@@ -53,13 +53,19 @@ class AgentConfig(BaseModel):
     )
     truncate_narrative_recent: int = Field(
         default=2000,
-        gt=0,
-        description="Maximum characters for narrative recent_layer in context",
+        ge=4,
+        description=(
+            "Maximum characters for narrative recent_layer in context. "
+            "Must be >= 4 so the truncation suffix '...' fits within the budget."
+        ),
     )
     truncate_narrative_core: int = Field(
         default=1000,
-        gt=0,
-        description="Maximum characters for narrative core_layer in context",
+        ge=4,
+        description=(
+            "Maximum characters for narrative core_layer in context. "
+            "Must be >= 4 so the truncation suffix '...' fits within the budget."
+        ),
     )
     enable_experience_search: bool = Field(
         default=True,
