@@ -160,8 +160,7 @@ class EmotionalEcho:
             truncated = echo.what_happened[:80]
             ellipsis = "..." if len(echo.what_happened) > 80 else ""
             parts.append(
-                f"- {truncated}{ellipsis} "
-                f"({tone}, intensity: {echo.emotional_intensity:.1f})"
+                f"- {truncated}{ellipsis} ({tone}, intensity: {echo.emotional_intensity:.1f})"
             )
 
         return "\n".join(parts)
