@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from atman.core.models import FactRecord, Relation
+from atman.core.models import FactRecord, FactStatus, Relation
 
 
 def test_fact_record_creation():
@@ -130,3 +130,52 @@ def test_fact_record_with_unicode_and_emoji_content():
     fact = FactRecord(content=text, source="unicode-test")
     reloaded = FactRecord.model_validate_json(fact.model_dump_json())
     assert reloaded.content == text
+
+
+# --- E24.1: FactStatus and fact validity fields ---
+
+
+def test_fact_status_enum_values():
+    """E24.1 AC-1: FactStatus has expected string values."""
+    assert FactStatus.ACTIVE == "active"
+    assert FactStatus.OUTDATED == "outdated"
+    assert FactStatus.RETRACTED == "retracted"
+    assert FactStatus.UNCERTAIN == "uncertain"
+
+
+def test_fact_record_default_status_is_active():
+    """E24.1 AC-2: FactRecord defaults to ACTIVE status."""
+    fact = FactRecord.model_validate({"content": "x", "source": "y"})
+    assert fact.status == FactStatus.ACTIVE
+    assert fact.superseded_by is None
+    assert fact.invalidated_at is None
+    assert fact.invalidation_note == ""
+
+
+def test_fact_record_status_roundtrip():
+    """E24.1: FactStatus round-trips through JSON serialization."""
+    fact = FactRecord(
+        content="Old fact",
+        source="test",
+        status=FactStatus.OUTDATED,
+        invalidation_note="replaced",
+        superseded_by=uuid4(),
+    )
+    json_data = fact.model_dump_json()
+    restored = FactRecord.model_validate_json(json_data)
+    assert restored.status == FactStatus.OUTDATED
+    assert restored.invalidation_note == "replaced"
+    assert restored.superseded_by == fact.superseded_by
+
+
+def test_fact_record_invalidated_at_field():
+    """E24.1: invalidated_at field can be set and round-trips."""
+    now = datetime.now()
+    fact = FactRecord(
+        content="Fact",
+        source="test",
+        status=FactStatus.RETRACTED,
+        invalidated_at=now,
+    )
+    restored = FactRecord.model_validate_json(fact.model_dump_json())
+    assert restored.invalidated_at is not None

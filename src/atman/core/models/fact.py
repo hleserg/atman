@@ -6,10 +6,20 @@
 """
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class FactStatus(StrEnum):
+    """Validity status of a fact."""
+
+    ACTIVE = "active"
+    OUTDATED = "outdated"
+    RETRACTED = "retracted"
+    UNCERTAIN = "uncertain"
 
 
 class FactRecord(BaseModel):
@@ -27,6 +37,14 @@ class FactRecord(BaseModel):
     relations: list["Relation"] = Field(default_factory=list, description="Связи с другими фактами")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = Field(default_factory=dict, description="Дополнительные метаданные")
+    status: FactStatus = Field(default=FactStatus.ACTIVE, description="Validity status of the fact")
+    superseded_by: UUID | None = Field(
+        default=None, description="ID of the fact that supersedes this one"
+    )
+    invalidated_at: datetime | None = Field(
+        default=None, description="When this fact was invalidated"
+    )
+    invalidation_note: str = Field(default="", description="Reason or context for invalidation")
 
     @field_validator("content", "source")
     @classmethod

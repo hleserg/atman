@@ -5,9 +5,11 @@
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from uuid import UUID
 
 from atman.core.models import FactRecord
+from atman.core.models.fact import FactStatus
 
 
 class FactualMemory(ABC):
@@ -50,7 +52,12 @@ class FactualMemory(ABC):
 
     @abstractmethod
     def search(
-        self, query: str | None = None, tags: list[str] | None = None, limit: int = 10
+        self,
+        query: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 10,
+        *,
+        include_invalidated: bool = False,
     ) -> list[FactRecord]:
         """
         Ищет факты по текстовому запросу и/или тегам.
@@ -59,6 +66,7 @@ class FactualMemory(ABC):
             query: Текстовый запрос для поиска в content
             tags: Список тегов для фильтрации
             limit: Максимальное количество результатов
+            include_invalidated: Включить недействительные факты в результаты
 
         Returns:
             list[FactRecord]: Список найденных фактов
@@ -90,5 +98,45 @@ class FactualMemory(ABC):
 
         Returns:
             list[FactRecord]: Список фактов, отсортированных по created_at (новые первыми)
+        """
+        pass
+
+    @abstractmethod
+    def invalidate_fact(
+        self,
+        fact_id: UUID,
+        *,
+        status: FactStatus,
+        note: str,
+        superseded_by: UUID | None = None,
+    ) -> FactRecord | None:
+        """
+        Invalidates a fact by setting its status and metadata.
+
+        If ``superseded_by`` is provided, creates bidirectional relations:
+        - ``"superseded_by"`` on the invalidated fact pointing to the new fact
+        - ``"supersedes"`` on the new fact pointing to the invalidated fact
+
+        Args:
+            fact_id: ID of the fact to invalidate
+            status: New validity status (must not be ACTIVE)
+            note: Reason or context for invalidation
+            superseded_by: Optional ID of the replacement fact
+
+        Returns:
+            Updated FactRecord or None if fact_id not found
+        """
+        pass
+
+    @abstractmethod
+    def list_invalidated(self, since: datetime | None = None) -> list[FactRecord]:
+        """
+        Returns all invalidated (non-ACTIVE) facts.
+
+        Args:
+            since: If given, only return facts invalidated at or after this time
+
+        Returns:
+            list[FactRecord]: Invalidated facts sorted by invalidated_at desc
         """
         pass
