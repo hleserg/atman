@@ -26,19 +26,18 @@ class MockEmbeddingAdapter(EmbeddingPort):
 
     @override
     def embed(self, text: str) -> list[float]:
-        """Generate deterministic embedding from text hash."""
-        # Use hash to seed deterministic pseudo-random values
-        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        """Generate deterministic embedding from text hash.
 
-        # Generate embedding values from hash chunks
+        Uses SHAKE-128 (SHA-3 XOF) so each dimension gets 4 distinct bytes,
+        avoiding the wrap-around collisions that a fixed-length digest would cause.
+        """
+        digest_bytes = self._DIMENSION * 4
+        hash_bytes = hashlib.shake_128(text.encode("utf-8")).digest(digest_bytes)
+
         embedding: list[float] = []
         for i in range(self._DIMENSION):
-            # Take 4 hex chars at a time for each dimension
-            chunk = text_hash[(i * 4) % len(text_hash) : (i * 4 + 4) % len(text_hash)]
-            if len(chunk) < 4:
-                chunk = text_hash[:4]
-            # Convert to float in range [-1, 1]
-            value = (int(chunk, 16) % 20000) / 10000 - 1.0
+            chunk = hash_bytes[i * 4 : i * 4 + 4]
+            value = int.from_bytes(chunk, "big") / 0xFFFFFFFF * 2.0 - 1.0
             embedding.append(value)
 
         # Normalize to unit vector
@@ -60,7 +59,7 @@ class MockEmbeddingAdapter(EmbeddingPort):
         if len(vec1) != len(vec2):
             raise ValueError("Vectors must have same dimension")
 
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=True))
         norm1 = math.sqrt(sum(a * a for a in vec1))
         norm2 = math.sqrt(sum(b * b for b in vec2))
 

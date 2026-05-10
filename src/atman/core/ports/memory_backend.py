@@ -87,12 +87,17 @@ class FactualMemory(ABC):
 
         Args:
             fact_id: ID of the fact to invalidate
-            status: New status (defaults to INVALIDATED)
+            status: New non-ACTIVE status (defaults to INVALIDATED). Passing
+                FactStatus.ACTIVE is rejected with ValueError because
+                invalidation must move a fact out of the ACTIVE lifecycle.
             note: Reason for invalidation
             superseded_by: ID of fact that replaces this one
 
         Returns:
             FactRecord | None: Updated fact or None if not found
+
+        Raises:
+            ValueError: If status is FactStatus.ACTIVE
         """
         pass
 

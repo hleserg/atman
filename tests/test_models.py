@@ -138,9 +138,9 @@ def test_fact_record_with_unicode_and_emoji_content():
 def test_fact_status_enum_values():
     """E24.1 AC-1: FactStatus has expected string values."""
     assert FactStatus.ACTIVE == "active"
-    assert FactStatus.OUTDATED == "outdated"
-    assert FactStatus.RETRACTED == "retracted"
-    assert FactStatus.UNCERTAIN == "uncertain"
+    assert FactStatus.SUPERSEDED == "superseded"
+    assert FactStatus.INVALIDATED == "invalidated"
+    assert FactStatus.DISPUTED == "disputed"
 
 
 def test_fact_record_default_status_is_active():
@@ -157,13 +157,13 @@ def test_fact_record_status_roundtrip():
     fact = FactRecord(
         content="Old fact",
         source="test",
-        status=FactStatus.OUTDATED,
+        status=FactStatus.SUPERSEDED,
         invalidation_note="replaced",
         superseded_by=uuid4(),
     )
     json_data = fact.model_dump_json()
     restored = FactRecord.model_validate_json(json_data)
-    assert restored.status == FactStatus.OUTDATED
+    assert restored.status == FactStatus.SUPERSEDED
     assert restored.invalidation_note == "replaced"
     assert restored.superseded_by == fact.superseded_by
 
@@ -174,7 +174,7 @@ def test_fact_record_invalidated_at_field():
     fact = FactRecord(
         content="Fact",
         source="test",
-        status=FactStatus.RETRACTED,
+        status=FactStatus.INVALIDATED,
         invalidated_at=now,
     )
     restored = FactRecord.model_validate_json(fact.model_dump_json())

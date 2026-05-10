@@ -116,9 +116,7 @@ class PassiveMemoryInjector:
             related_facts = self._associative_expand(seen_ids)
             for fact in related_facts:
                 if fact.id not in seen_ids:
-                    surfaced.append(
-                        SurfacedMemory(item=fact, source="associative", score=0.5)
-                    )
+                    surfaced.append(SurfacedMemory(item=fact, source="associative", score=0.5))
                     seen_ids.add(fact.id)
 
                     if working_memory:
@@ -177,20 +175,17 @@ class PassiveMemoryInjector:
         """
         surfaced: list[SurfacedMemory] = []
 
-        # Query experiences via state_store
+        # Query recent experiences via the StateStore port.
         # Note: This is a simplified version - full implementation would
-        # need experience embeddings or text-based search
-        query = self.state_store.SessionExperienceQuery(
-            tags=[],  # Could extract from context
-            limit=limit * 2,
-        )
-        experiences = self.state_store.query_experiences(query)
+        # need experience embeddings or text-based search.
+        records = self.state_store.list_recent_experiences(limit=limit * 2)
 
         # Score by embedding similarity
         query_embedding = self.embedding.embed(context_text)
 
         scored: list[tuple[SessionExperience, float]] = []
-        for exp in experiences:
+        for record in records:
+            exp = record.experience
             if working_memory and working_memory.has(exp.id):
                 continue
 

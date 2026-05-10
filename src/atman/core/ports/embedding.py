@@ -5,7 +5,7 @@ Defines the contract for embedding providers that convert text to vectors.
 Used for semantic similarity search in passive memory surfacing.
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Protocol
 
 

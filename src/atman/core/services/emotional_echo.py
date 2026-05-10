@@ -6,11 +6,10 @@ sorted by recency × intensity for emotional continuity.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import override
+from datetime import UTC, datetime, timedelta
 
-from atman.core.models.experience import EmotionalDepth, SessionExperience
-from atman.core.ports.state_store import StateStore
+from atman.core.models.experience import EmotionalDepth
+from atman.core.ports.state_store import DateRangeQuery, StateStore
 
 
 @dataclass
@@ -76,18 +75,17 @@ class EmotionalEcho:
         if current_time is None:
             current_time = datetime.now(UTC)
 
-        # Query recent experiences
-        from atman.core.ports.state_store import SessionExperienceQuery
-
-        query = SessionExperienceQuery(
-            since=current_time.replace(hour=0, minute=0, second=0, microsecond=0),
-            limit=50,  # Get enough for filtering
+        # Query experiences within the lookback window via the StateStore port.
+        query = DateRangeQuery(
+            start_date=current_time - timedelta(days=self.lookback_days),
+            end_date=current_time,
         )
-        experiences = self.state_store.query_experiences(query)
+        records = self.state_store.search_experiences(query, limit=50)
 
         # Filter and score
         echoes: list[EchoItem] = []
-        for exp in experiences:
+        for record in records:
+            exp = record.experience
             if exclude_session_id and str(exp.session_id) == exclude_session_id:
                 continue
 
@@ -149,7 +147,13 @@ class EmotionalEcho:
 
         parts = ["Recent emotional context:"]
         for echo in echoes:
-            tone = "positive" if echo.emotional_valence > 0.2 else "negative" if echo.emotional_valence < -0.2 else "neutral"
+            tone = (
+                "positive"
+                if echo.emotional_valence > 0.2
+                else "negative"
+                if echo.emotional_valence < -0.2
+                else "neutral"
+            )
             parts.append(
                 f"- {echo.what_happened[:80]}... "
                 f"({tone}, intensity: {echo.emotional_intensity:.1f})"

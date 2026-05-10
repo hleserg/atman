@@ -295,8 +295,8 @@ def test_add_fact_duplicate_id_raises_with_clear_message(temp_file, backend):
 def test_search_excludes_invalidated_by_default(backend):
     """E24.1 AC-3: search() returns only ACTIVE facts when invalidated facts exist."""
     active = backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search()
     assert len(results) == 1
@@ -304,10 +304,10 @@ def test_search_excludes_invalidated_by_default(backend):
 
 
 def test_search_includes_invalidated_when_requested(backend):
-    """E24.1 AC-4: search(include_invalidated=True) returns all facts including OUTDATED."""
+    """E24.1 AC-4: search(include_invalidated=True) returns all facts including SUPERSEDED."""
     backend.add_fact(FactRecord(content="Active fact", source="test"))
-    outdated = backend.add_fact(FactRecord(content="Outdated fact", source="test"))
-    backend.invalidate_fact(outdated.id, status=FactStatus.OUTDATED, note="old")
+    superseded = backend.add_fact(FactRecord(content="Superseded fact", source="test"))
+    backend.invalidate_fact(superseded.id, status=FactStatus.SUPERSEDED, note="old")
 
     results = backend.search(include_invalidated=True)
     assert len(results) == 2
@@ -320,13 +320,13 @@ def test_invalidate_fact_creates_bidirectional_relations(backend):
 
     result = backend.invalidate_fact(
         old_fact.id,
-        status=FactStatus.OUTDATED,
+        status=FactStatus.SUPERSEDED,
         note="replaced",
         superseded_by=new_fact.id,
     )
 
     assert result is not None
-    assert result.status == FactStatus.OUTDATED
+    assert result.status == FactStatus.SUPERSEDED
     assert result.superseded_by == new_fact.id
     assert result.invalidation_note == "replaced"
     assert result.invalidated_at is not None
@@ -348,7 +348,7 @@ def test_invalidate_fact_nonexistent_returns_none(backend):
     """E24.1: invalidate_fact returns None for unknown fact_id."""
     from uuid import uuid4
 
-    result = backend.invalidate_fact(uuid4(), status=FactStatus.RETRACTED, note="n/a")
+    result = backend.invalidate_fact(uuid4(), status=FactStatus.INVALIDATED, note="n/a")
     assert result is None
 
 
@@ -359,7 +359,7 @@ def test_invalidate_fact_persistence(temp_file):
     new_fact = backend1.add_fact(FactRecord(content="Replacement", source="test"))
     backend1.invalidate_fact(
         fact.id,
-        status=FactStatus.OUTDATED,
+        status=FactStatus.SUPERSEDED,
         note="persisted",
         superseded_by=new_fact.id,
     )
@@ -367,7 +367,7 @@ def test_invalidate_fact_persistence(temp_file):
     backend2 = FileBackend(temp_file)
     retrieved = backend2.get_fact(fact.id)
     assert retrieved is not None
-    assert retrieved.status == FactStatus.OUTDATED
+    assert retrieved.status == FactStatus.SUPERSEDED
     assert retrieved.invalidation_note == "persisted"
     assert retrieved.superseded_by == new_fact.id
     assert retrieved.invalidated_at is not None
@@ -382,8 +382,8 @@ def test_list_invalidated(backend):
     f2 = backend.add_fact(FactRecord(content="Fact 2", source="test"))
     backend.add_fact(FactRecord(content="Active fact", source="test"))
 
-    backend.invalidate_fact(f1.id, status=FactStatus.OUTDATED, note="old")
-    backend.invalidate_fact(f2.id, status=FactStatus.RETRACTED, note="wrong")
+    backend.invalidate_fact(f1.id, status=FactStatus.SUPERSEDED, note="old")
+    backend.invalidate_fact(f2.id, status=FactStatus.INVALIDATED, note="wrong")
 
     invalidated = backend.list_invalidated()
     assert len(invalidated) == 2
@@ -396,7 +396,7 @@ def test_invalidate_lifecycle(backend):
     fact = backend.add_fact(FactRecord(content="Lifecycle test", source="test"))
     assert len(backend.search(query="lifecycle")) == 1
 
-    backend.invalidate_fact(fact.id, status=FactStatus.OUTDATED, note="done")
+    backend.invalidate_fact(fact.id, status=FactStatus.SUPERSEDED, note="done")
     assert len(backend.search(query="lifecycle")) == 0
     assert len(backend.search(query="lifecycle", include_invalidated=True)) == 1
     assert len(backend.list_invalidated()) == 1

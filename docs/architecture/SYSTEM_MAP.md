@@ -36,6 +36,9 @@ All paths are absolute relative to the repository root.
 | `core/ports/clock.py` | Domain clock for reproducibility | `ClockPort` (Protocol) |
 | `core/ports/state_store.py` | Storage for experience/identity/narrative | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
 | `core/ports/reflection.py` | Reflection Engine dependencies; `ReflectionModel` returns structured DTOs (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
+| `core/ports/embedding.py` (E24.6) | Text embedding generation for semantic similarity | `EmbeddingPort` (Protocol) |
+| `core/ports/memory_middleware.py` (E24) | Memory surfacing context wrapping | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
+| `core/ports/memory_usage_log.py` (E24.10) | Audit log for surfaced/used memory items | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
 
 ### 1.3. Services (`src/atman/core/services/`)
 
@@ -48,6 +51,10 @@ All paths are absolute relative to the repository root.
 | `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate (thread-safe registry, optional `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
+| `core/services/conflict_detector.py` (E24.5) | Detect contradictions between active facts; produces small cognitive tension signals | `ConflictDetector`, `FactConflict` |
+| `core/services/emotional_echo.py` (E24.7) | Build historical emotional context from recent experiences (recency × intensity) | `EmotionalEcho`, `EchoItem` |
+| `core/services/passive_memory_injector.py` (E24.6, E24.8) | Surface relevant facts/experiences via embedding similarity + 1-hop graph expansion | `PassiveMemoryInjector`, `SurfacedMemory` |
+| `core/services/session_working_memory.py` (E24.9) | In-session LRU cache of surfaced facts/experiences to avoid duplicate surfacing | `SessionWorkingMemory`, `CachedItem` |
 
 ### 1.4. Core utilities
 
@@ -65,6 +72,10 @@ All paths are absolute relative to the repository root.
 |------|-----------------|----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | no persistence |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | deterministic SHA-256-seeded embeddings; no external deps; for tests/CI |
+| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | local BM25 + lexical similarity; corpus learned from `embed`/`embed_batch` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama HTTP `/api/embeddings`; configurable host/model/timeout |
+| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory ring buffer with filtering by item/usage_type/time |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | in-memory |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL for experience |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON files (experience + identity + narrative + eigenstate) |

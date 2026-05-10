@@ -232,6 +232,8 @@ class FileBackend(FactualMemory):
         superseded_by: UUID | None = None,
     ) -> FactRecord | None:
         """Invalidates a fact by setting its status and metadata."""
+        if status == FactStatus.ACTIVE:
+            raise ValueError("invalidate_fact rejects FactStatus.ACTIVE")
         with self._storage_lock():
             updated_facts = self._read_facts_from_disk()
             fact = updated_facts.get(fact_id)

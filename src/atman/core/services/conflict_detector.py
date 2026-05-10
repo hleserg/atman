@@ -7,6 +7,7 @@ a cognitive tension signal (small, not overwhelming).
 
 import re
 from dataclasses import dataclass
+from typing import ClassVar
 from uuid import UUID
 
 from atman.core.models.fact import FactRecord, FactStatus
@@ -38,7 +39,7 @@ class ConflictDetector:
     """
 
     # Simple contradiction patterns (can be expanded)
-    NEGATION_PATTERNS = [
+    NEGATION_PATTERNS: ClassVar[list[str]] = [
         r"\bnot\b",
         r"\bno longer\b",
         r"\bnever\b",
@@ -117,7 +118,8 @@ class ConflictDetector:
         for i, fact1 in enumerate(active_facts):
             for fact2 in active_facts[i + 1 :]:
                 # Avoid duplicate checks (order doesn't matter)
-                pair = tuple(sorted([fact1.id, fact2.id]))  # type: ignore
+                a, b = sorted([fact1.id, fact2.id])
+                pair: tuple[UUID, UUID] = (a, b)
                 if pair in checked:
                     continue
                 checked.add(pair)
@@ -128,9 +130,7 @@ class ConflictDetector:
 
         return conflicts
 
-    def _detect_conflict(
-        self, fact1: FactRecord, fact2: FactRecord
-    ) -> FactConflict | None:
+    def _detect_conflict(self, fact1: FactRecord, fact2: FactRecord) -> FactConflict | None:
         """
         Detect if two facts contradict each other.
 
