@@ -13,5 +13,13 @@ to a real LLM via Pydantic AI. It provides:
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.tools import log_experience, record_key_moment
 
-__all__ = ["AgentConfig", "AtmanDeps", "ModelConfig", "build_instructions"]
+__all__ = [
+    "AgentConfig",
+    "AtmanDeps",
+    "ModelConfig",
+    "build_instructions",
+    "log_experience",
+    "record_key_moment",
+]

@@ -8,31 +8,30 @@ Covers:
 - Selective rendering of identity components
 """
 
-import pytest
+from datetime import UTC, datetime
 from uuid import uuid4
-from datetime import datetime, UTC
 
 from atman.adapters.agent import build_instructions
 from atman.adapters.agent.deps import AtmanDeps
-from atman.adapters.storage import InMemoryStateStore, InMemoryExperienceStore
-from atman.adapters.storage.in_memory_reflection_store import InMemoryReflectionEventStore
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
-from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
-from atman.core.services import (
-    SessionManager,
-    IdentityService,
-    ExperienceService,
-    MicroReflectionService,
-    NarrativeRevisionService,
-)
+from atman.adapters.storage import InMemoryExperienceStore, InMemoryStateStore
+from atman.adapters.storage.in_memory_reflection_store import InMemoryReflectionEventStore
 from atman.core.models import (
-    Identity,
     CoreValue,
-    Principle,
     Goal,
+    Identity,
+    LayerType,
     NarrativeDocument,
     NarrativeLayer,
-    LayerType,
+    Principle,
+)
+from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.services import (
+    ExperienceService,
+    IdentityService,
+    MicroReflectionService,
+    NarrativeRevisionService,
+    SessionManager,
 )
 
 
