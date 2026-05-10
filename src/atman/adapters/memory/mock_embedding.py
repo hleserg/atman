@@ -5,7 +5,6 @@ Produces consistent, reproducible embeddings based on text content hash.
 No external dependencies required.
 """
 
-import hashlib
 import math
 from typing import override
 
@@ -20,25 +19,29 @@ class MockEmbeddingAdapter(EmbeddingPort):
     - Same text always produces same embedding
     - Different texts produce different embeddings
     - No external services required
+
+    Uses 768-dimensional vectors to match qwen3-embedding:1.5b dimensions.
     """
 
-    _DIMENSION = 128
+    _DIMENSION = 768
+    _MODEL_NAME = "mock-embedding:768d"
 
     @override
     def embed(self, text: str) -> list[float]:
-        """Generate deterministic embedding from text hash."""
-        # Use hash to seed deterministic pseudo-random values
-        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        """Generate deterministic embedding from text hash.
 
-        # Generate embedding values from hash chunks
+        Uses hash(text) % 2^31 as seed for deterministic pseudo-random generation.
+        """
+        # Use hash modulo 2^31 as seed (per E25 spec)
+        seed = hash(text) % (2**31)
+
+        # Generate embedding values using deterministic pseudo-random sequence
         embedding: list[float] = []
         for i in range(self._DIMENSION):
-            # Take 4 hex chars at a time for each dimension
-            chunk = text_hash[(i * 4) % len(text_hash) : (i * 4 + 4) % len(text_hash)]
-            if len(chunk) < 4:
-                chunk = text_hash[:4]
+            # Linear congruential generator for deterministic sequence
+            seed = (seed * 1103515245 + 12345) % (2**31)
             # Convert to float in range [-1, 1]
-            value = (int(chunk, 16) % 20000) / 10000 - 1.0
+            value = (seed / (2**30)) - 1.0
             embedding.append(value)
 
         # Normalize to unit vector
@@ -53,6 +56,11 @@ class MockEmbeddingAdapter(EmbeddingPort):
     def dimension(self) -> int:
         """Return embedding dimension."""
         return self._DIMENSION
+
+    @override
+    def model_name(self) -> str:
+        """Return the mock model name."""
+        return self._MODEL_NAME
 
     @override
     def similarity(self, vec1: list[float], vec2: list[float]) -> float:

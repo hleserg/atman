@@ -39,6 +39,9 @@
 | `core/ports/clock.py` | Доменные часы для воспроизводимости | `ClockPort` (Protocol) |
 | `core/ports/state_store.py` | Хранилище опыта/identity/нарратива | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
 | `core/ports/reflection.py` | Зависимости Reflection Engine; `ReflectionModel` возвращает DTO (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
+| `core/ports/embedding.py` | Интерфейс эмбеддингов для семантического поиска | `EmbeddingPort` (Protocol) |
+| `core/ports/memory_middleware.py` | Точка интеграции middleware памяти для live agent | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
+| `core/ports/memory_usage_log.py` | Трекинг использования памяти для рефлексии | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
 
 ### 1.3. Сервисы (`src/atman/core/services/`)
 
@@ -51,6 +54,10 @@
 | `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
+| `core/services/session_working_memory.py` | In-session кэш для предотвращения повторных поисков | `SessionWorkingMemory`, `CachedItem` |
+| `core/services/passive_memory_injector.py` | Автоматический surfacing через embedding similarity + ассоциативный expand | `PassiveMemoryInjector`, `SurfacedMemory` |
+| `core/services/emotional_echo.py` | Historical emotional context builder | `EmotionalEcho`, `EchoItem` |
+| `core/services/conflict_detector.py` | Обнаружение противоречий между активными фактами | `ConflictDetector`, `FactConflict` |
 
 ### 1.4. Утилиты ядра
 
@@ -68,6 +75,10 @@
 |------|----------------|-----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные хеш-эмбеддинги для CI |
+| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги (qwen3-embedding:1.5b) |
+| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory трекинг использования |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) |

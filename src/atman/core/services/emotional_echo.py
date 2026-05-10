@@ -76,14 +76,17 @@ class EmotionalEcho:
         if current_time is None:
             current_time = datetime.now(UTC)
 
-        # Query recent experiences
-        from atman.core.ports.state_store import SessionExperienceQuery
+        # Query recent experiences using lookback window
+        from datetime import timedelta
 
-        query = SessionExperienceQuery(
-            since=current_time.replace(hour=0, minute=0, second=0, microsecond=0),
-            limit=50,  # Get enough for filtering
-        )
-        experiences = self.state_store.query_experiences(query)
+        since = current_time - timedelta(days=self.lookback_days)
+
+        # Use list_recent_experiences to get recent experiences, then filter by date
+        experience_records = self.state_store.list_recent_experiences(limit=100)
+        experiences = [
+            exp.experience for exp in experience_records
+            if exp.experience.timestamp >= since
+        ]
 
         # Filter and score
         echoes: list[EchoItem] = []

@@ -5,9 +5,8 @@ Defines the contract for embedding providers that convert text to vectors.
 Used for semantic similarity search in passive memory surfacing.
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Protocol
-
 
 class EmbeddingPort(Protocol):
     """Interface for embedding generation services."""
@@ -49,17 +48,11 @@ class EmbeddingPort(Protocol):
         pass
 
     @abstractmethod
-    def similarity(self, vec1: list[float], vec2: list[float]) -> float:
+    def model_name(self) -> str:
         """
-        Calculate similarity between two embedding vectors.
-
-        Default is cosine similarity, but implementations may vary.
-
-        Args:
-            vec1: First embedding vector
-            vec2: Second embedding vector
+        Return the name of the embedding model used.
 
         Returns:
-            float: Similarity score (typically -1.0 to 1.0)
+            str: The model identifier (e.g., "qwen3-embedding:1.5b")
         """
         pass

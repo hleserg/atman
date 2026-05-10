@@ -36,6 +36,9 @@ All paths are absolute relative to the repository root.
 | `core/ports/clock.py` | Domain clock for reproducibility | `ClockPort` (Protocol) |
 | `core/ports/state_store.py` | Storage for experience/identity/narrative | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
 | `core/ports/reflection.py` | Reflection Engine dependencies; `ReflectionModel` returns structured DTOs (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
+| `core/ports/embedding.py` | Text embedding interface for semantic search | `EmbeddingPort` (ABC) — `embed()`, `embed_batch()`, `dimension()`, `model_name()` |
+| `core/ports/memory_middleware.py` | Integration point for live agent memory middleware | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
+| `core/ports/memory_usage_log.py` | Memory usage tracking for reflection | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
 
 ### 1.3. Services (`src/atman/core/services/`)
 
@@ -48,16 +51,22 @@ All paths are absolute relative to the repository root.
 | `core/services/session_manager.py` | Session runtime: start, record events/key moments, finish with eigenstate (thread-safe registry, optional `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
+| `core/services/session_working_memory.py` | In-session cache preventing repeated searches | `SessionWorkingMemory`, `CachedItem` |
+| `core/services/passive_memory_injector.py` | Automatic surfacing via embedding similarity + associative expand | `PassiveMemoryInjector`, `SurfacedMemory` |
+| `core/services/emotional_echo.py` | Historical emotional context builder | `EmotionalEcho`, `EchoItem` |
+| `core/services/conflict_detector.py` | Detects contradictions between active facts | `ConflictDetector`, `FactConflict` |
 
 ### 1.4. Core utilities
 
 | File | Purpose |
 |------|---------|
+| `config.py` | Pydantic Settings: `EmbeddingSettings` with `EMBEDDING_BACKEND`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `EMBEDDING_OLLAMA_HOST`, `EMBEDDING_TIMEOUT` |
 | `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Narrative commit audit hooks |
 | `core/reflection_event_audit.py` | Reflection event persistence observers |
 | `core/reflection_run_keys.py` | Deterministic reflection run keys |
+| `eval/migrations/versions/0001_add_embed_model_column.sql` | SQL migration: adds `embed_model TEXT` column to `facts`, `key_moments`, `identity_snapshots` for model traceability (E25.4) |
 
 ### 1.5. Adapters (`src/atman/adapters/`)
 
@@ -65,6 +74,10 @@ All paths are absolute relative to the repository root.
 |------|-----------------|----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | no persistence |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | deterministic 768-dim embeddings; seed=`hash(text) % 2^31`; `model_name()` returns `"mock-embedding:768d"` |
+| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | sparse lexical BM25 embeddings |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API embeddings; default `qwen3-embedding:1.5b` (768-dim); `model_name()` returns configured model; `health_check()` available |
+| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory usage tracking |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | in-memory |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL for experience |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON files (experience + identity + narrative + eigenstate) |
@@ -405,7 +418,8 @@ No explicit `TODO`/`FIXME`/`HACK` markers in source. Known limitations are recor
 
 ### Tests
 
-- 24 test modules in `tests/` + 1 integration module.
+- 26 test modules in `tests/` + 1 integration module.
+- Embedding tests: `tests/memory/test_embedding_mock.py` (≥25 tests), `tests/memory/test_embedding_ollama.py` (≥20 tests) — E25 coverage.
 - Integration tests: `tests/integration/test_full_lifecycle.py` — full lifecycle from session start to reflection with FileStateStore.
 - Target ≥90% coverage.
 - CLI excluded from coverage (see `pyproject.toml`).

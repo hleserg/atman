@@ -178,19 +178,18 @@ class PassiveMemoryInjector:
         surfaced: list[SurfacedMemory] = []
 
         # Query experiences via state_store
-        # Note: This is a simplified version - full implementation would
-        # need experience embeddings or text-based search
-        query = self.state_store.SessionExperienceQuery(
-            tags=[],  # Could extract from context
-            limit=limit * 2,
-        )
-        experiences = self.state_store.query_experiences(query)
+        # Get recent experiences and filter by embedding similarity
+        from atman.core.ports.state_store import ExperienceQuery
+
+        query = ExperienceQuery(limit=limit * 2)
+        experience_records = self.state_store.search_experiences(query)
 
         # Score by embedding similarity
         query_embedding = self.embedding.embed(context_text)
 
         scored: list[tuple[SessionExperience, float]] = []
-        for exp in experiences:
+        for record in experience_records:
+            exp = record.experience
             if working_memory and working_memory.has(exp.id):
                 continue
 
