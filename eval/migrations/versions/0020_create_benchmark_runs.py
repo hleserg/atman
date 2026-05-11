@@ -68,11 +68,7 @@ CREATE TABLE IF NOT EXISTS eval.benchmark_runs (
     passed_items INTEGER DEFAULT 0,
     failed_items INTEGER DEFAULT 0,
     metadata JSONB DEFAULT '{}'::jsonb,
-    PRIMARY KEY (id, started_at),
-    CONSTRAINT fk_benchmark_runs_identity_snapshot
-        FOREIGN KEY (identity_snapshot_id)
-        REFERENCES public.identity_snapshots(id)
-        ON DELETE SET NULL
+    PRIMARY KEY (id, started_at)
 ) PARTITION BY RANGE (started_at);
 
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_benchmark_key
@@ -108,6 +104,18 @@ GRANT SELECT, INSERT, UPDATE ON eval.benchmark_runs TO atman_eval_writer;
 GRANT SELECT ON eval.benchmark_runs TO atman_eval_reader;
 """
 
+_ADD_FK_SQL = """
+ALTER TABLE eval.benchmark_runs
+    ADD CONSTRAINT fk_benchmark_runs_identity_snapshot
+        FOREIGN KEY (identity_snapshot_id)
+        REFERENCES public.identity_snapshots(id)
+        ON DELETE SET NULL;
+"""
+
+_DROP_TABLE_SQL = """
+DROP TABLE IF EXISTS eval.benchmark_runs CASCADE;
+"""
+
 
 def _create_partition_sql(suffix: str, start_date: str, end_date: str) -> str:
     """Generate SQL to create one monthly partition."""
@@ -123,23 +131,7 @@ _DROP_TABLE_SQL = "DROP TABLE IF EXISTS eval.benchmark_runs CASCADE;"
 
 def upgrade() -> None:
     """Create benchmark_runs partitioned table and initial partitions."""
-    # Verify public.identity_snapshots exists
-    bind = op.get_bind()
-    result = bind.execute(
-        "SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema='public' AND table_name='identity_snapshots';"
-    ).fetchone()
-    if not result:
-        import warnings
-
-        warnings.warn(
-            "Table public.identity_snapshots does not exist. "
-            "Foreign key constraint will be deferred. Run main migrations first.",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    # Create the partitioned parent table
+    # Create the partitioned parent table (without FK constraint)
     op.execute(_CREATE_TABLE_SQL)
 
     # Create partitions for current and next month using bounds computation
@@ -163,6 +155,15 @@ def upgrade() -> None:
         CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
         PARTITION OF eval.benchmark_runs DEFAULT;
     """)
+
+    # Add FK constraint to public.identity_snapshots if the table exists
+    bind = op.get_bind()
+    result = bind.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='identity_snapshots';"
+    ).fetchone()
+    if result:
+        op.execute(_ADD_FK_SQL)
 
 
 def downgrade() -> None:

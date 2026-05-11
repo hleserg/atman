@@ -20,11 +20,7 @@ CREATE TABLE IF NOT EXISTS eval.benchmark_runs (
     passed_items INTEGER DEFAULT 0,
     failed_items INTEGER DEFAULT 0,
     metadata JSONB DEFAULT '{}'::jsonb,
-    PRIMARY KEY (id, started_at),
-    CONSTRAINT fk_benchmark_runs_identity_snapshot
-        FOREIGN KEY (identity_snapshot_id)
-        REFERENCES public.identity_snapshots(id)
-        ON DELETE SET NULL
+    PRIMARY KEY (id, started_at)
 ) PARTITION BY RANGE (started_at);
 
 -- ── Indexes ─────────────────────────────────────────────────────────────────
@@ -36,9 +32,6 @@ CREATE INDEX IF NOT EXISTS idx_benchmark_runs_identity_snapshot
     ON eval.benchmark_runs (identity_snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_status
     ON eval.benchmark_runs (status);
-
--- Note: Foreign key constraint to public.identity_snapshots requires
--- that the main app schema has identity_snapshots table with stable IDs.
 
 -- ── Comments ────────────────────────────────────────────────────────────────
 COMMENT ON TABLE eval.benchmark_runs IS
@@ -78,3 +71,14 @@ GRANT SELECT ON eval.benchmark_runs TO atman_eval_reader;
 -- ── DEFAULT partition (safety net) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default
     PARTITION OF eval.benchmark_runs DEFAULT;
+
+-- ── Foreign key constraint (conditionally added) ─────────────────────────────
+-- The Python migration adds this constraint only if public.identity_snapshots exists.
+-- If running this SQL manually, ensure the main schema migration (identity_snapshots)
+-- has been applied first, or skip this section to avoid constraint violation.
+--
+-- ALTER TABLE eval.benchmark_runs
+--     ADD CONSTRAINT fk_benchmark_runs_identity_snapshot
+--         FOREIGN KEY (identity_snapshot_id)
+--         REFERENCES public.identity_snapshots(id)
+--         ON DELETE SET NULL;
