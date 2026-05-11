@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = EmbeddingSettings()
     memory: MemorySettings = MemorySettings()
 
+    # When non-empty, overrides memory.backend at runtime.
+    # Intended for tests and CI environments where the default postgres backend
+    # is unavailable. Set via OVERRIDE_MEMORY_BACKEND env var.
+    override_memory_backend: str = ""
+
 
 # Global settings instance
 settings = Settings()
@@ -64,7 +69,7 @@ def build_memory_backend():
     """Instantiate the factual memory backend selected in config.memory.backend."""
     from atman.core.ports import FactualMemory  # noqa: F401 (type hint target)
 
-    backend = settings.memory.backend
+    backend = settings.override_memory_backend or settings.memory.backend
 
     if backend == "postgres":
         from atman.adapters.memory.postgres_backend import PostgresFactualMemory

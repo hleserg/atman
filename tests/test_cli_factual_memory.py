@@ -21,7 +21,12 @@ _UUID_RE = re.compile(
 
 
 def _run_cli(stdin: str, home: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "HOME": str(home)}
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        # Force the file backend so tests don't require a running PostgreSQL server.
+        "OVERRIDE_MEMORY_BACKEND": "file",
+    }
     return subprocess.run(
         [sys.executable, "-m", "atman.cli"],
         input=stdin,

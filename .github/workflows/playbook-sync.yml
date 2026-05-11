@@ -8,9 +8,17 @@ on:
       - 'docs/**'
       - 'scripts/extract_playbook.py'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: playbook-sync-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout atman
         uses: actions/checkout@v6
