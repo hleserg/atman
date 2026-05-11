@@ -4,6 +4,9 @@ Atman configuration management via Pydantic Settings.
 Centralizes all environment variable configuration with type validation.
 """
 
+import os
+from pathlib import Path
+
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,8 +31,8 @@ class EmbeddingSettings(BaseSettings):
 class MemorySettings(BaseModel):
     """Factual memory backend selection.
 
-    Defaults to "file" for safety in tests and local development.
-    Production deployments should set ATMAN_MEMORY_BACKEND=postgres in environment.
+    Default is ``file`` for CLI, tests, and local development. Production can set
+    ``ATMAN_MEMORY_BACKEND=postgres`` (see :func:`build_memory_backend`).
 
     backend options:
       "postgres"  — PostgresFactualMemory (DATABASE_URL from env)
@@ -65,10 +68,9 @@ def build_memory_backend():
 
     Can be overridden via ATMAN_MEMORY_BACKEND environment variable.
     """
-    import os
-
     from atman.core.ports import FactualMemory  # noqa: F401 (type hint target)
 
+    # Subprocess-friendly override for tests and local tooling (see tests/test_cli_factual_memory.py).
     backend = os.environ.get("ATMAN_MEMORY_BACKEND", settings.memory.backend)
 
     if backend == "postgres":
@@ -79,8 +81,6 @@ def build_memory_backend():
         return mem
 
     if backend == "file":
-        from pathlib import Path
-
         from atman.adapters.memory import FileBackend
 
         return FileBackend(Path(settings.memory.file_path).expanduser())

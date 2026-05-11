@@ -84,6 +84,7 @@ def test_gen_secrets_writes_restricted_env_file(tmp_path: Path) -> None:
     assert "localhost:5432" in db_url
     assert "/atman" in db_url
     assert "postgresql://" in db_url or db_url.startswith("***")  # GitHub masks secrets
+    assert "atman_app" in db_url or "***" in db_url
     assert values["QDRANT_URL"] == "http://localhost:6333"
     assert len(values["POSTGRES_PASSWORD"]) == 32
     assert len(values["QDRANT_API_KEY"]) == 32

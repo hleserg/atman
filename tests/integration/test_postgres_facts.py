@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -72,15 +73,16 @@ def pg_store():
     admin_url = _test_admin_db_url()
     if not app_url:
         pytest.skip("No test DB URL (set TEST_DATABASE_URL or DATABASE_URL in .env)")
+    assert admin_url is not None, "DATABASE_URL must be set for integration tests"
 
     # Apply migration as superuser (CREATE TABLE, CREATE INDEX, etc.)
     migration_sql = (
         Path(__file__).parents[2] / "migrations" / "versions" / "0002_create_facts_table.sql"
     ).read_text()
 
-    assert admin_url is not None, "DATABASE_URL must be set for integration tests"
     with psycopg.connect(admin_url) as conn:
-        conn.execute(migration_sql)  # type: ignore[call-overload]
+        with conn.cursor() as cur:
+            cur.execute(cast(Any, migration_sql))
         conn.commit()
 
     from atman.adapters.memory.postgres_backend import PostgresFactualMemory
@@ -96,10 +98,11 @@ def pg_store():
 def pg_admin_conn():
     """Module-scoped superuser connection for DDL operations (TRUNCATE)."""
     import psycopg
+    from psycopg.rows import dict_row
 
     admin_url = _test_admin_db_url()
     assert admin_url is not None, "DATABASE_URL must be set for integration tests"
-    conn = psycopg.connect(admin_url, row_factory=psycopg.rows.dict_row)  # type: ignore[attr-defined]
+    conn = psycopg.connect(admin_url, row_factory=cast(Any, dict_row))
     yield conn
     conn.close()
 
@@ -411,11 +414,13 @@ def test_rls_isolation(pg_store):
     os.environ["ATMAN_CURRENT_AGENT"] = agent_b
     pg_store.add_fact(FactRecord(agent_id=UUID(agent_b), content="Agent B data", source="s"))
 
+    from psycopg.rows import dict_row
+
     url = _test_db_url()
     assert url is not None, "DATABASE_URL must be set for integration tests"
     # autocommit=True so that SET ROLE is session-level (not rolled back with the transaction)
     # and set_config(..., false) persists across statements.
-    with psycopg.connect(url, row_factory=psycopg.rows.dict_row, autocommit=True) as rls_conn:  # type: ignore[attr-defined]
+    with psycopg.connect(url, row_factory=cast(Any, dict_row), autocommit=True) as rls_conn:
         try:
             rls_conn.execute("SET ROLE atman_app")
         except psycopg.errors.UndefinedObject:
@@ -425,7 +430,7 @@ def test_rls_isolation(pg_store):
         rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_b])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
-            contents_b = [r["content"] for r in cur.fetchall()]  # type: ignore[call-overload]
+            contents_b = [cast(dict[str, Any], r)["content"] for r in cur.fetchall()]
 
         assert "Agent B data" in contents_b, "Agent B cannot see its own fact"
         assert "Agent A secret" not in contents_b, "RLS leak: Agent B sees Agent A's fact"
@@ -434,7 +439,7 @@ def test_rls_isolation(pg_store):
         rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_a])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
-            contents_a = [r["content"] for r in cur.fetchall()]  # type: ignore[call-overload]
+            contents_a = [cast(dict[str, Any], r)["content"] for r in cur.fetchall()]
 
         assert "Agent A secret" in contents_a, "Agent A cannot see its own fact"
         assert "Agent B data" not in contents_a, "RLS leak: Agent A sees Agent B's fact"
