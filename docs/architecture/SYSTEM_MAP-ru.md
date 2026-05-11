@@ -76,7 +76,7 @@
 
 | Файл | Назначение | Публичный API |
 |------|------------|---------------|
-| `affect/models.py` | DTO метрик, результата детектора, self-report агента | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport`, `TriggerReason` |
+| `affect/models.py` | DTO метрик, результата детектора, self-report агента | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport` (опц. `emotional_depth` → глубина `KeyMoment.how_i_felt`), `TriggerReason` |
 | `affect/metrics.py` | Восемь поведенческих метрик + эвристика искренности | функции плотностей и `nrc_emotion_score`, `min_length_gate`, `sincerity_score`, … |
 | `affect/baseline.py` | Скользящие z-score + JSONL `{workspace}/affect_baseline.jsonl` | `RollingBaseline` |
 | `affect/detector.py` | Определение языка, триггеры (аномалия / random sample / расхождение thinking↔сообщение / self-report), запись `KeyMoment` через callback | `AffectDetector`, `AffectDetectorConfig`; CLI `python -m atman.affect.detector --demo` |

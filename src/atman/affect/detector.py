@@ -254,10 +254,11 @@ class AffectDetector:
             obj_v = max(-1.0, min(1.0, math.tanh(metrics.nrc_valence / 45.0)))
             divergence = abs(float(report.emotional_valence) - obj_v)
 
+        depth = report.emotional_depth or EmotionalDepth.MEANINGFUL
         felt = FeltSense(
             emotional_valence=report.emotional_valence,
             emotional_intensity=report.emotional_intensity,
-            depth=EmotionalDepth.MEANINGFUL,
+            depth=depth,
         )
         what = (
             report.content.strip()[:500]

@@ -84,3 +84,15 @@ def test_sincerity_score_en() -> None:
     text = "honestly I was unsure because the requirements shifted?"
     tok = tokenize(text)
     assert sincerity_score(text, tok, "en") >= 1
+
+
+def test_sincerity_score_ru_ne_znaiu_bigram() -> None:
+    text = "не знаю что делать дальше это правда сложно?"
+    tok = tokenize(text)
+    assert sincerity_score(text, tok, "ru") >= 1
+
+
+def test_sincerity_score_short_text_penalty() -> None:
+    text = "честно"
+    tok = tokenize(text)
+    assert isinstance(sincerity_score(text, tok, "ru"), int)

@@ -74,6 +74,33 @@ async def test_session_manager_schedules_async_detector(tmp_path: Path) -> None:
     det.process.assert_awaited()
 
 
+def test_session_manager_affect_runs_when_no_event_loop(
+    tmp_path: Path,
+) -> None:
+    """Sync ``record_event`` uses ``asyncio.run`` when no loop is running."""
+    store = InMemoryStateStore()
+    clock = FrozenClock(datetime(2025, 1, 1, tzinfo=UTC))
+    agent_id = uuid4()
+    _bootstrap_identity_narrative(store, agent_id)
+    cfg = AffectDetectorConfig(cold_start_sessions=0, random_sample_every_n=1)
+    mgr = SessionManager(
+        store,
+        clock=clock,
+        affect_workspace=tmp_path,
+        affect_config=cfg,
+    )
+    ctx = mgr.start_session(agent_id)
+    mgr.record_event(
+        ctx.session_id,
+        SessionEvent(
+            session_id=ctx.session_id,
+            event_type="agent_response",
+            description="This is a long enough reply for affect analysis to run in English today.",
+            thinking="I feel dark and hopeless about everything.",
+        ),
+    )
+
+
 def test_session_manager_no_affect_when_not_configured() -> None:
     store = InMemoryStateStore()
     clock = FrozenClock(datetime(2025, 1, 1, tzinfo=UTC))

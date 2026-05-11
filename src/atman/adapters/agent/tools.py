@@ -110,6 +110,7 @@ async def record_key_moment(
             content=what_happened,
             emotional_valence=emotional_valence,
             emotional_intensity=emotional_intensity,
+            emotional_depth=EmotionalDepth(depth),
             why_it_matters=why_it_matters,
             tags=[f"depth:{depth}"],
         )

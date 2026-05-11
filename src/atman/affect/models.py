@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from atman.core.models.experience import EmotionalDepth
+
 
 class TriggerReason(StrEnum):
     """Why a key_moment row was emitted by the detector."""
@@ -59,5 +61,9 @@ class AgentMemoryReport(BaseModel):
     self_reported_emotions: list[str] = Field(default_factory=list)
     emotional_valence: float = Field(ge=-1.0, le=1.0)
     emotional_intensity: float = Field(ge=0.0, le=1.0)
+    emotional_depth: EmotionalDepth | None = Field(
+        default=None,
+        description="Depth for KeyMoment.how_i_felt; defaults to MEANINGFUL in the detector when omitted",
+    )
     tags: list[str] = Field(default_factory=list)
     why_it_matters: str | None = None

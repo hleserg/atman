@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
-from atman.affect.detector import AffectDetector, AffectDetectorConfig, _detect_lang
+from atman.affect.detector import (
+    AffectDetector,
+    AffectDetectorConfig,
+    _detect_lang,
+)
+from atman.affect.detector import (
+    main as detector_main,
+)
 from atman.affect.models import AgentMemoryReport
-from atman.core.models.experience import KeyMoment
+from atman.core.models.experience import EmotionalDepth, KeyMoment
 
 
 def test_detect_lang_cyrillic() -> None:
@@ -50,6 +58,30 @@ async def test_submit_self_report_content_none(tmp_path: Path) -> None:
     meta = captured[0].context_halo
     assert meta is not None
     assert meta.metadata.get("demonstrates_thinks") is None
+
+
+@pytest.mark.asyncio
+async def test_submit_self_report_respects_emotional_depth(tmp_path: Path) -> None:
+    captured: list[KeyMoment] = []
+
+    def sink(_sid, km: KeyMoment) -> None:
+        captured.append(km)
+
+    det = AffectDetector(
+        AffectDetectorConfig(),
+        workspace=tmp_path,
+        append_moment=sink,
+    )
+    rep = AgentMemoryReport(
+        content="Brief note",
+        emotional_valence=0.0,
+        emotional_intensity=0.3,
+        why_it_matters="Surface check-in",
+        emotional_depth=EmotionalDepth.SURFACE,
+    )
+    await det.submit_self_report(rep, session_id=uuid4())
+    assert len(captured) == 1
+    assert captured[0].how_i_felt.depth == EmotionalDepth.SURFACE
 
 
 @pytest.mark.asyncio
@@ -154,3 +186,69 @@ def test_demo_fixture_contains_required_tags() -> None:
     assert "affect:anomaly" in all_tags
     assert "affect:random-sample" in all_tags
     assert "affect:self-report" in all_tags
+
+
+def test_affect_package_lazy_import_detector() -> None:
+    from atman import affect as affect_pkg
+
+    det_cls = affect_pkg.AffectDetector
+    assert det_cls is AffectDetector
+    cfg_cls = affect_pkg.AffectDetectorConfig
+    assert cfg_cls is AffectDetectorConfig
+
+
+def test_affect_package_getattr_unknown_raises() -> None:
+    import atman.affect as affect_pkg
+
+    with pytest.raises(AttributeError, match="has no attribute"):
+        _ = affect_pkg.NotAnExport  # type: ignore[attr-defined]
+
+
+def test_detector_main_without_demo_exits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["atman.affect.detector"])
+    with pytest.raises(SystemExit) as ei:
+        detector_main()
+    assert ei.value.code == 2
+
+
+def test_detector_main_demo_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fixture = Path(__file__).resolve().parents[2] / "fixtures" / "affect_demo_responses.txt"
+    ws = tmp_path / "main_demo_ws"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "atman.affect.detector",
+            "--demo",
+            "--fixture",
+            str(fixture),
+            "--workspace",
+            str(ws),
+        ],
+    )
+    detector_main()
+    out = capsys.readouterr().out
+    assert "[" in out and "what_happened" in out
+
+
+def test_detector_main_demo_missing_fixture_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "missing_fixture.txt"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "atman.affect.detector",
+            "--demo",
+            "--fixture",
+            str(missing),
+            "--workspace",
+            str(tmp_path / "ws"),
+        ],
+    )
+    with pytest.raises(SystemExit) as ei:
+        detector_main()
+    assert ei.value.code == 1

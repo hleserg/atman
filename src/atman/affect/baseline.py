@@ -48,7 +48,7 @@ class RollingBaseline:
                 if isinstance(vec, dict):
                     rows.append({k: float(vec[k]) for k in METRIC_KEYS if k in vec})
                 cc = obj.get("char_count")
-                if isinstance(cc, (int, float)):
+                if isinstance(cc, int | float):
                     chars.append(int(cc))
         for row in rows[-self.window :]:
             self._history.append(row)

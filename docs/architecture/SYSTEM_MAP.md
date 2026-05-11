@@ -61,7 +61,7 @@ All paths are absolute relative to the repository root.
 
 | File | Purpose | Public surface |
 |------|---------|----------------|
-| `affect/models.py` | DTOs for metrics, detector output, agent self-report | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport`, `TriggerReason` |
+| `affect/models.py` | DTOs for metrics, detector output, agent self-report | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport` (optional `emotional_depth` → `KeyMoment.how_i_felt.depth`), `TriggerReason` |
 | `affect/metrics.py` | Eight behavioural floats + sincerity heuristic over tokens | `nrc_emotion_score`, density helpers, `min_length_gate`, `sincerity_score`, … |
 | `affect/baseline.py` | Rolling z-scores + `{workspace}/affect_baseline.jsonl` persistence | `RollingBaseline` |
 | `affect/detector.py` | Language sniff, trigger logic (anomaly / random sample / divergence / self-report), `KeyMoment` writes via callback | `AffectDetector`, `AffectDetectorConfig`; CLI `python -m atman.affect.detector --demo` |
