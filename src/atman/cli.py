@@ -8,10 +8,9 @@ CLI для работы с Factual Memory Adapter.
 - Просмотра последних фактов
 """
 
-from pathlib import Path
 from uuid import UUID
 
-from atman.adapters.memory import FileBackend
+from atman.config import build_memory_backend, settings
 from atman.core.models import FactRecord
 from atman.core.ports import FactualMemory
 from atman.term import (
@@ -206,9 +205,8 @@ def main() -> None:
     """Точка входа CLI."""
     print_banner("Atman Factual Memory CLI", "Введите 'help' для справки")
 
-    storage_path = Path.home() / ".atman" / "facts.jsonl"
-    print_info(f"Используется file storage: {storage_path}\n")
-    backend = FileBackend(storage_path)
+    print_info(f"Используется backend: {settings.memory.backend}\n")
+    backend = build_memory_backend()
 
     while True:
         try:
