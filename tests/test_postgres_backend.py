@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -29,7 +28,7 @@ class _FakeCursor:
         self.rowcount = rowcount
         self.executed: list[tuple[Any, list[Any] | None]] = []
 
-    def __enter__(self) -> "_FakeCursor":
+    def __enter__(self) -> _FakeCursor:
         return self
 
     def __exit__(self, *_: object) -> None:
