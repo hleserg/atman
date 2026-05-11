@@ -163,7 +163,7 @@ class PostgresFactualMemory(FactualMemory):
     def connect(self) -> None:
         """Open a database connection."""
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self.db_url, row_factory=psycopg.rows.dict_row)
+            self._conn = psycopg.connect(self.db_url, row_factory=psycopg.rows.dict_row)  # type: ignore[attr-defined]
 
     def close(self) -> None:
         """Close the database connection."""
