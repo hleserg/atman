@@ -58,6 +58,7 @@ def _test_admin_db_url() -> str | None:
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def pg_store():
     """
@@ -77,8 +78,9 @@ def pg_store():
         Path(__file__).parents[2] / "migrations" / "versions" / "0002_create_facts_table.sql"
     ).read_text()
 
+    assert admin_url is not None, "DATABASE_URL must be set for integration tests"
     with psycopg.connect(admin_url) as conn:
-        conn.execute(migration_sql)
+        conn.execute(migration_sql)  # type: ignore[call-overload]
         conn.commit()
 
     from atman.adapters.memory.postgres_backend import PostgresFactualMemory
@@ -96,7 +98,8 @@ def pg_admin_conn():
     import psycopg
 
     admin_url = _test_admin_db_url()
-    conn = psycopg.connect(admin_url, row_factory=psycopg.rows.dict_row)
+    assert admin_url is not None, "DATABASE_URL must be set for integration tests"
+    conn = psycopg.connect(admin_url, row_factory=psycopg.rows.dict_row)  # type: ignore[attr-defined]
     yield conn
     conn.close()
 
@@ -113,6 +116,7 @@ def clean_facts(pg_store, pg_admin_conn):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _agent() -> str:
     """Return a fresh agent UUID as string and set it in the environment."""
     aid = str(uuid4())
@@ -121,8 +125,9 @@ def _agent() -> str:
 
 
 def _make_fact(agent_id=None, **kwargs):
-    from atman.core.models.fact import FactRecord
     from uuid import UUID
+
+    from atman.core.models.fact import FactRecord
 
     if agent_id is None:
         agent_id = UUID(os.environ.get("ATMAN_CURRENT_AGENT") or str(uuid4()))
@@ -132,6 +137,7 @@ def _make_fact(agent_id=None, **kwargs):
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 def test_add_and_get_roundtrip(pg_store):
@@ -215,6 +221,7 @@ def test_search_no_embedding_falls_back_to_text(pg_store):
     pg_store.add_fact(_make_fact(content="fallback search target", source="s"))
 
     import warnings
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         results = fallback_store.search(query="fallback")
@@ -393,8 +400,9 @@ def test_rls_isolation(pg_store):
     agent_a = str(uuid4())
     agent_b = str(uuid4())
 
-    from atman.core.models.fact import FactRecord
     from uuid import UUID
+
+    from atman.core.models.fact import FactRecord
 
     # Write facts as the superuser owner — RLS is not enforced for the owner,
     # but facts land in the table with the correct agent_id FK.
@@ -404,32 +412,29 @@ def test_rls_isolation(pg_store):
     pg_store.add_fact(FactRecord(agent_id=UUID(agent_b), content="Agent B data", source="s"))
 
     url = _test_db_url()
+    assert url is not None, "DATABASE_URL must be set for integration tests"
     # autocommit=True so that SET ROLE is session-level (not rolled back with the transaction)
     # and set_config(..., false) persists across statements.
-    with psycopg.connect(url, row_factory=psycopg.rows.dict_row, autocommit=True) as rls_conn:
+    with psycopg.connect(url, row_factory=psycopg.rows.dict_row, autocommit=True) as rls_conn:  # type: ignore[attr-defined]
         try:
             rls_conn.execute("SET ROLE atman_app")
         except psycopg.errors.UndefinedObject:
             pytest.skip("atman_app role not found — re-apply migration 0002 to atman_test")
 
         # ── Agent B sees only its own facts ───────────────────────────────────
-        rls_conn.execute(
-            "SELECT set_config('atman.current_agent', %s, false)", [agent_b]
-        )
+        rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_b])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
-            contents_b = [r["content"] for r in cur.fetchall()]
+            contents_b = [r["content"] for r in cur.fetchall()]  # type: ignore[call-overload]
 
         assert "Agent B data" in contents_b, "Agent B cannot see its own fact"
         assert "Agent A secret" not in contents_b, "RLS leak: Agent B sees Agent A's fact"
 
         # ── Agent A sees only its own facts ───────────────────────────────────
-        rls_conn.execute(
-            "SELECT set_config('atman.current_agent', %s, false)", [agent_a]
-        )
+        rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_a])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
-            contents_a = [r["content"] for r in cur.fetchall()]
+            contents_a = [r["content"] for r in cur.fetchall()]  # type: ignore[call-overload]
 
         assert "Agent A secret" in contents_a, "Agent A cannot see its own fact"
         assert "Agent B data" not in contents_a, "RLS leak: Agent A sees Agent B's fact"
