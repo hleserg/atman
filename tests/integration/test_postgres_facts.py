@@ -82,7 +82,8 @@ def pg_store():
     ).read_text()
 
     with psycopg.connect(admin_url) as conn:
-        cast(Any, conn).execute(migration_sql)
+        with conn.cursor() as cur:
+            cur.execute(cast(Any, migration_sql))
         conn.commit()
 
     from atman.adapters.memory.postgres_backend import PostgresFactualMemory
@@ -415,6 +416,8 @@ def test_rls_isolation(pg_store):
     pg_store.add_fact(FactRecord(agent_id=UUID(agent_a), content="Agent A secret", source="s"))
     os.environ["ATMAN_CURRENT_AGENT"] = agent_b
     pg_store.add_fact(FactRecord(agent_id=UUID(agent_b), content="Agent B data", source="s"))
+
+    from psycopg.rows import dict_row
 
     url = _test_db_url()
     if url is None:
