@@ -12,6 +12,7 @@ import importlib.util
 import sys
 import types
 from importlib.abc import Loader
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -22,6 +23,7 @@ _MIGRATION_PATH = (
     / "versions"
     / "0011_create_benchmark_runs.py"
 )
+_SQL_MIRROR_PATH = _MIGRATION_PATH.with_suffix(".sql")
 
 
 class _RecordingOp:
@@ -37,7 +39,11 @@ class _FakeAlembicModule(types.ModuleType):
 
 
 class _BenchmarkRunsMigration(Protocol):
+    datetime: type[datetime]
+
     def upgrade(self) -> None: ...
+
+    def _current_month_partition_sql(self) -> str: ...
 
 
 def _load_benchmark_runs_migration(recording_op: _RecordingOp) -> _BenchmarkRunsMigration:
@@ -81,3 +87,34 @@ def test_benchmark_runs_migration_creates_default_partition_safety_net() -> None
     )
     assert current_partition_index < default_partition_index
     assert any("eval.benchmark_runs_default" in statement for statement in recording_op.statements)
+
+
+def test_benchmark_runs_migration_rolls_december_partition_to_next_year() -> None:
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return datetime(2026, 12, 31, 23, 59, tzinfo=UTC)
+
+    recording_op = _RecordingOp()
+    migration = _load_benchmark_runs_migration(recording_op)
+    migration.datetime = _FixedDatetime
+
+    partition_sql = migration._current_month_partition_sql()
+
+    assert "eval.benchmark_runs_2026_12" in partition_sql
+    assert "FOR VALUES FROM ('2026-12-01 00:00:00+00')" in partition_sql
+    assert "TO ('2027-01-01 00:00:00+00')" in partition_sql
+
+
+def test_benchmark_runs_sql_mirror_documents_default_partition_safety_net() -> None:
+    sql_mirror = _SQL_MIRROR_PATH.read_text(encoding="utf-8")
+
+    current_partition_index = sql_mirror.index(
+        "CREATE TABLE IF NOT EXISTS eval.benchmark_runs_YYYY_MM"
+    )
+    default_partition_index = sql_mirror.index(
+        "CREATE TABLE IF NOT EXISTS eval.benchmark_runs_default"
+    )
+
+    assert current_partition_index < default_partition_index
+    assert "PARTITION OF eval.benchmark_runs DEFAULT" in sql_mirror
