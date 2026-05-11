@@ -32,7 +32,16 @@ def _subprocess_pythonpath() -> str:
 def _run_cli(stdin: str, home: Path) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "HOME": str(home), "PYTHONPATH": _subprocess_pythonpath()}
     return subprocess.run(
-        [sys.executable, "-m", "atman.cli"],
+        [
+            sys.executable,
+            "-c",
+            (
+                "from atman.config import settings; "
+                "settings.memory.backend = 'file'; "
+                "from atman.cli import main; "
+                "main()"
+            ),
+        ],
         input=stdin,
         capture_output=True,
         text=True,
