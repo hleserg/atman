@@ -392,6 +392,8 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
 | `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`, `tests/test_eval_migrations.py::test_benchmark_runs_migration_rolls_december_partition_to_next_year`, `tests/test_eval_migrations.py::test_benchmark_runs_sql_mirror_documents_default_partition_safety_net`) |
+| текущий PR | PostgreSQL RLS допускал owner-role bypass для `reflections` и открывал `fact_relations` без RLS | покрыто (`tests/test_postgres_migration_security.py`) |
+| текущий PR | CLI факт-памяти по умолчанию выбирал PostgreSQL и падал без локальной БД, нарушая локальный путь без внешних сервисов | покрыто (`tests/test_cli_factual_memory.py`) |
 
 ### 5.2. Из инспекции кода
 

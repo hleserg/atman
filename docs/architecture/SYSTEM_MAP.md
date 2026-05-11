@@ -405,6 +405,8 @@ Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_l
 | `6a9f28f` | Session Manager recent narrative update replaced the whole recent layer instead of appending; regression test added | covered (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | Open WebUI setup exposed first-admin registration to LAN by default | covered (`tests/test_deployment_scripts.py`) |
 | `b47abcb` | `eval.benchmark_runs` only created a current-month partition, so inserts with `started_at=NOW()` would fail after the month boundary | covered (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`, `tests/test_eval_migrations.py::test_benchmark_runs_migration_rolls_december_partition_to_next_year`, `tests/test_eval_migrations.py::test_benchmark_runs_sql_mirror_documents_default_partition_safety_net`) |
+| current PR | PostgreSQL RLS allowed owner-role bypass for `reflections` and exposed `fact_relations` without RLS | covered (`tests/test_postgres_migration_security.py`) |
+| current PR | Factual memory CLI defaulted to PostgreSQL and crashed without a local database, violating the no-external-service local path | covered (`tests/test_cli_factual_memory.py`) |
 
 ### 5.2. From code inspection
 
