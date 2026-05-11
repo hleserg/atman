@@ -115,7 +115,8 @@ def test_benchmark_runs_migration_rolls_december_partition_to_next_year() -> Non
     # When run in December, should create December 2026 → January 2027 partition
     # and January 2027 → February 2027 partition
     partition_creates = [
-        stmt for stmt in recording_op.statements
+        stmt
+        for stmt in recording_op.statements
         if "eval.benchmark_runs_" in stmt and "PARTITION OF" in stmt and "DEFAULT" not in stmt
     ]
     assert len(partition_creates) >= 2
