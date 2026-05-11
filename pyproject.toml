@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 readme = "README.md"
 
 dependencies = [
+    "pymorphy3>=2.0.2,<3",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "pydantic-ai>=1.88.0,<2.0",
@@ -27,6 +28,7 @@ dev = [
     "bandit>=1.8.0",
     "pip-audit>=2.7.0",
     "pre-commit>=4.0.0",
+    "mypy>=1.8.0",
     "import-linter>=2.0.0",
     "streamlit>=1.30.0",
     "psycopg[binary]>=3.1",
@@ -131,13 +133,28 @@ targets = ["src/atman"]
 exclude_dirs = ["tests"]
 skips = ["B101", "B108"]
 
+[tool.mypy]
+python_version = "3.12"
+strict = true
+explicit_package_bases = true
+mypy_path = "src"
+files = ["src/atman/affect"]
+
+[[tool.mypy.overrides]]
+module = "pymorphy3"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "atman.affect.emolex.emolex"
+ignore_errors = true
+
 [tool.pyright]
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
 typeCheckingMode = "standard"
 venvPath = "."
 include = ["src", "tests", "e2e"]
-exclude = ["src/atman/reflection/store.py"]
+exclude = ["src/atman/reflection/store.py", "src/atman/affect/emolex/emolex.py"]
 
 [tool.ruff]
 target-version = "py312"
@@ -166,6 +183,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]  # pytest.raises(Exception) is acceptable in tests
+"src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["atman"]
