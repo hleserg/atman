@@ -16,13 +16,16 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     import psycopg
+    from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
 else:
     try:
         import psycopg
+        from psycopg.rows import dict_row
         from psycopg.types.json import Jsonb
     except ImportError:
         psycopg = None
+        dict_row = None
         Jsonb = None
         warnings.warn(
             "psycopg not installed. PostgresFactualMemory requires PostgreSQL support. "
@@ -163,7 +166,7 @@ class PostgresFactualMemory(FactualMemory):
     def connect(self) -> None:
         """Open a database connection."""
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self.db_url, row_factory=psycopg.rows.dict_row)
+            self._conn = psycopg.connect(self.db_url, row_factory=dict_row)
 
     def close(self) -> None:
         """Close the database connection."""
