@@ -255,7 +255,12 @@ def sincerity_score(text: str, tokens: Sequence[str], lang: str) -> int:
     i = 0
     while i < len(lowered_tokens):
         tok = lowered_tokens[i]
-        if lang == "ru" and i + 1 < len(lowered_tokens) and tok == "не" and lowered_tokens[i + 1] == "знаю":
+        if (
+            lang == "ru"
+            and i + 1 < len(lowered_tokens)
+            and tok == "не"
+            and lowered_tokens[i + 1] == "знаю"
+        ):
             first_idx = i
             score += 1
             break
@@ -266,12 +271,16 @@ def sincerity_score(text: str, tokens: Sequence[str], lang: str) -> int:
         i += 1
 
     if first_idx is not None:
-        skip_after = 2 if (
-            lang == "ru"
-            and first_idx + 1 < len(lowered_tokens)
-            and lowered_tokens[first_idx] == "не"
-            and lowered_tokens[first_idx + 1] == "знаю"
-        ) else 1
+        skip_after = (
+            2
+            if (
+                lang == "ru"
+                and first_idx + 1 < len(lowered_tokens)
+                and lowered_tokens[first_idx] == "не"
+                and lowered_tokens[first_idx + 1] == "знаю"
+            )
+            else 1
+        )
         after = tokens[first_idx + skip_after :]
         wc_after = len(after)
         has_q = "?" in text

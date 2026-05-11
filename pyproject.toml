@@ -152,6 +152,8 @@ ignore_errors = true
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
 typeCheckingMode = "standard"
+# Lazy exports via __getattr__ (e.g. atman.affect) legitimately list names in __all__.
+reportUnsupportedDunderAll = "none"
 venvPath = "."
 include = ["src", "tests", "e2e"]
 exclude = ["src/atman/reflection/store.py", "src/atman/affect/emolex/emolex.py"]
