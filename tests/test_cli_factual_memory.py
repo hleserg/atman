@@ -20,8 +20,17 @@ _UUID_RE = re.compile(
 )
 
 
+def _subprocess_pythonpath() -> str:
+    repo_src = Path(__file__).resolve().parents[1] / "src"
+    entries = [str(repo_src)]
+    entries.extend(path for path in sys.path if path and "site-packages" in path)
+    if existing := os.environ.get("PYTHONPATH"):
+        entries.extend(existing.split(os.pathsep))
+    return os.pathsep.join(dict.fromkeys(entries))
+
+
 def _run_cli(stdin: str, home: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "HOME": str(home)}
+    env = {**os.environ, "HOME": str(home), "PYTHONPATH": _subprocess_pythonpath()}
     return subprocess.run(
         [sys.executable, "-m", "atman.cli"],
         input=stdin,
