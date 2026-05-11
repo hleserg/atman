@@ -58,6 +58,7 @@ def _test_admin_db_url() -> str | None:
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def pg_store():
     """
@@ -113,6 +114,7 @@ def clean_facts(pg_store, pg_admin_conn):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _agent() -> str:
     """Return a fresh agent UUID as string and set it in the environment."""
     aid = str(uuid4())
@@ -133,6 +135,7 @@ def _make_fact(agent_id=None, **kwargs):
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 def test_add_and_get_roundtrip(pg_store):
@@ -216,6 +219,7 @@ def test_search_no_embedding_falls_back_to_text(pg_store):
     pg_store.add_fact(_make_fact(content="fallback search target", source="s"))
 
     import warnings
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         results = fallback_store.search(query="fallback")
@@ -415,9 +419,7 @@ def test_rls_isolation(pg_store):
             pytest.skip("atman_app role not found — re-apply migration 0002 to atman_test")
 
         # ── Agent B sees only its own facts ───────────────────────────────────
-        rls_conn.execute(
-            "SELECT set_config('atman.current_agent', %s, false)", [agent_b]
-        )
+        rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_b])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
             contents_b = [r["content"] for r in cur.fetchall()]
@@ -426,9 +428,7 @@ def test_rls_isolation(pg_store):
         assert "Agent A secret" not in contents_b, "RLS leak: Agent B sees Agent A's fact"
 
         # ── Agent A sees only its own facts ───────────────────────────────────
-        rls_conn.execute(
-            "SELECT set_config('atman.current_agent', %s, false)", [agent_a]
-        )
+        rls_conn.execute("SELECT set_config('atman.current_agent', %s, false)", [agent_a])
         with rls_conn.cursor() as cur:
             cur.execute("SELECT content FROM public.facts")
             contents_a = [r["content"] for r in cur.fetchall()]

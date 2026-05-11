@@ -215,8 +215,7 @@ class PostgresFactualMemory(FactualMemory):
             return self._embedding.embed(text)
         except Exception as exc:
             warnings.warn(
-                f"Embedding failed ({type(exc).__name__}: {exc}); "
-                "falling back to text search.",
+                f"Embedding failed ({type(exc).__name__}: {exc}); falling back to text search.",
                 RuntimeWarning,
                 stacklevel=3,
             )
@@ -302,7 +301,9 @@ class PostgresFactualMemory(FactualMemory):
                 ],
             )
             for rel in record.relations:
-                self._insert_relation(cur, record.id, rel.target_id, rel.relation_type, rel.metadata)
+                self._insert_relation(
+                    cur, record.id, rel.target_id, rel.relation_type, rel.metadata
+                )
 
         conn.commit()
         stored = record.model_copy(deep=True)
