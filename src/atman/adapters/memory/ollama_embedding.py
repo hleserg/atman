@@ -10,7 +10,8 @@ import math
 import os
 import urllib.error
 import urllib.request
-from typing import override
+
+from typing_extensions import override
 
 from atman.core.ports.embedding import EmbeddingPort
 
