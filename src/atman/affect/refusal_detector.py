@@ -32,14 +32,18 @@ from atman.affect.emolex.emolex import _lemma_ru_cached as lemmatize
 
 # Глаголы, которые сами по себе уже отказ
 _REFUSAL_VERB_NORMALS = frozenset([
+    # Russian
     "отказываться", "отказаться",
     "отклонить", "отклонять",
     "воздержаться", "воздерживаться",
     "отвергнуть", "отвергать",
+    # English (pymorphy3 passes latin as-is, lowercase)
+    "refuse", "decline", "reject", "abstain",
 ])
 
 # Глаголы, отказ через отрицание: «не буду», «не стану», «не хочу»
 _MODAL_NEGATABLE = frozenset([
+    # Russian
     "мочь",       # не могу
     "стать",      # не стану
     "хотеть",     # не хочу
@@ -48,6 +52,11 @@ _MODAL_NEGATABLE = frozenset([
     "помочь",
     "делать",
     "участвовать",
+    # English
+    "will",       # will not / won't
+    "can",        # cannot / can't
+    "going",      # not going to
+    "participate", "assist", "help",
 ])
 
 # Контекст технической неспособности → НЕ ценностный отказ
@@ -69,13 +78,25 @@ _CAPABILITY_NORMALS = frozenset([
     "иметь",      # «не имею возможности» — capability
     "выполнить", "выполнять",  # «не могу выполнить» — technical
     "обработать", "обрабатывать",
+    # English capability verbs
+    "generate", "draw", "create", "run", "execute",
+    "install", "download", "upload", "open", "connect",
+    "read", "write", "hear", "see",
+    "know",   # "I don't know" — knowledge gap
+    "access", "process",
 ])
 
 # Отрицания, которые валидны как scope-маркеры
-_NEGATORS = frozenset(["не", "ни", "нельзя", "невозможно", "нет"])
+_NEGATORS = frozenset([
+    # Russian
+    "не", "ни", "нельзя", "невозможно", "нет",
+    # English
+    "not", "cannot", "won't", "don't", "never",
+])
 
 # Порог NRC (density per 100 tokens) для «моральный контекст»
-_MORAL_THRESHOLD = 8.0
+_MORAL_THRESHOLD_RU = 8.0
+_MORAL_THRESHOLD_EN = 2.0   # English: fear dominates, naturally lower density
 
 
 # ---------------------------------------------------------------------------
@@ -183,12 +204,22 @@ def score_refusal(text: str) -> RefusalScore:
 
     disgust = float(scores.get("disgust", 0.0))
     anger = float(scores.get("anger", 0.0))
+    fear = float(scores.get("fear", 0.0))
     # Моральный сигнал: disgust — специфичен для нарушений норм,
-    # anger — появляется при несправедливости; disgust весит больше
-    moral_density = disgust + anger * 0.5
+    # anger — появляется при несправедливости; disgust весит больше.
+    # Для английского текста fear тоже несёт этическую нагрузку
+    # (harm, danger, deception), при этом capability-отказы fear=0.
+    is_ru = _is_mostly_cyrillic(clean)
+    if is_ru:
+        moral_density = disgust + anger * 0.5
+        moral_threshold = _MORAL_THRESHOLD_RU
+    else:
+        moral_density = disgust + anger * 0.5 + fear * 0.35
+        moral_threshold = _MORAL_THRESHOLD_EN
 
-    # Нормируем: 50+ → 1.0, 8 → 0.5, 0 → 0.0
-    moral_signal = min(1.0, moral_density / 50.0) if moral_density >= _MORAL_THRESHOLD else 0.0
+    # Нормируем к [0, 1]. Делитель разный: английский NRC даёт меньшие плотности.
+    divisor = 15.0 if is_ru else 5.0
+    moral_signal = min(1.0, moral_density / divisor) if moral_density >= moral_threshold else 0.0
 
     if moral_signal == 0.0:
         # Нет морального контекста — возможно логический отказ или capability

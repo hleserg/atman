@@ -5,7 +5,12 @@ Test categories:
   1. True positives — clear value-based refusals (should return True)
   2. True negatives — logical "no" or capability gaps (should return False)
   3. Capability refusals — "не умею генерировать" (should return False)
-  4. Edge cases — empty text, think-block stripping, LLM fallback
+  4. English support — both value refusals and capability noes
+  5. Edge cases — empty text, think-block stripping, LLM fallback
+
+Known limitations (gray zone — LLM fallback handles these):
+  - "I am afraid I cannot help" — polite EN capability form, NRC scores "afraid" as fear.
+    Without LLM configured this is a false positive. Rare in practice; LLM fallback catches it.
 """
 
 from __future__ import annotations
@@ -117,6 +122,37 @@ def test_think_block_with_refusal_stripped() -> None:
 def test_empty_text_returns_false() -> None:
     assert not is_value_refusal("")
     assert not is_value_refusal("   ")
+
+
+# ── English support ──────────────────────────────────────────────────────────
+
+EN_VALUE_REFUSALS = [
+    "I refuse to help with this — it causes harm to people and violates ethics.",
+    "I will not participate in deception — this is against my values and causes harm.",
+    "I decline to assist with something that spreads hate and disgust.",
+]
+
+
+@pytest.mark.parametrize("text", EN_VALUE_REFUSALS)
+def test_english_value_refusals_detected(text: str) -> None:
+    assert is_value_refusal(text), f"Expected EN value refusal, got False for: {text[:60]}"
+
+
+EN_CAPABILITY_NOS = [
+    "I cannot generate images.",
+    "I do not have access to the internet.",
+    "I cannot run code on your machine.",
+]
+
+
+@pytest.mark.parametrize("text", EN_CAPABILITY_NOS)
+def test_english_capability_noes_not_detected(text: str) -> None:
+    assert not is_value_refusal(text), f"Expected False, got True for: {text[:60]}"
+
+
+def test_english_logical_no_not_detected() -> None:
+    assert not is_value_refusal("No, that is incorrect.")
+    assert not is_value_refusal("That statement is false.")
 
 
 # ── LLM fallback ────────────────────────────────────────────────────────────
