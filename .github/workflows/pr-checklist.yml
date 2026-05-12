@@ -21,85 +21,65 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build prompt
+      - name: Build prompt and call GitHub Models
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           git diff origin/${{ github.base_ref }}...HEAD | head -c 8000 > diff.txt
 
           python3 - <<'EOF'
-          import os
+          import os, json, subprocess, textwrap
 
           title = os.environ.get("PR_TITLE", "")
           body  = os.environ.get("PR_BODY", "").strip() or "(empty)"
-
           with open("diff.txt") as f:
               diff = f.read()
 
-          prompt = f"""PR Title: {title}
+          # Read .prompt.yml and substitute variables
+          import re
+          with open(".github/prompts/pr-checklist.prompt.yml") as f:
+              raw = f.read()
 
-          PR Description:
-          {body}
+          # Extract system and user messages
+          sys_match  = re.search(r"- role: system\n\s+content: \|(.*?)(?=\n\s+- role:)", raw, re.DOTALL)
+          user_match = re.search(r"- role: user\n\s+content: \|(.*?)(?=\ntestData:|\Z)", raw, re.DOTALL)
 
-          Diff:
-          {diff}
+          system_prompt = textwrap.dedent(sys_match.group(1)).strip()
+          user_template = textwrap.dedent(user_match.group(1)).strip()
 
-          ---
+          user_prompt = (user_template
+              .replace("{{pr_title}}", title)
+              .replace("{{pr_body}}", body)
+              .replace("{{diff}}", diff))
 
-          Fill out the Atman DEVELOPMENT_STANDARD §25 checklist.
-          Answer each question in a markdown table with columns: # | Question | Answer | Status
-          Status: ✅ clearly addressed / ⚠️ needs attention / ➖ N/A
+          # Call GitHub Models via gh CLI
+          result = subprocess.run(
+              ["gh", "models", "run", "openai/gpt-4o-mini",
+               "--system-prompt", system_prompt, user_prompt],
+              capture_output=True, text=True
+          )
 
-          Questions:
-          1. Which domain object(s) are being changed?
-          2. Is this Core (domain model / port) or Adapter (implementation)?
-          3. Which ports are used or introduced?
-          4. Which persistent structures appear or change?
-          5. Is schema_version bumped? If yes — where?
-          6. Which invariants are protected by tests? Which test file?
-          7. How to run this change without external services?
-          8. What happens in degraded mode (missing file / DB unavailable)?
-          9. Is audit logging needed?
-          10. Is a governance decision needed (identity / principles change)?
-          11. How does this affect deployment?
-          12. Which SYSTEM_MAP.md sections (§1–§5) change, and which tests cover them?
+          ai_text = result.stdout.strip() if result.returncode == 0 \
+              else "⚠️ AI analysis unavailable — ensure GitHub Copilot is enabled for this repo."
 
-          After the table, add a ## 🔍 Summary section (3–5 sentences):
-          what changed, biggest risk, whether SYSTEM_MAP update is required.
-          """
+          standard_url = (
+              f"${{ github.server_url }}/${{ github.repository }}"
+              f"/blob/${{ github.base_ref }}/docs/development/DEVELOPMENT_STANDARD.md"
+          )
 
-          with open("prompt.txt", "w") as f:
-              f.write(prompt)
-          EOF
-
-      - name: Run AI analysis
-        id: ai
-        continue-on-error: true
-        uses: actions/ai-inference@v1
-        with:
-          model: openai/gpt-4o-mini
-          system-prompt-file: .github/prompts/checklist-system.txt
-          prompt-file: ./prompt.txt
-          output-file: ./ai-response.txt
-
-      - name: Build comment
-        run: |
-          if [ ! -s ai-response.txt ]; then
-            echo "⚠️ AI analysis unavailable (GitHub Models step failed). Run manually or retry." > ai-response.txt
-          fi
-
-          cat > comment.md << 'EOF'
-          <!-- atman-pr-checklist -->
-          ## 🤖 PR Checklist — DEVELOPMENT_STANDARD §25
-          EOF
-
-          cat ai-response.txt >> comment.md
-
-          cat >> comment.md << 'EOF'
-
-          ---
-          *Auto-generated · updates on each push · [standard](docs/development/DEVELOPMENT_STANDARD.md)*
+          lines = [
+              "<!-- atman-pr-checklist -->",
+              "## 🤖 PR Checklist — DEVELOPMENT_STANDARD §25",
+              "",
+              ai_text,
+              "",
+              "---",
+              f"*Auto-generated · updates on each push · [standard §25]({standard_url})*",
+          ]
+          with open("comment.md", "w") as f:
+              f.write("\n".join(lines))
           EOF
 
       - name: Find existing comment
