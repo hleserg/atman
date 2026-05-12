@@ -42,8 +42,9 @@ jobs:
 
           src   = os.environ.get("SRC_FILES", "").strip() or "(none)"
           test  = os.environ.get("TEST_FILES", "").strip() or "(none)"
-          with open("diff.txt") as f:
-              diff = f.read()
+          with open("diff.txt", "rb") as f:
+              # diff.txt is truncated with `head -c`; last UTF-8 sequence may be split
+              diff = f.read().decode("utf-8", errors="replace")
           try:
               with open("docs/architecture/SYSTEM_MAP.md") as f:
                   sysmap = f.read()[:4000]
