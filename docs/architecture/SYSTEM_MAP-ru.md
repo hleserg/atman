@@ -64,7 +64,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `config.py` | Pydantic Settings: `EmbeddingSettings` с `EMBEDDING_BACKEND`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `EMBEDDING_OLLAMA_HOST`, `EMBEDDING_TIMEOUT` |
+| `config.py` | Pydantic settings и фабрика `build_memory_backend()`; factual memory по умолчанию использует `FileBackend`, поддерживает `ATMAN_MEMORY_BACKEND=postgres|file|inmemory` |
 | `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Хуки аудита коммитов нарратива |
@@ -88,6 +88,7 @@
 |------|----------------|-----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
+| `adapters/memory/postgres_backend.py` (`PostgresFactualMemory`) | `FactualMemory` | PostgreSQL `public.facts` / `public.fact_relations`, RLS через `ATMAN_CURRENT_AGENT`, опциональный `EmbeddingPort` с fallback на `ILIKE` |
 | `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 2560-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:768d"` |
 | `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
 | `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `qwen3-embedding:4b` (2560-мерные); `model_name()` возвращает настроенную модель; доступен `health_check()` |
@@ -139,6 +140,16 @@
 | `docs/demo-data/` | данные сайта | 11 JSON-файлов, генерируемых `make demo-e2e-scenario`; используются `docs/demo.html` |
 | `docs/demo.html` | сайт | статическая страница E2E-прогона; 11 шагов; двуязычная EN/RU; загружает JSON из `docs/demo-data/`; без build step, без React |
 
+### 1.7. Оценочная подсистема (`src/atman/eval/`, `eval/`, `scripts/eval/`)
+
+| Путь | Категория | Назначение |
+|------|-----------|------------|
+| `src/atman/eval/__init__.py` | optional namespace | импортирует `_deps_check`; `import atman.eval` быстро падает без extra `eval` |
+| `src/atman/eval/_deps_check.py` | dependency guard | проверяет canary-зависимости из `[project.optional-dependencies].eval` и показывает понятную подсказку установки |
+| `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | конфигурация Alembic для изолированной PostgreSQL-схемы `eval` |
+| `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
+| `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |
+
 ---
 
 ## 2. Интеграции
@@ -163,7 +174,7 @@
 
 | Адаптер | Реализует |
 |---------|-----------|
-| `InMemoryBackend`, `FileBackend` | `FactualMemory` |
+| `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
@@ -173,7 +184,7 @@
 
 | CLI | Проводка | Файл |
 |-----|----------|------|
-| `cli.py` | `FileBackend` напрямую как `FactualMemory` | `cli.py:14-24` |
+| `cli.py` | фабрика `build_memory_backend()` (`FileBackend` по умолчанию, выбор `postgres|file|inmemory` через env) | `config.py`, `cli.py` |
 | `cli_experience.py` | `ExperienceService(JsonlExperienceStore)` | `cli_experience.py:17-29` |
 | `cli_identity.py` | `IdentityService(FileStateStore)` + `NarrativeService(FileStateStore)` | `cli_identity.py:15-29` |
 | `cli_reflection.py` | `Micro/Daily/DeepReflectionService` + fixture_loader | `cli_reflection.py:18-47` |
@@ -360,6 +371,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Конкурентные записи нарратива | оптимистическая блокировка по `updated_at` | `core/ports/reflection.py:133-147` |
 | Конфликт записи | `NarrativePersistenceConflictError` | `core/exceptions.py:8-14` |
 | Падение аудита нарратива | вложенный try/except — нарратив пишется, аудит логируется warning | `core/services/narrative_revision.py:73-88` |
+| PostgreSQL tenant isolation для фактов/рефлексий | RLS принудительно применяется к owner-role подключениям; связи фактов защищены RLS с проверкой обоих endpoint | `migrations/versions/0001_create_reflections_table.sql`, `migrations/versions/0002_create_facts_table.sql`; покрыто `tests/test_postgres_migration_security.py` |
 
 ### 4.5. Что нужно проверить (gaps)
 
@@ -389,6 +401,8 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
 | `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`) |
+| текущий PR | PostgreSQL RLS допускал owner-role bypass для `reflections` и открывал `fact_relations` без RLS | покрыто (`tests/test_postgres_migration_security.py`) |
+| текущий PR | CLI факт-памяти по умолчанию выбирал PostgreSQL и падал без локальной БД, нарушая локальный путь без внешних сервисов | покрыто (`tests/test_cli_factual_memory.py`) |
 
 ### 5.2. Из инспекции кода
 
@@ -415,6 +429,8 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Demo entrypoints (smoke) | ✅ закрыто | `tests/test_demo_smoke.py`, `tests/test_demo_full_corpus.py` |
 | **Интеграция полного жизненного цикла (E2E-02)** | ✅ закрыто | `tests/integration/test_full_lifecycle.py` — проверяет (1) неизменяемость опыта после завершения сессии, (2) появление reframing notes от рефлексии в опытах, (3) обновление narrative.recent_layer после micro reflection, (4) propagation identity_snapshot_id session → experience → reflection |
 | Open WebUI LAN exposure default | ✅ закрыто | `tests/test_deployment_scripts.py` |
+| PostgreSQL RLS owner bypass / незащищённые relation edges | ✅ закрыто | `tests/test_postgres_migration_security.py` |
+| Локальный default CLI факт-памяти | ✅ закрыто | `tests/test_cli_factual_memory.py` |
 
 ### 5.4. TODO / FIXME
 
