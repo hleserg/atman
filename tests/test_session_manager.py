@@ -1608,6 +1608,8 @@ def test_orphan_recovery_preserves_journal_fact_refs(
     tmp_path, identity_fixture, narrative_fixture, frozen_clock
 ):
     """Recovered interrupted sessions keep the facts that shaped the orphaned work."""
+    from atman.core.models.experience import FeltSense, KeyMoment
+
     store = InMemoryStateStore()
     store.save_identity(identity_fixture)
     store.save_narrative(narrative_fixture)
@@ -1623,14 +1625,30 @@ def test_orphan_recovery_preserves_journal_fact_refs(
     sessions_dir.mkdir(parents=True, exist_ok=True)
     orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
 
+    key_moment = KeyMoment(
+        id=moment_id,
+        what_happened="Interrupted work with factual context",
+        how_i_felt=FeltSense(
+            emotional_valence=0.2,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.MEANINGFUL,
+        ),
+        why_it_matters="Facts shaped this interrupted stretch of work",
+        when=frozen_clock.now(),
+        values_touched=["truthfulness"],
+        principles_questioned=[],
+        fact_refs=[fact_from_moment],
+    )
+
     with orphan_journal.open("w", encoding="utf-8") as f:
         json.dump(
             {
                 "type": "key_moment",
                 "moment_id": str(moment_id),
                 "timestamp": frozen_clock.now().isoformat(),
-                "what_happened": "Interrupted work with factual context",
-                "fact_refs": [str(fact_from_moment)],
+                "what_happened": key_moment.what_happened,
+                "moment": key_moment.model_dump(mode="json"),
+                "fact_refs": [str(fid) for fid in key_moment.fact_refs],
             },
             f,
         )
