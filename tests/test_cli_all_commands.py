@@ -81,15 +81,24 @@ def exp_home(tmp_path: Path) -> tuple[Path, Path, str]:
     home.mkdir()
 
     fixture = tmp_path / "exp.json"
-    moment_id = str(uuid4())
     fixture.write_text(
         json.dumps(
             {
                 "session_id": str(uuid4()),
                 "timestamp": "2025-06-01T10:00:00+00:00",
-                "key_moment_ids": [moment_id],
-                "avg_emotional_intensity": 0.6,
-                "has_profound_moment": False,
+                "key_moments": [
+                    {
+                        "what_happened": "CLI all commands test",
+                        "when": "2025-06-01T10:00:00+00:00",
+                        "how_i_felt": {
+                            "emotional_valence": 0.0,
+                            "emotional_intensity": 0.6,
+                            "depth": "meaningful",
+                        },
+                        "why_it_matters": "coverage",
+                        "values_touched": ["honesty"],
+                    }
+                ],
             }
         ),
         encoding="utf-8",
@@ -108,7 +117,9 @@ def test_experience_get_found(exp_home: tuple) -> None:
     home, _, exp_id = exp_home
     r = _run_experience(f"experience get {exp_id}\nexit\n", home=home)
     assert r.returncode == 0
-    assert "CLI all commands test" in r.stdout
+    assert "Experience found" in r.stdout
+    assert exp_id in r.stdout
+    assert "Key moments" in r.stdout
 
 
 def test_experience_get_invalid_uuid(exp_home: tuple) -> None:
@@ -176,24 +187,27 @@ def test_experience_decay_preview_unknown_uuid(exp_home: tuple) -> None:
 
 
 def test_experience_search_recent(exp_home: tuple) -> None:
-    home, _, _ = exp_home
+    home, _, exp_id = exp_home
     r = _run_experience("experience search recent 5\nexit\n", home=home)
     assert r.returncode == 0
-    assert "CLI all commands test" in r.stdout
+    assert "Found" in r.stdout
+    assert exp_id in r.stdout
 
 
 def test_experience_search_values(exp_home: tuple) -> None:
-    home, _, _ = exp_home
+    home, _, exp_id = exp_home
     r = _run_experience("experience search values honesty\nexit\n", home=home)
     assert r.returncode == 0
-    assert "CLI all commands test" in r.stdout
+    assert "Found" in r.stdout
+    assert exp_id in r.stdout
 
 
 def test_experience_search_depth(exp_home: tuple) -> None:
-    home, _, _ = exp_home
+    home, _, exp_id = exp_home
     r = _run_experience("experience search depth meaningful\nexit\n", home=home)
     assert r.returncode == 0
-    assert "CLI all commands test" in r.stdout
+    assert "Found" in r.stdout
+    assert exp_id in r.stdout
 
 
 def test_experience_search_unknown_type(exp_home: tuple) -> None:

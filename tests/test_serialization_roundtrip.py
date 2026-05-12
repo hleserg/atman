@@ -57,7 +57,7 @@ def _make_experience_record() -> ExperienceRecord:
         why_it_matters="coverage",
         values_touched=["honesty", "competence"],
     )
-    
+
     return ExperienceRecord(
         experience=SessionExperience(
             session_id=uuid4(),

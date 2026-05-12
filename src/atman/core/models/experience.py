@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 
 class ReframingNoteAppendResult(StrEnum):
@@ -234,6 +234,30 @@ class SessionExperience(BaseModel):
     Only reframing_notes can be added over time.
     """
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_key_moments(cls, data: Any) -> Any:
+        """Accept legacy payloads with embedded ``key_moments`` (fixtures, old JSON)."""
+        if not isinstance(data, dict):
+            return data
+        legacy = data.get("key_moments")
+        if legacy is None:
+            return data
+        if data.get("key_moment_ids") is not None:
+            return {k: v for k, v in data.items() if k != "key_moments"}
+        if not legacy:
+            return data
+        moments = [KeyMoment.model_validate(m) for m in legacy]
+        out = {k: v for k, v in data.items() if k != "key_moments"}
+        out["key_moment_ids"] = [m.id for m in moments]
+        out["avg_emotional_intensity"] = sum(
+            m.how_i_felt.emotional_intensity for m in moments
+        ) / len(moments)
+        out["has_profound_moment"] = any(
+            m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in moments
+        )
+        return out
+
     id: UUID = Field(default_factory=uuid4)
     session_id: UUID = Field(description="ID of the session this experience is from")
     timestamp: datetime = Field(
@@ -253,7 +277,9 @@ class SessionExperience(BaseModel):
     )
 
     # SESSION CLOSE METADATA
-    close_reason: Literal["timeout_sleep", "restart", "forced", "interrupted"] | None = Field(
+    close_reason: (
+        Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+    ) = Field(
         default=None,
         description="Reason why the session ended",
     )

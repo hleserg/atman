@@ -48,8 +48,11 @@ def _experience_record(
         values_touched=values_touched or ["patience"],
     )
     ts = timestamp or datetime.now(UTC)
-    exp = SessionExperience(session_id=sid,
-        key_moment_ids=[moment.id], avg_emotional_intensity=0.5, has_profound_moment=False,
+    exp = SessionExperience(
+        session_id=sid,
+        key_moment_ids=[moment.id],
+        avg_emotional_intensity=0.5,
+        has_profound_moment=False,
         importance=0.5,
         salience=0.5,
         timestamp=ts,
@@ -114,7 +117,7 @@ def test_search_experiences_filters_and_limit() -> None:
         rec1 = _experience_record(session_id=sid, timestamp=t0, depth=EmotionalDepth.PROFOUND)
         store.create_experience(rec1)
         store.store_key_moments(sid, [rec1._test_moment])  # type: ignore[attr-defined]
-        
+
         rec2 = _experience_record(session_id=uuid4(), timestamp=t0 + timedelta(days=1))
         store.create_experience(rec2)
         store.store_key_moments(rec2.experience.session_id, [rec2._test_moment])  # type: ignore[attr-defined]

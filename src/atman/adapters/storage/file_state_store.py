@@ -182,7 +182,7 @@ class FileStateStore(StateStore):
             elif isinstance(query, DepthQuery):
                 for moment_id in record.experience.key_moment_ids:
                     moment = self.get_key_moment(moment_id)
-                    if moment and moment.how_i_felt.depth == query.depth:
+                    if moment and moment.how_i_felt.depth.value == query.depth:
                         all_experiences.append(record)
                         break
             elif (
@@ -209,7 +209,7 @@ class FileStateStore(StateStore):
     def store_key_moments(self, session_id: UUID, moments: list[KeyMoment]) -> None:
         """Store key moments for a session."""
         session_moments_file = self.key_moments_dir / f"{session_id}_moments.json"
-        moments_data = [m.model_dump(mode='json') for m in moments]
+        moments_data = [m.model_dump(mode="json") for m in moments]
         self._write_json_atomically(session_moments_file, json.dumps(moments_data, indent=2))
 
         # Also store individual moment files for quick lookup
@@ -218,12 +218,32 @@ class FileStateStore(StateStore):
             self._write_json_atomically(moment_file, moment.model_dump_json(indent=2))
 
     def get_key_moment(self, moment_id: UUID) -> KeyMoment | None:
-        """Retrieve a key moment by its ID."""
+        """Retrieve a key moment by ID (per-session files or JSONL from create_key_moment)."""
+        import json
+        import warnings
+
         moment_file = self.key_moments_dir / f"{moment_id}.json"
-        if not moment_file.exists():
+        if moment_file.exists():
+            data = _read_json_file(moment_file)
+            return KeyMoment.model_validate(data)
+
+        if not self.key_moments_path.exists():
             return None
-        data = _read_json_file(moment_file)
-        return KeyMoment.model_validate(data)
+
+        for line in self.key_moments_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                try:
+                    data = json.loads(line)
+                    if data.get("id") == str(moment_id):
+                        return KeyMoment.model_validate(data)
+                except (json.JSONDecodeError, ValueError) as e:
+                    warnings.warn(
+                        f"Skipping corrupted line in {self.key_moments_path}: {e}",
+                        stacklevel=2,
+                    )
+                    continue
+
+        return None
 
     def get_key_moments_for_session(self, session_id: UUID) -> list[KeyMoment]:
         """Retrieve all key moments for a session."""
@@ -471,25 +491,3 @@ class FileStateStore(StateStore):
                     continue
 
         return key_moments
-
-    def get_key_moment(self, key_moment_id: UUID) -> KeyMoment:
-        """Retrieve key moment by ID from JSONL file."""
-        import warnings
-
-        if not self.key_moments_path.exists():
-            raise KeyError(f"KeyMoment {key_moment_id} not found")
-
-        for line in self.key_moments_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    data = json.loads(line)
-                    if data.get("id") == str(key_moment_id):
-                        return KeyMoment.model_validate(data)
-                except (json.JSONDecodeError, ValueError) as e:
-                    warnings.warn(
-                        f"Skipping corrupted line in {self.key_moments_path}: {e}",
-                        stacklevel=2,
-                    )
-                    continue
-
-        raise KeyError(f"KeyMoment {key_moment_id} not found")

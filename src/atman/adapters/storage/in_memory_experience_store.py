@@ -221,7 +221,3 @@ class InMemoryExperienceStore(StateStore):
     def list_key_moments(self, session_id=None):  # type: ignore
         """Not implemented - use FileStateStore for key moment operations."""
         raise NotImplementedError("KeyMoment operations not supported in InMemoryExperienceStore")
-
-    def get_key_moment(self, key_moment_id):  # type: ignore
-        """Not implemented - use FileStateStore for key moment operations."""
-        raise NotImplementedError("KeyMoment operations not supported in InMemoryExperienceStore")

@@ -297,9 +297,3 @@ class InMemoryStateStore(StateStore):
                 "Filtering by session_id not yet supported - KeyMoment model needs session_id field"
             )
         return [km.model_copy(deep=True) for km in self._key_moments.values()]
-
-    def get_key_moment(self, key_moment_id: UUID) -> KeyMoment:
-        """Retrieve key moment by ID."""
-        if key_moment_id not in self._key_moments:
-            raise KeyError(f"KeyMoment {key_moment_id} not found")
-        return self._key_moments[key_moment_id].model_copy(deep=True)

@@ -33,7 +33,7 @@ def _make_session_experience(
     """Helper to create SessionExperience with new key_moment_ids field."""
     avg_intensity = moment.how_i_felt.emotional_intensity
     is_profound = moment.how_i_felt.depth == EmotionalDepth.PROFOUND
-    
+
     return SessionExperience(
         session_id=session_id or uuid4(),
         key_moment_ids=[moment.id],

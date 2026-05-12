@@ -101,7 +101,7 @@ class EmotionalEcho:
                 moment = self.state_store.get_key_moment(moment_id)
                 if not moment:
                     continue
-                
+
                 felt = moment.how_i_felt
 
                 # Intensity weighting (profound > meaningful > surface)

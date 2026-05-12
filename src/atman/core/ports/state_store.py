@@ -406,19 +406,3 @@ class StateStore(ABC):
             list[KeyMoment]: List of key moments
         """
         pass
-
-    @abstractmethod
-    def get_key_moment(self, key_moment_id: UUID) -> "KeyMoment":
-        """
-        Retrieve a key moment by its ID.
-
-        Args:
-            key_moment_id: UUID of the key moment
-
-        Returns:
-            KeyMoment: The key moment
-
-        Raises:
-            KeyError: If key moment not found
-        """
-        pass

@@ -21,7 +21,7 @@ import asyncio
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid5
 
 from atman.core.clock_impl import SystemClock
@@ -435,6 +435,31 @@ class SessionManager:
                         for m in session_result.key_moments
                     )
 
+                _allowed_close_reasons = (
+                    "timeout_sleep",
+                    "menu_timeout",
+                    "restart",
+                    "forced",
+                    "interrupted",
+                )
+                safe_close_reason: (
+                    Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"]
+                    | None
+                ) = (
+                    cast(
+                        Literal[
+                            "timeout_sleep",
+                            "menu_timeout",
+                            "restart",
+                            "forced",
+                            "interrupted",
+                        ],
+                        close_reason,
+                    )
+                    if close_reason in _allowed_close_reasons
+                    else None
+                )
+
                 experience = SessionExperience(
                     id=experience_id,
                     session_id=session_id,
@@ -448,7 +473,7 @@ class SessionManager:
                     has_profound_moment=has_profound_moment,
                     incomplete_coloring=session_result.incomplete_coloring,
                     fact_refs=list(fact_refs_set),
-                    close_reason=close_reason,
+                    close_reason=safe_close_reason,
                     restart_reason=restart_reason or "",  # Convert None to empty string
                     agent_recap=agent_recap,
                 )
