@@ -565,8 +565,8 @@ class SessionManager:
 
                 from atman.core.models.experience import SessionExperience as _SE
 
-                _valid_reasons = {"timeout_sleep", "restart", "forced", "interrupted"}
-                _close_reason = close_reason if close_reason in _valid_reasons else None
+                _valid_reasons = {"completed", "timeout_sleep", "restart", "forced", "interrupted"}
+                _close_reason = close_reason if close_reason in _valid_reasons else "completed"
 
                 experience = SessionExperience(
                     id=experience_id,
@@ -657,47 +657,37 @@ class SessionManager:
             "Narrative concurrent update: exceeded retries; resolve conflict outside SessionManager."
         ) from last_err
 
+    @staticmethod
+    def _valence_word(v: float) -> str:
+        if v >= 0.5:
+            return "радостно"
+        if v >= 0.2:
+            return "тепло"
+        if v <= -0.5:
+            return "тяжело"
+        if v <= -0.2:
+            return "тревожно"
+        return "спокойно"
+
+    @staticmethod
+    def _depth_word(depth: str) -> str:
+        return {"surface": "поверхностно", "meaningful": "значимо", "profound": "глубоко"}.get(
+            depth, depth
+        )
+
     def _build_narrative_update(self, session_result: SessionResult) -> str:
-        """
-        Build narrative update from session result.
+        """Build narrative update from key moment text and emotional data."""
+        if not session_result.key_moments:
+            return "Завершена сессия без зафиксированных моментов."
 
-        Creates a brief summary of the session for the recent narrative layer.
-        This ensures the agent's self-narrative reflects recent lived experience.
+        lines = []
+        for km in session_result.key_moments[:3]:
+            felt = km.how_i_felt
+            tone = self._valence_word(felt.emotional_valence)
+            depth = self._depth_word(felt.depth)
+            lines.append(f"— {km.what_happened[:140]} ({tone}, {depth})")
 
-        Args:
-            session_result: Finished session result
-
-        Returns:
-            str: Narrative update text
-        """
-        # Extract key themes from session
-        themes = set()
-        for moment in session_result.key_moments:
-            themes.update(moment.values_touched)
-
-        # Build summary
-        parts = []
-
-        if session_result.key_insight:
-            parts.append(f"Recently: {session_result.key_insight}")
-
-        if themes:
-            themes_str = ", ".join(sorted(themes)[:5])  # Limit to 5 themes
-            parts.append(f"This engaged my values around {themes_str}.")
-
-        if session_result.key_moments:
-            num_moments = len(session_result.key_moments)
-            tone = session_result.overall_emotional_tone
-            tone_desc = "positive" if tone > 0.2 else "negative" if tone < -0.2 else "neutral"
-            parts.append(
-                f"Experienced {num_moments} significant moment{'s' if num_moments > 1 else ''} "
-                f"with an overall {tone_desc} emotional tone."
-            )
-
-        if not parts:
-            parts.append("Recently completed a session.")
-
-        return " ".join(parts)
+        return "\n".join(lines)
 
     def _create_eigenstate(self, session_result: SessionResult) -> Eigenstate:
         """
@@ -729,8 +719,9 @@ class SessionManager:
         ]
         open_threads = list(dict.fromkeys(open_threads_raw))
 
+        # Use what_happened text as themes — not AffectDetector system tags from values_touched
         dominant_flat = [
-            value for moment in session_result.key_moments for value in moment.values_touched
+            km.what_happened[:80] for km in session_result.key_moments
         ]
         dominant_themes = list(dict.fromkeys(dominant_flat))
 

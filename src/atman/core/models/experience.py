@@ -299,9 +299,16 @@ class SessionExperience(BaseModel):
     )
 
     # SESSION CLOSE CONTEXT
-    close_reason: Literal["timeout_sleep", "restart", "forced", "interrupted"] | None = Field(
+    # None only valid for legacy records created before this field existed.
+    close_reason: Literal["completed", "timeout_sleep", "restart", "forced", "interrupted"] | None = Field(
         default=None,
-        description="Why this session was closed",
+        description=(
+            "Why this session was closed. "
+            "None means legacy record; new sessions must always have a reason. "
+            "completed=user ended normally; timeout_sleep=agent chose to sleep; "
+            "restart=agent triggered restart; forced=context overflow; "
+            "interrupted=signal/crash."
+        ),
     )
     agent_recap: str | None = Field(
         default=None,

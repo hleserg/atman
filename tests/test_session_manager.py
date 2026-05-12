@@ -748,7 +748,8 @@ def test_eigenstate_captures_session_state(session_manager):
     assert eigenstate.emotional_tone == 0.4
     assert eigenstate.emotional_intensity == 0.8  # From key moment
     assert eigenstate.session_summary == "Deep insight"
-    assert "honesty" in eigenstate.dominant_themes or "competence" in eigenstate.dominant_themes
+    # dominant_themes now contains what_happened text, not values_touched tags
+    assert any("Complex work" in t for t in eigenstate.dominant_themes)
     assert "always_be_certain" in eigenstate.unresolved_tensions
 
 
@@ -874,14 +875,14 @@ def test_finish_session_updates_recent_narrative(session_manager, temp_storage):
     # Recent layer should be updated
     assert recent_content_after != recent_content_before
     assert recent_content_before in recent_content_after
-    assert "Successfully delivered complex work" in recent_content_after
-    assert "competence" in recent_content_after or "growth" in recent_content_after
-    assert "positive" in recent_content_after  # Overall tone was 0.6
+    # Narrative now uses what_happened text and emotional words, not key_insight/values_touched tags
+    assert "Implemented a complex feature" in recent_content_after
+    assert "радостно" in recent_content_after  # emotional_valence=0.7 → радостно
 
     # Start second session - should load updated narrative
     context2 = manager.start_session(agent_id)
     assert context2.narrative.recent_layer.content == recent_content_after
-    assert "Successfully delivered complex work" in context2.narrative.recent_layer.content
+    assert "Implemented a complex feature" in context2.narrative.recent_layer.content
 
 
 def test_finish_session_appends_to_recent_narrative_without_erasing_existing_context(
@@ -915,9 +916,10 @@ def test_finish_session_appends_to_recent_narrative_without_erasing_existing_con
     recent_content_after = narrative_after.recent_layer.content
 
     assert existing_context in recent_content_after
-    assert "Added new session summary" in recent_content_after
+    # Narrative now uses what_happened text, not key_insight
+    assert "Preserve narrative context" in recent_content_after
     assert recent_content_after.index(existing_context) < recent_content_after.index(
-        "Added new session summary"
+        "Preserve narrative context"
     )
 
 
@@ -957,7 +959,6 @@ def test_finish_session_retry_skips_duplicate_narrative_after_post_narrative_fai
             values_touched=["honesty"],
         ),
     )
-    insight = "Unique insight for idempotent narrative retry"
     real_save = manager._save_session_narrative_update
     first = {"done": False}
 
@@ -971,14 +972,15 @@ def test_finish_session_retry_skips_duplicate_narrative_after_post_narrative_fai
         patch.object(manager, "_save_session_narrative_update", side_effect=flaky_save),
         pytest.raises(RuntimeError, match="post-narrative"),
     ):
-        manager.finish_session(context.session_id, key_insight=insight)
+        manager.finish_session(context.session_id)
 
     assert manager.get_active_session(context.session_id) is not None
-    manager.finish_session(context.session_id, key_insight=insight)
+    manager.finish_session(context.session_id)
 
     narrative = temp_storage.load_narrative(agent_id)
     assert narrative is not None
-    assert narrative.recent_layer.content.count(insight) == 1
+    # what_happened text appears exactly once (idempotency check)
+    assert narrative.recent_layer.content.count("narrative idempotency") == 1
 
 
 def test_finish_session_retries_narrative_updated_at_conflict(session_manager, temp_storage):
@@ -1010,15 +1012,15 @@ def test_finish_session_retries_narrative_updated_at_conflict(session_manager, t
             )
         return real_save_narrative(narrative, expected_updated_at=expected_updated_at)
 
-    insight = "Retry narrative after optimistic lock conflict"
     with patch.object(temp_storage, "save_narrative", side_effect=flaky_save_narrative) as save:
-        result = manager.finish_session(context.session_id, key_insight=insight)
+        result = manager.finish_session(context.session_id)
 
     assert result.is_finished is True
     assert save.call_count == 2
     narrative = temp_storage.load_narrative(agent_id)
     assert narrative is not None
-    assert narrative.recent_layer.content.count(insight) == 1
+    # what_happened text appears exactly once (idempotency check)
+    assert narrative.recent_layer.content.count("optimistic lock retry") == 1
 
 
 def test_finish_session_missing_narrative_rolls_back_for_retry(session_manager, temp_storage):

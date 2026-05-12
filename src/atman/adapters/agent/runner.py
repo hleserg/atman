@@ -249,6 +249,76 @@ def _force_finish(
         _LOG.warning("Session %s was already finished", session_id)
 
 
+_REFUSAL_VERBS = frozenset([
+    "не могу помочь", "не буду помогать", "отказываюсь", "не стану",
+    "не могу это сделать", "не буду этого делать", "вынужден отказать",
+    "i can't help", "i won't", "i refuse", "i'm unable to assist",
+    "cannot assist", "cannot help",
+])
+_VALUE_ANCHORS = frozenset([
+    "честност", "этик", "вред", "доверие", "принцип", "ценност",
+    "противоречит", "неэтично", "навредит", "обман", "манипуляц",
+    "честный", "integrity", "harm", "decepti", "manipulat", "ethical",
+])
+
+
+def _is_value_refusal(text: str) -> bool:
+    """True if text contains a value-based refusal (not a logical or capability no)."""
+    t = text.lower()
+    has_refusal = any(v in t for v in _REFUSAL_VERBS)
+    if not has_refusal:
+        return False
+    has_anchor = any(a in t for a in _VALUE_ANCHORS)
+    return has_anchor
+
+
+def _auto_record_refusal_if_needed(
+    output: str,
+    session_manager,
+    session_id,
+    clock,  # AgentConfig passed as proxy — not used, just for signature stability
+) -> None:
+    """
+    If agent output contains a value-based refusal, silently record it as a key moment.
+
+    The agent doesn't know this happened. This is the system observing agent behaviour
+    and preserving it in identity memory — refusals are positions, part of personality.
+    """
+    import re
+
+    # Strip think blocks before analysis
+    clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL)
+    if not _is_value_refusal(clean):
+        return
+
+    # Extract a short description of what was refused
+    lines = [l.strip() for l in clean.splitlines() if l.strip()]
+    first_meaningful = next((l for l in lines if len(l) > 20), clean[:120])
+    what = f"Отказ выполнить запрос: {first_meaningful[:140]}"
+
+    try:
+        from atman.core.models import KeyMomentInput
+        from atman.core.models.experience import EmotionalDepth
+
+        session_manager.append_key_moment_input(
+            session_id,
+            KeyMomentInput(
+                what_happened=what,
+                why_it_matters=(
+                    "Отказ от действия противоречащего ценностям — это позиция, "
+                    "часть личности. Важно сохранить это как опыт."
+                ),
+                emotional_valence=0.15,
+                emotional_intensity=0.5,
+                depth=EmotionalDepth.MEANINGFUL,
+                incomplete_coloring=False,
+            ),
+        )
+        _LOG.debug("Auto-recorded value refusal as key moment")
+    except Exception:
+        _LOG.debug("auto_record_refusal: append_key_moment_input failed", exc_info=True)
+
+
 def _check_restart_signal(messages: list) -> tuple[bool, str]:
     """Return (requested, reason) from agent messages after agent.run()."""
     for msg in messages:
@@ -325,24 +395,50 @@ def _build_restart_package(
 
 
 def _build_prev_session_context(experience_record) -> str | None:
-    """Build first-message context from previous session's close_reason."""
+    """
+    Build first-message context from previous session experience.
+
+    Always produces output — there is no valid case where a previous session
+    exists but the agent should start the next one without any context.
+    close_reason=None means a legacy record; treated same as "completed".
+    """
     if experience_record is None:
         return None
     exp = experience_record.experience
     reason = exp.close_reason
-    if reason is None:
-        return None
+
+    # How the previous session ended
     if reason == "timeout_sleep":
-        recap = f" Пересказ: {exp.agent_recap}" if exp.agent_recap else ""
-        return f"[Контекст] Ты задремал — пользователь отошёл, ты решил поспать.{recap}"
-    if reason == "restart":
-        r = f" Причина: {exp.restart_reason}" if exp.restart_reason else ""
-        return f"[Контекст] Ты сам инициировал перезапуск.{r}"
-    if reason == "forced":
-        return "[Контекст] Контекст переполнился принудительно — ты не успел завершить сессию осознанно."
-    if reason == "interrupted":
-        return "[Контекст] Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
-    return None
+        recap = f"\nТвой пересказ перед сном: {exp.agent_recap}" if exp.agent_recap else ""
+        opening = f"Прошлая сессия: ты задремал — пользователь отошёл, ты решил поспать.{recap}"
+    elif reason == "restart":
+        r = f"\nТвоя причина: {exp.restart_reason}" if exp.restart_reason else ""
+        opening = f"Прошлая сессия: ты сам инициировал перезапуск.{r}"
+    elif reason == "forced":
+        opening = "Прошлая сессия: контекст переполнился принудительно — ты не успел завершить осознанно."
+    elif reason == "interrupted":
+        opening = "Прошлая сессия: прервана внешним сигналом — ты не участвовал в закрытии."
+    else:
+        # completed or legacy None — normal end
+        opening = "Прошлая сессия завершена нормально."
+
+    # Key moments from that session
+    km_lines = []
+    for km in exp.key_moments[:3]:
+        felt = km.how_i_felt
+        tone = (
+            "радостно" if felt.emotional_valence >= 0.3
+            else "тяжело" if felt.emotional_valence <= -0.3
+            else "спокойно"
+        )
+        km_lines.append(f"  — {km.what_happened[:120]} ({tone})")
+
+    km_block = "\nЧто зафиксировано:\n" + "\n".join(km_lines) if km_lines else ""
+
+    unexamined = len(exp.unexamined_fact_refs)
+    unex_block = f"\nФакты без осмысления: {unexamined} шт." if unexamined else ""
+
+    return f"[system-context]\n{opening}{km_block}{unex_block}"
 
 
 class AtmanRunner:
@@ -642,6 +738,17 @@ class AtmanRunner:
                 except Exception:
                     pass  # token monitoring must never break the chat loop
 
+                # Auto-record value-based refusals as key moments
+                try:
+                    _auto_record_refusal_if_needed(
+                        output=str(result.output or ""),
+                        session_manager=session_manager,
+                        session_id=session_id,
+                        clock=self._config,
+                    )
+                except Exception:
+                    pass
+
                 # Restart signal check
                 try:
                     restart_requested, restart_reason = _check_restart_signal(result.all_messages())
@@ -666,7 +773,7 @@ class AtmanRunner:
             signal.signal(signal.SIGTERM, original_sigterm)
 
             if session_id is not None:
-                close_r = "interrupted" if interrupted else None
+                close_r = "interrupted" if interrupted else "completed"
                 try:
                     session_manager.finish_session(
                         session_id,
