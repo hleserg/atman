@@ -13,6 +13,7 @@ from atman.core.models import (
     ExperienceRecord,
     Identity,
     IdentitySnapshot,
+    KeyMoment,
     NarrativeDocument,
     ReframingNote,
 )
@@ -239,3 +240,17 @@ class InMemoryStateStore(StateStore):
         # Return most recent by timestamp
         latest = max(candidates, key=lambda e: e.timestamp)
         return latest.model_copy(deep=True)
+
+    # KeyMoment operations
+
+    def create_key_moment(self, moment: KeyMoment, session_id: UUID) -> None:
+        """Create a new key moment in storage (stub implementation)."""
+        raise NotImplementedError("KeyMoment operations not yet implemented")
+
+    def list_key_moments(self, session_id: UUID) -> list[KeyMoment]:
+        """List all key moments for a session (stub implementation)."""
+        raise NotImplementedError("KeyMoment operations not yet implemented")
+
+    def get_key_moment(self, moment_id: UUID) -> KeyMoment:
+        """Retrieve a specific key moment by its ID (stub implementation)."""
+        raise NotImplementedError("KeyMoment operations not yet implemented")

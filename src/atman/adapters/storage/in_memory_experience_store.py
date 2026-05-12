@@ -7,7 +7,7 @@ Not persistent - all data is lost when the process exits.
 
 from uuid import UUID
 
-from atman.core.models import ExperienceRecord, ReframingNote
+from atman.core.models import ExperienceRecord, KeyMoment, ReframingNote
 from atman.core.ports import (
     DateRangeQuery,
     DepthQuery,
@@ -177,3 +177,17 @@ class InMemoryExperienceStore(StateStore):
     def load_latest_eigenstate(self, session_id=None, identity_id=None):  # type: ignore
         """Not implemented - use FileStateStore for eigenstate operations."""
         raise NotImplementedError("Eigenstate operations not supported in InMemoryExperienceStore")
+
+    # KeyMoment operations (not implemented - for compatibility)
+
+    def create_key_moment(self, moment: KeyMoment, session_id: UUID) -> None:  # type: ignore
+        """Not implemented - use FileStateStore for KeyMoment operations."""
+        raise NotImplementedError("KeyMoment operations not supported in InMemoryExperienceStore")
+
+    def list_key_moments(self, session_id: UUID) -> list[KeyMoment]:  # type: ignore
+        """Not implemented - use FileStateStore for KeyMoment operations."""
+        raise NotImplementedError("KeyMoment operations not supported in InMemoryExperienceStore")
+
+    def get_key_moment(self, moment_id: UUID) -> KeyMoment:  # type: ignore
+        """Not implemented - use FileStateStore for KeyMoment operations."""
+        raise NotImplementedError("KeyMoment operations not supported in InMemoryExperienceStore")
