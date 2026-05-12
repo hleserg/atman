@@ -2,7 +2,8 @@
 Integration tests for OllamaReflectionModel against a live Ollama instance.
 
 All tests are marked ``requires_ollama`` and auto-skip when Ollama is
-unreachable (see ``tests/conftest.py``).
+unreachable or the default chat model is not listed in ``/api/tags``
+(see ``tests/conftest.py``; override with ``ATMAN_OLLAMA_MODEL``).
 """
 
 from datetime import UTC, datetime
