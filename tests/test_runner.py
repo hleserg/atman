@@ -63,9 +63,7 @@ def identity_with_narrative(state_store: StateStore) -> Identity:
         identity_id=identity.id,
         created_at=datetime.now(UTC),
         core_layer=NarrativeLayer(content="Core identity", layer_type=LayerType.CORE),
-        recent_layer=NarrativeLayer(
-            content="Recent experience", layer_type=LayerType.RECENT
-        ),
+        recent_layer=NarrativeLayer(content="Recent experience", layer_type=LayerType.RECENT),
     )
     state_store.save_narrative(narrative)
 
