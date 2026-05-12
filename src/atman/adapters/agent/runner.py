@@ -712,6 +712,32 @@ class AtmanRunner:
                     # Check thresholds: 70%, 80%, 90%, 95%
                     # Use independent 'if' (not 'elif') so multiple thresholds can fire
                     # in a single iteration if usage jumps across multiple boundaries
+                    # Order: check lower thresholds first, then 95% (which breaks) last
+                    if ratio >= 0.70 and 70 not in self._triggered:
+                        remaining = context_limit - input_tokens
+                        print_warn(
+                            f"\n⚠️  Context 70% full ({input_tokens}/{context_limit} tokens). "
+                            f"~{remaining} tokens remaining. "
+                            f"When ready — call restart_session.\n"
+                        )
+                        self._triggered.add(70)
+
+                    if ratio >= 0.80 and 80 not in self._triggered:
+                        remaining = context_limit - input_tokens
+                        print_warn(
+                            f"\n⚠️  Context 80% full ({input_tokens}/{context_limit} tokens). "
+                            f"~{remaining} tokens remaining.\n"
+                        )
+                        self._triggered.add(80)
+
+                    if ratio >= 0.90 and 90 not in self._triggered:
+                        remaining = context_limit - input_tokens
+                        print_warn(
+                            f"\n⚠️  Context 90% full ({input_tokens}/{context_limit} tokens). "
+                            f"~{remaining} tokens remaining.\n"
+                        )
+                        self._triggered.add(90)
+
                     if ratio >= 0.95 and 95 not in self._triggered:
                         # Force close at 95%
                         _LOG.warning(
@@ -733,31 +759,6 @@ class AtmanRunner:
                             _LOG.exception("Failed to force-finish session %s", session_id)
                             print_err(f"Force-finish failed: {exc!s}")
                         break  # Exit main loop
-
-                    if ratio >= 0.90 and 90 not in self._triggered:
-                        remaining = context_limit - input_tokens
-                        print_warn(
-                            f"\n⚠️  Context 90% full ({input_tokens}/{context_limit} tokens). "
-                            f"~{remaining} tokens remaining.\n"
-                        )
-                        self._triggered.add(90)
-
-                    if ratio >= 0.80 and 80 not in self._triggered:
-                        remaining = context_limit - input_tokens
-                        print_warn(
-                            f"\n⚠️  Context 80% full ({input_tokens}/{context_limit} tokens). "
-                            f"~{remaining} tokens remaining.\n"
-                        )
-                        self._triggered.add(80)
-
-                    if ratio >= 0.70 and 70 not in self._triggered:
-                        remaining = context_limit - input_tokens
-                        print_warn(
-                            f"\n⚠️  Context 70% full ({input_tokens}/{context_limit} tokens). "
-                            f"~{remaining} tokens remaining. "
-                            f"When ready — call restart_session.\n"
-                        )
-                        self._triggered.add(70)
 
                 # E22.5: Check for wait request (agent-triggered timeout adjustment)
                 wait_requested, wait_minutes = _check_wait_requested(result.new_messages())
