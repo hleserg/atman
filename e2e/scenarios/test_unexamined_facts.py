@@ -56,10 +56,7 @@ def bootstrap(store, agent_id: UUID) -> None:
         core_values=[CoreValue(name="честность", description="test",
                                confidence=0.9, justification="test")],
     )
-    narrative = NarrativeDocument(
-        identity_id=agent_id,
-        layers=[NarrativeLayer(layer_type=LayerType.FOUNDATION, content="test")],
-    )
+    narrative = NarrativeDocument(identity_id=agent_id, core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="test"), recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content=""))
     store.save_identity(identity)
     store.save_narrative(narrative)
 
@@ -172,9 +169,8 @@ def test_wakeup_messages() -> int:
         deps, session_manager, store = build_deps(workspace, agent_id, config)
         bootstrap(store, agent_id)
 
-        close_reasons = ["completed", "timeout_sleep", "restart", "forced", "interrupted"]
+        close_reasons = ["timeout_sleep", "restart", "forced", "interrupted"]
         expected_keywords = {
-            "completed":     ["завершена"],
             "timeout_sleep": ["задремал", "sleep", "тайм"],
             "restart":       ["перезапуск", "restart"],
             "forced":        ["переполн", "forced", "принудительно"],

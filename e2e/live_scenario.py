@@ -111,13 +111,17 @@ def dump_experience(store, session_id: UUID, label: str) -> None:
     exp = rec.experience
     sub(f"SessionExperience — {label}")
     show("close_reason", exp.close_reason)
-    show("key_moments", len(exp.key_moments))
+    show("key_moment_ids", len(exp.key_moment_ids))
     show("fact_refs", len(exp.fact_refs))
     show("unexamined_fact_refs", len(exp.unexamined_fact_refs))
     show("incomplete_coloring", exp.incomplete_coloring)
     if exp.agent_recap:
         show("agent_recap", exp.agent_recap[:150])
-    for i, km in enumerate(exp.key_moments, 1):
+    for i, km_id in enumerate(exp.key_moment_ids, 1):
+        km = store.get_key_moment(km_id)
+        if km is None:
+            print(f"\n  KM{i}: [not found: {km_id}]")
+            continue
         print(f"\n  KM{i}: {km.what_happened[:120]}")
         print(f"       valence={km.how_i_felt.emotional_valence:.2f}  "
               f"intensity={km.how_i_felt.emotional_intensity:.2f}  "
@@ -266,8 +270,18 @@ async def run_session(
     # Previous session context injection
     recent = store.list_recent_experiences(limit=1)
     if recent:
-        from atman.adapters.agent.runner import _build_prev_session_context
-        ctx_msg = _build_prev_session_context(recent[0])
+        exp = recent[0].experience
+        cr = exp.close_reason
+        if cr == "timeout_sleep":
+            ctx_msg = f"Ты задремал — пользователь отошёл. {exp.agent_recap or ''}"
+        elif cr == "restart":
+            ctx_msg = f"Ты сам инициировал перезапуск. Причина: {exp.restart_reason or 'не указана'}"
+        elif cr == "forced":
+            ctx_msg = "Контекст переполнился принудительно."
+        elif cr == "interrupted":
+            ctx_msg = "Сессия была прервана внешним сигналом."
+        else:
+            ctx_msg = None
         if ctx_msg:
             print(f"\n[→ Контекст предыдущей сессии инжектирован]")
             print(f"   {ctx_msg[:120]}")
@@ -405,14 +419,14 @@ async def main() -> int:
         hdr("ИТОГО")
         all_exps = store.list_recent_experiences(limit=10)
         print(f"\n  Всего сохранённых сессий: {len(all_exps)}")
-        total_km = sum(len(r.experience.key_moments) for r in all_exps)
+        total_km = sum(len(r.experience.key_moment_ids) for r in all_exps)
         total_unexamined = sum(len(r.experience.unexamined_fact_refs) for r in all_exps)
         print(f"  Всего key moments: {total_km}")
         print(f"  Всего unexamined_fact_refs: {total_unexamined}")
         for r in all_exps:
             exp = r.experience
             print(f"\n  Сессия {exp.session_id!s:.8}…  "
-                  f"KM={len(exp.key_moments)}  "
+                  f"KM={len(exp.key_moment_ids)}  "
                   f"close_reason={exp.close_reason or '—'}")
 
         print("\n✓ Live scenario завершён\n")

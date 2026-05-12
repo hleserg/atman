@@ -77,10 +77,7 @@ async def scenario_keyboard_interrupt() -> int:
             core_values=[CoreValue(name="честность", description="test", confidence=0.9,
                                    justification="test")],
         )
-        narrative = NarrativeDocument(
-            identity_id=agent_id,
-            layers=[NarrativeLayer(layer_type=LayerType.FOUNDATION, content="test")],
-        )
+        narrative = NarrativeDocument(identity_id=agent_id, core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="test"), recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content=""))
         store.save_identity(identity)
         store.save_narrative(narrative)
 
@@ -91,7 +88,7 @@ async def scenario_keyboard_interrupt() -> int:
         deps_s = replace(deps, session_id=session_id)
 
         # Проверяем journal создан
-        journal_path = workspace / agent_id.hex / "sessions" / f"active_{session_id}.jsonl"
+        journal_path = workspace / str(agent_id) / "sessions" / f"active_{session_id}.jsonl"
         # Журнал создаётся при первом append_key_moment_input или _note_facts_read
 
         # Симулируем _force_finish как при KeyboardInterrupt
@@ -176,8 +173,8 @@ async def scenario_keyboard_interrupt() -> int:
             del session_manager._active_sessions[session_id3]
 
         # Проверяем что journal файл есть на диске
-        journal_files = list((workspace / agent_id.hex / "sessions").glob("active_*.jsonl")) \
-            if (workspace / agent_id.hex / "sessions").exists() else []
+        journal_files = list((workspace / str(agent_id) / "sessions").glob("active_*.jsonl")) \
+            if (workspace / str(agent_id) / "sessions").exists() else []
         ok9 = chk("A3: journal файл существует после 'сбоя'",
                   len(journal_files) > 0,
                   f"files={[f.name for f in journal_files]}")
@@ -213,8 +210,8 @@ async def scenario_keyboard_interrupt() -> int:
             pass
 
         # Journal файл должен быть удалён
-        journal_files_after = list((workspace / agent_id.hex / "sessions").glob("active_*.jsonl")) \
-            if (workspace / agent_id.hex / "sessions").exists() else []
+        journal_files_after = list((workspace / str(agent_id) / "sessions").glob("active_*.jsonl")) \
+            if (workspace / str(agent_id) / "sessions").exists() else []
         orphan_journals = [f for f in journal_files_after
                            if session_id3.hex in f.name or session_id4.hex in f.name]
         chk("A3: journal удалён после recovery/finish",

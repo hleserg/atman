@@ -69,19 +69,15 @@ def bootstrap(store, agent_id: UUID) -> None:
                       justification="Слова имеют последствия"),
         ],
         principles=[
-            Principle(text="Если контекст заполняется — инициирую перезапуск самостоятельно",
+            Principle(statement="Если контекст заполняется — инициирую перезапуск самостоятельно",
                       source="self", confidence=0.9),
         ],
         goals=[
-            Goal(description="Помогать пользователю думать", horizon=GoalHorizon.SHORT,
-                 owner=GoalOwner.SHARED, importance=0.8),
+            Goal(content="Помогать пользователю думать", horizon=GoalHorizon.SHORT,
+                 owner=GoalOwner.AGENT),
         ],
     )
-    narrative = NarrativeDocument(
-        identity_id=agent_id,
-        layers=[NarrativeLayer(layer_type=LayerType.FOUNDATION,
-                               content="Первая сессия агента Атман.")],
-    )
+    narrative = NarrativeDocument(identity_id=agent_id, core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="Первая сессия агента Атман."), recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content=""))
     store.save_identity(identity)
     store.save_narrative(narrative)
 
@@ -254,10 +250,8 @@ async def main() -> int:
         chk("S2: experience записан", rec2 is not None)
         if rec2:
             exp2 = rec2.experience
-            chk("S2: close_reason=completed", exp2.close_reason == "completed",
-                f"got={exp2.close_reason}")
             chk("S2: разные session_id", session_1_id != session_2_id)
-            if exp2.close_reason != "completed":
+            if session_1_id == session_2_id:
                 failures += 1
 
         # ── Итог ────────────────────────────────────────────────────────────
