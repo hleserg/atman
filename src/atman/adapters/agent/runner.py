@@ -16,6 +16,7 @@ from uuid import UUID
 
 from pydantic_ai import Agent
 from pydantic_ai.models.ollama import OllamaModel
+from rich.markup import escape
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.deps import AtmanDeps
@@ -79,9 +80,6 @@ def _finalize_open_session(
     """
     from atman.core.models import KeyMomentInput
     from atman.core.models.experience import EmotionalDepth
-
-    if session_manager.get_active_session(session_id) is None:
-        return
 
     active = session_manager.get_active_session(session_id)
     if active is None:
@@ -274,7 +272,7 @@ class AtmanRunner:
                 reply = result.output
                 history = result.all_messages()
 
-                console.print(f"\n[term.title]Агент:[/term.title] {reply}\n")
+                console.print(f"\n[term.title]Агент:[/term.title] {escape(reply)}\n")
 
                 self._session_manager.record_event(
                     session_id,

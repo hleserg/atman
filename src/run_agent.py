@@ -29,7 +29,11 @@ def _load_env() -> dict[str, str]:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
-                env[k.strip()] = v.strip()
+                v = v.strip()
+                # Strip surrounding quotes (single or double) from value
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+                    v = v[1:-1]
+                env[k.strip()] = v
     # Overlay full process environment so deploy-time vars (e.g. DATABASE_URL) are
     # always visible even when .env defines other keys only.
     env.update(os.environ)
