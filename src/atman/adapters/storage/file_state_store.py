@@ -206,7 +206,7 @@ class FileStateStore(StateStore):
     def store_key_moments(self, session_id: UUID, moments: list[KeyMoment]) -> None:
         """Store key moments for a session."""
         session_moments_file = self.key_moments_dir / f"{session_id}_moments.json"
-        moments_data = [m.model_dump() for m in moments]
+        moments_data = [m.model_dump(mode='json') for m in moments]
         self._write_json_atomically(session_moments_file, json.dumps(moments_data, indent=2))
 
         # Also store individual moment files for quick lookup

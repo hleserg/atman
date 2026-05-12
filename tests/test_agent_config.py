@@ -277,9 +277,8 @@ def test_agent_factory_experience_adapter_duplicate_reframing_maps_correctly() -
             depth=EmotionalDepth.SURFACE,
         )
         moment = KeyMoment(what_happened="ev", how_i_felt=felt, why_it_matters="y")
-        exp = SessionExperience(
-            session_id=sid,
-            key_moments=[moment],
+        exp = SessionExperience(session_id=sid,
+            key_moment_ids=[moment.id], avg_emotional_intensity=0.5, has_profound_moment=False,
             importance=0.5,
             salience=0.5,
             timestamp=datetime.now(UTC),
