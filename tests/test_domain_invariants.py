@@ -21,6 +21,10 @@ Invariants covered:
 11. (E24) FactRecord.invalidate() zeroes salience for terminal states.
 12. (E24) confirm_fact() at the backend port is a no-op for non-ACTIVE facts.
 13. (E24) decay_stale_facts() only decays ACTIVE facts; non-ACTIVE are skipped.
+14. (E21.7) Key moments preserve insertion order throughout session lifecycle.
+15. (E21.7) Recording events never contaminates key moments list.
+16. (E21.7) SessionExperience fact_refs aggregate from key moments AND _note_facts_read.
+17. (E21.7) incomplete_coloring flag propagates from KeyMomentInput to SessionExperience.
 
 SYSTEM_MAP §2.1 / §3 B–E / §4.2 / §5.3 regression freeze.
 """
@@ -31,19 +35,32 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from atman.adapters.memory import InMemoryBackend
-from atman.adapters.storage import FileStateStore
+from atman.adapters.storage import FileStateStore, InMemoryStateStore
+from atman.core.clock_impl import FrozenClock
 from atman.core.models import (
+    CoreValue,
     EmotionalDepth,
     ExperienceRecord,
     FactRecord,
     FeltSense,
+    Goal,
+    GoalHorizon,
+    Identity,
     KeyMoment,
+    KeyMomentInput,
+    LayerType,
+    NarrativeDocument,
+    NarrativeLayer,
     ReframingNote,
+    SessionEvent,
     SessionExperience,
 )
 from atman.core.models.fact import FactStatus
 from atman.core.ports.state_store import DateRangeQuery
+from atman.core.services import SessionManager
 
 
 def _record(
@@ -361,3 +378,167 @@ def test_invariant_decay_stale_facts_only_decays_active() -> None:
     assert disputed_after is not None
     # Non-ACTIVE facts are untouched: salience preserved exactly.
     assert disputed_after.salience == disputed_before.salience
+
+
+# ---------------------------------------------------------------------------
+# Invariant 14 (E21.7): Key moments preserve temporal insertion order
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(params=["in_memory", "file_based"])
+def _temp_storage(request, tmp_path):
+    """Storage adapter for domain invariant tests."""
+    if request.param == "in_memory":
+        return InMemoryStateStore()
+    else:
+        return FileStateStore(workspace=tmp_path / "invariant_test")
+
+
+@pytest.fixture
+def _session_manager(_temp_storage):
+    """Session manager with test identity and narrative."""
+    identity = Identity(
+        id=uuid4(),
+        self_description="Domain invariant test agent",
+        core_values=[CoreValue(name="test", description="test", confidence=0.8)],
+        goals=[Goal(content="test", horizon=GoalHorizon.SHORT)],
+        emotional_baseline=0.0,
+    )
+    narrative = NarrativeDocument(
+        identity_id=identity.id,
+        core_layer=NarrativeLayer(layer_type=LayerType.CORE, content="core"),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content="recent"),
+    )
+    _temp_storage.save_identity(identity)
+    _temp_storage.save_narrative(narrative)
+    clock = FrozenClock(datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC))
+    return SessionManager(_temp_storage, clock=clock), identity.id
+
+
+def test_invariant_key_moments_preserve_temporal_order(_session_manager):
+    """Key moments must preserve insertion order throughout session lifecycle."""
+    manager, agent_id = _session_manager
+    context = manager.start_session(agent_id)
+
+    moments_order = []
+    for i in range(5):
+        moment = KeyMomentInput(
+            what_happened=f"Event {i}",
+            emotional_valence=0.1 * i,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters=f"Reason {i}",
+        )
+        manager.append_key_moment_input(context.session_id, moment)
+        moments_order.append(f"Event {i}")
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert [m.what_happened for m in active.key_moments] == moments_order
+
+    result = manager.finish_session(context.session_id)
+    assert [m.what_happened for m in result.key_moments] == moments_order
+
+
+# ---------------------------------------------------------------------------
+# Invariant 15 (E21.7): Events do not contaminate key moments
+# ---------------------------------------------------------------------------
+
+
+def test_invariant_events_do_not_affect_key_moments(_session_manager):
+    """Recording events must never contaminate key moments list."""
+    manager, agent_id = _session_manager
+    context = manager.start_session(agent_id)
+
+    for i in range(10):
+        manager.record_event(
+            context.session_id,
+            SessionEvent(
+                session_id=context.session_id,
+                event_type="regular_event",
+                description=f"Event {i}",
+            ),
+        )
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert len(active.events) == 10
+    assert len(active.key_moments) == 0
+
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Key moment",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="Important",
+        ),
+    )
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert len(active.key_moments) == 1
+    assert len(active.events) == 10
+
+
+# ---------------------------------------------------------------------------
+# Invariant 16 (E21.7): fact_refs aggregate from all sources
+# ---------------------------------------------------------------------------
+
+
+def test_invariant_fact_refs_aggregate_from_all_sources(_session_manager, _temp_storage):
+    """SessionExperience fact_refs must aggregate from key moments AND _note_facts_read."""
+    manager, agent_id = _session_manager
+    context = manager.start_session(agent_id)
+
+    km_fact_id = uuid4()
+    moment = KeyMomentInput(
+        what_happened="Used fact A",
+        emotional_valence=0.3,
+        emotional_intensity=0.5,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Fact reference test",
+        fact_refs=[km_fact_id],
+    )
+    manager.append_key_moment_input(context.session_id, moment)
+
+    noted_fact_id = uuid4()
+    manager._note_facts_read(context.session_id, [noted_fact_id])
+
+    manager.finish_session(context.session_id)
+
+    experiences = _temp_storage.list_recent_experiences(limit=1)
+    assert len(experiences) == 1
+    exp = experiences[0].experience
+    assert km_fact_id in exp.fact_refs
+    assert noted_fact_id in exp.fact_refs
+
+
+# ---------------------------------------------------------------------------
+# Invariant 17 (E21.7): incomplete_coloring flag propagates
+# ---------------------------------------------------------------------------
+
+
+def test_invariant_incomplete_coloring_flag_propagates(_session_manager, _temp_storage):
+    """incomplete_coloring flag must propagate from KeyMomentInput to SessionExperience."""
+    manager, agent_id = _session_manager
+    context = manager.start_session(agent_id)
+
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Uncolored moment",
+            emotional_valence=0.0,
+            emotional_intensity=0.0,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="Coloring was incomplete",
+            incomplete_coloring=True,
+        ),
+    )
+
+    manager.finish_session(context.session_id)
+
+    experiences = _temp_storage.list_recent_experiences(limit=1)
+    assert len(experiences) == 1
+    assert experiences[0].experience.incomplete_coloring is True
