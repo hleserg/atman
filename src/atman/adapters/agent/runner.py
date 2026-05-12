@@ -985,13 +985,25 @@ class AtmanRunner:
             return None
 
         if close_reason == "timeout_sleep":
-            return "Ты задремал — пользователь отошёл, ты решил поспать."
+            return (
+                "Ты задремал — пользователь отошёл, ты решил поспать.\n"
+                "You dozed off — the user stepped away, you chose to sleep."
+            )
         elif close_reason == "restart":
-            reason = experience.restart_reason or "не указана"
-            return f"Ты сам инициировал перезапуск. Причина: {reason}"
+            reason = experience.restart_reason or "не указана / not specified"
+            return (
+                f"Ты сам инициировал перезапуск. Причина: {reason}\n"
+                f"You initiated a restart. Reason: {reason}"
+            )
         elif close_reason == "forced":
-            return "Контекст переполнился принудительно — ты не успел завершить сессию осознанно."
+            return (
+                "Контекст переполнился принудительно — ты не успел завершить сессию осознанно.\n"
+                "Context limit was reached — the session was closed before you could finish consciously."
+            )
         elif close_reason == "interrupted":
-            return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
+            return (
+                "Сессия была прервана внешним сигналом — ты не участвовал в закрытии.\n"
+                "The session was interrupted by an external signal — you were not part of the closing."
+            )
 
         return None
