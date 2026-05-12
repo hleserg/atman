@@ -49,7 +49,7 @@ All paths are absolute relative to the repository root.
 | `core/services/identity_service.py` | Identity lifecycle: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Narrative document: create, update, archive, validate | `NarrativeService` |
 | `core/services/narrative_revision.py` | Narrative updates during reflection with concurrency control | `NarrativeRevisionService` |
-| `core/services/session_manager.py` | Session runtime: start, `record_event` (optional async **AffectDetector** hook), `append_key_moment` / `append_key_moment_input`, finish with eigenstate (thread-safe registry, optional `max_active_sessions`, optional `affect_workspace` + `AffectDetectorConfig`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
+| `core/services/session_manager.py` | Session runtime: start, `record_event` (optional async **AffectDetector** hook), `append_key_moment` / `append_key_moment_input`, finish with eigenstate (thread-safe registry, optional `max_active_sessions`, optional `affect_workspace` + `AffectDetectorConfig`, **optional `workspace` for JSONL session journals & orphan recovery**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
 | `core/services/conflict_detector.py` (E24.5) | Detect contradictions between active facts; produces small cognitive tension signals | `ConflictDetector`, `FactConflict` |
@@ -94,6 +94,7 @@ All paths are absolute relative to the repository root.
 | `adapters/storage/in_memory_state_store.py` (`InMemoryStateStore`) | `StateStore` | full in-memory implementation with deep copies (experience + identity + narrative + eigenstate + key moments dict) |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON files (experience + identity + narrative + eigenstate) + `key_moments.jsonl` (append-only JSONL with corruption recovery) |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | reflection output stores |
+|| **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **PostgreSQL implementation** (KeyMoment operations only, psycopg3; other StateStore methods raise `NotImplementedError`) |
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: in-memory with BIGSERIAL + RLS simulation |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: helper functions for persisting reflections (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | deterministic mock |
@@ -163,7 +164,7 @@ Connections between two or more parts. These are seams that may break independen
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
-| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start; `IdentitySnapshot` on start; deterministic `SessionExperience.id` (uuid5 of `session_id`) for idempotent `finish_session`; eigenstate load scoped by `identity_id`; recent narrative update uses `save_narrative(..., expected_updated_at=...)` |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | loads identity/narrative at start; `IdentitySnapshot` on start; deterministic `SessionExperience.id` (uuid5 of `session_id`) for idempotent `finish_session`; `finish_session` calls `get_key_moment` + `create_key_moment` per moment for idempotent retry; computes `unexamined_fact_refs` (facts in `_facts_read` but not in any key moment `fact_refs`); eigenstate load scoped by `identity_id`; recent narrative update uses `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | optimistic locking |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | reads experience, updates recent layer |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
@@ -178,7 +179,7 @@ Connections between two or more parts. These are seams that may break independen
 | Adapter | Implements |
 |---------|------------|
 | `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
-| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
+| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore`, `PostgresStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | corresponding ports |
 | `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |

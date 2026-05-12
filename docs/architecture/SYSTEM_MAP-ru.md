@@ -52,7 +52,7 @@
 | `core/services/identity_service.py` | Жизненный цикл identity: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Документ нарратива: создание, обновление, архивация, валидация | `NarrativeService` |
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции | `NarrativeRevisionService` |
-| `core/services/session_manager.py` | Сессионный runtime: старт, `record_event` (опциональный async **AffectDetector**), `append_key_moment` / `append_key_moment_input`, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`, опционально `affect_workspace` + `AffectDetectorConfig`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
+| `core/services/session_manager.py` | Сессионный runtime: старт, `record_event` (опциональный async **AffectDetector**), `append_key_moment` / `append_key_moment_input`, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`, опционально `affect_workspace` + `AffectDetectorConfig`, **опционально `workspace` для JSONL-журналов сессий и orphan recovery**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 | `core/services/session_working_memory.py` | In-session кэш для предотвращения повторных поисков | `SessionWorkingMemory`, `CachedItem` |
@@ -98,6 +98,7 @@
 | `adapters/storage/in_memory_state_store.py` (`InMemoryStateStore`) | `StateStore` | полная реализация в памяти с deep copies (опыт + identity + нарратив + eigenstate + словарь ключевых моментов) |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) + `key_moments.jsonl` (append-only JSONL с восстановлением после повреждений) |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | хранилища выводов рефлексии |
+|| **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **Реализация PostgreSQL** (только операции KeyMoment, psycopg3; другие методы StateStore выбрасывают `NotImplementedError`) |
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: в памяти с симуляцией BIGSERIAL + RLS |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
@@ -167,7 +168,7 @@
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
-| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | старт: identity/narrative + `IdentitySnapshot`; `finish_session`: детерминированный `SessionExperience.id` (uuid5 от `session_id`) для идемпотентных ретраев; загрузка eigenstate с фильтром `identity_id`; обновление recent narrative через `save_narrative(..., expected_updated_at=...)` |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | старт: identity/narrative + `IdentitySnapshot`; `finish_session`: детерминированный `SessionExperience.id` (uuid5 от `session_id`) для идемпотентных ретраев; вызывает `get_key_moment` + `create_key_moment` для каждого момента (идемпотентность ретраев); вычисляет `unexamined_fact_refs` (факты из `_facts_read`, но не упомянутые в `fact_refs` ни одного key moment); загрузка eigenstate с фильтром `identity_id`; обновление recent narrative через `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | оптимистическая блокировка |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
@@ -179,7 +180,7 @@
 | Адаптер | Реализует |
 |---------|-----------|
 | `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
-| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
+| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore`, `PostgresStateStore` | `StateStore` |
 | `MockReflectionModel` | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
 | **`InMemoryReflectionStore`** | **`ReflectionStore`** (E27) |
