@@ -98,7 +98,6 @@ def test_gen_secrets_writes_restricted_env_file(tmp_path: Path) -> None:
     app_password = values.get("ATMAN_APP_PASSWORD", "")
     assert len(app_password) == 32 or app_password == "***"
 
-
     assert values["QDRANT_URL"] == "http://localhost:6333"
     assert len(values["POSTGRES_PASSWORD"]) == 32
     assert len(values["QDRANT_API_KEY"]) == 32
