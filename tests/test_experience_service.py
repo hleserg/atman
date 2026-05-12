@@ -31,7 +31,7 @@ def _make_session_experience(
     **kwargs: object,
 ) -> SessionExperience:
     """Helper to create SessionExperience with new key_moment_ids field."""
-    avg_intensity = moment.how_i_felt.intensity
+    avg_intensity = moment.how_i_felt.emotional_intensity
     is_profound = moment.how_i_felt.depth == EmotionalDepth.PROFOUND
     
     return SessionExperience(

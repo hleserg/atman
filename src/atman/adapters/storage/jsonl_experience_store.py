@@ -225,14 +225,11 @@ class JsonlExperienceStore(StateStore):
 
         elif isinstance(query, ValuesTouchedQuery):
             # Check if any of the query values are in any key moment's values_touched
-            query_values_lower = [v.lower() for v in query.values]
             moments = self._read_all_key_moments()
             for moment_id in exp.key_moment_ids:
                 moment = moments.get(moment_id)
-                if moment:
-                    moment_values_lower = [v.lower() for v in moment.values_touched]
-                    if any(qv in moment_values_lower for qv in query_values_lower):
-                        return True
+                if moment and any(qv in moment.values_touched for qv in query.values):
+                    return True
             return False
 
         elif isinstance(query, DepthQuery):
@@ -240,7 +237,7 @@ class JsonlExperienceStore(StateStore):
             moments = self._read_all_key_moments()
             for moment_id in exp.key_moment_ids:
                 moment = moments.get(moment_id)
-                if moment and moment.how_i_felt.depth.value == query.depth.lower():
+                if moment and moment.how_i_felt.depth.value == query.depth:
                     return True
             return False
 

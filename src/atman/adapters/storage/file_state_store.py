@@ -190,8 +190,10 @@ class FileStateStore(StateStore):
             ):
                 all_experiences.append(record)
             elif isinstance(query, FactRefsContainsQuery):
-                for moment in record.experience.key_moments:
-                    if query.fact_id in moment.fact_refs:
+                # Check fact refs in key moments (fetch by ID)
+                for moment_id in record.experience.key_moment_ids:
+                    moment = self.get_key_moment(moment_id)
+                    if moment and query.fact_id in moment.fact_refs:
                         all_experiences.append(record)
                         break
 
