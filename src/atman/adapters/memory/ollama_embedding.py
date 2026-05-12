@@ -38,17 +38,17 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
         Initialize Ollama embedding adapter.
 
         Args:
-            base_url: Ollama server URL (defaults to OLLAMA_HOST env var or localhost)
-            model: Model name (defaults to OLLAMA_EMBED_MODEL env var or qwen3-embedding:4b)
+            base_url: Ollama server URL (defaults to EMBEDDING_OLLAMA_HOST env var or localhost)
+            model: Model name (defaults to EMBEDDING_MODEL env var or bge-m3)
             timeout: Request timeout in seconds
         """
-        resolved_url = base_url or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        resolved_url = base_url or os.environ.get("EMBEDDING_OLLAMA_HOST", "http://localhost:11434")
         if not resolved_url.startswith(("http://", "https://")):
             raise ValueError(
                 f"OllamaEmbeddingAdapter base_url must be http(s)://, got {resolved_url!r}"
             )
         self.base_url = resolved_url
-        self.model = model or os.environ.get("OLLAMA_EMBED_MODEL", "qwen3-embedding:4b")
+        self.model = model or os.environ.get("EMBEDDING_MODEL", "bge-m3")
         self.timeout = timeout
         self._dimension: int | None = None
 
