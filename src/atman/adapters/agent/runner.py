@@ -22,7 +22,12 @@ from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
-from atman.adapters.agent.tools import log_experience, record_key_moment
+from atman.adapters.agent.tools import (
+    log_experience,
+    record_key_moment,
+    restart_session,
+    wait_session,
+)
 from atman.core.models import SessionEvent
 from atman.core.services.reflection_service import MicroReflectionService
 from atman.core.services.session_manager import SessionManager
@@ -60,7 +65,7 @@ def _make_agent(model_config: ModelConfig, thinking: bool = False) -> Agent[Atma
     return Agent(
         model=model,  # type: ignore[arg-type]
         deps_type=AtmanDeps,
-        tools=[record_key_moment, log_experience],
+        tools=[record_key_moment, log_experience, restart_session, wait_session],
         instructions=lambda ctx: _safe_str(build_instructions(ctx.deps)),
         model_settings={"thinking": thinking},
     )
