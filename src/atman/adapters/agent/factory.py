@@ -37,8 +37,8 @@ from atman.core.ports.reflection import ExperienceRepository, NarrativeRepositor
 from atman.core.ports.state_store import DateRangeQuery, SessionExperienceQuery
 from atman.core.services.experience_service import ExperienceService
 from atman.core.services.identity_service import IdentityService
-from atman.core.services.narrative_service import NarrativeService
 from atman.core.services.narrative_revision import NarrativeRevisionService
+from atman.core.services.narrative_service import NarrativeService
 from atman.core.services.reflection_service import MicroReflectionService
 from atman.core.services.session_manager import SessionManager
 
