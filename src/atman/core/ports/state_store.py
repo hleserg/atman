@@ -180,6 +180,45 @@ class StateStore(ABC):
         """
         pass
 
+    # KeyMoment operations
+
+    @abstractmethod
+    def store_key_moments(self, session_id: UUID, moments: list[KeyMoment]) -> None:
+        """
+        Store key moments for a session.
+
+        Args:
+            session_id: UUID of the session
+            moments: List of key moments to store
+        """
+        pass
+
+    @abstractmethod
+    def get_key_moment(self, moment_id: UUID) -> KeyMoment | None:
+        """
+        Retrieve a key moment by its ID.
+
+        Args:
+            moment_id: UUID of the key moment
+
+        Returns:
+            KeyMoment | None: The key moment if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    def get_key_moments_for_session(self, session_id: UUID) -> list[KeyMoment]:
+        """
+        Retrieve all key moments for a session.
+
+        Args:
+            session_id: UUID of the session
+
+        Returns:
+            list[KeyMoment]: List of key moments for the session
+        """
+        pass
+
     # Identity Store operations
 
     @abstractmethod
@@ -340,44 +379,30 @@ class StateStore(ABC):
     # KeyMoment operations
 
     @abstractmethod
-    def create_key_moment(self, moment: KeyMoment, session_id: UUID) -> None:
+    def create_key_moment(self, key_moment: "KeyMoment") -> "KeyMoment":
         """
         Create a new key moment in storage.
 
         Args:
-            moment: KeyMoment to store
-            session_id: UUID of the session this moment belongs to
+            key_moment: KeyMoment to store
+
+        Returns:
+            KeyMoment: The stored key moment
 
         Raises:
-            ValueError: If the key moment is invalid
+            ValueError: If the key moment is invalid or already exists
         """
         pass
 
     @abstractmethod
-    def list_key_moments(self, session_id: UUID) -> list[KeyMoment]:
+    def list_key_moments(self, session_id: UUID | None = None) -> list["KeyMoment"]:
         """
-        List all key moments for a session.
+        List key moments, optionally filtered by session_id.
 
         Args:
-            session_id: UUID of the session
+            session_id: If provided, return only key moments from this session
 
         Returns:
-            list[KeyMoment]: List of key moments for the session, ordered by timestamp
-        """
-        pass
-
-    @abstractmethod
-    def get_key_moment(self, moment_id: UUID) -> KeyMoment:
-        """
-        Retrieve a specific key moment by its ID.
-
-        Args:
-            moment_id: UUID of the key moment
-
-        Returns:
-            KeyMoment: The requested key moment
-
-        Raises:
-            KeyError: If the key moment is not found
+            list[KeyMoment]: List of key moments
         """
         pass

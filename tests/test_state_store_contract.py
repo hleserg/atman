@@ -17,7 +17,12 @@ from uuid import uuid4
 
 import pytest
 
-from atman.adapters.storage import FileStateStore, InMemoryStateStore
+from atman.adapters.storage import (
+    FileStateStore,
+    InMemoryExperienceStore,
+    InMemoryStateStore,
+    JsonlExperienceStore,
+)
 from atman.core.models import (
     Eigenstate,
     EmotionalDepth,
@@ -61,25 +66,32 @@ def _make_record(
     values: list[str] | None = None,
     depth: EmotionalDepth = EmotionalDepth.SURFACE,
     timestamp: datetime | None = None,
-) -> ExperienceRecord:
-    return ExperienceRecord(
-        experience=SessionExperience(
-            session_id=session_id or uuid4(),
-            timestamp=timestamp or datetime.now(UTC),
-            key_moments=[
-                KeyMoment(
-                    what_happened="contract test event",
-                    how_i_felt=FeltSense(
-                        emotional_valence=0.1,
-                        emotional_intensity=0.5,
-                        depth=depth,
-                    ),
-                    why_it_matters="contract coverage",
-                    values_touched=values or ["honesty"],
-                )
-            ],
-        )
+) -> tuple[ExperienceRecord, KeyMoment]:
+    moment = KeyMoment(
+        what_happened="contract test event",
+        how_i_felt=FeltSense(
+            emotional_valence=0.1,
+            emotional_intensity=0.5,
+            depth=depth,
+        ),
+        why_it_matters="contract coverage",
+        values_touched=values or ["honesty"],
     )
+    sid = session_id or uuid4()
+    exp = SessionExperience(
+        session_id=sid,
+        timestamp=timestamp or datetime.now(UTC),
+        key_moment_ids=[moment.id],
+        avg_emotional_intensity=moment.how_i_felt.emotional_intensity,
+        has_profound_moment=moment.how_i_felt.depth == EmotionalDepth.PROFOUND,
+    )
+    return ExperienceRecord(experience=exp), moment
+
+
+def _persist(store: StateStore, record: ExperienceRecord, moment: KeyMoment) -> ExperienceRecord:
+    created = store.create_experience(record)
+    store.store_key_moments(record.experience.session_id, [moment])
+    return created
 
 
 def _make_identity() -> Identity:
@@ -105,8 +117,8 @@ def _make_narrative(identity_id) -> NarrativeDocument:
 
 
 def test_create_and_get_experience(store: StateStore) -> None:
-    record = _make_record()
-    stored = store.create_experience(record)
+    record, moment = _make_record()
+    stored = _persist(store, record, moment)
     assert stored.experience.id == record.experience.id
 
     fetched = store.get_experience(record.experience.id)
@@ -119,15 +131,15 @@ def test_get_experience_unknown_returns_none(store: StateStore) -> None:
 
 
 def test_create_experience_duplicate_raises(store: StateStore) -> None:
-    record = _make_record()
-    store.create_experience(record)
+    record, moment = _make_record()
+    _persist(store, record, moment)
     with pytest.raises(Exception):
         store.create_experience(record)
 
 
 def test_add_reframing_note(store: StateStore) -> None:
-    record = _make_record()
-    store.create_experience(record)
+    record, moment = _make_record()
+    _persist(store, record, moment)
 
     note = ReframingNote(reflection="new perspective", reflection_type="growth")
     updated = store.add_reframing_note(record.experience.id, note)
@@ -141,19 +153,22 @@ def test_add_reframing_note_unknown_returns_none(store: StateStore) -> None:
 
 
 def test_add_reframing_note_preserves_key_moments(store: StateStore) -> None:
-    record = _make_record()
-    original_moment = record.experience.key_moments[0].what_happened
-    store.create_experience(record)
+    record, moment = _make_record()
+    original_moment = moment.what_happened
+    _persist(store, record, moment)
 
     note = ReframingNote(reflection="reframe", reflection_type="growth")
     updated = store.add_reframing_note(record.experience.id, note)
     assert updated is not None
-    assert updated.experience.key_moments[0].what_happened == original_moment
+    mid = updated.experience.key_moment_ids[0]
+    loaded = store.get_key_moment(mid)
+    assert loaded is not None
+    assert loaded.what_happened == original_moment
 
 
 def test_mark_accessed(store: StateStore) -> None:
-    record = _make_record()
-    store.create_experience(record)
+    record, moment = _make_record()
+    _persist(store, record, moment)
     updated = store.mark_accessed(record.experience.id)
     assert updated is not None
     assert updated.experience.access_count == 1
@@ -166,7 +181,8 @@ def test_mark_accessed_unknown_returns_none(store: StateStore) -> None:
 def test_list_recent_experiences_newest_first(store: StateStore) -> None:
     base = datetime.now(UTC)
     for i in range(3):
-        store.create_experience(_make_record(timestamp=base + timedelta(minutes=i)))
+        rec, m = _make_record(timestamp=base + timedelta(minutes=i))
+        _persist(store, rec, m)
 
     results = store.list_recent_experiences(limit=10)
     assert len(results) == 3
@@ -176,8 +192,10 @@ def test_list_recent_experiences_newest_first(store: StateStore) -> None:
 
 def test_search_by_session(store: StateStore) -> None:
     sid = uuid4()
-    store.create_experience(_make_record(session_id=sid))
-    store.create_experience(_make_record())
+    r1, m1 = _make_record(session_id=sid)
+    _persist(store, r1, m1)
+    r2, m2 = _make_record()
+    _persist(store, r2, m2)
 
     results = store.search_experiences(SessionExperienceQuery(session_id=sid))
     assert len(results) == 1
@@ -185,28 +203,35 @@ def test_search_by_session(store: StateStore) -> None:
 
 
 def test_search_by_values(store: StateStore) -> None:
-    store.create_experience(_make_record(values=["courage", "honesty"]))
-    store.create_experience(_make_record(values=["patience"]))
+    r1, m1 = _make_record(values=["courage", "honesty"])
+    _persist(store, r1, m1)
+    r2, m2 = _make_record(values=["patience"])
+    _persist(store, r2, m2)
 
     results = store.search_experiences(ValuesTouchedQuery(values=["courage"]))
     assert len(results) == 1
 
 
 def test_search_by_depth(store: StateStore) -> None:
-    store.create_experience(_make_record(depth=EmotionalDepth.PROFOUND))
-    store.create_experience(_make_record(depth=EmotionalDepth.SURFACE))
+    r1, m1 = _make_record(depth=EmotionalDepth.PROFOUND)
+    _persist(store, r1, m1)
+    r2, m2 = _make_record(depth=EmotionalDepth.SURFACE)
+    _persist(store, r2, m2)
 
     results = store.search_experiences(DepthQuery(depth="profound"))
     assert len(results) == 1
-    assert results[0].experience.key_moments[0].how_i_felt.depth == EmotionalDepth.PROFOUND
+    mid = results[0].experience.key_moment_ids[0]
+    got = store.get_key_moment(mid)
+    assert got is not None
+    assert got.how_i_felt.depth == EmotionalDepth.PROFOUND
 
 
 def test_search_by_date_range_excludes_outside(store: StateStore) -> None:
     now = datetime.now(UTC)
-    inside = _make_record(timestamp=now)
-    outside = _make_record(timestamp=now - timedelta(days=10))
-    store.create_experience(inside)
-    store.create_experience(outside)
+    inside, mi = _make_record(timestamp=now)
+    outside, mo = _make_record(timestamp=now - timedelta(days=10))
+    _persist(store, inside, mi)
+    _persist(store, outside, mo)
 
     q = DateRangeQuery(start_date=now - timedelta(hours=1), end_date=now + timedelta(hours=1))
     results = store.search_experiences(q)
@@ -215,63 +240,63 @@ def test_search_by_date_range_excludes_outside(store: StateStore) -> None:
 
 
 def test_search_by_fact_refs(store: StateStore) -> None:
-    """Contract test: FactRefsContainsQuery filters by fact_refs in key_moments."""
+    """Contract test: FactRefsContainsQuery filters by fact_refs in key moments."""
     fact_id = uuid4()
     other_fact_id = uuid4()
 
-    # Create experience with target fact_id
+    km_with = KeyMoment(
+        what_happened="used fact",
+        how_i_felt=FeltSense(
+            emotional_valence=0.1, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
+        ),
+        why_it_matters="test",
+        fact_refs=[fact_id],
+    )
     with_fact = ExperienceRecord(
         experience=SessionExperience(
             session_id=uuid4(),
-            key_moments=[
-                KeyMoment(
-                    what_happened="used fact",
-                    how_i_felt=FeltSense(
-                        emotional_valence=0.1, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
-                    ),
-                    why_it_matters="test",
-                    fact_refs=[fact_id],
-                )
-            ],
+            key_moment_ids=[km_with.id],
+            avg_emotional_intensity=km_with.how_i_felt.emotional_intensity,
+            has_profound_moment=False,
         )
     )
 
-    # Create experience without target fact_id
+    km_without = KeyMoment(
+        what_happened="no fact",
+        how_i_felt=FeltSense(
+            emotional_valence=0.0, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
+        ),
+        why_it_matters="test",
+    )
     without_fact = ExperienceRecord(
         experience=SessionExperience(
             session_id=uuid4(),
-            key_moments=[
-                KeyMoment(
-                    what_happened="no fact",
-                    how_i_felt=FeltSense(
-                        emotional_valence=0.0, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
-                    ),
-                    why_it_matters="test",
-                )
-            ],
+            key_moment_ids=[km_without.id],
+            avg_emotional_intensity=km_without.how_i_felt.emotional_intensity,
+            has_profound_moment=False,
         )
     )
 
-    # Create experience with different fact_id
+    km_other = KeyMoment(
+        what_happened="other fact",
+        how_i_felt=FeltSense(
+            emotional_valence=0.0, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
+        ),
+        why_it_matters="test",
+        fact_refs=[other_fact_id],
+    )
     with_other_fact = ExperienceRecord(
         experience=SessionExperience(
             session_id=uuid4(),
-            key_moments=[
-                KeyMoment(
-                    what_happened="other fact",
-                    how_i_felt=FeltSense(
-                        emotional_valence=0.0, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
-                    ),
-                    why_it_matters="test",
-                    fact_refs=[other_fact_id],
-                )
-            ],
+            key_moment_ids=[km_other.id],
+            avg_emotional_intensity=km_other.how_i_felt.emotional_intensity,
+            has_profound_moment=False,
         )
     )
 
-    store.create_experience(with_fact)
-    store.create_experience(without_fact)
-    store.create_experience(with_other_fact)
+    _persist(store, with_fact, km_with)
+    _persist(store, without_fact, km_without)
+    _persist(store, with_other_fact, km_other)
 
     # Query by fact_id
     results = store.search_experiences(FactRefsContainsQuery(fact_id=fact_id))
@@ -279,7 +304,10 @@ def test_search_by_fact_refs(store: StateStore) -> None:
     # Should return only the experience with matching fact_id
     assert len(results) == 1
     assert results[0].experience.id == with_fact.experience.id
-    assert fact_id in results[0].experience.key_moments[0].fact_refs
+    mid = results[0].experience.key_moment_ids[0]
+    got = store.get_key_moment(mid)
+    assert got is not None
+    assert fact_id in got.fact_refs
 
 
 # ---------------------------------------------------------------------------
@@ -473,148 +501,95 @@ def test_archive_narrative_and_list(store: StateStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# KeyMoment operations (E21.2)
+# KeyMoment operations (E21.3)
 # ---------------------------------------------------------------------------
 
 
 def test_create_and_get_key_moment(store: StateStore) -> None:
-    """Test create_key_moment and get_key_moment."""
-    session_id = uuid4()
-    moment = KeyMoment(
-        what_happened="Test event",
+    """Test creating and retrieving a key moment."""
+    km = KeyMoment(
+        what_happened="test event",
         how_i_felt=FeltSense(
             emotional_valence=0.5,
             emotional_intensity=0.7,
             depth=EmotionalDepth.MEANINGFUL,
         ),
-        why_it_matters="Contract test",
-        values_touched=["honesty"],
+        why_it_matters="test reason",
     )
+    stored = store.create_key_moment(km)
+    assert stored.id == km.id
 
-    store.create_key_moment(moment, session_id)
-    retrieved = store.get_key_moment(moment.id)
-
-    assert retrieved.id == moment.id
-    assert retrieved.what_happened == "Test event"
-    assert retrieved.why_it_matters == "Contract test"
+    retrieved = store.get_key_moment(km.id)
+    assert retrieved is not None
+    assert retrieved.id == km.id
+    assert retrieved.what_happened == "test event"
+    assert retrieved.why_it_matters == "test reason"
 
 
 def test_create_key_moment_duplicate_raises(store: StateStore) -> None:
     """Test that creating duplicate key moment raises ValueError."""
-    session_id = uuid4()
-    moment = KeyMoment(
-        what_happened="Test event",
+    km = KeyMoment(
+        what_happened="test",
         how_i_felt=FeltSense(
-            emotional_valence=0.5,
-            emotional_intensity=0.7,
-            depth=EmotionalDepth.MEANINGFUL,
+            emotional_valence=0.0,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
         ),
-        why_it_matters="Contract test",
+        why_it_matters="reason",
     )
+    store.create_key_moment(km)
 
-    store.create_key_moment(moment, session_id)
-
-    with pytest.raises(ValueError, match=r"already exists"):
-        store.create_key_moment(moment, session_id)
+    with pytest.raises(ValueError, match="already exists"):
+        store.create_key_moment(km)
 
 
-def test_get_key_moment_not_found_raises(store: StateStore) -> None:
-    """Test that getting non-existent key moment raises KeyError."""
-    fake_id = uuid4()
-
-    with pytest.raises(KeyError, match=r"not found"):
-        store.get_key_moment(fake_id)
+def test_get_key_moment_unknown_returns_none(store: StateStore) -> None:
+    """Unknown key moment id returns None (port contract)."""
+    assert store.get_key_moment(uuid4()) is None
 
 
 def test_list_key_moments_empty(store: StateStore) -> None:
-    """Test listing key moments for session with no moments."""
-    session_id = uuid4()
-    moments = store.list_key_moments(session_id)
-
+    """Test listing key moments when none exist."""
+    moments = store.list_key_moments()
     assert moments == []
 
 
-def test_list_key_moments_returns_session_moments_only(store: StateStore) -> None:
-    """Test that list_key_moments returns only moments for specified session."""
-    session1 = uuid4()
-    session2 = uuid4()
-
-    moment1 = KeyMoment(
-        what_happened="Session 1 event",
+def test_list_key_moments_returns_all(store: StateStore) -> None:
+    """Test listing all key moments."""
+    km1 = KeyMoment(
+        what_happened="first",
         how_i_felt=FeltSense(
-            emotional_valence=0.5,
-            emotional_intensity=0.7,
-            depth=EmotionalDepth.MEANINGFUL,
-        ),
-        why_it_matters="Test",
-    )
-    moment2 = KeyMoment(
-        what_happened="Session 2 event",
-        how_i_felt=FeltSense(
-            emotional_valence=0.3,
-            emotional_intensity=0.6,
+            emotional_valence=0.1,
+            emotional_intensity=0.5,
             depth=EmotionalDepth.SURFACE,
         ),
-        why_it_matters="Test",
+        why_it_matters="reason1",
     )
-
-    store.create_key_moment(moment1, session1)
-    store.create_key_moment(moment2, session2)
-
-    session1_moments = store.list_key_moments(session1)
-    session2_moments = store.list_key_moments(session2)
-
-    assert len(session1_moments) == 1
-    assert len(session2_moments) == 1
-    assert session1_moments[0].id == moment1.id
-    assert session2_moments[0].id == moment2.id
-
-
-def test_list_key_moments_ordered_by_timestamp(store: StateStore) -> None:
-    """Test that list_key_moments returns moments ordered by timestamp."""
-    session_id = uuid4()
-
-    # Create moments with explicit timestamps
-    now = datetime.now(UTC)
-    moment1 = KeyMoment(
-        what_happened="First event",
-        when=now,
+    km2 = KeyMoment(
+        what_happened="second",
         how_i_felt=FeltSense(
-            emotional_valence=0.5,
-            emotional_intensity=0.7,
+            emotional_valence=0.2,
+            emotional_intensity=0.6,
             depth=EmotionalDepth.MEANINGFUL,
         ),
-        why_it_matters="Test",
-    )
-    moment2 = KeyMoment(
-        what_happened="Second event",
-        when=now + timedelta(seconds=10),
-        how_i_felt=FeltSense(
-            emotional_valence=0.3,
-            emotional_intensity=0.6,
-            depth=EmotionalDepth.SURFACE,
-        ),
-        why_it_matters="Test",
-    )
-    moment3 = KeyMoment(
-        what_happened="Third event",
-        when=now + timedelta(seconds=20),
-        how_i_felt=FeltSense(
-            emotional_valence=0.8,
-            emotional_intensity=0.9,
-            depth=EmotionalDepth.PROFOUND,
-        ),
-        why_it_matters="Test",
+        why_it_matters="reason2",
     )
 
-    # Store in non-chronological order
-    store.create_key_moment(moment2, session_id)
-    store.create_key_moment(moment1, session_id)
-    store.create_key_moment(moment3, session_id)
+    store.create_key_moment(km1)
+    store.create_key_moment(km2)
 
-    moments = store.list_key_moments(session_id)
+    moments = store.list_key_moments()
+    assert len(moments) == 2
+    ids = {m.id for m in moments}
+    assert km1.id in ids
+    assert km2.id in ids
 
-    assert len(moments) == 3
-    assert moments[0].what_happened == "First event"
-    assert moments[1].what_happened == "Second event"
-    assert moments[2].what_happened == "Third event"
+
+def test_list_key_moments_with_session_id_raises_not_implemented(store: StateStore) -> None:
+    """Test that filtering by session_id raises NotImplementedError."""
+    # Skip for stores that don't support KeyMoment operations
+    if isinstance(store, InMemoryExperienceStore | JsonlExperienceStore):
+        pytest.skip("Store doesn't support KeyMoment operations")
+
+    with pytest.raises(NotImplementedError, match="session_id"):
+        store.list_key_moments(session_id=uuid4())

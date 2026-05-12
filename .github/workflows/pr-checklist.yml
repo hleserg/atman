@@ -1,0 +1,114 @@
+name: 🤖 PR Checklist Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-checklist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  models: read
+  pull-requests: write
+  contents: read
+
+jobs:
+  checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build prompt
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD | head -c 8000 > diff.txt
+
+          python3 - <<'EOF'
+          import os
+
+          title = os.environ.get("PR_TITLE", "")
+          body  = os.environ.get("PR_BODY", "").strip() or "(empty)"
+
+          with open("diff.txt") as f:
+              diff = f.read()
+
+          prompt = f"""PR Title: {title}
+
+          PR Description:
+          {body}
+
+          Diff:
+          {diff}
+
+          ---
+
+          Fill out the Atman DEVELOPMENT_STANDARD §25 checklist.
+          Answer each question in a markdown table with columns: # | Question | Answer | Status
+          Status: ✅ clearly addressed / ⚠️ needs attention / ➖ N/A
+
+          Questions:
+          1. Which domain object(s) are being changed?
+          2. Is this Core (domain model / port) or Adapter (implementation)?
+          3. Which ports are used or introduced?
+          4. Which persistent structures appear or change?
+          5. Is schema_version bumped? If yes — where?
+          6. Which invariants are protected by tests? Which test file?
+          7. How to run this change without external services?
+          8. What happens in degraded mode (missing file / DB unavailable)?
+          9. Is audit logging needed?
+          10. Is a governance decision needed (identity / principles change)?
+          11. How does this affect deployment?
+          12. Which SYSTEM_MAP.md sections (§1–§5) change, and which tests cover them?
+
+          After the table, add a ## 🔍 Summary section (3–5 sentences):
+          what changed, biggest risk, whether SYSTEM_MAP update is required.
+          """
+
+          with open("prompt.txt", "w") as f:
+              f.write(prompt)
+          EOF
+
+      - name: Run AI analysis
+        id: ai
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o-mini
+          system-prompt-file: .github/prompts/checklist-system.txt
+          prompt-file: ./prompt.txt
+          output-file: ./ai-response.txt
+
+      - name: Build comment
+        run: |
+          cat > comment.md << 'EOF'
+          <!-- atman-pr-checklist -->
+          ## 🤖 PR Checklist — DEVELOPMENT_STANDARD §25
+          EOF
+
+          cat ai-response.txt >> comment.md
+
+          cat >> comment.md << 'EOF'
+
+          ---
+          *Auto-generated · updates on each push · [standard](docs/development/DEVELOPMENT_STANDARD.md)*
+          EOF
+
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v3
+        id: find
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: "<!-- atman-pr-checklist -->"
+
+      - name: Post or update comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: comment.md
+          edit-mode: replace
