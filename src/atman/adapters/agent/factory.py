@@ -16,8 +16,10 @@ from atman.adapters.agent.config import AgentConfig
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_reflection_store import InMemoryReflectionEventStore
+
 try:
     from atman.affect.detector import AffectDetectorConfig as _AffectDetectorConfig
+
     _AFFECT_AVAILABLE = True
 except ImportError:
     _AffectDetectorConfig = None  # type: ignore[assignment,misc]
@@ -68,12 +70,18 @@ class _ExperienceAdapter(ExperienceRepository):
         return [r.experience for r in self._s.list_recent_experiences(limit=_EXPERIENCE_LIMIT)]
 
     def get_by_session(self, session_id):
-        return [r.experience for r in self._s.search_experiences(
-            SessionExperienceQuery(session_id), limit=_EXPERIENCE_LIMIT)]
+        return [
+            r.experience
+            for r in self._s.search_experiences(
+                SessionExperienceQuery(session_id), limit=_EXPERIENCE_LIMIT
+            )
+        ]
 
     def get_in_range(self, start: datetime, end: datetime):
-        return [r.experience for r in self._s.search_experiences(
-            DateRangeQuery(start, end), limit=_EXPERIENCE_LIMIT)]
+        return [
+            r.experience
+            for r in self._s.search_experiences(DateRangeQuery(start, end), limit=_EXPERIENCE_LIMIT)
+        ]
 
     def get_recent(self, limit=10):
         return [r.experience for r in self._s.list_recent_experiences(limit=limit)]
@@ -83,8 +91,11 @@ class _ExperienceAdapter(ExperienceRepository):
 
     def add_reframing_note(self, experience_id, note):
         result = self._s.add_reframing_note(experience_id, note)
-        return (ReframingNoteAppendResult.STORED if result
-                else ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND)
+        return (
+            ReframingNoteAppendResult.STORED
+            if result
+            else ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+        )
 
 
 class _NarrativeAdapter(NarrativeRepository):
@@ -122,6 +133,7 @@ def build_deps(
 
     affect_kwargs: dict = {}
     if _AFFECT_AVAILABLE:
+        assert _AffectDetectorConfig is not None
         affect_kwargs = {
             "affect_workspace": workspace,
             "affect_config": _AffectDetectorConfig(),

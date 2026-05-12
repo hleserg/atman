@@ -100,6 +100,13 @@
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
 | `adapters/reflection/fixture_loader.py` | — | загрузка фикстур для демо |
+| `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | конфиг модели и рантайма Pydantic AI (E26) |
+| `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | frozen DI: `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore` |
+| `adapters/agent/instructions.py` (`build_instructions`) | — | динамический системный промпт из `Identity` + `NarrativeDocument` |
+| `adapters/agent/tools.py` (`record_key_moment`, `log_experience`) | — | async-инструменты Pydantic AI; `record_key_moment` → `AffectDetector` при настроенном `SessionManager` |
+| `adapters/agent/factory.py` (`build_deps`) | — | сборка `AtmanDeps`, `SessionManager`, `FileStateStore`, сервисов, опционально `AffectDetector` из workspace и `AgentConfig` |
+| `adapters/agent/runner.py` (`AtmanRunner`) | — | обёртка `pydantic_ai.Agent`: `ensure_identity`, `run_session`, REPL `chat`; при ошибках — закрытие сессии |
+| `agents_registry.py` (`AgentsRegistry`) | — | реестр экземпляров агентов в PostgreSQL (app/admin URL); используется `src/run_agent.py` |
 
 ### 1.6. CLI / TUI / Web / Демо
 
@@ -124,6 +131,7 @@
 | `src/demo_reflection.py` | demo | micro→daily→deep с фикстурами |
 | `src/demo_full_corpus.py` | demo | все `e2e/fixtures/sessions/*` → SessionManager → micro/daily/deep + сводка Rich ([issue #158](https://github.com/hleserg/atman/issues/158)) |
 | `src/demo_web_dashboard.py` | demo | подсказка запуска веб-дашборда |
+| `src/run_agent.py` | entrypoint | запуск REPL агента через `AgentsRegistry` + `AtmanRunner` (БД из `DATABASE_URL`) |
 | `e2e/generate_fixtures.py` | e2e | генератор JSON-фикстур сессий через LLM (`python -m e2e.generate_fixtures`); по умолчанию корпуса 20 `en/` + 20 `ru/` с параллельным запуском локалей; Anthropic tool_use, два прохода; флаги `--corpus-policy strict|soft`, `--max-corpus-regen N` (ограничение хвоста в strict); опционально `[e2e]`; кандидат для ручной/secret-gated автоматизации ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | схема фикстур, валидаторы внутри/между сессиями, вызов API, промпты |
 | `e2e/full_loop.py`, `e2e/__main__.py` | e2e | интеграционный прогон WP-01..05 на JSON-фикстурах сессий (`python -m e2e`); вручную/опционально и подходит для точечного smoke job в GitHub Actions |

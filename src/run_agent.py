@@ -30,16 +30,18 @@ def _load_env() -> dict[str, str]:
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
-    env.update({k: v for k, v in os.environ.items() if k in env or not env})
+    # Overlay full process environment so deploy-time vars (e.g. DATABASE_URL) are
+    # always visible even when .env defines other keys only.
+    env.update(os.environ)
     return env
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Atman agent REPL")
-    parser.add_argument("--agent", type=int, metavar="ID",
-                        help="Числовой ID агента")
-    parser.add_argument("--new", metavar="DESCRIPTION", nargs="?", const="",
-                        help="Создать нового агента")
+    parser.add_argument("--agent", type=int, metavar="ID", help="Числовой ID агента")
+    parser.add_argument(
+        "--new", metavar="DESCRIPTION", nargs="?", const="", help="Создать нового агента"
+    )
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--model", default=_DEFAULT_MODEL)
     parser.add_argument("--workspace-root", type=Path, default=_DEFAULT_WORKSPACE_ROOT)
@@ -56,6 +58,7 @@ def main() -> None:
         raise SystemExit("DATABASE_URL не найден. Проверь .env")
 
     from atman.agents_registry import AgentsRegistry
+
     registry = AgentsRegistry(app_url=app_url, admin_url=admin_url)
 
     if args.list:
@@ -66,7 +69,7 @@ def main() -> None:
         print(f"{'#':<5} {'UUID':<38} Описание")
         print("-" * 70)
         for a in agents:
-            print(f"{a.serial_id:<5} {str(a.uuid):<38} {a.description or a.name or '—'}")
+            print(f"{a.serial_id:<5} {a.uuid!s:<38} {a.description or a.name or '—'}")
         return
 
     if args.new is not None:

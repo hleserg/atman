@@ -44,9 +44,15 @@ class AgentsRegistry:
             ).fetchone()
             conn.commit()
 
+        if row is None:
+            raise RuntimeError("INSERT INTO public.agents returned no row")
+
         record = AgentRecord(
-            serial_id=row[0], uuid=row[1], name=row[2],
-            description=row[3], created_at=row[4],
+            serial_id=row[0],
+            uuid=row[1],
+            name=row[2],
+            description=row[3],
+            created_at=row[4],
         )
 
         # Provision private schema: agent_{serial_id}.*
@@ -69,8 +75,11 @@ class AgentsRegistry:
         if row is None:
             return None
         return AgentRecord(
-            serial_id=row[0], uuid=row[1], name=row[2],
-            description=row[3], created_at=row[4],
+            serial_id=row[0],
+            uuid=row[1],
+            name=row[2],
+            description=row[3],
+            created_at=row[4],
         )
 
     def list_all(self) -> list[AgentRecord]:
@@ -80,7 +89,6 @@ class AgentsRegistry:
                 "FROM public.agents ORDER BY serial_id"
             ).fetchall()
         return [
-            AgentRecord(serial_id=r[0], uuid=r[1], name=r[2],
-                        description=r[3], created_at=r[4])
+            AgentRecord(serial_id=r[0], uuid=r[1], name=r[2], description=r[3], created_at=r[4])
             for r in rows
         ]
