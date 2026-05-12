@@ -1903,7 +1903,7 @@ def test_unexamined_facts_empty_when_no_facts_read(session_manager, temp_storage
         ),
     )
 
-    result = manager.finish_session(
+    manager.finish_session(
         context.session_id,
         overall_emotional_tone=0.5,
         key_insight="Simple session",
@@ -1940,7 +1940,7 @@ def test_unexamined_facts_empty_when_all_facts_colored(session_manager, temp_sto
         ),
     )
 
-    result = manager.finish_session(
+    manager.finish_session(
         context.session_id,
         overall_emotional_tone=0.5,
         key_insight="All facts colored",
@@ -1980,7 +1980,7 @@ def test_unexamined_facts_contains_only_uncolored_facts(session_manager, temp_st
         ),
     )
 
-    result = manager.finish_session(
+    manager.finish_session(
         context.session_id,
         overall_emotional_tone=0.5,
         key_insight="Some facts unexamined",
@@ -2039,7 +2039,7 @@ def test_unexamined_facts_excludes_facts_colored_across_multiple_moments(
         ),
     )
 
-    result = manager.finish_session(
+    manager.finish_session(
         context.session_id,
         overall_emotional_tone=0.4,
         key_insight="Multiple moments",
@@ -2078,7 +2078,7 @@ def test_unexamined_facts_aggregated_fact_refs_includes_all_facts(
         ),
     )
 
-    result = manager.finish_session(
+    manager.finish_session(
         context.session_id,
         overall_emotional_tone=0.5,
         key_insight="Mixed facts",
