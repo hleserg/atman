@@ -17,7 +17,12 @@ from uuid import uuid4
 
 import pytest
 
-from atman.adapters.storage import FileStateStore, InMemoryStateStore
+from atman.adapters.storage import (
+    FileStateStore,
+    InMemoryExperienceStore,
+    InMemoryStateStore,
+    JsonlExperienceStore,
+)
 from atman.core.models import (
     Eigenstate,
     EmotionalDepth,
@@ -486,3 +491,13 @@ def test_list_key_moments_returns_all(store: StateStore) -> None:
     ids = {m.id for m in moments}
     assert km1.id in ids
     assert km2.id in ids
+
+
+def test_list_key_moments_with_session_id_raises_not_implemented(store: StateStore) -> None:
+    """Test that filtering by session_id raises NotImplementedError."""
+    # Skip for stores that don't support KeyMoment operations
+    if isinstance(store, InMemoryExperienceStore | JsonlExperienceStore):
+        pytest.skip("Store doesn't support KeyMoment operations")
+
+    with pytest.raises(NotImplementedError, match="session_id"):
+        store.list_key_moments(session_id=uuid4())

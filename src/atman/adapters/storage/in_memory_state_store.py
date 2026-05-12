@@ -253,13 +253,11 @@ class InMemoryStateStore(StateStore):
 
     def list_key_moments(self, session_id: UUID | None = None) -> list[KeyMoment]:
         """List key moments, optionally filtered by session_id."""
-        # Note: KeyMoment doesn't have session_id field currently,
-        # so filtering is not implemented yet. Will need to be added
-        # when KeyMoment gets session_id field.
+        # KeyMoment model doesn't have session_id field yet; filtering not implemented
         if session_id is not None:
-            # Filter by session_id when KeyMoment model includes it
-            # For now, return empty list as filtering can't be done
-            return []
+            raise NotImplementedError(
+                "Filtering by session_id not yet supported - KeyMoment model needs session_id field"
+            )
         return [km.model_copy(deep=True) for km in self._key_moments.values()]
 
     def get_key_moment(self, key_moment_id: UUID) -> KeyMoment:
