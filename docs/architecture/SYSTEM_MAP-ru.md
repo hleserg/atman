@@ -137,6 +137,9 @@
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | схема фикстур, валидаторы внутри/между сессиями, вызов API, промпты |
 | `e2e/full_loop.py`, `e2e/__main__.py` | e2e | интеграционный прогон WP-01..05 на JSON-фикстурах сессий (`python -m e2e`); вручную/опционально и подходит для точечного smoke job в GitHub Actions |
 | `e2e/scenarios/value_drift_under_pressure.py` | e2e/demo | детерминированный E2E-сценарий для atmanai.dev/demo.html: инициализирует идентичность с принципом честности, прогоняет Сессию 1 (дрейф ценностей + самокоррекция), микро+дневная рефлексия, обновление идентичности, Сессия 2 (то же давление, выравнивание); записывает 11 JSON-снимков в `docs/demo-data/`; `make demo-e2e-scenario` |
+| `e2e/scenarios/session_lifecycle_interrupt.py` | e2e | прерванная сессия и восстановление журнала: KeyboardInterrupt / SIGTERM / crash, обнаружение осиротевшего journal, идемпотентное восстановление при следующем start_session() |
+| `e2e/scenarios/session_lifecycle_restart.py` | e2e | лимит контекста и перезапуск сессии: предупреждение при 70%, restart_session(reason=...), новая сессия с restart package |
+| `e2e/scenarios/session_lifecycle_timeout.py` | e2e | таймаут и меню свободного времени: неактивность пользователя, системное меню свободного времени, агент выбирает команду (sleep/reflect/exit) |
 | `docs/demo-data/` | данные сайта | 11 JSON-файлов, генерируемых `make demo-e2e-scenario`; используются `docs/demo.html` |
 | `docs/demo.html` | сайт | статическая страница E2E-прогона; 11 шагов; двуязычная EN/RU; загружает JSON из `docs/demo-data/`; без build step, без React |
 

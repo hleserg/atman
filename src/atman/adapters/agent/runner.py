@@ -263,70 +263,78 @@ class AtmanRunner:
             if user_msg.lower() == "exit":
                 return
 
-            ctx = self._session_manager.start_session(self._agent_id)
-            session_id = ctx.session_id
-            deps = dataclasses.replace(self._deps, session_id=session_id)
-
             try:
-                result = await self._agent.run(user_msg, deps=deps, message_history=history)
-                reply = result.output
-                history = result.all_messages()
+                ctx = self._session_manager.start_session(self._agent_id)
+                session_id = ctx.session_id
+                deps = dataclasses.replace(self._deps, session_id=session_id)
 
-                console.print(f"\n[term.title]Агент:[/term.title] {escape(reply)}\n")
+                try:
+                    result = await self._agent.run(user_msg, deps=deps, message_history=history)
+                    reply = result.output
+                    history = result.all_messages()
 
-                self._session_manager.record_event(
-                    session_id,
-                    SessionEvent(
-                        session_id=session_id,
-                        event_type="user_message",
-                        description=_safe_str(user_msg)[:500],
-                    ),
-                )
-                thinking = _extract_thinking(result)
-                self._session_manager.record_event(
-                    session_id,
-                    SessionEvent(
-                        session_id=session_id,
-                        event_type="agent_response",
-                        description=_safe_str(reply)[:500],
-                        thinking=_safe_str(thinking) if thinking else None,
-                    ),
-                )
+                    console.print(f"\n[term.title]Агент:[/term.title] {escape(reply)}\n")
 
-                active = self._session_manager.get_active_session(session_id)
-                if active and not active.key_moments:
-                    from atman.core.models import KeyMomentInput
-                    from atman.core.models.experience import EmotionalDepth
-
-                    self._session_manager.append_key_moment_input(
+                    self._session_manager.record_event(
                         session_id,
-                        KeyMomentInput(
-                            what_happened="Обмен завершён без выраженных эмоций.",
-                            emotional_valence=0.0,
-                            emotional_intensity=0.1,
-                            depth=EmotionalDepth.SURFACE,
-                            incomplete_coloring=True,
-                            why_it_matters="Базовая линия.",
+                        SessionEvent(
+                            session_id=session_id,
+                            event_type="user_message",
+                            description=_safe_str(user_msg)[:500],
+                        ),
+                    )
+                    thinking = _extract_thinking(result)
+                    self._session_manager.record_event(
+                        session_id,
+                        SessionEvent(
+                            session_id=session_id,
+                            event_type="agent_response",
+                            description=_safe_str(reply)[:500],
+                            thinking=_safe_str(thinking) if thinking else None,
                         ),
                     )
 
-                self._session_manager.finish_session(
-                    session_id,
-                    overall_emotional_tone=0.0,
-                    key_insight="",
-                    alignment_check=True,
-                )
-                try:
-                    self._deps.micro_reflection.reflect(session_id)
-                except Exception:
-                    _LOG.warning("Micro-reflection failed", exc_info=True)
-            finally:
-                _finalize_open_session(
-                    self._session_manager,
-                    self._deps.micro_reflection,
-                    session_id,
-                    key_insight="",
-                )
+                    active = self._session_manager.get_active_session(session_id)
+                    if active and not active.key_moments:
+                        from atman.core.models import KeyMomentInput
+                        from atman.core.models.experience import EmotionalDepth
+
+                        self._session_manager.append_key_moment_input(
+                            session_id,
+                            KeyMomentInput(
+                                what_happened="Обмен завершён без выраженных эмоций.",
+                                emotional_valence=0.0,
+                                emotional_intensity=0.1,
+                                depth=EmotionalDepth.SURFACE,
+                                incomplete_coloring=True,
+                                why_it_matters="Базовая линия.",
+                            ),
+                        )
+
+                    self._session_manager.finish_session(
+                        session_id,
+                        overall_emotional_tone=0.0,
+                        key_insight="",
+                        alignment_check=True,
+                    )
+                    try:
+                        self._deps.micro_reflection.reflect(session_id)
+                    except Exception:
+                        _LOG.warning("Micro-reflection failed", exc_info=True)
+                except Exception as e:
+                    console.print(f"[term.err]Ошибка:[/term.err] {e}\n")
+                    _LOG.exception("Agent or session error in chat loop")
+                finally:
+                    _finalize_open_session(
+                        self._session_manager,
+                        self._deps.micro_reflection,
+                        session_id,
+                        key_insight="",
+                    )
+            except Exception as e:
+                console.print(f"[term.err]Ошибка запуска сессии:[/term.err] {e}\n")
+                _LOG.exception("Session start failed")
+                continue
 
 
 def _extract_thinking(result) -> str | None:
