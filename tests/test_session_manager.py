@@ -1604,6 +1604,58 @@ def test_orphan_recovery_on_start_session(
     assert len(recovered_exp.experience.key_moment_ids) == 1
 
 
+def test_orphan_recovery_preserves_journal_fact_refs(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Recovered interrupted sessions keep the facts that shaped the orphaned work."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "orphan_fact_refs_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    orphan_session_id = uuid4()
+    moment_id = uuid4()
+    fact_from_moment = uuid4()
+    fact_from_read = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    with orphan_journal.open("w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Interrupted work with factual context",
+                "fact_refs": [str(fact_from_moment)],
+            },
+            f,
+        )
+        f.write("\n")
+        json.dump(
+            {
+                "type": "facts_read",
+                "timestamp": frozen_clock.now().isoformat(),
+                "fact_ids": [str(fact_from_read), str(fact_from_moment)],
+            },
+            f,
+        )
+        f.write("\n")
+
+    manager.start_session(identity_fixture.id)
+
+    recovered = store.get_experience(deterministic_session_experience_id(orphan_session_id))
+    assert recovered is not None
+    assert recovered.experience.session_id == orphan_session_id
+    assert recovered.experience.key_moment_ids == [moment_id]
+    assert set(recovered.experience.fact_refs) == {fact_from_moment, fact_from_read}
+    assert recovered.experience.close_reason == "interrupted"
+    assert not orphan_journal.exists()
+
+
 def test_orphan_recovery_skips_existing_experiences(
     tmp_path, identity_fixture, narrative_fixture, frozen_clock
 ):
