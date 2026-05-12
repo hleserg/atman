@@ -266,26 +266,28 @@ class AtmanRunner:
         from atman.adapters.agent.factory import build_deps
         from atman.adapters.agent.instructions import build_instructions
         from atman.adapters.agent.tools import log_experience, record_key_moment
+        from atman.term import print_err, print_info, print_plain, print_warn
 
         deps, session_manager, _store = build_deps(self._workspace, self._agent_id, self._config)
-        session_ctx = session_manager.start_session(self._agent_id)
-        deps = replace(deps, session_id=session_ctx.session_id)
-        session_id = session_ctx.session_id
-
-        if self._config.enable_key_moments:
-            tool_funcs = (record_key_moment, log_experience)
-        else:
-            tool_funcs = (log_experience,)
-
-        agent = Agent(
-            self._config.model.model,
-            deps_type=AtmanDeps,
-            instructions=lambda ctx: build_instructions(ctx.deps),
-            tools=tool_funcs,
-        )
-
-        print("Session started. Empty line or Ctrl-D to exit.\n")
+        session_id: UUID | None = None
         try:
+            session_ctx = session_manager.start_session(self._agent_id)
+            session_id = session_ctx.session_id
+            deps = replace(deps, session_id=session_id)
+
+            if self._config.enable_key_moments:
+                tool_funcs = (record_key_moment, log_experience)
+            else:
+                tool_funcs = (log_experience,)
+
+            agent = Agent(
+                self._config.model.model,
+                deps_type=AtmanDeps,
+                instructions=lambda ctx: build_instructions(ctx.deps),
+                tools=tool_funcs,
+            )
+
+            print_info("Session started. Empty line or Ctrl-D to exit.\n")
             while True:
                 try:
                     user_text = await asyncio.to_thread(input, "You: ")
@@ -293,24 +295,29 @@ class AtmanRunner:
                     break
                 if not user_text.strip():
                     break
-                result = await agent.run(user_text, deps=deps)
-                print(result.output)
-                print()
+                try:
+                    result = await agent.run(user_text, deps=deps)
+                except Exception as exc:
+                    print_err(f"Run failed: {exc!s}")
+                    continue
+                print_plain(str(result.output))
+                print_plain("")
         except KeyboardInterrupt:
-            print("\nInterrupted.")
+            print_warn("\nInterrupted.")
         finally:
-            try:
-                session_manager.finish_session(
-                    session_id,
-                    overall_emotional_tone=0.0,
-                    key_insight="",
-                    alignment_check=True,
-                    alignment_notes="",
-                )
-            except ValueError as exc:
-                if "Cannot finish session without key moments" in str(exc):
-                    _force_finish(session_manager, session_id, "completed")
-                else:
-                    raise
-            except (SessionAlreadyFinishedError, SessionNotFoundError):
-                pass
+            if session_id is not None:
+                try:
+                    session_manager.finish_session(
+                        session_id,
+                        overall_emotional_tone=0.0,
+                        key_insight="",
+                        alignment_check=True,
+                        alignment_notes="",
+                    )
+                except ValueError as exc:
+                    if "Cannot finish session without key moments" in str(exc):
+                        _force_finish(session_manager, session_id, "completed")
+                    else:
+                        raise
+                except (SessionAlreadyFinishedError, SessionNotFoundError):
+                    pass

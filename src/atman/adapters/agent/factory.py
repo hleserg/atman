@@ -98,12 +98,23 @@ class _ExperienceAdapter(ExperienceRepository):
             if any(n.triggered_by == note.triggered_by for n in record.experience.reframing_notes):
                 return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
 
+        count_before = 0
+        if note.triggered_by:
+            rec0 = self._s.get_experience(experience_id)
+            if rec0 is None:
+                return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+            count_before = len(rec0.experience.reframing_notes)
+
         result = self._s.add_reframing_note(experience_id, note)
-        return (
-            ReframingNoteAppendResult.STORED
-            if result
-            else ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
-        )
+        if result is None:
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+
+        # FileStateStore returns the existing record on duplicate triggered_by without
+        # appending; map that to DUPLICATE_TRIGGERED_BY instead of STORED.
+        if note.triggered_by and len(result.experience.reframing_notes) == count_before:
+            return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
+
+        return ReframingNoteAppendResult.STORED
 
 
 class _NarrativeAdapter(NarrativeRepository):

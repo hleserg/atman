@@ -17,6 +17,9 @@ import os
 import sys
 from pathlib import Path
 
+from rich import box
+from rich.table import Table
+
 _DEFAULT_WORKSPACE_ROOT = Path("~/.atman/agents")
 _DEFAULT_MODEL = "ollama:qwen3.5:9b"
 
@@ -41,6 +44,8 @@ def _load_env() -> dict[str, str]:
 
 
 def main() -> None:
+    from atman.term import console, print_err, print_info, print_ok, print_plain
+
     parser = argparse.ArgumentParser(description="Atman agent REPL")
     parser.add_argument("--agent", type=int, metavar="ID", help="Числовой ID агента")
     parser.add_argument(
@@ -59,7 +64,8 @@ def main() -> None:
     admin_url = env.get("ATMAN_ADMIN_DATABASE_URL") or app_url
 
     if not app_url:
-        raise SystemExit("DATABASE_URL не найден. Проверь .env")
+        print_err("DATABASE_URL не найден. Проверь .env или переменные окружения.")
+        raise SystemExit(1)
 
     from atman.agents_registry import AgentsRegistry
 
@@ -68,32 +74,37 @@ def main() -> None:
     if args.list:
         agents = registry.list_all()
         if not agents:
-            print("Агентов нет. Создай: uv run src/run_agent.py --new 'Имя'")
+            print_info("Агентов нет. Создай: uv run src/run_agent.py --new 'Имя'")
             return
-        print(f"{'#':<5} {'UUID':<38} Описание")
-        print("-" * 70)
+        table = Table(title="Агенты", box=box.ROUNDED, show_lines=False)
+        table.add_column("#", justify="right", style="term.dim")
+        table.add_column("UUID", style="term.label", overflow="fold")
+        table.add_column("Описание", ratio=1)
         for a in agents:
-            print(f"{a.serial_id:<5} {a.uuid!s:<38} {a.description or a.name or '—'}")
+            desc = a.description or a.name or "—"
+            table.add_row(str(a.serial_id), str(a.uuid), desc)
+        console.print(table)
         return
 
     if args.new is not None:
         record = registry.create(description=args.new, name=args.new or "agent")
-        print(f"Создан агент #{record.serial_id}  {record.uuid}")
+        print_ok(f"Создан агент #{record.serial_id}  {record.uuid}")
         if args.new:
-            print(f"  {args.new}")
+            print_plain(f"  {args.new}")
     elif args.agent is not None:
         record = registry.get_by_serial(args.agent)
         if record is None:
-            raise SystemExit(f"Агент #{args.agent} не найден. Список: --list")
+            print_err(f"Агент #{args.agent} не найден. Список: --list")
+            raise SystemExit(1)
     else:
         record = registry.create(description="", name="agent")
-        print(f"Новый агент #{record.serial_id}. Повторный запуск: --agent {record.serial_id}")
+        print_ok(f"Новый агент #{record.serial_id}. Повторный запуск: --agent {record.serial_id}")
 
     workspace = args.workspace_root.expanduser() / str(record.serial_id)
     desc = record.description or record.name or ""
     if desc:
-        print(f"Агент #{record.serial_id}: {desc}")
-    print(f"UUID: {record.uuid}\n")
+        print_info(f"Агент #{record.serial_id}: {desc}")
+    print_plain(f"UUID: {record.uuid}\n")
 
     from atman.adapters.agent.config import AgentConfig, ModelConfig
     from atman.adapters.agent.runner import AtmanRunner
@@ -104,7 +115,7 @@ def main() -> None:
     try:
         asyncio.run(runner.chat())
     except KeyboardInterrupt:
-        print("\nBye.")
+        print_info("\nBye.")
         sys.exit(0)
 
 

@@ -33,7 +33,7 @@ class AgentsRegistry:
 
     def create(self, description: str = "", name: str = "") -> AgentRecord:
         """Create agent record and provision its private schema."""
-        with psycopg.connect(self._admin_url) as conn:
+        with psycopg.connect(self._admin_url) as conn, conn.transaction():
             row = conn.execute(
                 """
                 INSERT INTO public.agents (name, description)
@@ -54,12 +54,10 @@ class AgentsRegistry:
                 created_at=row[4],
             )
 
-            # Provision private schema: agent_{serial_id}.*
             conn.execute(
                 "SELECT public.create_agent_schema(%s, %s)",
                 [record.uuid, record.serial_id],
             )
-            conn.commit()
 
         return record
 

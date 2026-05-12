@@ -27,7 +27,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.prevent_reframing_modification()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'reframing_notes are append-only (UPDATE/DELETE not allowed)';
+    RAISE EXCEPTION 'reframing_notes are append-only (UPDATE not allowed)';
 END;
 $$;
 
@@ -178,7 +178,7 @@ BEGIN
             ON %I.reframing_notes (experience_id);
         DROP TRIGGER IF EXISTS reframing_notes_append_only ON %I.reframing_notes;
         CREATE TRIGGER reframing_notes_append_only
-            BEFORE DELETE OR UPDATE ON %I.reframing_notes
+            BEFORE UPDATE ON %I.reframing_notes
             FOR EACH ROW EXECUTE FUNCTION public.prevent_reframing_modification();
     $sql$, schema_name, schema_name, schema_name, schema_name, schema_name);
 
