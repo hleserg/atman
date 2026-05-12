@@ -135,9 +135,9 @@ class TokenMonitor:
         if ratio >= 0.70 and 70 not in self._triggered:
             remaining = context_limit - usage.input_tokens
             warning = (
-                f"[Системное уведомление] Контекст сессии заполняется — "
-                f"осталось около {remaining} токенов.\n"
-                "Когда будешь готов — вызови restart_session."
+                f"[SYSTEM NOTICE] Session context filling up — "
+                f"approximately {remaining} tokens remaining.\n"
+                "When ready — call restart_session."
             )
             self._inject_warning(warning)
             self._triggered.add(70)
@@ -152,9 +152,10 @@ class TokenMonitor:
         Args:
             warning: Warning message to inject
         """
-        # TODO: Implement message history injection
-        # For now, just store for potential logging
-        pass
+        import logging
+
+        _LOG = logging.getLogger(__name__)
+        _LOG.warning("Token threshold reached: %s", warning)
 
     def reset_triggers(self) -> None:
         """Reset triggered thresholds on session restart."""
