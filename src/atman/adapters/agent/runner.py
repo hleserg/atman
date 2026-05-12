@@ -325,7 +325,7 @@ def _force_finish(
             return
 
     # Finish session - only pass close_reason if it's a documented value
-    valid_close_reasons = {"timeout_sleep", "restart", "forced", "interrupted"}
+    valid_close_reasons = {"timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"}
     finish_kwargs = {
         "session_id": session_id,
         "overall_emotional_tone": 0.0,
@@ -610,11 +610,12 @@ class AtmanRunner:
                     break
 
                 try:
-                    # E22.7: Use message_history for wake-up message, then track in history for restart
+                    # E22.7: Use message_history for wake-up message on first run, then use history
+                    # After first run, message_history is cleared and history is used for continuity
                     result = await agent.run(
                         user_text,
                         deps=deps,
-                        message_history=message_history if message_history else None,
+                        message_history=message_history if message_history else history or None,
                     )
                 except Exception as exc:
                     print_err(f"Run failed: {exc!s}")
@@ -624,8 +625,8 @@ class AtmanRunner:
                     if message_history:
                         message_history = []
 
-                # E22.5: Check for restart request
-                restart_requested, restart_reason = _check_restart_requested(result.all_messages())
+                # E22.5: Check for restart request (only in new messages to avoid infinite loop)
+                restart_requested, restart_reason = _check_restart_requested(result.new_messages())
 
                 if restart_requested:
                     _LOG.info("Restart requested by agent (reason: %s)", restart_reason or "(none)")
@@ -650,6 +651,7 @@ class AtmanRunner:
                         # Update state for next iteration
                         session_id = new_session_id
                         deps = new_deps
+                        reflected_this_session = False  # Reset for new session
 
                         print_info("Session restarted successfully.\n")
                         continue  # Skip output, continue loop with new session

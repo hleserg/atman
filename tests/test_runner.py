@@ -879,3 +879,57 @@ def test_force_finish_none_close_reason_for_normal_completion(
     experiences = session_manager._state_store.list_recent_experiences(limit=1)
     assert len(experiences) == 1
     assert experiences[0].experience.close_reason is None
+
+
+def test_check_restart_requested_uses_new_messages_only() -> None:
+    """Test that restart detection doesn't trigger on old sentinels in history."""
+    from atman.adapters.agent.runner import _check_restart_requested
+
+    # Simulate messages: old sentinel from previous restart should be ignored
+    class MockOldPart:
+        def __init__(self) -> None:
+            self.content = "__ATMAN_RESTART_REQUESTED__\nOld restart reason"
+
+    class MockNewPart:
+        def __init__(self) -> None:
+            self.content = "Normal response without sentinel"
+
+    class MockOldMessage:
+        def __init__(self) -> None:
+            self.parts = [MockOldPart()]
+
+    class MockNewMessage:
+        def __init__(self) -> None:
+            self.parts = [MockNewPart()]
+
+    # Only new messages should be checked (not including old history)
+    new_messages_only = [MockNewMessage()]
+    restart_requested, reason = _check_restart_requested(new_messages_only)
+    assert restart_requested is False, "Should not detect restart from old sentinel in history"
+    assert reason == ""
+
+
+def test_force_finish_with_menu_timeout(
+    session_manager: SessionManager,
+    identity_with_narrative: Identity,
+) -> None:
+    """Test that menu_timeout is a valid close_reason and is persisted."""
+    ctx = session_manager.start_session(identity_with_narrative.id)
+
+    # Add a key moment
+    moment = KeyMomentInput(
+        what_happened="Menu timeout",
+        emotional_valence=0.0,
+        emotional_intensity=0.2,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Menu max retries reached",
+    )
+    session_manager.append_key_moment_input(ctx.session_id, moment)
+
+    # Force finish with menu_timeout reason
+    _force_finish(session_manager, ctx.session_id, close_reason="menu_timeout")
+
+    # Verify SessionExperience has close_reason="menu_timeout"
+    experiences = session_manager._state_store.list_recent_experiences(limit=1)
+    assert len(experiences) == 1
+    assert experiences[0].experience.close_reason == "menu_timeout"
