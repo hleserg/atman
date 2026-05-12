@@ -124,15 +124,15 @@ class PostgresStateStore(StateStore):
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
             for moment in moments:
-                # Serialize the KeyMoment to JSON
-                data = json.dumps(moment.model_dump(mode="json"))
+                # Serialize the KeyMoment to JSONB
+                data = Jsonb(moment.model_dump(mode="json"))
 
                 cur.execute(
                     """
-                        INSERT INTO public.key_moments (id, session_id, data, created_at)
-                        VALUES (%(id)s, %(session_id)s, %(data)s, %(created_at)s)
-                        ON CONFLICT (id) DO NOTHING
-                        """,
+                    INSERT INTO public.key_moments (id, session_id, data, created_at)
+                    VALUES (%(id)s, %(session_id)s, %(data)s, %(created_at)s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
                     {
                         "id": moment.id,
                         "session_id": session_id,
@@ -296,14 +296,14 @@ class PostgresStateStore(StateStore):
         with conn.transaction(), conn.cursor() as cur:
             # Note: We don't have session_id in KeyMoment model, so we use a placeholder
             # This method may need review when session_id is added to KeyMoment
-            data = json.dumps(key_moment.model_dump(mode="json"))
+            data = Jsonb(key_moment.model_dump(mode="json"))
 
             cur.execute(
                 """
-                    INSERT INTO public.key_moments (id, session_id, data, created_at)
-                    VALUES (%(id)s, %(session_id)s, %(data)s, %(created_at)s)
-                    ON CONFLICT (id) DO NOTHING
-                    """,
+                INSERT INTO public.key_moments (id, session_id, data, created_at)
+                VALUES (%(id)s, %(session_id)s, %(data)s, %(created_at)s)
+                ON CONFLICT (id) DO NOTHING
+                """,
                 {
                     "id": key_moment.id,
                     "session_id": "00000000-0000-0000-0000-000000000000",  # Placeholder

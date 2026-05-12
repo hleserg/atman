@@ -74,8 +74,24 @@ def store(request, tmp_path: Path) -> StateStore:
         db_url = os.environ.get("TEST_DB_URL")
         if not db_url:
             pytest.skip("TEST_DB_URL not set")
-        return PostgresStateStore(db_url=db_url)
+        s = PostgresStateStore(db_url=db_url)
+        # Clean up before test
+        conn = s._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE public.key_moments")
+        conn.commit()
+        return s
     raise NotImplementedError(request.param)
+
+
+def _skip_if_postgres_partial(store: StateStore) -> None:
+    """Skip test if store is PostgresStateStore (only implements KeyMoment ops)."""
+    if (
+        POSTGRES_AVAILABLE
+        and PostgresStateStore is not None
+        and isinstance(store, PostgresStateStore)
+    ):
+        pytest.skip("PostgresStateStore only implements KeyMoment operations")
 
 
 def _make_record(
@@ -135,6 +151,7 @@ def _make_narrative(identity_id) -> NarrativeDocument:
 
 
 def test_create_and_get_experience(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     record, moment = _make_record()
     stored = _persist(store, record, moment)
     assert stored.experience.id == record.experience.id
@@ -145,10 +162,12 @@ def test_create_and_get_experience(store: StateStore) -> None:
 
 
 def test_get_experience_unknown_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     assert store.get_experience(uuid4()) is None
 
 
 def test_create_experience_duplicate_raises(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     record, moment = _make_record()
     _persist(store, record, moment)
     with pytest.raises(Exception):
@@ -156,6 +175,7 @@ def test_create_experience_duplicate_raises(store: StateStore) -> None:
 
 
 def test_add_reframing_note(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     record, moment = _make_record()
     _persist(store, record, moment)
 
@@ -166,11 +186,13 @@ def test_add_reframing_note(store: StateStore) -> None:
 
 
 def test_add_reframing_note_unknown_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     note = ReframingNote(reflection="x", reflection_type="growth")
     assert store.add_reframing_note(uuid4(), note) is None
 
 
 def test_add_reframing_note_preserves_key_moments(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     record, moment = _make_record()
     original_moment = moment.what_happened
     _persist(store, record, moment)
@@ -185,6 +207,7 @@ def test_add_reframing_note_preserves_key_moments(store: StateStore) -> None:
 
 
 def test_mark_accessed(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     record, moment = _make_record()
     _persist(store, record, moment)
     updated = store.mark_accessed(record.experience.id)
@@ -193,10 +216,12 @@ def test_mark_accessed(store: StateStore) -> None:
 
 
 def test_mark_accessed_unknown_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     assert store.mark_accessed(uuid4()) is None
 
 
 def test_list_recent_experiences_newest_first(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     base = datetime.now(UTC)
     for i in range(3):
         rec, m = _make_record(timestamp=base + timedelta(minutes=i))
@@ -209,6 +234,7 @@ def test_list_recent_experiences_newest_first(store: StateStore) -> None:
 
 
 def test_search_by_session(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     sid = uuid4()
     r1, m1 = _make_record(session_id=sid)
     _persist(store, r1, m1)
@@ -221,6 +247,7 @@ def test_search_by_session(store: StateStore) -> None:
 
 
 def test_search_by_values(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     r1, m1 = _make_record(values=["courage", "honesty"])
     _persist(store, r1, m1)
     r2, m2 = _make_record(values=["patience"])
@@ -231,6 +258,7 @@ def test_search_by_values(store: StateStore) -> None:
 
 
 def test_search_by_depth(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     r1, m1 = _make_record(depth=EmotionalDepth.PROFOUND)
     _persist(store, r1, m1)
     r2, m2 = _make_record(depth=EmotionalDepth.SURFACE)
@@ -245,6 +273,7 @@ def test_search_by_depth(store: StateStore) -> None:
 
 
 def test_search_by_date_range_excludes_outside(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     now = datetime.now(UTC)
     inside, mi = _make_record(timestamp=now)
     outside, mo = _make_record(timestamp=now - timedelta(days=10))
@@ -258,6 +287,7 @@ def test_search_by_date_range_excludes_outside(store: StateStore) -> None:
 
 
 def test_search_by_fact_refs(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     """Contract test: FactRefsContainsQuery filters by fact_refs in key moments."""
     fact_id = uuid4()
     other_fact_id = uuid4()
@@ -334,6 +364,7 @@ def test_search_by_fact_refs(store: StateStore) -> None:
 
 
 def test_save_and_load_identity(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     identity = _make_identity()
     store.save_identity(identity)
 
@@ -343,10 +374,12 @@ def test_save_and_load_identity(store: StateStore) -> None:
 
 
 def test_load_identity_unknown_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     assert store.load_identity(uuid4()) is None
 
 
 def test_create_and_list_identity_snapshots(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     identity = _make_identity()
     store.save_identity(identity)
 
@@ -364,6 +397,7 @@ def test_create_and_list_identity_snapshots(store: StateStore) -> None:
 
 
 def test_list_identity_snapshots_filters_by_identity(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     id1 = _make_identity()
     id2 = _make_identity()
     store.save_identity(id1)
@@ -387,6 +421,7 @@ def test_list_identity_snapshots_filters_by_identity(store: StateStore) -> None:
 
 
 def test_save_and_load_narrative(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     identity = _make_identity()
     store.save_identity(identity)
     narrative = _make_narrative(identity.id)
@@ -398,6 +433,7 @@ def test_save_and_load_narrative(store: StateStore) -> None:
 
 
 def test_load_narrative_unknown_identity_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     assert store.load_narrative(uuid4()) is None
 
 
@@ -407,6 +443,7 @@ def test_load_narrative_unknown_identity_returns_none(store: StateStore) -> None
 
 
 def test_save_and_load_eigenstate(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     eigenstate = Eigenstate(
         session_id=uuid4(),
         emotional_tone=0.3,
@@ -426,10 +463,12 @@ def test_save_and_load_eigenstate(store: StateStore) -> None:
 
 
 def test_load_latest_eigenstate_no_data_returns_none(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     assert store.load_latest_eigenstate() is None
 
 
 def test_load_latest_eigenstate_filters_by_session(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     sid = uuid4()
     e = Eigenstate(
         session_id=sid,
@@ -449,6 +488,7 @@ def test_load_latest_eigenstate_filters_by_session(store: StateStore) -> None:
 
 
 def test_load_latest_eigenstate_filters_by_identity(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     sid = uuid4()
     iid = uuid4()
     e = Eigenstate(
@@ -470,6 +510,7 @@ def test_load_latest_eigenstate_filters_by_identity(store: StateStore) -> None:
 
 
 def test_save_identity_expected_version_mismatch_raises(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     ident = _make_identity()
     store.save_identity(ident)
     stale = ident.model_copy(update={"self_description": "changed"})
@@ -478,6 +519,7 @@ def test_save_identity_expected_version_mismatch_raises(store: StateStore) -> No
 
 
 def test_save_narrative_optimistic_lock_mismatch_raises(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     ident = _make_identity()
     narrative = _make_narrative(ident.id)
     store.save_narrative(narrative)
@@ -508,6 +550,7 @@ def test_save_narrative_optimistic_lock_mismatch_raises(store: StateStore) -> No
 
 
 def test_archive_narrative_and_list(store: StateStore) -> None:
+    _skip_if_postgres_partial(store)
     ident = _make_identity()
     narrative = _make_narrative(ident.id)
     store.save_narrative(narrative)

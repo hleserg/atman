@@ -41,7 +41,13 @@ def store(db_url: str) -> Any:
     """Create a PostgresStateStore instance for testing."""
     from atman.adapters.state import PostgresStateStore
 
-    return PostgresStateStore(db_url=db_url)
+    s = PostgresStateStore(db_url=db_url)
+    # Clean up before test
+    conn = s._get_conn()
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE TABLE public.key_moments")
+    conn.commit()
+    return s
 
 
 @pytest.fixture
