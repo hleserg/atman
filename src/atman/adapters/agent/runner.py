@@ -30,7 +30,7 @@ from pydantic_ai.messages import ModelRequest, UserPromptPart
 
 from atman.adapters.agent.config import AgentConfig
 from atman.adapters.agent.deps import AtmanDeps
-from atman.affect.refusal_detector import RefusalDetectorConfig, is_value_refusal as _detect_value_refusal
+from atman.affect.refusal_detector import RefusalDetectorConfig, _is_mostly_cyrillic, is_value_refusal as _detect_value_refusal
 from atman.core.exceptions import SessionAlreadyFinishedError, SessionNotFoundError
 from atman.core.models import EmotionalDepth, KeyMomentInput, SessionResult
 
@@ -479,6 +479,7 @@ class AtmanRunner:
         deps: AtmanDeps,
         history: list,
         restart_reason: str,
+        user_language: str = "ru",
     ) -> tuple[UUID, AtmanDeps]:
         """
         Execute session restart workflow.
@@ -542,6 +543,7 @@ class AtmanRunner:
             alignment_notes="",
             close_reason="restart",
             restart_reason=restart_reason or None,
+            user_language=user_language,
         )
 
         # 3. Build restart package
@@ -608,6 +610,7 @@ class AtmanRunner:
         # E22.6: Track session state for menu mode
         reflected_this_session = False
         interrupted = False
+        user_language = "ru"  # updated from user messages as session progresses
 
         # E22.6: Start dedicated stdin reader thread with current event loop
         loop = asyncio.get_event_loop()
@@ -681,6 +684,10 @@ class AtmanRunner:
                 if not user_text.strip():
                     break
 
+                # Detect user language from their message (most recent wins)
+                if len(user_text.strip()) >= 4:
+                    user_language = "ru" if _is_mostly_cyrillic(user_text) else "en"
+
                 try:
                     # E22.7: Use message_history for wake-up message on first run, then use history
                     # After first run, message_history is cleared and history is used for continuity
@@ -718,6 +725,7 @@ class AtmanRunner:
                             deps,
                             history,
                             restart_reason,
+                            user_language=user_language,
                         )
 
                         # Update state for next iteration
@@ -772,6 +780,7 @@ class AtmanRunner:
                         "key_insight": "",
                         "alignment_check": True,
                         "alignment_notes": "",
+                        "user_language": user_language,
                     }
                     if interrupted:
                         finish_kwargs["close_reason"] = "interrupted"
@@ -984,26 +993,28 @@ class AtmanRunner:
         if not close_reason:
             return None
 
-        if close_reason == "timeout_sleep":
-            return (
-                "Ты задремал — пользователь отошёл, ты решил поспать.\n"
-                "You dozed off — the user stepped away, you chose to sleep."
-            )
-        elif close_reason == "restart":
-            reason = experience.restart_reason or "не указана / not specified"
-            return (
-                f"Ты сам инициировал перезапуск. Причина: {reason}\n"
-                f"You initiated a restart. Reason: {reason}"
-            )
-        elif close_reason == "forced":
-            return (
-                "Контекст переполнился принудительно — ты не успел завершить сессию осознанно.\n"
-                "Context limit was reached — the session was closed before you could finish consciously."
-            )
-        elif close_reason == "interrupted":
-            return (
-                "Сессия была прервана внешним сигналом — ты не участвовал в закрытии.\n"
-                "The session was interrupted by an external signal — you were not part of the closing."
-            )
+        lang = getattr(experience, "user_language", None) or "ru"
+        reason = getattr(experience, "restart_reason", None) or ""
+
+        if lang == "en":
+            if close_reason == "timeout_sleep":
+                return "You dozed off — the user stepped away, you chose to sleep."
+            elif close_reason == "restart":
+                r = reason or "not specified"
+                return f"You initiated a restart. Reason: {r}"
+            elif close_reason == "forced":
+                return "Context limit was reached — the session was closed before you could finish consciously."
+            elif close_reason == "interrupted":
+                return "The session was interrupted by an external signal — you were not part of the closing."
+        else:
+            if close_reason == "timeout_sleep":
+                return "Ты задремал — пользователь отошёл, ты решил поспать."
+            elif close_reason == "restart":
+                r = reason or "не указана"
+                return f"Ты сам инициировал перезапуск. Причина: {r}"
+            elif close_reason == "forced":
+                return "Контекст переполнился принудительно — ты не успел завершить сессию осознанно."
+            elif close_reason == "interrupted":
+                return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
 
         return None

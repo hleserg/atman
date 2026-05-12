@@ -288,6 +288,10 @@ class SessionExperience(BaseModel):
         default="",
         description="Reason for session restart if close_reason is 'restart'",
     )
+    user_language: str = Field(
+        default="ru",
+        description="Detected language of the user during this session (e.g. 'ru', 'en')",
+    )
 
     # METADATA
     recorded_by: str = Field(
