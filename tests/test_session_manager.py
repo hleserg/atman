@@ -1956,6 +1956,10 @@ def test_orphan_recovery_restores_journaled_key_moment_payload(
     assert journal_path.exists()
     assert store.get_key_moments_for_session(context.session_id) == []
 
+    # Simulate process crash: OS releases the advisory lock while the journal remains.
+    lock_file = manager._journal_locks.pop(context.session_id)
+    manager._release_journal_file(lock_file, unlink=False)
+
     recovery_manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
     recovery_manager.start_session(identity_fixture.id)
 
