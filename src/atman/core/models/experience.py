@@ -284,6 +284,10 @@ class SessionExperience(BaseModel):
         default=None,
         description="Reason why the session ended",
     )
+    agent_recap: str | None = Field(
+        default=None,
+        description="Agent's own summary of the session upon close",
+    )
     restart_reason: str = Field(
         default="",
         description="Reason for session restart if close_reason is 'restart'",
@@ -348,38 +352,6 @@ class SessionExperience(BaseModel):
     fact_refs: list[UUID] = Field(
         default_factory=list,
         description="IDs of all facts accessed during this session (deduplicated)",
-    )
-
-    # UNEXAMINED PERCEPTION — facts that passed through perception but received no
-    # conscious emotional coloring. Queue for future micro-reflection.
-    unexamined_fact_refs: list[UUID] = Field(
-        default_factory=list,
-        description=(
-            "IDs of facts that passed through perception during this session "
-            "but received no conscious emotional coloring. "
-            "Queue for future micro-reflection."
-        ),
-    )
-
-    # SESSION CLOSE CONTEXT
-    # None only valid for legacy records created before this field existed.
-    close_reason: Literal["completed", "timeout_sleep", "restart", "forced", "interrupted"] | None = Field(
-        default=None,
-        description=(
-            "Why this session was closed. "
-            "None means legacy record; new sessions must always have a reason. "
-            "completed=user ended normally; timeout_sleep=agent chose to sleep; "
-            "restart=agent triggered restart; forced=context overflow; "
-            "interrupted=signal/crash."
-        ),
-    )
-    agent_recap: str | None = Field(
-        default=None,
-        description="Optional subjective recap written by the agent before sleep",
-    )
-    restart_reason: str = Field(
-        default="",
-        description="Agent-authored reason for restart_session call",
     )
 
     @field_validator("importance", "salience")
