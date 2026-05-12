@@ -36,7 +36,7 @@ class TestMockEmbeddingAdapter:
 
     def test_model_name_is_mock(self, adapter: MockEmbeddingAdapter) -> None:
         """Adapter reports correct model name."""
-        assert adapter.model_name() == "mock-embedding:768d"
+        assert adapter.model_name() == "mock-embedding:1024d"
 
     def test_embed_returns_list_of_floats(self, adapter: MockEmbeddingAdapter) -> None:
         """Single text embedding returns list[float]."""
