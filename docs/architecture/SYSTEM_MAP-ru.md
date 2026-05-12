@@ -24,7 +24,7 @@
 | Файл | Назначение | Публичные классы |
 |------|------------|------------------|
 | `core/models/fact.py` | Верифицируемые факты и связи между ними | `FactRecord`, `Relation` |
-| `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
+| `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление, метаданные завершения сессии (E22.7: `close_reason`, `restart_reason`, `agent_recap`) | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Самопредставление агента (ценности, привычки, принципы, цели, открытые вопросы) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate` (`schema_version`, опциональный `identity_id`), `LayerType` |
 | `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат, сводка активных | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
@@ -37,7 +37,7 @@
 |------|------------|-----------|
 | `core/ports/memory_backend.py` | Интерфейс факт-памяти | `FactualMemory` (ABC) |
 | `core/ports/clock.py` | Доменные часы для воспроизводимости | `ClockPort` (Protocol) |
-| `core/ports/state_store.py` | Хранилище опыта/identity/нарратива | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
+| `core/ports/state_store.py` | Хранилище опыта/identity/нарратива | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` |
 | `core/ports/reflection.py` | Зависимости Reflection Engine; `ReflectionModel` возвращает DTO (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
 | **`core/ports/reflection_store.py`** | **E27**: Интерфейс таблицы PostgreSQL `reflections` | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
 | `core/ports/embedding.py` | Интерфейс эмбеддингов для семантического поиска | `EmbeddingPort` (ABC) — `embed()`, `embed_batch()`, `dimension()`, `model_name()` |
@@ -106,7 +106,7 @@
 | `adapters/agent/instructions.py` (`build_instructions`) | — | строит динамический system prompt из текущих `Identity` + `NarrativeDocument` (с усечением по `AtmanDeps.truncate_narrative_*`) |
 | `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`, `restart_session`, `wait_session`) | — | инструменты Pydantic AI: `record_key_moment` → `AffectDetector.submit_self_report` когда `SessionManager` настроен на аффект; `log_experience` — redirect-заглушка; `restart_session` / `wait_session` возвращают sentinel-строки для управления сессией (E22.4) |
 | `adapters/agent/factory.py` (`build_deps`) | — | сборка `AtmanDeps`, `SessionManager`, `FileStateStore`, сервисов, опционально `AffectDetector` из workspace и `AgentConfig` |
-| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`) | — | обёртка жизненного цикла сессии с обработкой сигналов и restart loop (E22.2, E22.5); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды; детектирует restart sentinel в сообщениях, завершает текущую сессию, строит restart package (ключевые моменты + причина + хвост разговора), запускает новую сессию с обновлённым `AtmanDeps` |
+| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | обёртка жизненного цикла сессии с обработкой сигналов, restart loop и таймаут/меню (E22.2, E22.5, E22.6); очередь-based stdin reader (без race condition при таймауте); детекция restart: sentinel → finish session с `close_reason="restart"` → построение пакета (ключевые моменты + причина + хвост) → новая сессия с обновлённым `AtmanDeps`; таймаут сессии → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды |
 | `agents_registry.py` (`AgentsRegistry`) | — | реестр экземпляров агентов в PostgreSQL (app/admin URL); используется `src/run_agent.py` |
 
 ### 1.6. CLI / TUI / Web / Демо
@@ -192,7 +192,7 @@
 | `AtmanDeps` ↔ `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore` | `adapters/agent/deps.py` | DI-контейнер (frozen dataclass) |
 | `record_key_moment` / `log_experience` / `restart_session` / `wait_session` ↔ `AffectDetector.submit_self_report` / `SessionManager` | `adapters/agent/tools.py` → `affect/detector.py` + `core/services/session_manager.py` | Async Pydantic AI инструменты → affect write gateway (`record_key_moment` требует `affect_workspace` + config для `SessionManager`; `restart_session` / `wait_session` возвращают sentinel-строки для детекции в E22.5 runner) |
 | `build_instructions` ↔ `StateStore.load_identity` / `load_narrative` | `adapters/agent/instructions.py` → `core/ports/state_store.py` | динамический билдер system-prompt |
-| `chat` / `_force_finish` / `_do_restart` ↔ `SessionManager` | `adapters/agent/runner.py` → `core/services/session_manager.py` | регистрация signal handler + exception boundary + restart loop (E22.2, E22.5); вызывает `append_key_moment_input()`, `get_active_session()`, `finish_session()` при прерывании и restart; restart workflow: завершает сессию с `close_reason="restart"`, строит package, запускает новую сессию, обновляет `AtmanDeps` с новым `session_id` |
+| `chat` / `_force_finish` / `_do_restart` / `_handle_menu_mode` / `_handle_free_time_mode` ↔ `SessionManager` | `adapters/agent/runner.py` → `core/services/session_manager.py` | регистрация signal handler + exception boundary + restart loop + таймаут/меню (E22.2, E22.5, E22.6, E22.7); вызывает `append_key_moment_input()`, `get_active_session()`, `finish_session(..., close_reason=...)` при прерывании и restart; restart workflow: завершает сессию с `close_reason="restart"`, строит package, запускает новую сессию, обновляет `AtmanDeps` с новым `session_id`; инжекция wake-up сообщения из `close_reason` последней сессии; таймаут → menu mode (reflect/wait/sleep/save_to_memory/free_time) |
 
 ### 2.3. CLI ↔ сервис
 
@@ -318,7 +318,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 2. Во время сессии: `record_event(...)` отслеживает сырые события от нижнего агента и при наличии конфигурации планирует **AffectDetector**.
 3. Программные моменты: `append_key_moment_input` / `append_key_moment`; инструмент агента `record_key_moment` → `AffectDetector.submit_self_report(...)` с обязательной эмоциональной окраской (valence/intensity/depth).
 4. Если окраска неполная → флаг `incomplete_coloring=True` (честность об ограничении).
-5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
+5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`; принимает опциональные `close_reason`, `restart_reason`, `agent_recap` (E22.7) для wake-up контекста при старте следующей сессии.
 6. Оба сохраняются через `StateStore` (опыт immutable, eigenstate для следующей сессии).
 7. Ключевой инвариант: эмоциональная окраска ОБЯЗАНА быть (от реального переживания) или явно помечена неполной.
 8. `KeyMomentInput.recorded_at` копируется в `KeyMoment.when` для согласованной временной шкалы относительно валидации и `finish`.
