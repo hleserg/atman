@@ -13,6 +13,7 @@ from atman.core.models import (
     ExperienceRecord,
     Identity,
     IdentitySnapshot,
+    KeyMoment,
     NarrativeDocument,
     ReframingNote,
 )
@@ -37,6 +38,7 @@ class InMemoryStateStore(StateStore):
         self._narratives: dict[UUID, NarrativeDocument] = {}
         self._archived_narratives: dict[UUID, list[tuple[NarrativeDocument, str, datetime]]] = {}
         self._eigenstates: list[Eigenstate] = []
+        self._key_moments: dict[UUID, KeyMoment] = {}
 
     def create_experience(self, record: ExperienceRecord) -> ExperienceRecord:
         """Store experience in memory."""
@@ -200,8 +202,10 @@ class InMemoryStateStore(StateStore):
         identity_id = narrative.identity_id
         if identity_id not in self._archived_narratives:
             self._archived_narratives[identity_id] = []
+        from datetime import UTC
+
         self._archived_narratives[identity_id].append(
-            (narrative.model_copy(deep=True), reason, datetime.utcnow())
+            (narrative.model_copy(deep=True), reason, datetime.now(UTC))
         )
 
     def list_archived_narratives(
@@ -239,3 +243,27 @@ class InMemoryStateStore(StateStore):
         # Return most recent by timestamp
         latest = max(candidates, key=lambda e: e.timestamp)
         return latest.model_copy(deep=True)
+
+    def create_key_moment(self, key_moment: KeyMoment) -> KeyMoment:
+        """Store key moment in memory."""
+        if key_moment.id in self._key_moments:
+            raise ValueError(f"KeyMoment {key_moment.id} already exists")
+        self._key_moments[key_moment.id] = key_moment.model_copy(deep=True)
+        return key_moment
+
+    def list_key_moments(self, session_id: UUID | None = None) -> list[KeyMoment]:
+        """List key moments, optionally filtered by session_id."""
+        # Note: KeyMoment doesn't have session_id field currently,
+        # so filtering is not implemented yet. Will need to be added
+        # when KeyMoment gets session_id field.
+        if session_id is not None:
+            # Filter by session_id when KeyMoment model includes it
+            # For now, return empty list as filtering can't be done
+            return []
+        return [km.model_copy(deep=True) for km in self._key_moments.values()]
+
+    def get_key_moment(self, key_moment_id: UUID) -> KeyMoment:
+        """Retrieve key moment by ID."""
+        if key_moment_id not in self._key_moments:
+            raise KeyError(f"KeyMoment {key_moment_id} not found")
+        return self._key_moments[key_moment_id].model_copy(deep=True)

@@ -18,6 +18,7 @@ from atman.core.models import (
     ExperienceRecord,
     Identity,
     IdentitySnapshot,
+    KeyMoment,
     NarrativeDocument,
     ReframingNote,
 )
@@ -80,6 +81,7 @@ class FileStateStore(StateStore):
         self.identity_path = self.workspace / "identity.json"
         self.narrative_path = self.workspace / "narrative.json"
         self.eigenstate_path = self.workspace / "eigenstate.json"
+        self.key_moments_path = self.workspace / "key_moments.jsonl"
 
     def _write_json_atomically(self, path: Path, content: str) -> None:
         """Write JSON without exposing callers to partially rewritten files."""
@@ -373,3 +375,51 @@ class FileStateStore(StateStore):
             return None
 
         return narrative
+
+    # KeyMoment operations
+
+    def create_key_moment(self, key_moment: KeyMoment) -> KeyMoment:
+        """Create key moment by appending to JSONL file."""
+        # Check if key moment already exists
+        if self.key_moments_path.exists():
+            for line in self.key_moments_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    data = json.loads(line)
+                    if data.get("id") == str(key_moment.id):
+                        raise ValueError(f"KeyMoment {key_moment.id} already exists")
+
+        # Append to JSONL file
+        with self.key_moments_path.open("a", encoding="utf-8") as f:
+            f.write(key_moment.model_dump_json() + "\n")
+
+        return key_moment
+
+    def list_key_moments(self, session_id: UUID | None = None) -> list[KeyMoment]:
+        """List key moments from JSONL file, optionally filtered by session_id."""
+        if not self.key_moments_path.exists():
+            return []
+
+        key_moments: list[KeyMoment] = []
+        for line in self.key_moments_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                data = json.loads(line)
+                key_moment = KeyMoment.model_validate(data)
+                # Note: KeyMoment doesn't have session_id field currently
+                # When it's added, filtering will be implemented here
+                if session_id is None:
+                    key_moments.append(key_moment)
+
+        return key_moments
+
+    def get_key_moment(self, key_moment_id: UUID) -> KeyMoment:
+        """Retrieve key moment by ID from JSONL file."""
+        if not self.key_moments_path.exists():
+            raise KeyError(f"KeyMoment {key_moment_id} not found")
+
+        for line in self.key_moments_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                data = json.loads(line)
+                if data.get("id") == str(key_moment_id):
+                    return KeyMoment.model_validate(data)
+
+        raise KeyError(f"KeyMoment {key_moment_id} not found")
