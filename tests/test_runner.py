@@ -377,3 +377,59 @@ def test_force_finish_incomplete_coloring_flag(
     # Session should be finished (no longer active)
     session_result_after = session_manager.get_active_session(ctx.session_id)
     assert session_result_after is None
+
+
+def test_force_finish_with_timeout_sleep_reason(
+    session_manager: SessionManager,
+    identity_with_narrative: Identity,
+) -> None:
+    """Test that _force_finish works with timeout_sleep close_reason from menu mode."""
+    ctx = session_manager.start_session(identity_with_narrative.id)
+
+    # Add a key moment
+    moment = KeyMomentInput(
+        what_happened="Session timed out",
+        emotional_valence=0.0,
+        emotional_intensity=0.3,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Timeout occurred",
+    )
+    session_manager.append_key_moment_input(ctx.session_id, moment)
+
+    # Force finish with timeout_sleep reason
+    _force_finish(session_manager, ctx.session_id, close_reason="timeout_sleep")
+
+    # Session should be finished
+    session_result = session_manager.get_active_session(ctx.session_id)
+    assert session_result is None
+
+
+def test_force_finish_with_menu_timeout_reason(
+    session_manager: SessionManager,
+    identity_with_narrative: Identity,
+) -> None:
+    """Test that _force_finish works with menu_timeout close_reason after max retries."""
+    ctx = session_manager.start_session(identity_with_narrative.id)
+
+    # Force finish with menu_timeout reason (no key moments - minimal will be created)
+    _force_finish(session_manager, ctx.session_id, close_reason="menu_timeout")
+
+    # Session should be finished
+    session_result = session_manager.get_active_session(ctx.session_id)
+    assert session_result is None
+
+
+def test_atman_runner_initialization(tmp_path: Path) -> None:
+    """Test that AtmanRunner can be initialized with workspace, agent_id, and config."""
+    from atman.adapters.agent.config import AgentConfig
+    from atman.adapters.agent.runner import AtmanRunner
+
+    agent_id = uuid4()
+    config = AgentConfig(session_timeout_minutes=5, enable_free_time=True)
+
+    runner = AtmanRunner(workspace=tmp_path, agent_id=agent_id, config=config)
+
+    assert runner._workspace == tmp_path
+    assert runner._agent_id == agent_id
+    assert runner._config.session_timeout_minutes == 5
+    assert runner._config.enable_free_time is True

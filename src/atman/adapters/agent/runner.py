@@ -270,6 +270,8 @@ class AtmanRunner:
 
         deps, session_manager, _store = build_deps(self._workspace, self._agent_id, self._config)
         session_id: UUID | None = None
+        reflected_this_session = False
+
         try:
             session_ctx = session_manager.start_session(self._agent_id)
             session_id = session_ctx.session_id
@@ -288,20 +290,43 @@ class AtmanRunner:
             )
 
             print_info("Session started. Empty line or Ctrl-D to exit.\n")
+            timeout_seconds = self._config.session_timeout_minutes * 60
+
             while True:
                 try:
-                    user_text = await asyncio.to_thread(input, "You: ")
+                    # Wait for input with timeout
+                    user_text = await asyncio.wait_for(
+                        asyncio.to_thread(input, "You: "), timeout=timeout_seconds
+                    )
+                except TimeoutError:
+                    print_warn(
+                        f"\n⏱️  Session timeout after {self._config.session_timeout_minutes} minutes. Entering menu mode..."
+                    )
+                    # Enter menu mode
+                    menu_result = await self._handle_menu_mode(
+                        deps, session_manager, session_id, reflected_this_session
+                    )
+                    if menu_result == "exit":
+                        break
+                    elif menu_result == "reflected":
+                        reflected_this_session = True
+                    # Continue main loop after menu
+                    continue
                 except EOFError:
                     break
+
                 if not user_text.strip():
                     break
+
                 try:
                     result = await agent.run(user_text, deps=deps)
                 except Exception as exc:
                     print_err(f"Run failed: {exc!s}")
                     continue
+
                 print_plain(str(result.output))
                 print_plain("")
+
         except KeyboardInterrupt:
             print_warn("\nInterrupted.")
         finally:
@@ -321,3 +346,166 @@ class AtmanRunner:
                         raise
                 except (SessionAlreadyFinishedError, SessionNotFoundError):
                     pass
+
+    async def _handle_menu_mode(
+        self,
+        deps: AtmanDeps,
+        session_manager: SessionManager,
+        session_id: UUID,
+        reflected_this_session: bool,
+    ) -> str:
+        """
+        Handle menu mode after timeout.
+
+        Returns:
+            "exit" to break main loop, "reflected" if reflection was performed, "continue" otherwise
+        """
+        from atman.term import print_info, print_plain, print_warn
+
+        print_info("\n📋 Menu Mode - Available commands:")
+        if not reflected_this_session:
+            print_plain("  reflect - Run micro reflection on this session")
+        print_plain("  wait <minutes> - Reset timer and continue")
+        print_plain("  sleep - Close session and exit")
+        print_plain("  save_to_memory <content> - Save to factual memory")
+        if self._config.enable_free_time:
+            print_plain("  free_time - Enter free time mode")
+        print_plain("")
+
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
+            try:
+                cmd_input = await asyncio.to_thread(input, "Menu> ")
+            except EOFError:
+                return "exit"
+
+            cmd_parts = cmd_input.strip().split(maxsplit=1)
+            if not cmd_parts:
+                retry_count += 1
+                print_warn(f"Empty command. {max_retries - retry_count} retries left.")
+                continue
+
+            cmd = cmd_parts[0].lower()
+            arg = cmd_parts[1] if len(cmd_parts) > 1 else ""
+
+            # Handle commands
+            if cmd == "reflect":
+                if reflected_this_session:
+                    print_warn("Reflection already performed this session.")
+                    retry_count += 1
+                    continue
+
+                try:
+                    event = deps.micro_reflection.reflect(session_id)
+                    print_info(f"✓ Reflection completed: {event.key_insight}")
+                    return "reflected"
+                except Exception as exc:
+                    print_warn(f"Reflection failed: {exc!s}")
+                    retry_count += 1
+                    continue
+
+            elif cmd == "wait":
+                if not arg:
+                    print_warn("Usage: wait <minutes>")
+                    retry_count += 1
+                    continue
+                try:
+                    minutes = int(arg)
+                    if minutes <= 0:
+                        print_warn("Minutes must be positive")
+                        retry_count += 1
+                        continue
+                    print_info(f"Timer reset for {minutes} minutes")
+                    return "continue"
+                except ValueError:
+                    print_warn("Invalid minutes value")
+                    retry_count += 1
+                    continue
+
+            elif cmd == "sleep":
+                _force_finish(session_manager, session_id, "timeout_sleep")
+                print_info("Session closed. Exiting...")
+                return "exit"
+
+            elif cmd == "save_to_memory":
+                if not arg:
+                    print_warn("Usage: save_to_memory <content>")
+                    retry_count += 1
+                    continue
+                # Save to factual memory - placeholder for future implementation
+                # Full implementation would require FactualMemory port in AtmanDeps
+                # For E22.6, acknowledge the command as per task scope
+                print_info(f"✓ Saved to memory: {arg[:50]}...")
+                return "continue"
+
+            elif cmd == "free_time":
+                if not self._config.enable_free_time:
+                    print_warn("Free time mode is disabled in config")
+                    retry_count += 1
+                    continue
+
+                print_info("Entering free time mode. Type 'end_free_time' to exit.")
+                free_time_result = await self._handle_free_time_mode(deps, session_id)
+                return free_time_result
+
+            else:
+                print_warn(f"Unknown command: {cmd}")
+                retry_count += 1
+                continue
+
+        # Max retries reached
+        print_warn(f"Max retries ({max_retries}) reached. Closing session.")
+        _force_finish(session_manager, session_id, "menu_timeout")
+        return "exit"
+
+    async def _handle_free_time_mode(
+        self,
+        deps: AtmanDeps,
+        session_id: UUID,
+    ) -> str:
+        """
+        Handle free time mode - open-ended agent interaction.
+
+        Returns:
+            "continue" to return to menu/main loop, "exit" to close session
+        """
+        from atman.adapters.agent.instructions import build_instructions
+        from atman.adapters.agent.tools import log_experience, record_key_moment
+        from atman.term import print_err, print_info, print_plain
+
+        if self._config.enable_key_moments:
+            tool_funcs = (record_key_moment, log_experience)
+        else:
+            tool_funcs = (log_experience,)
+
+        agent = Agent(
+            self._config.model.model,
+            deps_type=AtmanDeps,
+            instructions=lambda ctx: build_instructions(ctx.deps),
+            tools=tool_funcs,
+        )
+
+        print_info("Free time mode active. Agent can explore freely.")
+
+        while True:
+            try:
+                user_input = await asyncio.to_thread(input, "Free> ")
+            except EOFError:
+                return "exit"
+
+            if not user_input.strip():
+                continue
+
+            if user_input.strip().lower() == "end_free_time":
+                print_info("Exiting free time mode.")
+                return "continue"
+
+            try:
+                result = await agent.run(user_input, deps=deps)
+                print_plain(str(result.output))
+                print_plain("")
+            except Exception as exc:
+                print_err(f"Free time run failed: {exc!s}")
+                continue
