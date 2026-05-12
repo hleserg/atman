@@ -113,9 +113,7 @@ class InMemoryExperienceStore(StateStore):
             return False
 
         elif isinstance(query, DepthQuery):
-            return any(
-                moment.how_i_felt.depth.value == query.depth.lower() for moment in exp.key_moments
-            )
+            return any(moment.how_i_felt.depth == query.depth for moment in exp.key_moments)
 
         elif isinstance(query, DateRangeQuery):
             return query.start_date <= exp.timestamp <= query.end_date

@@ -108,8 +108,7 @@ class InMemoryStateStore(StateStore):
                 r
                 for r in results
                 if any(
-                    moment.how_i_felt.depth.value == query.depth
-                    for moment in r.experience.key_moments
+                    moment.how_i_felt.depth == query.depth for moment in r.experience.key_moments
                 )
             ]
         elif isinstance(query, DateRangeQuery):
