@@ -308,7 +308,7 @@ class AtmanRunner:
         from atman.adapters.agent.factory import build_deps
         from atman.adapters.agent.instructions import build_instructions
         from atman.adapters.agent.tools import log_experience, record_key_moment
-        from atman.term import print_err, print_info, print_plain, print_warn
+        from atman.term import print_err, print_info, print_plain, print_prompt, print_warn
 
         deps, session_manager, _store = build_deps(self._workspace, self._agent_id, self._config)
         session_id: UUID | None = None
@@ -339,7 +339,7 @@ class AtmanRunner:
             timeout_seconds = self._config.session_timeout_minutes * 60
 
             while True:
-                print("You: ", end="", flush=True)
+                print_prompt("You: ")
                 try:
                     # Wait for input from queue with timeout
                     user_text = await asyncio.wait_for(
@@ -416,7 +416,7 @@ class AtmanRunner:
             "continue" to resume with same timeout,
             ("wait", new_timeout_seconds) to resume with new timeout
         """
-        from atman.term import print_info, print_plain, print_warn
+        from atman.term import print_info, print_plain, print_prompt, print_warn
 
         print_info("\n📋 Menu Mode - Available commands:")
         if not reflected_this_session:
@@ -432,7 +432,7 @@ class AtmanRunner:
         retry_count = 0
 
         while retry_count < max_retries:
-            print("Menu> ", end="", flush=True)
+            print_prompt("Menu> ")
             try:
                 # Get input from queue (no timeout in menu mode)
                 cmd_input = await self._input_queue.get()
@@ -502,9 +502,10 @@ class AtmanRunner:
                     continue
                 # Save to factual memory - placeholder for future implementation
                 # Full implementation would require FactualMemory port in AtmanDeps
-                # For E22.6, acknowledge the command as per task scope
-                print_info(f"✓ Saved to memory: {arg[:50]}...")
-                return "continue"
+                print_warn(f"save_to_memory not yet implemented (content NOT saved): {arg[:50]}...")
+                print_info("Returning to menu. Use 'wait' to continue session.")
+                retry_count += 1
+                continue
 
             elif cmd == "free_time":
                 if not self._config.enable_free_time:
@@ -514,7 +515,11 @@ class AtmanRunner:
 
                 print_info("Entering free time mode. Type 'end_free_time' to exit.")
                 free_time_result = await self._handle_free_time_mode(deps, session_id)
-                return free_time_result
+                # After free_time, return to menu (not main loop)
+                if free_time_result == "continue":
+                    print_info("Exited free time mode. Returning to menu.")
+                    continue  # Stay in menu loop
+                return free_time_result  # "exit" case
 
             else:
                 print_warn(f"Unknown command: {cmd}")
@@ -539,7 +544,7 @@ class AtmanRunner:
         """
         from atman.adapters.agent.instructions import build_instructions
         from atman.adapters.agent.tools import log_experience, record_key_moment
-        from atman.term import print_err, print_info, print_plain
+        from atman.term import print_err, print_info, print_plain, print_prompt
 
         if self._config.enable_key_moments:
             tool_funcs = (record_key_moment, log_experience)
@@ -556,7 +561,7 @@ class AtmanRunner:
         print_info("Free time mode active. Agent can explore freely.")
 
         while True:
-            print("Free> ", end="", flush=True)
+            print_prompt("Free> ")
             try:
                 # Get input from queue (no timeout in free time mode)
                 user_input = await self._input_queue.get()
@@ -571,7 +576,7 @@ class AtmanRunner:
                 continue
 
             if user_input.strip().lower() == "end_free_time":
-                print_info("Exiting free time mode.")
+                # Return to menu, not main loop
                 return "continue"
 
             try:

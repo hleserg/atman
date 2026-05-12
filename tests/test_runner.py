@@ -507,3 +507,11 @@ def test_force_finish_with_different_close_reasons(
         # Verify session is finished
         session_result = session_manager.get_active_session(ctx.session_id)
         assert session_result is None
+
+
+def test_print_prompt_helper_exists() -> None:
+    """Test that print_prompt helper exists in atman.term."""
+    from atman.term import print_prompt
+
+    # Just verify the function exists and is callable
+    assert callable(print_prompt)
