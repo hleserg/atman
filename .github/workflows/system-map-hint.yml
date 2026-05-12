@@ -90,6 +90,7 @@ jobs:
 
       - name: Run AI analysis
         id: ai
+        continue-on-error: true          # не падаем если GitHub Models недоступен
         uses: actions/ai-inference@v1
         with:
           model: openai/gpt-4o-mini
@@ -100,6 +101,11 @@ jobs:
       - name: Build comment
         run: |
           SRC_BADGE="${{ env.SRC_FILES }}"
+
+          # Fallback если AI шаг упал и файл не создался
+          if [ ! -s ai-response.txt ]; then
+            echo "⚠️ AI analysis unavailable (GitHub Models step failed). Run manually or retry." > ai-response.txt
+          fi
 
           cat > comment.md << EOF
           <!-- atman-sysmap-hint -->

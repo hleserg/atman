@@ -75,6 +75,7 @@ jobs:
 
       - name: Run AI analysis
         id: ai
+        continue-on-error: true
         uses: actions/ai-inference@v1
         with:
           model: openai/gpt-4o-mini
@@ -84,6 +85,10 @@ jobs:
 
       - name: Build comment
         run: |
+          if [ ! -s ai-response.txt ]; then
+            echo "⚠️ AI analysis unavailable (GitHub Models step failed). Run manually or retry." > ai-response.txt
+          fi
+
           cat > comment.md << 'EOF'
           <!-- atman-pr-checklist -->
           ## 🤖 PR Checklist — DEVELOPMENT_STANDARD §25
