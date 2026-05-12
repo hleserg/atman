@@ -31,6 +31,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
+from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.tools import (
@@ -91,8 +92,6 @@ def bootstrap(store, agent_id: UUID) -> None:
         principles=[
             Principle(
                 statement="Если контекст заполняется — инициирую перезапуск самостоятельно",
-                source="self",
-                confidence=0.9,
             ),
         ],
         goals=[
@@ -113,8 +112,8 @@ def bootstrap(store, agent_id: UUID) -> None:
 
 
 async def run_session(
-    agent: Agent,
-    deps,
+    agent: Agent[AtmanDeps, str],
+    deps: AtmanDeps,
     session_manager: SessionManager,
     messages: list[str],
     history: list,

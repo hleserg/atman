@@ -44,6 +44,9 @@ async def run_scenario(path: str, label: str) -> tuple[str, int, float]:
     print(DIVIDER)
 
     spec = importlib.util.spec_from_file_location(label, path)
+    if spec is None or spec.loader is None:
+        print(f"  ⚠ Не удалось загрузить модуль {label}")
+        return (label, 1, 0.0)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 

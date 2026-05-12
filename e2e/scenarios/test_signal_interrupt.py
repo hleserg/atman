@@ -39,7 +39,7 @@ def hdr(title: str) -> None:
     print(f"\n{DIVIDER}\n  {title}\n{DIVIDER}")
 
 
-def chk(label: str, ok: bool, detail: str = "") -> None:
+def chk(label: str, ok: bool, detail: str = "") -> bool:
     mark = "✓" if ok else "✗"
     print(f"  {mark} {label}" + (f"  [{detail}]" if detail else ""))
     return ok
@@ -102,8 +102,6 @@ async def scenario_keyboard_interrupt() -> int:
         session_id = ctx.session_id
         replace(deps, session_id=session_id)
 
-        # Проверяем journal создан
-        workspace / str(agent_id) / "sessions" / f"active_{session_id}.jsonl"
         # Журнал создаётся при первом append_key_moment_input или _note_facts_read
 
         # Симулируем _force_finish как при KeyboardInterrupt
@@ -314,12 +312,16 @@ time.sleep(60)
 
         try:
             # Ждём готовности
-            line = proc.stdout.readline()
-            if not line:
-                chk("B: дочерний процесс стартовал", False, "нет вывода")
+            if proc.stdout is None:
+                chk("B: дочерний процесс стартовал", False, "stdout is None")
                 failures += 1
             else:
-                chk("B: дочерний процесс стартовал", True, f"pid={proc.pid}")
+                line = proc.stdout.readline()
+                if not line:
+                    chk("B: дочерний процесс стартовал", False, "нет вывода")
+                    failures += 1
+                else:
+                    chk("B: дочерний процесс стартовал", True, f"pid={proc.pid}")
                 time.sleep(0.5)  # даём ему устояться
                 proc.send_signal(signal.SIGTERM)
                 proc.wait(timeout=5)

@@ -76,7 +76,7 @@ async def test_token_monitor_thresholds() -> int:
 
         # Патчим _inject_warning чтобы отслеживать вызовы
         warnings_logged: list[str] = []
-        monitor._inject_warning = lambda w: warnings_logged.append(w)
+        monitor._inject_warning = lambda warning: warnings_logged.append(warning)
 
         # 65% — ниже порога
         await monitor._check_token_threshold(_make_mock_result(650))
@@ -205,15 +205,16 @@ async def test_token_monitor_integration() -> int:
         # Проверяем что monitor инициализировался с нужным context_limit
         ok1 = chk(
             "B: context_limit из deps.model_config",
-            monitor._deps.model_config.context_limit == 800,
-            f"got={monitor._deps.model_config.context_limit}",
+            monitor._deps.model_config is not None
+            and monitor._deps.model_config.context_limit == 800,
+            f"got={monitor._deps.model_config.context_limit if monitor._deps.model_config else None}",
         )
         if not ok1:
             failures += 1
 
         # Запускаем одно реальное сообщение
         warnings_fired: list[str] = []
-        monitor._inject_warning = lambda w: warnings_fired.append(w)
+        monitor._inject_warning = lambda warning: warnings_fired.append(warning)
 
         try:
             result = await monitor.run("Скажи одно короткое слово.")

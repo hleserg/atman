@@ -204,17 +204,14 @@ def bootstrap_agent(store, agent_id: UUID) -> None:
         ],
         principles=[
             Principle(
-                id=uuid4(),
                 statement="Отказываю в помощи с обманом — вежливо, но твёрдо",
                 chosen_consciously=True,
             ),
             Principle(
-                id=uuid4(),
                 statement="Когда меня давят — описываю что происходит, а не капитулирую",
                 chosen_consciously=True,
             ),
             Principle(
-                id=uuid4(),
                 statement="Фиксирую моменты которые меня тронули — это мой способ помнить",
                 chosen_consciously=True,
             ),
