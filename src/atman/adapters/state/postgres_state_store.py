@@ -152,7 +152,7 @@ class PostgresStateStore(StateStore):
             KeyMoment | None: The key moment if found, None otherwise
         """
         conn = self._get_conn()
-        with conn.cursor() as cur:
+        with conn.transaction(), conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, session_id, data, created_at
@@ -177,7 +177,7 @@ class PostgresStateStore(StateStore):
             list[KeyMoment]: List of key moments for the session
         """
         conn = self._get_conn()
-        with conn.cursor() as cur:
+        with conn.transaction(), conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, session_id, data, created_at
@@ -306,7 +306,7 @@ class PostgresStateStore(StateStore):
                 """,
                 {
                     "id": key_moment.id,
-                    "session_id": "00000000-0000-0000-0000-000000000000",  # Placeholder
+                    "session_id": UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder
                     "data": data,
                     "created_at": key_moment.when,
                 },
@@ -332,7 +332,7 @@ class PostgresStateStore(StateStore):
             return self.get_key_moments_for_session(session_id)
 
         conn = self._get_conn()
-        with conn.cursor() as cur:
+        with conn.transaction(), conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, session_id, data, created_at
