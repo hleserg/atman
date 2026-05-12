@@ -22,12 +22,15 @@ from atman.adapters.storage.file_state_store import FileStateStore
 from atman.core.exceptions import SessionNotFoundError
 from atman.core.models import (
     EmotionalDepth,
+    FeltSense,
     Identity,
+    KeyMoment,
     KeyMomentInput,
     LayerType,
     NarrativeDocument,
     NarrativeLayer,
     SessionEvent,
+    SessionResult,
 )
 from atman.core.services.session_manager import SessionManager
 
@@ -377,3 +380,113 @@ def test_force_finish_incomplete_coloring_flag(
     # Session should be finished (no longer active)
     session_result_after = session_manager.get_active_session(ctx.session_id)
     assert session_result_after is None
+
+
+def test_check_restart_requested_with_sentinel() -> None:
+    """Test that _check_restart_requested detects restart sentinel."""
+    from atman.adapters.agent.runner import _check_restart_requested
+
+    # Mock message with restart sentinel (no reason)
+    class MockPart:
+        def __init__(self) -> None:
+            self.content = "__ATMAN_RESTART_REQUESTED__"
+
+    class MockMessage:
+        def __init__(self) -> None:
+            self.parts = [MockPart()]
+
+    messages = [MockMessage()]
+    restart_requested, reason = _check_restart_requested(messages)
+    assert restart_requested is True
+    assert reason == ""
+
+
+def test_check_restart_requested_with_reason() -> None:
+    """Test that _check_restart_requested extracts restart reason."""
+    from atman.adapters.agent.runner import _check_restart_requested
+
+    # Mock message with restart sentinel and reason
+    class MockPart:
+        def __init__(self) -> None:
+            self.content = "__ATMAN_RESTART_REQUESTED__\nContext window filling up"
+
+    class MockMessage:
+        def __init__(self) -> None:
+            self.parts = [MockPart()]
+
+    messages = [MockMessage()]
+    restart_requested, reason = _check_restart_requested(messages)
+    assert restart_requested is True
+    assert reason == "Context window filling up"
+
+
+def test_check_restart_requested_no_sentinel() -> None:
+    """Test that _check_restart_requested returns False when no sentinel."""
+    from atman.adapters.agent.runner import _check_restart_requested
+
+    # Mock message without restart sentinel
+    class MockPart:
+        def __init__(self) -> None:
+            self.content = "Normal agent response"
+
+    class MockMessage:
+        def __init__(self) -> None:
+            self.parts = [MockPart()]
+
+    messages = [MockMessage()]
+    restart_requested, reason = _check_restart_requested(messages)
+    assert restart_requested is False
+    assert reason == ""
+
+
+def test_check_restart_requested_with_tool_name() -> None:
+    """Test that _check_restart_requested detects restart via tool_name."""
+    from atman.adapters.agent.runner import _check_restart_requested
+
+    # Mock message with tool_name
+    class MockPart:
+        def __init__(self) -> None:
+            self.tool_name = "restart_session"
+
+    class MockMessage:
+        def __init__(self) -> None:
+            self.parts = [MockPart()]
+
+    messages = [MockMessage()]
+    restart_requested, reason = _check_restart_requested(messages)
+    assert restart_requested is True
+    assert reason == ""
+
+
+def test_build_restart_package() -> None:
+    """Test that _build_restart_package creates valid package."""
+    from atman.adapters.agent.runner import _build_restart_package
+
+    # Create mock session result
+    ctx = SessionResult(
+        session_id=uuid4(),
+        started_at=datetime.now(UTC),
+        events=[],
+        key_moments=[
+            KeyMoment(
+                what_happened="User asked a question",
+                how_i_felt=FeltSense(
+                    emotional_valence=0.3,
+                    emotional_intensity=0.5,
+                    depth=EmotionalDepth.MEANINGFUL,
+                ),
+                why_it_matters="Engaging conversation",
+            ),
+        ],
+        identity_snapshot_id=uuid4(),
+        identity_id=uuid4(),
+    )
+
+    package = _build_restart_package(ctx, "Context filling up", [])
+
+    assert "[System Handoff] Session restarted." in package
+    assert "Context filling up" in package
+    assert "Key moments from previous session:" in package
+    assert "User asked a question" in package
+    assert "depth: meaningful" in package
+    assert "--- Conversation tail ---" in package

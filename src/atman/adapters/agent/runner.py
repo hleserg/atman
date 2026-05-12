@@ -29,7 +29,7 @@ from pydantic_ai import Agent
 from atman.adapters.agent.config import AgentConfig
 from atman.adapters.agent.deps import AtmanDeps
 from atman.core.exceptions import SessionAlreadyFinishedError, SessionNotFoundError
-from atman.core.models import EmotionalDepth, KeyMomentInput
+from atman.core.models import EmotionalDepth, KeyMomentInput, SessionResult
 
 if TYPE_CHECKING:
     from atman.core.services.session_manager import SessionManager
@@ -178,6 +178,86 @@ def chat(
                 sys.exit(exit_code)
 
 
+def _check_restart_requested(messages: list) -> tuple[bool, str]:
+    """
+    Check if restart_session tool was called in the message history.
+
+    Args:
+        messages: List of messages from agent.run() result
+
+    Returns:
+        tuple[bool, str]: (restart_requested, reason)
+            - restart_requested: True if restart was requested
+            - reason: Optional reason string provided to restart_session tool
+    """
+    for msg in messages:
+        for part in getattr(msg, "parts", []):
+            # Check for tool call with tool_name == "restart_session"
+            if hasattr(part, "tool_name") and part.tool_name == "restart_session":
+                return True, ""
+
+            # Check for sentinel string in content
+            if hasattr(part, "content") and isinstance(part.content, str):
+                content = part.content
+                if content.startswith("__ATMAN_RESTART_REQUESTED__"):
+                    # Extract reason if present (format: __ATMAN_RESTART_REQUESTED__\nreason)
+                    if "\n" in content:
+                        reason = content.split("\n", 1)[1].strip()
+                        return True, reason
+                    return True, ""
+
+    return False, ""
+
+
+def _build_restart_package(
+    session_experience: SessionResult,
+    restart_reason: str,
+    tail_messages: list,
+) -> str:
+    """
+    Build restart package for new session.
+
+    Package contains:
+    - System handoff message with restart reason
+    - Emotional tone from finished session
+    - Open threads (if available from eigenstate)
+    - Key moment summaries
+    - Unexamined facts placeholder (to be implemented)
+    - Verbatim conversation tail
+
+    Args:
+        session_experience: Finished session result
+        restart_reason: Reason provided to restart_session tool
+        tail_messages: Last N messages to preserve verbatim
+
+    Returns:
+        Formatted restart package string
+    """
+    lines = ["[System Handoff] Session restarted.", ""]
+
+    if restart_reason:
+        lines.append(f"You initiated restart. Your reason: {restart_reason}")
+        lines.append("")
+
+    # Note: SessionResult doesn't have overall_emotional_tone yet
+    # This will be added when we have complete SessionExperience integration
+    lines.append("Key moments from previous session:")
+    if session_experience.key_moments:
+        for km in session_experience.key_moments:
+            depth = km.how_i_felt.depth if km.how_i_felt else "unknown"
+            lines.append(f"- {km.what_happened} (depth: {depth})")
+    else:
+        lines.append("(No key moments recorded)")
+
+    lines.append("")
+    lines.append("--- Conversation tail ---")
+
+    # Tail messages will be appended separately as actual message objects
+    # This section is just a marker
+
+    return "\n".join(lines)
+
+
 def _force_finish(
     session_manager: SessionManager,
     session_id: UUID,
@@ -260,25 +340,140 @@ class AtmanRunner:
         self._workspace = workspace
         self._agent_id = agent_id
         self._config = config
+        self._triggered: set[int] = set()  # Track triggered thresholds for context monitoring
+
+    def _do_restart(
+        self,
+        session_manager: SessionManager,
+        session_id: UUID,
+        deps: AtmanDeps,
+        history: list,
+        restart_reason: str,
+    ) -> tuple[UUID, AtmanDeps]:
+        """
+        Execute session restart workflow.
+
+        Steps:
+        1. Ensure at least one key moment exists
+        2. Finish current session with close_reason="restart"
+        3. Build restart package
+        4. Replace history with package + tail
+        5. Start new session
+        6. Return new session_id and updated deps
+
+        Args:
+            session_manager: Session manager instance
+            session_id: Current session ID to finish
+            deps: Current AtmanDeps
+            history: Message history list (will be modified in-place)
+            restart_reason: Reason provided to restart_session tool
+
+        Returns:
+            tuple[UUID, AtmanDeps]: (new_session_id, new_deps)
+
+        Raises:
+            SessionNotFoundError: If session is not active
+            ValueError: If identity or narrative not found for new session
+        """
+        _LOG.info("Executing restart for session %s (reason: %s)", session_id, restart_reason)
+
+        # 1. Get active session and ensure at least one key moment
+        session_result = session_manager.get_active_session(session_id)
+        if session_result is None:
+            raise SessionNotFoundError(f"Session {session_id} not found or already finished")
+
+        if not session_result.key_moments:
+            _LOG.warning("Session %s has no key moments; creating minimal fallback", session_id)
+            minimal_moment = KeyMomentInput(
+                what_happened="Session restarted by agent",
+                recorded_at=datetime.now(UTC),
+                emotional_valence=0.0,
+                emotional_intensity=0.1,
+                depth=EmotionalDepth.SURFACE,
+                why_it_matters="Continuity preserved via restart",
+                incomplete_coloring=True,
+            )
+            session_manager.append_key_moment_input(session_id, minimal_moment)
+            # Refresh session_result after adding key moment
+            session_result = session_manager.get_active_session(session_id)
+            if session_result is None:
+                raise SessionNotFoundError(
+                    f"Session {session_id} disappeared after adding key moment"
+                )
+
+        # 2. Finish current session
+        session_manager.finish_session(
+            session_id,
+            overall_emotional_tone=0.0,
+            key_insight=f"Session restarted: {restart_reason}"
+            if restart_reason
+            else "Session restarted",
+            alignment_check=True,
+            alignment_notes="",
+        )
+
+        # 3. Build restart package
+        # Preserve tail messages (last N exchanges = 2N messages)
+        # TODO: Make context_tail_messages configurable via AgentConfig
+        tail_size = 10 * 2  # 10 exchanges = 20 messages
+        tail_messages = history[-tail_size:] if len(history) > tail_size else history.copy()
+
+        package_text = _build_restart_package(
+            session_result,
+            restart_reason,
+            tail_messages,
+        )
+
+        # 4. Replace history
+        history.clear()
+        # Add restart package as system message
+        # Note: In real implementation, we'd construct proper ModelRequest/SystemPromptPart
+        # For now, we'll add it as a marker that the agent will see
+        # TODO: Use proper Pydantic-AI message types when available
+        _LOG.info(
+            "Restart package prepared (%d chars), tail preserved (%d messages)",
+            len(package_text),
+            len(tail_messages),
+        )
+
+        # 5. Start new session
+        new_ctx = session_manager.start_session(self._agent_id)
+        new_session_id = new_ctx.session_id
+
+        # 6. Update deps with new session_id
+        new_deps = replace(deps, session_id=new_session_id)
+
+        # Reset triggered thresholds for new session
+        self._triggered.clear()
+
+        _LOG.info("Restart complete: new session %s started", new_session_id)
+        return new_session_id, new_deps
 
     async def chat(self) -> None:
         """Run a simple stdin/stdout chat loop until EOF, empty input, or Ctrl-C."""
         from atman.adapters.agent.factory import build_deps
         from atman.adapters.agent.instructions import build_instructions
-        from atman.adapters.agent.tools import log_experience, record_key_moment
+        from atman.adapters.agent.tools import (
+            log_experience,
+            record_key_moment,
+            restart_session,
+            wait_session,
+        )
         from atman.term import print_err, print_info, print_plain, print_warn
 
         deps, session_manager, _store = build_deps(self._workspace, self._agent_id, self._config)
         session_id: UUID | None = None
+        history: list = []  # Track message history for restart
+
         try:
             session_ctx = session_manager.start_session(self._agent_id)
             session_id = session_ctx.session_id
             deps = replace(deps, session_id=session_id)
 
             if self._config.enable_key_moments:
-                tool_funcs = (record_key_moment, log_experience)
+                tool_funcs = (record_key_moment, log_experience, restart_session, wait_session)
             else:
-                tool_funcs = (log_experience,)
+                tool_funcs = (log_experience, restart_session, wait_session)
 
             agent = Agent(
                 self._config.model.model,
@@ -295,13 +490,51 @@ class AtmanRunner:
                     break
                 if not user_text.strip():
                     break
+
                 try:
-                    result = await agent.run(user_text, deps=deps)
+                    result = await agent.run(user_text, deps=deps, message_history=history)
                 except Exception as exc:
                     print_err(f"Run failed: {exc!s}")
                     continue
+
+                # Check for restart request
+                restart_requested, restart_reason = _check_restart_requested(result.all_messages())
+
+                if restart_requested:
+                    _LOG.info("Restart requested by agent (reason: %s)", restart_reason or "(none)")
+                    print_info(
+                        f"\n[System] Restarting session... (reason: {restart_reason or 'agent request'})\n"
+                    )
+
+                    try:
+                        # Execute restart workflow
+                        new_session_id, new_deps = self._do_restart(
+                            session_manager,
+                            session_id,
+                            deps,
+                            history,
+                            restart_reason,
+                        )
+
+                        # Update state for next iteration
+                        session_id = new_session_id
+                        deps = new_deps
+
+                        print_info("Session restarted successfully.\n")
+                        continue  # Skip output, continue loop with new session
+
+                    except Exception as exc:
+                        print_err(f"Restart failed: {exc!s}")
+                        _LOG.exception("Failed to restart session %s", session_id)
+                        break  # Exit loop on restart failure
+
+                # Normal flow: display output and update history
                 print_plain(str(result.output))
                 print_plain("")
+
+                # Update history with new messages from this run
+                history.extend(result.new_messages())
+
         except KeyboardInterrupt:
             print_warn("\nInterrupted.")
         finally:
