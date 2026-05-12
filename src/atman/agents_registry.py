@@ -42,21 +42,19 @@ class AgentsRegistry:
                 """,
                 [name or description or "agent", description],
             ).fetchone()
-            conn.commit()
 
-        if row is None:
-            raise RuntimeError("INSERT INTO public.agents returned no row")
+            if row is None:
+                raise RuntimeError("INSERT INTO public.agents returned no row")
 
-        record = AgentRecord(
-            serial_id=row[0],
-            uuid=row[1],
-            name=row[2],
-            description=row[3],
-            created_at=row[4],
-        )
+            record = AgentRecord(
+                serial_id=row[0],
+                uuid=row[1],
+                name=row[2],
+                description=row[3],
+                created_at=row[4],
+            )
 
-        # Provision private schema: agent_{serial_id}.*
-        with psycopg.connect(self._admin_url) as conn:
+            # Provision private schema: agent_{serial_id}.*
             conn.execute(
                 "SELECT public.create_agent_schema(%s, %s)",
                 [record.uuid, record.serial_id],

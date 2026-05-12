@@ -25,6 +25,7 @@ from atman.adapters.agent.tools import log_experience, record_key_moment
 from atman.core.models import SessionEvent
 from atman.core.services.reflection_service import MicroReflectionService
 from atman.core.services.session_manager import SessionManager
+from atman.term import console
 
 _LOG = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def _make_agent(model_config: ModelConfig, thinking: bool = False) -> Agent[Atma
 
         model: object = TestModel()
     elif ":" in model_str and not model_str.startswith(
-        ("openai:", "anthropic:", "google:", "groq:", "mistral:")
+        ("openai:", "anthropic:", "google:", "groq:")
     ):
         from pydantic_ai.providers.ollama import OllamaProvider
 
@@ -247,7 +248,9 @@ class AtmanRunner:
     async def chat(self) -> None:
         """Interactive REPL."""
         self.ensure_identity()
-        print("Готов. Введите сообщение и нажмите Enter. 'exit' для выхода.\n")
+        console.print(
+            "[term.ok]Готов.[/term.ok] Введите сообщение и нажмите Enter. 'exit' для выхода.\n"
+        )
 
         history: list = []
 
@@ -267,12 +270,11 @@ class AtmanRunner:
             deps = dataclasses.replace(self._deps, session_id=session_id)
 
             try:
-                print("", end="", flush=True)
                 result = await self._agent.run(user_msg, deps=deps, message_history=history)
                 reply = result.output
                 history = result.all_messages()
 
-                print(f"\nАгент: {reply}\n")
+                console.print(f"\n[term.title]Агент:[/term.title] {reply}\n")
 
                 self._session_manager.record_event(
                     session_id,

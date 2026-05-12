@@ -86,10 +86,11 @@ BEGIN
         );
         CREATE INDEX IF NOT EXISTS id_snapshots_agent_idx
             ON %I.identity_snapshots (agent_id, snapshot_at DESC);
+        DROP TRIGGER IF EXISTS identity_snapshots_immutable ON %I.identity_snapshots;
         CREATE TRIGGER identity_snapshots_immutable
             BEFORE DELETE OR UPDATE ON %I.identity_snapshots
             FOR EACH ROW EXECUTE FUNCTION public.prevent_snapshot_modification();
-    $sql$, schema_name, schema_name, schema_name);
+    $sql$, schema_name, schema_name, schema_name, schema_name);
 
     -- narrative  (one row per agent)
     EXECUTE format($sql$
@@ -154,12 +155,13 @@ BEGIN
         CREATE INDEX IF NOT EXISTS km_embedding_idx
             ON %I.key_moments USING hnsw (embedding halfvec_cosine_ops)
             WHERE embedding IS NOT NULL;
+        DROP TRIGGER IF EXISTS key_moments_immutable ON %I.key_moments;
         CREATE TRIGGER key_moments_immutable
             BEFORE DELETE OR UPDATE ON %I.key_moments
             FOR EACH ROW EXECUTE FUNCTION public.prevent_key_moment_modification();
     $sql$,
     schema_name, schema_name,
-    schema_name, schema_name, schema_name, schema_name, schema_name, schema_name);
+    schema_name, schema_name, schema_name, schema_name, schema_name, schema_name, schema_name);
 
     -- reframing_notes  (append-only)
     EXECUTE format($sql$
@@ -174,10 +176,11 @@ BEGIN
         );
         CREATE INDEX IF NOT EXISTS reframing_experience_idx
             ON %I.reframing_notes (experience_id);
+        DROP TRIGGER IF EXISTS reframing_notes_append_only ON %I.reframing_notes;
         CREATE TRIGGER reframing_notes_append_only
             BEFORE DELETE OR UPDATE ON %I.reframing_notes
             FOR EACH ROW EXECUTE FUNCTION public.prevent_reframing_modification();
-    $sql$, schema_name, schema_name, schema_name, schema_name);
+    $sql$, schema_name, schema_name, schema_name, schema_name, schema_name);
 
     -- Grants: atman_app gets full DML on all tables in this schema
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO atman_app', schema_name);
