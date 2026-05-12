@@ -23,7 +23,7 @@ import threading
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic_ai import Agent
@@ -663,11 +663,22 @@ class AtmanRunner:
         # E22.6: Track session state for menu mode
         reflected_this_session = False
         interrupted = False
+        original_sigterm_handler: Any = None
         user_language = "ru"  # updated from user messages as session progresses
 
         # E22.6: Start dedicated stdin reader thread with current event loop
         loop = asyncio.get_event_loop()
         self._start_stdin_reader(loop)
+
+        def _request_shutdown(signum: int, frame: object) -> None:
+            """Convert SIGTERM into the same graceful path as Ctrl-C/EOF."""
+            nonlocal interrupted
+            _ = (signum, frame)
+            interrupted = True
+            loop.call_soon_threadsafe(self._input_queue.put_nowait, None)
+
+        if threading.current_thread() is threading.main_thread():
+            original_sigterm_handler = signal.signal(signal.SIGTERM, _request_shutdown)
 
         try:
             session_ctx = session_manager.start_session(self._agent_id)
@@ -878,6 +889,8 @@ class AtmanRunner:
             # Track interruption for close_reason
             interrupted = True
         finally:
+            if original_sigterm_handler is not None:
+                signal.signal(signal.SIGTERM, original_sigterm_handler)
             self._stop_stdin_reader()
             if session_id is not None:
                 try:
@@ -896,8 +909,8 @@ class AtmanRunner:
                     session_manager.finish_session(**finish_kwargs)
                 except ValueError as exc:
                     if "Cannot finish session without key moments" in str(exc):
-                        # Pass None for normal completion without key moments
-                        _force_finish(session_manager, session_id, None)
+                        close_reason = "interrupted" if interrupted else None
+                        _force_finish(session_manager, session_id, close_reason)
                     else:
                         raise
                 except (SessionAlreadyFinishedError, SessionNotFoundError):

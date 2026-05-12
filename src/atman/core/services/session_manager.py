@@ -22,7 +22,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import IO, TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid5
 
 from atman.core.clock_impl import SystemClock
@@ -104,6 +104,7 @@ class SessionManager:
         self._max_active_sessions = max_active_sessions
         self._clock = clock or SystemClock()
         self._active_sessions: dict[UUID, SessionResult] = {}
+        self._journal_locks: dict[UUID, IO[str]] = {}
         self._lock = threading.Lock()
         self._workspace = workspace
         self._affect_detector: AffectDetector | None = None
@@ -129,6 +130,56 @@ class SessionManager:
         sessions_dir.mkdir(parents=True, exist_ok=True)
         return sessions_dir / f"active_{session_id}.jsonl"
 
+    def _journal_lock_path(self, agent_id: UUID, session_id: UUID) -> Path | None:
+        """Return lock path for an active session journal."""
+        journal_path = self._journal_path(agent_id, session_id)
+        if journal_path is None:
+            return None
+        return journal_path.with_suffix(f"{journal_path.suffix}.lock")
+
+    def _try_lock_journal(self, agent_id: UUID, session_id: UUID) -> IO[str] | None:
+        """Try to take the inter-process lock for a session journal."""
+        lock_path = self._journal_lock_path(agent_id, session_id)
+        if lock_path is None:
+            return None
+
+        lock_file: IO[str] | None = None
+        try:
+            import fcntl
+
+            lock_file = lock_path.open("a+", encoding="utf-8")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_file
+        except BlockingIOError:
+            if lock_file is not None:
+                lock_file.close()
+            return None
+        except (ImportError, OSError) as exc:
+            _LOG.warning("Failed to lock journal for session %s: %s", session_id, exc)
+            return None
+
+    def _release_journal_file(self, lock_file: IO[str], *, unlink: bool) -> None:
+        """Release a journal lock file."""
+        lock_path = Path(lock_file.name)
+        try:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError) as exc:
+            _LOG.warning("Failed to unlock journal %s: %s", lock_path, exc)
+        finally:
+            lock_file.close()
+            if unlink:
+                lock_path.unlink(missing_ok=True)
+
+    def _journal_locked_elsewhere(self, agent_id: UUID, session_id: UUID) -> bool:
+        """Return True when another live process owns this session journal."""
+        lock_file = self._try_lock_journal(agent_id, session_id)
+        if lock_file is None:
+            return self._workspace is not None
+        self._release_journal_file(lock_file, unlink=False)
+        return False
+
     def _write_journal_entry(
         self, agent_id: UUID, session_id: UUID, entry: dict[str, object]
     ) -> None:
@@ -143,6 +194,27 @@ class SessionManager:
         except (OSError, ValueError) as exc:
             _LOG.warning("Failed to write journal entry for session %s: %s", session_id, exc)
 
+    # PLAYBOOK-START
+    # id: self-contained-recovery-journals
+    # category: design-patterns
+    # title: Self-Contained Recovery Journals for In-Flight State
+    # status: draft
+    # since: 2026-05-12
+    #
+    # Pattern: when journaling in-flight state for crash recovery, keep an
+    # advisory lock while the owner is live and include enough payload to
+    # reconstruct the referenced records, not just their IDs. Recovery must
+    # refuse to delete the journal if it cannot rebuild every referenced row.
+    #
+    # Why generalizable: any write-behind or finish-time persistence flow can crash
+    # between "record exists in memory" and "record exists in durable storage".
+    # ID-only journals create dangling references; lock-free recovery can steal
+    # live sessions from another process. Self-contained, locked journal entries
+    # preserve the last recovery source and distinguish crashed from active work.
+    #
+    # Trade-offs: journal entries are larger and may duplicate data already stored
+    # on the happy path, but the duplication is bounded and only used for recovery.
+    # PLAYBOOK-END
     def _recover_orphaned_sessions(self, agent_id: UUID) -> None:
         """
         Scan for orphaned session journals and convert to SessionExperience.
@@ -166,6 +238,9 @@ class SessionManager:
                 with self._lock:
                     if session_id in self._active_sessions:
                         continue
+                if self._journal_locked_elsewhere(agent_id, session_id):
+                    _LOG.debug("Skipping live journal locked by another process: %s", session_id)
+                    continue
 
                 # Compute deterministic experience_id
                 experience_id = deterministic_session_experience_id(session_id)
@@ -180,6 +255,7 @@ class SessionManager:
 
                 # Parse journal to extract key moments and facts
                 key_moment_ids: list[UUID] = []
+                journaled_moments: dict[UUID, KeyMoment] = {}
                 fact_refs_set: set[UUID] = set()
 
                 with journal_file.open("r", encoding="utf-8") as f:
@@ -192,6 +268,11 @@ class SessionManager:
                             if entry.get("type") == "key_moment":
                                 moment_id = UUID(entry["moment_id"])
                                 key_moment_ids.append(moment_id)
+                                moment_data = entry.get("moment")
+                                if isinstance(moment_data, dict):
+                                    journaled_moments[moment_id] = KeyMoment.model_validate(
+                                        moment_data
+                                    )
                                 # Extract fact_refs if present
                                 for fact_id_str in entry.get("fact_refs", []):
                                     fact_refs_set.add(UUID(fact_id_str))
@@ -210,8 +291,25 @@ class SessionManager:
                     loaded_moments: list[KeyMoment] = []
                     for moment_id in key_moment_ids:
                         loaded_moment = self._state_store.get_key_moment(moment_id)
+                        if loaded_moment is None and moment_id in journaled_moments:
+                            loaded_moment = journaled_moments[moment_id]
+                            try:
+                                self._state_store.create_key_moment(loaded_moment)
+                            except ValueError:
+                                # Another recovery/finish path stored it first.
+                                loaded_moment = self._state_store.get_key_moment(moment_id)
                         if loaded_moment is not None:
                             loaded_moments.append(loaded_moment)
+
+                    if len(loaded_moments) != len(key_moment_ids):
+                        _LOG.warning(
+                            "Cannot recover orphaned session %s: %d/%d key moments available; "
+                            "leaving journal for manual recovery",
+                            session_id,
+                            len(loaded_moments),
+                            len(key_moment_ids),
+                        )
+                        continue
 
                     # Compute better metadata if we have loaded moments
                     avg_emotional_intensity = 0.5
@@ -336,6 +434,11 @@ class SessionManager:
                 identity_id=identity.id,
             )
 
+        journal_lock = self._try_lock_journal(identity.id, context.session_id)
+        if journal_lock is not None:
+            with self._lock:
+                self._journal_locks[context.session_id] = journal_lock
+
         return context
 
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
@@ -423,6 +526,7 @@ class SessionManager:
                     "moment_id": str(moment.id),
                     "timestamp": self._clock.now().isoformat(),
                     "what_happened": moment.what_happened,
+                    "moment": moment.model_dump(mode="json"),
                     "fact_refs": [str(fid) for fid in moment.fact_refs],
                 },
             )
@@ -471,6 +575,7 @@ class SessionManager:
                     "moment_id": str(key_moment.id),
                     "timestamp": self._clock.now().isoformat(),
                     "what_happened": key_moment.what_happened,
+                    "moment": key_moment.model_dump(mode="json"),
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
@@ -709,6 +814,7 @@ class SessionManager:
         # Remove from active sessions only after successful persistence
         with self._lock:
             self._active_sessions.pop(session_id, None)
+            journal_lock = self._journal_locks.pop(session_id, None)
 
         # Delete journal after successful persistence
         if session_result.identity_id is not None:
@@ -719,6 +825,9 @@ class SessionManager:
                     _LOG.debug("Deleted journal for completed session %s", session_id)
                 except OSError as exc:
                     _LOG.warning("Failed to delete journal for session %s: %s", session_id, exc)
+
+        if journal_lock is not None:
+            self._release_journal_file(journal_lock, unlink=True)
 
         return session_result.model_copy(deep=True)
 

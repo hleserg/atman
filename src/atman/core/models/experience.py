@@ -284,6 +284,10 @@ class SessionExperience(BaseModel):
         default=None,
         description="Reason why the session ended",
     )
+    agent_recap: str | None = Field(
+        default=None,
+        description="Agent's own summary of the session upon close",
+    )
     restart_reason: str = Field(
         default="",
         description="Reason for session restart if close_reason is 'restart'",
