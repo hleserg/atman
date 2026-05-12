@@ -339,7 +339,6 @@ class SessionManager:
                         fact_refs=list(fact_refs_set),
                         close_reason="interrupted",
                         restart_reason="",
-                        agent_recap=None,
                     )
                     experience_record = ExperienceRecord(experience=experience)
                     self._state_store.create_experience(experience_record)
@@ -642,7 +641,7 @@ class SessionManager:
         alignment_notes: str = "",
         close_reason: str | None = None,
         restart_reason: str | None = None,
-        agent_recap: str | None = None,
+        user_language: str = "ru",
     ) -> SessionResult:
         """
         Finish session and create SessionExperience + Eigenstate + update Narrative.
@@ -668,7 +667,7 @@ class SessionManager:
             alignment_notes: Notes about alignment or drift
             close_reason: Reason for session closure (timeout_sleep | restart | forced | interrupted)
             restart_reason: Human-readable reason when close_reason=restart
-            agent_recap: Agent's recap before timeout_sleep
+            user_language: Detected language of the user ('ru' or 'en')
 
         Returns:
             SessionResult: Complete session result with experience and eigenstate
@@ -788,8 +787,8 @@ class SessionManager:
                     incomplete_coloring=session_result.incomplete_coloring,
                     fact_refs=list(fact_refs_set),
                     close_reason=safe_close_reason,
-                    restart_reason=restart_reason or "",  # Convert None to empty string
-                    agent_recap=agent_recap,
+                    restart_reason=restart_reason or "",
+                    user_language=user_language,
                 )
                 experience_record = ExperienceRecord(experience=experience)
                 self._state_store.create_experience(experience_record)
