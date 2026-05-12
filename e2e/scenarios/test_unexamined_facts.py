@@ -81,7 +81,7 @@ def test_unexamined_facts_computation() -> int:
         workspace = Path(tmpdir)
         agent_id = uuid4()
         config = AgentConfig(model=ModelConfig(model=MODEL, context_limit=2048))
-        deps, session_manager, store = build_deps(workspace, agent_id, config)
+        _deps, session_manager, store = build_deps(workspace, agent_id, config)
         bootstrap(store, agent_id)
 
         ctx = session_manager.start_session(agent_id)
@@ -177,7 +177,7 @@ def test_wakeup_messages() -> int:
         workspace = Path(tmpdir)
         agent_id = uuid4()
         config = AgentConfig(model=ModelConfig(model=MODEL, context_limit=2048))
-        deps, session_manager, store = build_deps(workspace, agent_id, config)
+        _deps, session_manager, store = build_deps(workspace, agent_id, config)
         bootstrap(store, agent_id)
 
         close_reasons = ["timeout_sleep", "restart", "forced", "interrupted"]
