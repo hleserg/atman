@@ -162,6 +162,11 @@ class SessionManager:
                 session_id_str = journal_file.stem.replace("active_", "")
                 session_id = UUID(session_id_str)
 
+                # Skip journals for currently active sessions (not orphans)
+                with self._lock:
+                    if session_id in self._active_sessions:
+                        continue
+
                 # Compute deterministic experience_id
                 experience_id = deterministic_session_experience_id(session_id)
 
@@ -201,6 +206,26 @@ class SessionManager:
 
                 # If we have key moments, create SessionExperience
                 if key_moment_ids:
+                    # Try to load actual KeyMoment objects from storage for better metadata
+                    loaded_moments: list[KeyMoment] = []
+                    for moment_id in key_moment_ids:
+                        loaded_moment = self._state_store.get_key_moment(moment_id)
+                        if loaded_moment is not None:
+                            loaded_moments.append(loaded_moment)
+
+                    # Compute better metadata if we have loaded moments
+                    avg_emotional_intensity = 0.5
+                    has_profound_moment = False
+                    if loaded_moments:
+                        from atman.core.models.experience import EmotionalDepth
+
+                        avg_emotional_intensity = sum(
+                            m.how_i_felt.emotional_intensity for m in loaded_moments
+                        ) / len(loaded_moments)
+                        has_profound_moment = any(
+                            m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in loaded_moments
+                        )
+
                     experience = SessionExperience(
                         id=experience_id,
                         session_id=session_id,
@@ -210,8 +235,8 @@ class SessionManager:
                         identity_snapshot_id=None,  # Unknown for orphaned sessions
                         importance=0.5,
                         salience=0.5,
-                        avg_emotional_intensity=0.5,
-                        has_profound_moment=False,
+                        avg_emotional_intensity=avg_emotional_intensity,
+                        has_profound_moment=has_profound_moment,
                         incomplete_coloring=True,  # Orphaned sessions didn't complete proper coloring
                         fact_refs=list(fact_refs_set),
                         close_reason="interrupted",
@@ -221,9 +246,10 @@ class SessionManager:
                     experience_record = ExperienceRecord(experience=experience)
                     self._state_store.create_experience(experience_record)
                     _LOG.info(
-                        "Recovered orphaned session %s with %d key moments",
+                        "Recovered orphaned session %s with %d key moments (%d loaded from storage)",
                         session_id,
                         len(key_moment_ids),
+                        len(loaded_moments),
                     )
 
                 # Delete journal after successful recovery (or if no key moments)
@@ -384,6 +410,23 @@ class SessionManager:
             if session_result.is_finished:
                 raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
             session_result.key_moments.append(moment)
+
+            # Get agent_id for journal
+            agent_id = session_result.identity_id
+
+        # Write to journal after releasing lock
+        if agent_id is not None:
+            self._write_journal_entry(
+                agent_id,
+                session_id,
+                {
+                    "type": "key_moment",
+                    "moment_id": str(moment.id),
+                    "timestamp": self._clock.now().isoformat(),
+                    "what_happened": moment.what_happened,
+                    "fact_refs": [str(fid) for fid in moment.fact_refs],
+                },
+            )
 
     def append_key_moment_input(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """

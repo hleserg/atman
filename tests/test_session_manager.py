@@ -1462,3 +1462,164 @@ def test_journal_not_created_without_workspace(identity_fixture, narrative_fixtu
 
     # Should not raise - journal operations should be no-op
     manager.finish_session(context.session_id)
+
+
+def test_orphan_recovery_skips_currently_active_sessions(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphan recovery skips journals for currently active sessions."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "active_skip_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Start session A
+    context_a = manager.start_session(identity_fixture.id)
+
+    # Record key moment for session A
+    moment = KeyMomentInput(
+        what_happened="Active session moment",
+        emotional_valence=0.5,
+        emotional_intensity=0.7,
+        depth=EmotionalDepth.MEANINGFUL,
+        why_it_matters="Testing active skip",
+    )
+    manager.append_key_moment_input(context_a.session_id, moment)
+
+    # Journal should exist for session A
+    journal_path_a = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context_a.session_id}.jsonl"
+    )
+    assert journal_path_a.exists()
+
+    # Start session B - recovery should skip session A's journal (it's active)
+    _ = manager.start_session(identity_fixture.id)
+
+    # Session A's journal should still exist (not treated as orphan)
+    assert journal_path_a.exists()
+
+    # SessionExperience should NOT exist yet for session A
+    experience_id_a = deterministic_session_experience_id(context_a.session_id)
+    recovered_exp = store.get_experience(experience_id_a)
+    assert recovered_exp is None
+
+    # Finish session A properly
+    manager.finish_session(context_a.session_id, close_reason="timeout_sleep")
+
+    # Now experience should exist with correct close_reason
+    final_exp = store.get_experience(experience_id_a)
+    assert final_exp is not None
+    assert final_exp.experience.close_reason == "timeout_sleep"  # Not "interrupted"
+    assert final_exp.experience.recorded_by == "session_manager"  # Not "session_manager_recovery"
+
+
+def test_append_key_moment_writes_journal_for_affect_detector(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that append_key_moment (used by AffectDetector) writes journal entries."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "affect_journal_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    # Create a KeyMoment directly (as AffectDetector would)
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    moment = KeyMoment(
+        what_happened="Affect-detected moment",
+        how_i_felt=FeltSense(
+            emotional_valence=0.6,
+            emotional_intensity=0.8,
+            depth=EmotionalDepth.MEANINGFUL,
+        ),
+        why_it_matters="Detected by affect system",
+        when=frozen_clock.now(),
+        values_touched=["curiosity"],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+
+    # Use append_key_moment (AffectDetector path)
+    manager.append_key_moment(context.session_id, moment)
+
+    # Check journal exists and has entry
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    with journal_path.open("r") as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "key_moment"
+        assert entry["what_happened"] == "Affect-detected moment"
+
+
+def test_orphan_recovery_loads_key_moments_from_storage(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphan recovery loads KeyMoment objects from storage for better metadata."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "recovery_metadata_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Create orphaned journal
+    orphan_session_id = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    # Create a key moment with profound depth
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    moment_id = uuid4()
+    key_moment = KeyMoment(
+        id=moment_id,
+        what_happened="Profound moment",
+        how_i_felt=FeltSense(
+            emotional_valence=0.8,
+            emotional_intensity=0.9,
+            depth=EmotionalDepth.PROFOUND,
+        ),
+        why_it_matters="Deep insight",
+        when=frozen_clock.now(),
+        values_touched=["wisdom"],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+
+    # Store the key moment in storage
+    store.store_key_moments(orphan_session_id, [key_moment])
+
+    # Write journal entry
+    with orphan_journal.open("w") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Profound moment",
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    # Start new session - should trigger recovery with loaded metadata
+    manager.start_session(identity_fixture.id)
+
+    # Check recovered experience has better metadata
+    experience_id = deterministic_session_experience_id(orphan_session_id)
+    recovered_exp = store.get_experience(experience_id)
+    assert recovered_exp is not None
+    assert recovered_exp.experience.has_profound_moment is True  # Loaded from storage
+    assert recovered_exp.experience.avg_emotional_intensity == 0.9  # Loaded from storage
