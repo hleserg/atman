@@ -101,6 +101,11 @@
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
 | `adapters/reflection/fixture_loader.py` | — | загрузка фикстур для демо |
+| `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | Pydantic AI конфиг модели + runtime параметры агента (E26-R1, E26-R2, E26-R4) |
+| `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | frozen DI-контейнер, связывающий `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; фабрика `from_config` переносит валидированные лимиты из `AgentConfig` |
+| `adapters/agent/instructions.py` (`build_instructions`) | — | строит динамический system prompt из текущих `Identity` + `NarrativeDocument` (обрезанных по `AtmanDeps.truncate_narrative_*`) |
+| `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`) | — | Pydantic AI инструменты: `record_key_moment` → `AffectDetector.submit_self_report` когда `SessionManager` настроен с affect; `log_experience` — redirect-заглушка |
+| `adapters/agent/runner.py` (`chat`, `_force_finish`) | — | обёртка жизненного цикла сессии с обработкой сигналов; SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды (E22.2) |
 
 ### 1.6. CLI / TUI / Web / Демо
 
