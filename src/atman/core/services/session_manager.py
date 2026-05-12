@@ -22,7 +22,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, IO, Literal, cast
+from typing import IO, TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid5
 
 from atman.core.clock_impl import SystemClock
