@@ -154,3 +154,15 @@ eval-up:
 
 eval-down:
 	$(COMPOSE_EVAL) down
+
+# --- Agent CLI split-tree helpers (preflight / LLM readiness; scripts/agent_cli/README.md).
+.PHONY: agent-preflight agent-wait-llm agent-smoke
+
+agent-preflight:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/preflight.py
+
+agent-wait-llm:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/wait_for_llm.py
+
+agent-smoke:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/smoke_imports.py
