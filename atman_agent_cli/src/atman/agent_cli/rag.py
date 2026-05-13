@@ -3,6 +3,7 @@ atman/agent_cli/rag.py
 RAG: BGE-M3 indexing of the Atman repo + bge-reranker-v2-m3 reranking.
 Two-stage retrieval: dense search → reranker → top-N.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,14 +13,23 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 
 from .config import AgentConfig
+from .providers import ProviderRouter
 
 # File extensions to index
 INDEXABLE_EXTENSIONS = {".py", ".md", ".toml", ".yml", ".yaml", ".txt"}
 SKIP_DIRS = {
-    ".git", "__pycache__", ".venv", "venv", "node_modules",
-    ".mypy_cache", ".ruff_cache", "dist", "build", ".pytest_cache",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".mypy_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    ".pytest_cache",
 }
-MAX_CHUNK_CHARS = 2000   # chars per chunk
+MAX_CHUNK_CHARS = 2000  # chars per chunk
 CHUNK_OVERLAP = 200
 
 
@@ -47,6 +57,7 @@ class RAGIndex:
 
     def __init__(self, cfg: AgentConfig) -> None:
         self.cfg = cfg
+        self.router: ProviderRouter | None = None
         self.index_path = cfg.index_path
         self._chunks: list[Chunk] = []
         self._embeddings: list[list[float]] = []
@@ -58,6 +69,7 @@ class RAGIndex:
     def _load_models(self) -> None:
         try:
             from FlagEmbedding import BGEM3FlagModel, FlagReranker
+
             self._embedder = BGEM3FlagModel(
                 self.cfg.embed_model,
                 use_fp16=True,
@@ -123,13 +135,15 @@ class RAGIndex:
                 h = self._file_hash(path)
                 rel = str(path.relative_to(repo))
                 for j, (chunk_text, start_line) in enumerate(self._chunk_text(text, rel)):
-                    self._chunks.append(Chunk(
-                        path=rel,
-                        content=chunk_text,
-                        start_line=start_line,
-                        chunk_index=j,
-                        file_hash=h,
-                    ))
+                    self._chunks.append(
+                        Chunk(
+                            path=rel,
+                            content=chunk_text,
+                            start_line=start_line,
+                            chunk_index=j,
+                            file_hash=h,
+                        )
+                    )
                     raw_texts.append(chunk_text)
             except Exception:
                 continue
@@ -167,7 +181,9 @@ class RAGIndex:
             # Remove old chunks for this file
             indices_to_remove = set(existing.get(rel, []))
             self._chunks = [c for i, c in enumerate(self._chunks) if i not in indices_to_remove]
-            self._embeddings = [e for i, e in enumerate(self._embeddings) if i not in indices_to_remove]
+            self._embeddings = [
+                e for i, e in enumerate(self._embeddings) if i not in indices_to_remove
+            ]
 
             # Add new chunks
             try:
@@ -175,10 +191,15 @@ class RAGIndex:
                 new_chunks = []
                 new_texts = []
                 for j, (chunk_text, start_line) in enumerate(self._chunk_text(text, rel)):
-                    new_chunks.append(Chunk(
-                        path=rel, content=chunk_text,
-                        start_line=start_line, chunk_index=j, file_hash=h,
-                    ))
+                    new_chunks.append(
+                        Chunk(
+                            path=rel,
+                            content=chunk_text,
+                            start_line=start_line,
+                            chunk_index=j,
+                            file_hash=h,
+                        )
+                    )
                     new_texts.append(chunk_text)
 
                 if self._embedder and new_texts:
@@ -214,8 +235,9 @@ class RAGIndex:
         if not candidates:
             return []
 
-        # Stage 2: rerank
-        if self._reranker and len(candidates) > n:
+        # Stage 2: rerank (local FlagReranker and/or ProviderRouter Cohere)
+        cohere_rerank = bool(self.router is not None and self.router.cfg.reranker == "cohere")
+        if len(candidates) > n and (self._reranker or cohere_rerank):
             return self._rerank(query, candidates, n)
 
         return candidates[:n]
@@ -225,8 +247,7 @@ class RAGIndex:
             # Fallback: keyword search
             query_lower = query.lower()
             scored = [
-                (sum(w in c.content.lower() for w in query_lower.split()), c)
-                for c in self._chunks
+                (sum(w in c.content.lower() for w in query_lower.split()), c) for c in self._chunks
             ]
             scored.sort(reverse=True)
             return [c for _, c in scored[:top_k] if _ > 0]
@@ -237,6 +258,7 @@ class RAGIndex:
 
         # Cosine similarity
         import numpy as np
+
         embeddings = np.array(self._embeddings)
         q_norm = q_vec / (np.linalg.norm(q_vec) + 1e-10)
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-10
@@ -246,10 +268,19 @@ class RAGIndex:
         return [self._chunks[i] for i in top_indices]
 
     def _rerank(self, query: str, candidates: list[Chunk], top_n: int) -> list[Chunk]:
-        pairs = [[query, c.content] for c in candidates]
-        scores = self._reranker.compute_score(pairs, normalize=True)
-        ranked = sorted(zip(scores, candidates), reverse=True)
-        return [c for _, c in ranked[:top_n]]
+        if self.router and self.router.cfg.reranker == "cohere":
+            passages = [c.content for c in candidates]
+            scores = self.router.rerank(query, passages, top_n)
+            ranked = sorted(zip(scores, candidates, strict=True), reverse=True)
+            return [c for _, c in ranked[:top_n]]
+
+        if self._reranker:
+            pairs = [[query, c.content] for c in candidates]
+            scores = self._reranker.compute_score(pairs, normalize=True)
+            ranked = sorted(zip(scores, candidates, strict=True), reverse=True)
+            return [c for _, c in ranked[:top_n]]
+
+        return candidates[:top_n]
 
     def format_context(self, chunks: list[Chunk], max_chars: int = 8000) -> str:
         """Format retrieved chunks as context for LLM."""
@@ -271,6 +302,7 @@ class RAGIndex:
                 f.write(json.dumps(asdict(chunk)) + "\n")
 
         import numpy as np
+
         if self._embeddings:
             np.save(self.index_path / "embeddings.npy", np.array(self._embeddings))
 
@@ -298,6 +330,7 @@ class RAGIndex:
         if embeddings_file.exists():
             try:
                 import numpy as np
+
                 self._embeddings = np.load(embeddings_file).tolist()
             except Exception:
                 self._embeddings = []
