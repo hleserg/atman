@@ -155,14 +155,14 @@
 | `src/atman/eval/__init__.py` | optional namespace | импортирует `_deps_check`; `import atman.eval` быстро падает без extra `eval` |
 | `src/atman/eval/_deps_check.py` | dependency guard | проверяет canary-зависимости из `[project.optional-dependencies].eval` и показывает понятную подсказку установки |
 | `src/atman/eval/benchmark_runner.py` | CLI модуль | E1 benchmark runner CLI с командами `list`/`run`; `python -m atman.eval.benchmark_runner list` / `python -m atman.eval.benchmark_runner run <key>` |
-| `src/atman/eval/runner_core.py` | core runner | RunnerCore жизненный цикл: выполнение benchmark, fanout репортеров (on_run_start/on_run_item/on_run_complete), идемпотентные ключи запуска, сбор ошибок |
-| `src/atman/eval/registry.py` | реестр benchmark | Регистрация и поиск benchmark (`register`, `get`, `list_benchmarks`) |
-| `src/atman/eval/reporters/base.py` | интерфейс репортера | Reporter ABC (on_run_start/on_run_item/on_run_complete) |
-| `src/atman/eval/reporters/jsonl_reporter.py` | JSONL репортер | Записывает события жизненного цикла benchmark в JSONL файл |
-| `src/atman/eval/reporters/db_reporter.py` | PostgreSQL репортер | Записывает результаты benchmark в схему `eval.benchmark_runs` |
+| `src/atman/eval/runner_core.py`, `src/atman/eval/run_context.py` | eval runtime | lifecycle benchmark, типизированный контекст запуска, детерминированные app-level idempotency keys, fanout репортеров (`on_run_start/on_run_item/on_run_complete`) |
+| `src/atman/eval/registry.py`, `src/atman/eval/benchmarks/noop.py` | реестр benchmark | decorator-based регистрация и lookup (`register`, `get`, `list_benchmarks`) + встроенный noop smoke benchmark |
+| `src/atman/eval/reporters/base.py`, `src/atman/eval/reporters/jsonl_reporter.py`, `src/atman/eval/reporters/db_reporter.py` | reporting | Reporter ABC + JSONL-события lifecycle + PostgreSQL-запись в `eval.benchmark_runs` / `eval.run_items` |
+| `src/atman/eval/seed_manager.py`, `src/atman/eval/hardware.py` | runtime metadata | управление seed и hardware probe с graceful fallback без NVML/GPU |
 | `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | конфигурация Alembic для изолированной PostgreSQL-схемы `eval` |
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
 | `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |
+| `src/demo_eval_runner.py`, `docs/features/eval-runner/README.md`, `docs/features/eval-runner/README-ru.md` | demo/docs | воспроизводимый walkthrough E1 runner + двуязычная документация |
 
 ---
 
@@ -213,6 +213,7 @@
 | `cli_experience.py` | `ExperienceService(JsonlExperienceStore)` | `cli_experience.py:17-29` |
 | `cli_identity.py` | `IdentityService(FileStateStore)` + `NarrativeService(FileStateStore)` | `cli_identity.py:15-29` |
 | `cli_reflection.py` | `Micro/Daily/DeepReflectionService` + fixture_loader | `cli_reflection.py:18-47` |
+| `benchmark_runner.py` (module-only) | `RunnerCore` + `registry` + `reporters` (`jsonl`, опционально DB) | `eval/benchmark_runner.py` |
 
 ### 2.4. Демо ↔ реальные объекты
 
@@ -224,7 +225,7 @@
 | `demo_session_manager.py` | `FileStateStore` → `SessionManager` (загрузка identity/narrative, запись событий/моментов, сохранение experience/eigenstate) |
 | `demo_reflection.py` | моки + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 | `demo_full_corpus.py` | JSON сессий `e2e` → `FileStateStore` + `SessionManager` + `StateStore*Adapter` → micro → daily (за UTC-сутки) → deep; `DeterministicReflectionModel` |
-| `demo_eval_runner.py` | `list_benchmarks()` → `RunnerCore([JsonlReporter])` → `run("noop")` → идемпотентный перезапуск с тем же git_sha → JSONL артефакт |
+| `demo_eval_runner.py` | `list_benchmarks()` → `RunnerCore([JsonlReporter])` + `noop` benchmark → идемпотентный перезапуск с тем же `git_sha` → JSONL-артефакт |
 
 ### 2.5. TUI / Web ↔ подпроцессы
 
