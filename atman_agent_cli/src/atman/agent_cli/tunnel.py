@@ -17,33 +17,33 @@ Two tunnel modes:
 
 For most solo developers QUICK mode is enough.
 """
+
 from __future__ import annotations
 
 import json
-import os
 import platform
 import re
 import shutil
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 import requests
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 CLOUDFLARED_INSTALL = {
-    "Linux":  "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64",
+    "Linux": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64",
     "Darwin": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz",
     "Windows": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe",
 }
 
 RUNNER_DOWNLOAD = {
-    "Linux":  "https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-linux-x64-2.317.0.tar.gz",
+    "Linux": "https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-linux-x64-2.317.0.tar.gz",
     "Darwin": "https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-osx-x64-2.317.0.tar.gz",
 }
 
@@ -56,12 +56,13 @@ TUNNEL_STATE_FILE = Path.home() / ".atman" / "tunnel_state.json"
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TunnelState:
-    mode: str = ""               # "quick" | "named"
-    tunnel_url: str = ""         # public URL e.g. https://abc.trycloudflare.com
-    tunnel_name: str = ""        # for named tunnels
-    webhook_id: int = 0          # GitHub webhook ID
+    mode: str = ""  # "quick" | "named"
+    tunnel_url: str = ""  # public URL e.g. https://abc.trycloudflare.com
+    tunnel_name: str = ""  # for named tunnels
+    webhook_id: int = 0  # GitHub webhook ID
     runner_registered: bool = False
     runner_name: str = ""
     last_started: str = ""
@@ -72,7 +73,7 @@ class TunnelState:
         TUNNEL_STATE_FILE.write_text(json.dumps(self.__dict__, indent=2))
 
     @classmethod
-    def load(cls) -> "TunnelState":
+    def load(cls) -> TunnelState:
         if TUNNEL_STATE_FILE.exists():
             try:
                 return cls(**json.loads(TUNNEL_STATE_FILE.read_text()))
@@ -83,7 +84,7 @@ class TunnelState:
 
 # ── Log callback type ──────────────────────────────────────────────────────────
 
-Log = Callable[[str, str], None]   # fn(message, level) level = info|ok|warn|error
+Log = Callable[[str, str], None]  # fn(message, level) level = info|ok|warn|error
 
 
 def _noop(msg: str, level: str = "info") -> None:
@@ -91,6 +92,7 @@ def _noop(msg: str, level: str = "info") -> None:
 
 
 # ── Cloudflared ────────────────────────────────────────────────────────────────
+
 
 def is_cloudflared_installed() -> bool:
     return bool(shutil.which("cloudflared")) or CLOUDFLARED_BIN.exists()
@@ -110,7 +112,10 @@ def install_cloudflared(log: Log = _noop) -> bool:
     system = platform.system()
     url = CLOUDFLARED_INSTALL.get(system)
     if not url:
-        log(f"Unsupported OS: {system}. Install cloudflared manually: https://developers.cloudflare.com/cloudflared/get-started/", "error")
+        log(
+            f"Unsupported OS: {system}. Install cloudflared manually: https://developers.cloudflare.com/cloudflared/get-started/",
+            "error",
+        )
         return False
 
     bin_dir = Path.home() / ".atman" / "bin"
@@ -123,9 +128,11 @@ def install_cloudflared(log: Log = _noop) -> bool:
         r.raise_for_status()
 
         if url.endswith(".tgz"):
-            import tarfile, io
+            import io
+            import tarfile
+
             with tarfile.open(fileobj=io.BytesIO(r.content)) as tf:
-                tf.extract("cloudflared", path=bin_dir)
+                tf.extract("cloudflared", path=bin_dir, filter="data")
         else:
             dest.write_bytes(r.content)
 
@@ -159,7 +166,13 @@ class QuickTunnel:
             if not install_cloudflared(self.log):
                 return None
 
-        cmd = [cloudflared_path(), "tunnel", "--url", f"http://localhost:{self.port}", "--no-autoupdate"]
+        cmd = [
+            cloudflared_path(),
+            "tunnel",
+            "--url",
+            f"http://localhost:{self.port}",
+            "--no-autoupdate",
+        ]
         self.log(f"Starting cloudflare quick tunnel on port {self.port}...", "info")
 
         self._proc = subprocess.Popen(
@@ -208,6 +221,7 @@ class QuickTunnel:
 
 # ── GitHub Webhook ─────────────────────────────────────────────────────────────
 
+
 def register_github_webhook(
     tunnel_url: str,
     github_token: str,
@@ -242,12 +256,16 @@ def register_github_webhook(
         r = requests.get(f"{GITHUB_API}/repos/{repo}/hooks", headers=headers, timeout=15)
         existing = r.json() if r.status_code == 200 else []
         for hook in existing:
-            if "atman" in hook.get("config", {}).get("url", "").lower() or \
-               "trycloudflare" in hook.get("config", {}).get("url", "").lower():
+            if (
+                "atman" in hook.get("config", {}).get("url", "").lower()
+                or "trycloudflare" in hook.get("config", {}).get("url", "").lower()
+            ):
                 # Update existing
                 r2 = requests.patch(
                     f"{GITHUB_API}/repos/{repo}/hooks/{hook['id']}",
-                    headers=headers, json=payload, timeout=15,
+                    headers=headers,
+                    json=payload,
+                    timeout=15,
                 )
                 if r2.status_code == 200:
                     log(f"Webhook #{hook['id']} updated → {webhook_url}", "ok")
@@ -259,7 +277,9 @@ def register_github_webhook(
     try:
         r = requests.post(
             f"{GITHUB_API}/repos/{repo}/hooks",
-            headers=headers, json=payload, timeout=15,
+            headers=headers,
+            json=payload,
+            timeout=15,
         )
         if r.status_code == 201:
             hook_id = r.json()["id"]
@@ -283,7 +303,8 @@ def delete_github_webhook(
     try:
         r = requests.delete(
             f"{GITHUB_API}/repos/{repo}/hooks/{webhook_id}",
-            headers=headers, timeout=15,
+            headers=headers,
+            timeout=15,
         )
         if r.status_code == 204:
             log(f"Webhook #{webhook_id} deleted", "ok")
@@ -297,6 +318,7 @@ def delete_github_webhook(
 
 # ── GitHub self-hosted runner ──────────────────────────────────────────────────
 
+
 def get_runner_registration_token(
     github_token: str,
     repo: str,
@@ -307,7 +329,8 @@ def get_runner_registration_token(
     try:
         r = requests.post(
             f"{GITHUB_API}/repos/{repo}/actions/runners/registration-token",
-            headers=headers, timeout=15,
+            headers=headers,
+            timeout=15,
         )
         if r.status_code == 201:
             token = r.json()["token"]
@@ -339,9 +362,11 @@ def install_runner(log: Log = _noop) -> bool:
         r = requests.get(url, timeout=120, stream=True)
         r.raise_for_status()
 
-        import tarfile, io
+        import io
+        import tarfile
+
         with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tf:
-            tf.extractall(RUNNER_DIR)
+            tf.extractall(RUNNER_DIR, filter="data")
 
         log(f"Runner extracted → {RUNNER_DIR}", "ok")
         return True
@@ -366,10 +391,14 @@ def configure_runner(
     repo_url = f"https://github.com/{repo}"
     cmd = [
         str(config_sh),
-        "--url", repo_url,
-        "--token", registration_token,
-        "--name", runner_name,
-        "--labels", labels,
+        "--url",
+        repo_url,
+        "--token",
+        registration_token,
+        "--name",
+        runner_name,
+        "--labels",
+        labels,
         "--unattended",
         "--replace",
     ]
@@ -414,6 +443,7 @@ def start_runner(log: Log = _noop) -> bool:
     def watch():
         for line in _runner_proc.stdout:
             log(f"[runner] {line.strip()}", "info")
+
     threading.Thread(target=watch, daemon=True).start()
 
     time.sleep(3)
@@ -494,6 +524,7 @@ def write_ci_workflow(repo_path: Path, log: Log = _noop) -> bool:
 
 # ── Full setup orchestration ───────────────────────────────────────────────────
 
+
 class SetupOrchestrator:
     """
     Runs the full setup sequence with progress callbacks.
@@ -532,8 +563,11 @@ class SetupOrchestrator:
             self.log("Start tunnel first", "error")
             return False
         wid = register_github_webhook(
-            self.state.tunnel_url, self.github_token, self.repo,
-            self.webhook_port, self.log,
+            self.state.tunnel_url,
+            self.github_token,
+            self.repo,
+            self.webhook_port,
+            self.log,
         )
         if wid:
             self.state.webhook_id = wid

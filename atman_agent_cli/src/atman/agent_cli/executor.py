@@ -396,10 +396,7 @@ class PlanExecutor:
 
         # Check from most recent to oldest (closer deps more likely to be unblocked)
         for i in reversed(blocked_before):
-            if (
-                self.plan.get_notes(i)
-                and self.plan.get_notes(i).count("reassess") >= self.MAX_BLOCK_REASSESS
-            ):
+            if self.plan._meta(i).attempts >= self.MAX_BLOCK_REASSESS:
                 continue  # gave up on this one
 
             result = self._reassess_blocked(i, since_index=just_completed_idx)
