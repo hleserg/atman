@@ -132,6 +132,7 @@ All paths are absolute relative to the repository root.
 | `src/demo_reflection.py` | demo | micro→daily→deep with fixtures |
 | `src/demo_full_corpus.py` | demo | all `e2e/fixtures/sessions/*` → SessionManager → micro/daily/deep + Rich summary ([issue #158](https://github.com/hleserg/atman/issues/158)) |
 | `src/demo_web_dashboard.py` | demo | web dashboard launch hint |
+| `src/demo_eval_runner.py` | demo | E1 Evaluation Runner walkthrough: registry list → RunnerCore + JsonlReporter → noop benchmark → idempotent rerun |
 | `src/run_agent.py` | entrypoint | Agent REPL via `AgentsRegistry` + `AtmanRunner` (`DATABASE_URL` from env / `.env`) |
 | `e2e/generate_fixtures.py` | e2e | LLM-backed session JSON fixture generator (`python -m e2e.generate_fixtures`); default 20 `en/` + 20 `ru/` corpora with parallel locale runs; Anthropic tool_use, two-pass skeleton + per-session; `--corpus-policy strict|soft`, `--max-corpus-regen N` (strict tail cap); optional extra `[e2e]`; manual/secret-gated automation candidate ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | fixture schema, intra/cross-session validators, API orchestration, prompts |
@@ -149,6 +150,12 @@ All paths are absolute relative to the repository root.
 |------|----------|---------|
 | `src/atman/eval/__init__.py` | optional namespace | imports `_deps_check`; `import atman.eval` fails fast without the `eval` extra |
 | `src/atman/eval/_deps_check.py` | dependency guard | checks canary deps from `[project.optional-dependencies].eval` and returns a friendly install hint |
+| `src/atman/eval/benchmark_runner.py` | CLI module | E1 benchmark runner CLI entrypoint with `list`/`run` commands; `python -m atman.eval.benchmark_runner list` / `python -m atman.eval.benchmark_runner run <key>` |
+| `src/atman/eval/runner_core.py` | core runner | RunnerCore lifecycle: benchmark execution, reporter fanout (on_run_start/on_run_item/on_run_complete), idempotent run keys, error collection |
+| `src/atman/eval/registry.py` | benchmark registry | Benchmark registration and lookup (`register`, `get`, `list_benchmarks`) |
+| `src/atman/eval/reporters/base.py` | reporter interface | Reporter ABC (on_run_start/on_run_item/on_run_complete) |
+| `src/atman/eval/reporters/jsonl_reporter.py` | JSONL reporter | Writes benchmark lifecycle events to JSONL file |
+| `src/atman/eval/reporters/db_reporter.py` | PostgreSQL reporter | Writes benchmark results to `eval.benchmark_runs` schema |
 | `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | Alembic configuration for the isolated PostgreSQL `eval` schema |
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | idempotent eval schema, benchmark run tables, supporting tables, and trend materialized view |
 | `scripts/eval/partition_manager.py` | operations | creates future partitions, detaches old partitions, and reports `eval.benchmark_runs` partition status |
@@ -216,6 +223,7 @@ Connections between two or more parts. These are seams that may break independen
 | `demo_session_manager.py` | `FileStateStore` → `SessionManager` (loads identity/narrative, records events/moments, stores experience/eigenstate) |
 | `demo_reflection.py` | mocks + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 | `demo_full_corpus.py` | `e2e` session JSON → `FileStateStore` + `SessionManager` + `StateStore*Adapter` → micro → daily (per UTC day) → deep; `DeterministicReflectionModel` |
+| `demo_eval_runner.py` | `list_benchmarks()` → `RunnerCore([JsonlReporter])` → `run("noop")` → idempotent rerun with same git_sha → JSONL artifact |
 
 ### 2.5. TUI / Web ↔ subprocesses
 
