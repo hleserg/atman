@@ -15,12 +15,14 @@ Switch at runtime via /config:
 
 All providers lazy-load their clients on first use.
 """
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 from .secrets import SecretsManager
 
@@ -30,41 +32,46 @@ if TYPE_CHECKING:
 
 # ── Provider IDs ──────────────────────────────────────────────────────────────
 
-CODER_PROVIDERS    = ("llamacpp", "claude-sonnet", "claude-opus")
-PLANNER_PROVIDERS  = ("cohere", "claude-sonnet", "claude-opus", "llamacpp")
+CODER_PROVIDERS = ("llamacpp", "claude-sonnet", "claude-opus")
+PLANNER_PROVIDERS = ("cohere", "claude-sonnet", "claude-opus", "llamacpp")
 EMBEDDER_PROVIDERS = ("local", "cohere")
 RERANKER_PROVIDERS = ("local", "cohere")
 
 CLAUDE_MODELS = {
     "claude-sonnet": "claude-sonnet-4-6",
-    "claude-opus":   "claude-opus-4-6",
+    "claude-opus": "claude-opus-4-6",
 }
-COHERE_EMBED_MODEL   = "embed-multilingual-v3.0"
-COHERE_RERANK_MODEL  = "rerank-multilingual-v3.0"
+COHERE_EMBED_MODEL = "embed-multilingual-v3.0"
+COHERE_RERANK_MODEL = "rerank-multilingual-v3.0"
 
 
 # ── Provider config (persisted to disk) ───────────────────────────────────────
 
+
 @dataclass
 class ProviderConfig:
-    coder:    str = "llamacpp"
-    planner:  str = "cohere"
+    coder: str = "llamacpp"
+    planner: str = "cohere"
     embedder: str = "local"
     reranker: str = "local"
 
     def validate(self) -> list[str]:
         errors = []
-        if self.coder    not in CODER_PROVIDERS:    errors.append(f"coder '{self.coder}' unknown")
-        if self.planner  not in PLANNER_PROVIDERS:  errors.append(f"planner '{self.planner}' unknown")
-        if self.embedder not in EMBEDDER_PROVIDERS: errors.append(f"embedder '{self.embedder}' unknown")
-        if self.reranker not in RERANKER_PROVIDERS: errors.append(f"reranker '{self.reranker}' unknown")
+        if self.coder not in CODER_PROVIDERS:
+            errors.append(f"coder '{self.coder}' unknown")
+        if self.planner not in PLANNER_PROVIDERS:
+            errors.append(f"planner '{self.planner}' unknown")
+        if self.embedder not in EMBEDDER_PROVIDERS:
+            errors.append(f"embedder '{self.embedder}' unknown")
+        if self.reranker not in RERANKER_PROVIDERS:
+            errors.append(f"reranker '{self.reranker}' unknown")
         return errors
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(asdict(self), indent=2))
 
     @classmethod
-    def load(cls, path: Path) -> "ProviderConfig":
+    def load(cls, path: Path) -> ProviderConfig:
         if path.exists():
             try:
                 return cls(**json.loads(path.read_text()))
@@ -74,6 +81,7 @@ class ProviderConfig:
 
 
 # ── Claude streaming client ───────────────────────────────────────────────────
+
 
 def _claude_stream(
     messages: list[dict],
@@ -119,17 +127,20 @@ def _claude_complete(messages, model, api_key, max_tokens=4096, system="") -> st
 
 # ── Cohere client helpers ─────────────────────────────────────────────────────
 
+
 def _get_cohere_client(api_key: str):
     if not api_key:
         raise RuntimeError("COHERE_API_KEY not set. Run: /config set cohere_api_key <key>")
     try:
         import cohere
+
         return cohere.Client(api_key)
     except ImportError:
         raise RuntimeError("cohere package not installed: pip install cohere")
 
 
 # ── Provider Router ───────────────────────────────────────────────────────────
+
 
 class ProviderRouter:
     """
@@ -150,10 +161,10 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
 
     def __init__(
         self,
-        cfg: "ProviderConfig",
+        cfg: ProviderConfig,
         secrets: SecretsManager,
         llm_url: str,
-        agent_cfg: "AgentConfig | None" = None,
+        agent_cfg: AgentConfig | None = None,
     ) -> None:
         self.cfg = cfg
         self.secrets = secrets
@@ -188,7 +199,10 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
             yield f"[ERROR] Unknown coder provider: {provider}\n"
 
     def _llamacpp_stream(self, messages: list[dict]) -> Iterator[str]:
-        import requests, json as _json
+        import json as _json
+
+        import requests
+
         try:
             r = requests.post(
                 f"{self.llm_url}/v1/chat/completions",
@@ -256,8 +270,9 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
                 )
                 return resp.text
             except Exception as e:
-                return f"[Cohere error: {e}]\nFalling back to local...\n" + \
-                       self.code_complete(prompt)
+                return f"[Cohere error: {e}]\nFalling back to local...\n" + self.code_complete(
+                    prompt
+                )
 
         elif provider in ("claude-sonnet", "claude-opus"):
             return _claude_complete(
@@ -278,10 +293,7 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
         if provider == "cohere":
             try:
                 co = _get_cohere_client(self.secrets.cohere_api_key)
-                chat_history = [
-                    {"role": m["role"], "message": m["content"]}
-                    for m in history[:-1]
-                ]
+                chat_history = [{"role": m["role"], "message": m["content"]} for m in history[:-1]]
                 resp = co.chat(
                     message=message,
                     model="command-r-plus",
@@ -294,11 +306,8 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
                 return f"[Cohere error: {e}]"
 
         elif provider in ("claude-sonnet", "claude-opus"):
-            messages = [
-                {"role": m["role"], "content": m["content"]}
-                for m in history
-            ]
-            if context:
+            messages = [{"role": m["role"], "content": m["content"]} for m in history]
+            if context and messages:
                 messages[-1]["content"] = (
                     f"<context>\n{context}\n</context>\n\n{messages[-1]['content']}"
                 )
@@ -326,6 +335,7 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
         if self._embedder is None:
             try:
                 from FlagEmbedding import BGEM3FlagModel
+
                 self._embedder = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True)
             except Exception:
                 return None
@@ -361,6 +371,7 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
         if self._reranker is None:
             try:
                 from FlagEmbedding import FlagReranker
+
                 self._reranker = FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=True)
             except Exception:
                 return [0.0] * len(passages)
@@ -404,8 +415,8 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
         provider = provider.lower()
 
         valid = {
-            "coder":    CODER_PROVIDERS,
-            "planner":  PLANNER_PROVIDERS,
+            "coder": CODER_PROVIDERS,
+            "planner": PLANNER_PROVIDERS,
             "embedder": EMBEDDER_PROVIDERS,
             "reranker": RERANKER_PROVIDERS,
         }
@@ -433,8 +444,8 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
     def status_table(self) -> list[tuple[str, str, str]]:
         """Returns list of (role, current_provider, available_providers)."""
         return [
-            ("coder",    self.cfg.coder,    " | ".join(CODER_PROVIDERS)),
-            ("planner",  self.cfg.planner,  " | ".join(PLANNER_PROVIDERS)),
+            ("coder", self.cfg.coder, " | ".join(CODER_PROVIDERS)),
+            ("planner", self.cfg.planner, " | ".join(PLANNER_PROVIDERS)),
             ("embedder", self.cfg.embedder, " | ".join(EMBEDDER_PROVIDERS)),
             ("reranker", self.cfg.reranker, " | ".join(RERANKER_PROVIDERS)),
         ]

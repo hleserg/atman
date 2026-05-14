@@ -91,7 +91,7 @@ async def record_key_moment(
     if not ctx.deps.session_id:
         return "Error: No active session. Cannot record key moment outside of a session."
 
-    depth = _DEPTH_ALIASES.get(depth.lower(), depth)
+    depth = _DEPTH_ALIASES.get(depth.lower(), depth.lower())
     try:
         EmotionalDepth(depth)
     except ValueError:
