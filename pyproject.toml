@@ -212,7 +212,7 @@ ignore = [
 "src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["atman"]
+known-first-party = ["atman", "agent", "e2e"]
 
 [tool.ruff.format]
 quote-style = "double"
