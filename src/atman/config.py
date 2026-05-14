@@ -22,12 +22,13 @@ class EmbeddingSettings(BaseSettings):
         extra="ignore",
     )
 
-    backend: str = "flag"  # "flag" (native FlagEmbedding), "ollama" (HTTP), or "mock"
-    model: str = "BAAI/bge-m3"  # Model path (HuggingFace for flag, Ollama model for ollama)
+    backend: str = "ollama"  # "ollama" (HTTP, default for compatibility), "flag" (native FlagEmbedding), or "mock"
+    model: str = "bge-m3"  # Model name (bge-m3 for Ollama, BAAI/bge-m3 for flag backend)
     dimension: int = 1024  # Embedding vector dimension (1024 for bge-m3)
     ollama_host: str = "http://localhost:11434"  # Ollama API host (used if backend="ollama")
     timeout: float = 30.0  # Request timeout in seconds (used if backend="ollama")
     # FlagEmbedding-specific settings (used if backend="flag")
+    flag_model: str = "BAAI/bge-m3"  # HuggingFace model path for FlagEmbedding backend
     use_fp16: bool = True  # Use float16 for faster inference (recommended with GPU)
     batch_size: int = 32  # Batch size for FlagEmbedding encode
     max_length: int = 512  # Max token length for FlagEmbedding (BGE-M3 supports up to 8192)
@@ -133,7 +134,7 @@ def build_embedding_adapter() -> Any:
         from atman.adapters.memory.flag_embedding import FlagEmbeddingAdapter
 
         adapter = FlagEmbeddingAdapter(
-            model_name=settings.embedding.model,
+            model_name=settings.embedding.flag_model,
             use_fp16=settings.embedding.use_fp16,
             batch_size=settings.embedding.batch_size,
             max_length=settings.embedding.max_length,
@@ -152,7 +153,7 @@ def build_embedding_adapter() -> Any:
 
             return OllamaEmbeddingAdapter(
                 base_url=settings.embedding.ollama_host,
-                model=settings.embedding.model,
+                model=settings.embedding.model,  # Uses bge-m3 for Ollama
                 timeout=settings.embedding.timeout,
             )
         return adapter
