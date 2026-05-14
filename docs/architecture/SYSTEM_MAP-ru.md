@@ -153,6 +153,17 @@
 |------|-----------|------------|
 | `src/atman/eval/__init__.py` | optional namespace | импортирует `_deps_check`; `import atman.eval` быстро падает без extra `eval` |
 | `src/atman/eval/_deps_check.py` | dependency guard | проверяет canary-зависимости из `[project.optional-dependencies].eval` и показывает понятную подсказку установки |
+| `src/atman/eval/registry.py` | ядро | глобальный реестр бенчмарков; `register(key, fn)` / `get(key)`; используется в `runner_core` |
+| `src/atman/eval/run_context.py` | ядро | dataclass `RunContext`: ключ бенчмарка, seed, git SHA, identity snapshot ID, agent config ID, версия раннера, снимок железа, метаданные; неизменяемая идентификация прогона для бенчмарка и reporters |
+| `src/atman/eval/runner_core.py` | ядро | `RunnerCore`: запускает зарегистрированные бенчмарки, отправляет события жизненного цикла (`on_run_start`, `on_run_item`, `on_run_complete`) reporters'ам, обеспечивает идемпотентные перезапуски через детерминированные ключи (бенчмарк + git SHA + config IDs), возвращает `BenchmarkRunOutcome` |
+| `src/atman/eval/seed_manager.py` | ядро | `resolve_seed(seed)` / `apply_global_seed(seed)`: детерминированный seeding PRNG для воспроизводимых прогонов; устанавливает `random`, `numpy.random`, `torch.manual_seed` при наличии |
+| `src/atman/eval/hardware.py` | ядро | `collect_hardware_metadata()`: статистика CPU/памяти (через psutil), GPU (через pynvml) с graceful fallbacks; используется в `RunContext.create()` |
+| `src/atman/eval/benchmarks/__init__.py` | бенчмарки | импортирует и регистрирует noop-бенчмарк |
+| `src/atman/eval/benchmarks/noop.py` | бенчмарки | тривиальный бенчмарк, возвращающий один "pass" item; используется для интеграционных тестов |
+| `src/atman/eval/reporters/__init__.py` | reporters | экспортирует `Reporter`, `JsonlReporter`, `DbReporter` |
+| `src/atman/eval/reporters/base.py` | reporters | абстрактный протокол `Reporter` с хуками `on_run_start`, `on_run_item`, `on_run_complete` |
+| `src/atman/eval/reporters/jsonl_reporter.py` | reporters | `JsonlReporter`: добавляет outcome JSON lines в файл; используется для файлового архивирования |
+| `src/atman/eval/reporters/db_reporter.py` | reporters | `DbReporter`: вставляет outcome в PostgreSQL-таблицу `eval.benchmark_runs`; требует eval-схему и DB-соединение |
 | `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | конфигурация Alembic для изолированной PostgreSQL-схемы `eval` |
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
 | `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |

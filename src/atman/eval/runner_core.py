@@ -155,6 +155,7 @@ class RunnerCore:
         )
 
         self._fanout(lambda reporter: reporter.on_run_complete(outcome), reporter_errors)
+        outcome = replace(outcome, reporter_errors=tuple(reporter_errors))
         if idempotency_key is not None and outcome.status == "completed":
             self._completed_by_idempotency_key[idempotency_key] = outcome
         return outcome
@@ -180,4 +181,6 @@ class RunnerCore:
     ) -> str | None:
         if not git_sha:
             return None
-        return f"{benchmark_key}:{git_sha}:{agent_config_id or ''}:{identity_snapshot_id or ''}"
+        agent_part = agent_config_id if agent_config_id is not None else ""
+        identity_part = identity_snapshot_id if identity_snapshot_id is not None else ""
+        return f"{benchmark_key}:{git_sha}:{agent_part}:{identity_part}"

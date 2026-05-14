@@ -56,6 +56,12 @@ def _safe_gpu_stats() -> dict[str, Any]:
                 }
             )
         return {"available": True, "reason": None, "gpus": gpus}
+    except Exception as exc:
+        return {
+            "available": False,
+            "reason": f"nvml_enum_failed:{type(exc).__name__}",
+            "gpus": gpus,
+        }
     finally:
         with suppress(Exception):
             pynvml.nvmlShutdown()

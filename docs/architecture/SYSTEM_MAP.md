@@ -149,6 +149,17 @@ All paths are absolute relative to the repository root.
 |------|----------|---------|
 | `src/atman/eval/__init__.py` | optional namespace | imports `_deps_check`; `import atman.eval` fails fast without the `eval` extra |
 | `src/atman/eval/_deps_check.py` | dependency guard | checks canary deps from `[project.optional-dependencies].eval` and returns a friendly install hint |
+| `src/atman/eval/registry.py` | core | global benchmark registry; `register(key, fn)` / `get(key)`; used by `runner_core` |
+| `src/atman/eval/run_context.py` | core | `RunContext` dataclass: benchmark key, seed, git SHA, identity snapshot ID, agent config ID, runner version, hardware snapshot, metadata; immutable run identity passed to benchmark and reporters |
+| `src/atman/eval/runner_core.py` | core | `RunnerCore`: runs registered benchmarks, sends lifecycle events (`on_run_start`, `on_run_item`, `on_run_complete`) to reporters, enforces idempotent re-runs via deterministic keys (benchmark + git SHA + config IDs), returns `BenchmarkRunOutcome` |
+| `src/atman/eval/seed_manager.py` | core | `resolve_seed(seed)` / `apply_global_seed(seed)`: deterministic PRNG seeding for reproducible runs; sets `random`, `numpy.random`, `torch.manual_seed` when available |
+| `src/atman/eval/hardware.py` | core | `collect_hardware_metadata()`: CPU/memory (via psutil), GPU (via pynvml) stats with graceful fallbacks; used in `RunContext.create()` |
+| `src/atman/eval/benchmarks/__init__.py` | benchmarks | imports and registers noop benchmark |
+| `src/atman/eval/benchmarks/noop.py` | benchmarks | trivial benchmark returning a single "pass" item; used for integration tests |
+| `src/atman/eval/reporters/__init__.py` | reporters | exports `Reporter`, `JsonlReporter`, `DbReporter` |
+| `src/atman/eval/reporters/base.py` | reporters | abstract `Reporter` protocol with `on_run_start`, `on_run_item`, `on_run_complete` hooks |
+| `src/atman/eval/reporters/jsonl_reporter.py` | reporters | `JsonlReporter`: appends outcome JSON lines to file; used for file-based archiving |
+| `src/atman/eval/reporters/db_reporter.py` | reporters | `DbReporter`: inserts outcome into PostgreSQL `eval.benchmark_runs` table; requires eval schema and DB connection |
 | `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | Alembic configuration for the isolated PostgreSQL `eval` schema |
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | idempotent eval schema, benchmark run tables, supporting tables, and trend materialized view |
 | `scripts/eval/partition_manager.py` | operations | creates future partitions, detaches old partitions, and reports `eval.benchmark_runs` partition status |
