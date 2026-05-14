@@ -6,7 +6,7 @@ CLI Integration Notes:
   At startup use: repo_root, work_dir = SafeFileExplorer.get_work_dir()
   Show in TUI header: atman-agent — {work_dir.name} — {branch}
   Command /pwd → show work_dir and repo_root.
-  If agent calls write() outside repo → catch FileAccessPermissionError → warn + prompt [y/N].
+  If agent calls write() outside repo → catch FileAccessPermissionError (also ``except PermissionError``) → warn + prompt [y/N].
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 
-class FileAccessPermissionError(Exception):
+class FileAccessPermissionError(PermissionError):
     """Raised when a mutating operation is denied (outside repo or unconfirmed exec)."""
 
 

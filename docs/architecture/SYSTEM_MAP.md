@@ -72,7 +72,7 @@ All paths are absolute relative to the repository root.
 
 | File | Purpose |
 |------|---------|
-| `config.py` | Pydantic settings and `build_memory_backend()` factory; defaults factual memory to `FileBackend`, supports `ATMAN_MEMORY_BACKEND=postgres|file|inmemory` |
+| `config.py` | Pydantic settings (`EmbeddingSettings`, `LLMSettings`, `MemorySettings`), **`OpenAILLMConfig`** (base_url, api_key, model, timeout, max_retries with validation ≥1), **`AnthropicLLMConfig`** (api_key, model, max_tokens), `build_memory_backend()` factory, **`build_embedding_adapter()` factory** (selects FlagEmbedding/Ollama/Mock backend), `validate_embedding_dimension()` (startup dimension check); defaults: embedding backend=`ollama` with `bge-m3`/1024d (FlagEmbedding backend uses `flag_model="BAAI/bge-m3"`, with FP16/batch_size/max_length settings), LLM=`gemma3:27b-it-qat`, factual memory=`FileBackend`; supports `ATMAN_MEMORY_BACKEND=postgres|file|inmemory`, `EMBEDDING_BACKEND=ollama|flag|mock`; **legacy env var fallback**: `OLLAMA_HOST`→`EMBEDDING_OLLAMA_HOST`, `OLLAMA_EMBED_MODEL`→`EMBEDDING_MODEL`, `ATMAN_OLLAMA_BASE_URL`→`LLM_OLLAMA_HOST`, `ATMAN_OLLAMA_MODEL`→`LLM_MODEL` |
 | `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Narrative commit audit hooks |
@@ -86,9 +86,10 @@ All paths are absolute relative to the repository root.
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | no persistence |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
 | `adapters/memory/postgres_backend.py` (`PostgresFactualMemory`) | `FactualMemory` | PostgreSQL `public.facts` / `public.fact_relations`, RLS via `ATMAN_CURRENT_AGENT`, optional `EmbeddingPort` with `ILIKE` fallback |
-| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | deterministic SHA-256-seeded embeddings; no external deps; for tests/CI |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | deterministic SHA-256-seeded 1024-dim embeddings; no external deps; for tests/CI |
 | `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | local BM25 sparse vectors via fixed-dimension feature hashing (Unicode-aware tokenizer); corpus stats from `embed_batch`/`embed_with_corpus` are reused by later `embed` calls |
-| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama HTTP `/api/embeddings`; configurable host/model/timeout |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama HTTP `/api/embeddings`; defaults: `bge-m3`/1024d; env: `EMBEDDING_MODEL`, `EMBEDDING_OLLAMA_HOST` (legacy: `OLLAMA_EMBED_MODEL`, `OLLAMA_HOST`); configurable timeout |
+| `adapters/memory/flag_embedding.py` (`FlagEmbeddingAdapter`) | `EmbeddingPort` | Native FlagEmbedding SDK (BGEM3FlagModel) via PyTorch; lazy model loading (~570MB to `~/.cache/huggingface/`); supports dense (1024d) + sparse (lexical) + ColBERT via `embed_batch_full()`; configurable FP16, batch_size, max_length, device; no external process required; defaults: `BAAI/bge-m3`; env: `EMBEDDING_FLAG_MODEL`, `EMBEDDING_USE_FP16`, `EMBEDDING_BATCH_SIZE`, `EMBEDDING_MAX_LENGTH` |
 | `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory append-only list with filtering by item/usage_type/time (no eviction) |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | in-memory (partial: experience only; KeyMoment/Identity/Narrative ops raise `NotImplementedError`) |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL for experience (partial: experience only; KeyMoment/Identity/Narrative ops raise `NotImplementedError`) |
@@ -99,6 +100,7 @@ All paths are absolute relative to the repository root.
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: in-memory with BIGSERIAL + RLS simulation |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: helper functions for persisting reflections (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | deterministic mock |
+| **`adapters/reflection/openai_reflection_model.py`** (**`OpenAIReflectionModel`**) | **`ReflectionModel`** | **Generic OpenAI-compatible adapter** with `OpenAILLMConfig` (base_url, api_key, model, timeout, configurable retries); **`adapters/reflection/__init__.py`** exports **`get_reflection_model()`** factory (env `ATMAN_REFLECTION_BACKEND=openai|anthropic|mock`, default: `openai`) |
 | `adapters/reflection/fixture_loader.py` | — | load fixtures for demos |
 | `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | Pydantic AI model + agent runtime config: context window limits, session timeout, free-time toggle, monologue visibility, **memory injection mode** (`assistant_message`/`user_message`/`system_prompt` for universal memory context delivery) (E22.1, E26-R1, E26-R2, E26-R4) |
 | `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | frozen DI container wiring `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; `from_config` factory transfers validated limits from `AgentConfig`; optional `injected_context` field for `system_prompt` injection mode |
@@ -106,7 +108,7 @@ All paths are absolute relative to the repository root.
 | `adapters/agent/instructions.py` (`build_instructions`, `build_memory_context`) | — | `build_instructions`: builds behavioral rules (how agent uses tools, commitments); identity/narrative moved to `build_memory_context()` for delivery via `inject_memory()`; when `memory_injection_mode == "system_prompt"`, appends `deps.injected_context` |
 | `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`, `restart_session`, `wait_session`) | — | Pydantic AI tools: `record_key_moment` → `AffectDetector.submit_self_report` when `SessionManager` is configured with affect; `log_experience` redirect stub; `restart_session` / `wait_session` return sentinel strings for session control (E22.4) |
 | `adapters/agent/factory.py` (`build_deps`) | — | Assembles `AtmanDeps`, `SessionManager`, `FileStateStore`, services, optional `AffectDetector` from workspace + `AgentConfig`; bootstraps missing identity/narrative for new runner workspaces and wires `SessionManager(workspace=...)` so crash journals are active |
-| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | Signal-aware session lifecycle wrapper with restart loop and timeout/menu (E22.2, E22.5, E22.6); queue-based stdin reader (no race on timeout); restart detection: sentinel → finish session with `close_reason="restart"` → build package (key moments + reason + tail) → new session with updated `AtmanDeps`; session timeout → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; creates minimal `KeyMoment` if empty; preserves exit codes |
+| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_check_token_usage`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | Signal-aware session lifecycle wrapper with restart loop, token monitoring, and timeout/menu (E22.2, E22.3, E22.5, E22.6); token monitoring: progressive warnings at 70/80/90%, force-close at 95% (`_check_token_usage`); queue-based stdin reader (no race on timeout); restart detection: sentinel → finish session with `close_reason="restart"` → build package (key moments + reason + tail) → new session with updated `AtmanDeps`; session timeout → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; creates minimal `KeyMoment` if empty; preserves exit codes |
 | `agents_registry.py` (`AgentsRegistry`) | — | PostgreSQL-backed registry of agent instances (app/admin DB URLs); used by `src/run_agent.py` |
 
 ### 1.5b. Optional local coding agent (**not** in core wheel — `atman_agent_cli/`)
@@ -188,9 +190,9 @@ Connections between two or more parts. These are seams that may break independen
 |---------|------------|
 | `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore`, `PostgresStateStore` | `StateStore` |
-| `MockReflectionModel` | `ReflectionModel` |
+| `MockReflectionModel`, **`OpenAIReflectionModel`** | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | corresponding ports |
-| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter`, `FlagEmbeddingAdapter` | `EmbeddingPort` |
 | `InMemoryUsageLog` | `MemoryUsageLog` |
 | `InMemoryReflectionStore` (`adapters/storage/in_memory_postgres_reflection_store.py`) | `ReflectionStore` (E27) |
 

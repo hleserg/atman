@@ -64,7 +64,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `config.py` | Pydantic settings и фабрика `build_memory_backend()`; factual memory по умолчанию использует `FileBackend`, поддерживает `ATMAN_MEMORY_BACKEND=postgres|file|inmemory` |
+| `config.py` | Pydantic settings (`EmbeddingSettings`, `LLMSettings`, `MemorySettings`), **`OpenAILLMConfig`** (base_url, api_key, model, timeout, max_retries с валидацией ≥1), **`AnthropicLLMConfig`** (api_key, model, max_tokens), фабрика `build_memory_backend()`, **фабрика `build_embedding_adapter()`** (выбор FlagEmbedding/Ollama/Mock backend), `validate_embedding_dimension()` (проверка размерности при старте); по умолчанию: embedding backend=`ollama` с `bge-m3`/1024d (FlagEmbedding backend использует `flag_model="BAAI/bge-m3"` с настройками FP16/batch_size/max_length), LLM=`gemma3:27b-it-qat`, factual memory=`FileBackend`; поддерживает `ATMAN_MEMORY_BACKEND=postgres|file|inmemory`, `EMBEDDING_BACKEND=ollama|flag|mock`; **fallback устаревших переменных окружения**: `OLLAMA_HOST`→`EMBEDDING_OLLAMA_HOST`, `OLLAMA_EMBED_MODEL`→`EMBEDDING_MODEL`, `ATMAN_OLLAMA_BASE_URL`→`LLM_OLLAMA_HOST`, `ATMAN_OLLAMA_MODEL`→`LLM_MODEL` |
 | `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Хуки аудита коммитов нарратива |
@@ -90,9 +90,10 @@
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
 | `adapters/memory/postgres_backend.py` (`PostgresFactualMemory`) | `FactualMemory` | PostgreSQL `public.facts` / `public.fact_relations`, RLS через `ATMAN_CURRENT_AGENT`, опциональный `EmbeddingPort` с fallback на `ILIKE` |
-| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 2560-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:768d"` |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 1024-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:1024d"` |
 | `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
-| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `qwen3-embedding:4b` (2560-мерные); `model_name()` возвращает настроенную модель; доступен `health_check()` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `bge-m3` (1024-мерные); env: `EMBEDDING_MODEL`, `EMBEDDING_OLLAMA_HOST` (устаревшие: `OLLAMA_EMBED_MODEL`, `OLLAMA_HOST`); `model_name()` возвращает настроенную модель; доступен `health_check()` |
+| `adapters/memory/flag_embedding.py` (`FlagEmbeddingAdapter`) | `EmbeddingPort` | Нативный FlagEmbedding SDK (BGEM3FlagModel) через PyTorch; ленивая загрузка модели (~570MB в `~/.cache/huggingface/`); поддержка dense (1024d) + sparse (lexical) + ColBERT через `embed_batch_full()`; настраиваемые FP16, batch_size, max_length, device; не требует внешнего процесса; по умолчанию: `BAAI/bge-m3`; env: `EMBEDDING_FLAG_MODEL`, `EMBEDDING_USE_FP16`, `EMBEDDING_BATCH_SIZE`, `EMBEDDING_MAX_LENGTH` |
 | `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory трекинг использования |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
@@ -103,6 +104,7 @@
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: в памяти с симуляцией BIGSERIAL + RLS |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
+| **`adapters/reflection/openai_reflection_model.py`** (**`OpenAIReflectionModel`**) | **`ReflectionModel`** | **Универсальный OpenAI-совместимый адаптер** с `OpenAILLMConfig` (base_url, api_key, model, timeout, настраиваемые повторные попытки); **`adapters/reflection/__init__.py`** экспортирует фабрику **`get_reflection_model()`** (env `ATMAN_REFLECTION_BACKEND=openai|anthropic|mock`, по умолчанию: `openai`) |
 | `adapters/reflection/fixture_loader.py` | — | загрузка фикстур для демо |
 | `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | конфигурация Pydantic AI модели + среды выполнения агента: лимиты контекстного окна, таймаут сессии, переключатель свободного времени, видимость монолога, **режим внедрения памяти** (`assistant_message`/`user_message`/`system_prompt` для универсальной доставки контекста памяти) (E22.1, E26-R1, E26-R2, E26-R4) |
 | `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | замороженный DI-контейнер, связывающий `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; фабрика `from_config` переносит валидированные лимиты из `AgentConfig`; опциональное поле `injected_context` для режима `system_prompt` |
@@ -110,7 +112,7 @@
 | `adapters/agent/instructions.py` (`build_instructions`, `build_memory_context`) | — | `build_instructions`: строит поведенческие правила (как агент использует инструменты, обязательства); идентичность/нарратив перемещены в `build_memory_context()` для доставки через `inject_memory()`; когда `memory_injection_mode == "system_prompt"`, добавляет `deps.injected_context` |
 | `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`, `restart_session`, `wait_session`) | — | инструменты Pydantic AI: `record_key_moment` → `AffectDetector.submit_self_report` когда `SessionManager` настроен на аффект; `log_experience` — redirect-заглушка; `restart_session` / `wait_session` возвращают sentinel-строки для управления сессией (E22.4) |
 | `adapters/agent/factory.py` (`build_deps`) | — | сборка `AtmanDeps`, `SessionManager`, `FileStateStore`, сервисов, опционально `AffectDetector` из workspace и `AgentConfig`; bootstrap отсутствующих identity/narrative для новых runner-workspace и проводка `SessionManager(workspace=...)`, чтобы crash-журналы были активны |
-| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | обёртка жизненного цикла сессии с обработкой сигналов, restart loop и таймаут/меню (E22.2, E22.5, E22.6); очередь-based stdin reader (без race condition при таймауте); детекция restart: sentinel → finish session с `close_reason="restart"` → построение пакета (ключевые моменты + причина + хвост) → новая сессия с обновлённым `AtmanDeps`; таймаут сессии → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды |
+| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_check_token_usage`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | обёртка жизненного цикла сессии с обработкой сигналов, restart loop, мониторингом токенов и таймаут/меню (E22.2, E22.3, E22.5, E22.6); мониторинг токенов: прогрессивные предупреждения на 70/80/90%, принудительное закрытие на 95% (`_check_token_usage`); очередь-based stdin reader (без race condition при таймауте); детекция restart: sentinel → finish session с `close_reason="restart"` → построение пакета (ключевые моменты + причина + хвост) → новая сессия с обновлённым `AtmanDeps`; таймаут сессии → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды |
 | `agents_registry.py` (`AgentsRegistry`) | — | реестр экземпляров агентов в PostgreSQL (app/admin URL); используется `src/run_agent.py` |
 
 ### 1.5b. Опциональный локальный coding-agent (**не** в wheel ядра — каталог `atman_agent_cli/`)
@@ -189,10 +191,10 @@
 |---------|-----------|
 | `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
 | `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore`, `PostgresStateStore` | `StateStore` |
-| `MockReflectionModel` | `ReflectionModel` |
+| `MockReflectionModel`, **`OpenAIReflectionModel`** | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
 | **`InMemoryReflectionStore`** | **`ReflectionStore`** (E27) |
-| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter` | `EmbeddingPort` |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter`, `FlagEmbeddingAdapter` | `EmbeddingPort` |
 | `InMemoryUsageLog` | `MemoryUsageLog` |
 
 ### 2.2a. Agent adapter ↔ сервисы
