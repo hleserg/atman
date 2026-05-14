@@ -31,6 +31,7 @@ import asyncio
 import os
 import re
 import requests
+import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -1314,14 +1315,13 @@ class AtmanApp(App):
         provider_cfg_file = cfg.memory_path / "providers.json"
         self.provider_cfg = ProviderConfig.load(provider_cfg_file)
         self._provider_cfg_file = provider_cfg_file
-        self.router = ProviderRouter(self.provider_cfg, self.secrets, cfg.llm_url)
+        self.router = ProviderRouter(self.provider_cfg, self.secrets, cfg.llm_url, agent_cfg=cfg)
 
         # Backend
         self.memory = AgentMemory(cfg)
         self.branch_guard = BranchGuard(cfg)
         self.pr_manager = PRManager(cfg)
         self.rag = RAGIndex(cfg, planner=self.router)
-        self.router._agent_cfg = cfg
 
         # Background watcher — daemon thread, no LLM, richer event model
         self.watcher = MainWatcher(
@@ -1336,6 +1336,7 @@ class AtmanApp(App):
 
         # Conversation history for context tracking
         self._messages: list[dict] = []
+        self._messages_lock = threading.Lock()  # Protect concurrent access to _messages
 
         # Context window manager
         ctx_limits = ContextLimits(
@@ -1944,7 +1945,8 @@ class AtmanApp(App):
 
     def _add_to_history(self, role: str, content: str) -> None:
         """Add a message to history and check context usage."""
-        self._messages.append({"role": role, "content": content})
+        with self._messages_lock:
+            self._messages.append({"role": role, "content": content})
         self._maybe_compress()
 
     def _maybe_compress(self) -> None:
@@ -1957,15 +1959,16 @@ class AtmanApp(App):
             self._chat_write(f"[red]◆ Context {status.display} — compressing...[/red]")
             self._compress_context_worker()
 
-    @work(thread=True, exclusive=False)
+    @work(thread=True, exclusive=True)
     def _compress_context_worker(self) -> None:
         """Compress context in background thread. Plan is preserved fully."""
         try:
-            snapshot = self.ctx.compress(self._messages, self.current_plan)
-
-            # Rebuild message history
-            new_messages = self.ctx.rebuild_messages(snapshot)
-            self._messages = new_messages
+            # Take snapshot and compress under lock to prevent messages added during compression
+            with self._messages_lock:
+                snapshot = self.ctx.compress(self._messages, self.current_plan)
+                # Rebuild message history
+                new_messages = self.ctx.rebuild_messages(snapshot)
+                self._messages = new_messages
 
             self.call_from_thread(
                 self._chat_write,
@@ -2191,7 +2194,7 @@ class AtmanApp(App):
         parts = args.strip().split()
 
         if parts and parts[0] == "add" and len(parts) >= 2:
-            domain = parts[1].lstrip("https://").lstrip("http://").rstrip("/")
+            domain = parts[1].removeprefix("https://").removeprefix("http://").rstrip("/")
             label = " ".join(parts[2:]) if len(parts) > 2 else domain
             add_search_domain(domain, label)
             self._chat_write(

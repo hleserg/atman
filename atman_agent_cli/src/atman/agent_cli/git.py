@@ -41,8 +41,8 @@ def is_branch_merged(branch: str, repo: Path, main: str = "main") -> bool:
 
 
 def branch_exists_remote(branch: str, repo: Path) -> bool:
-    code, _, _ = run_git(["ls-remote", "--heads", "origin", branch], repo)
-    return code == 0
+    code, out, _ = run_git(["ls-remote", "--heads", "origin", branch], repo)
+    return code == 0 and bool(out.strip())
 
 
 def has_uncommitted_changes(repo: Path) -> bool:

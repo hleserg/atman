@@ -20,9 +20,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from .secrets import SecretsManager
+
+if TYPE_CHECKING:
+    from .config import AgentConfig
 
 
 # ── Provider IDs ──────────────────────────────────────────────────────────────
@@ -145,12 +148,19 @@ for the Atman project — a psychological layer for AI agents.
 Architecture: hexagonal, Python 3.11.9, Pydantic models, ports/adapters.
 Give concise, actionable plans. Be specific about files and patterns to use."""
 
-    def __init__(self, cfg: "ProviderConfig", secrets: SecretsManager, llm_url: str) -> None:
+    def __init__(
+        self,
+        cfg: "ProviderConfig",
+        secrets: SecretsManager,
+        llm_url: str,
+        agent_cfg: "AgentConfig | None" = None,
+    ) -> None:
         self.cfg = cfg
         self.secrets = secrets
         self.llm_url = llm_url
-        self._embedder = None   # lazy
-        self._reranker = None   # lazy
+        self._agent_cfg = agent_cfg  # Optional reference for config persistence
+        self._embedder = None  # lazy
+        self._reranker = None  # lazy
 
     # ── Coder ─────────────────────────────────────────────────────────────────
 
@@ -357,7 +367,7 @@ Give concise, actionable plans. Be specific about files and patterns to use."""
         try:
             pairs = [[query, p] for p in passages]
             scores = self._reranker.compute_score(pairs, normalize=True)
-            return scores if isinstance(scores, list) else list(scores)
+            return scores if isinstance(scores, list) else [scores]
         except Exception:
             return [0.0] * len(passages)
 

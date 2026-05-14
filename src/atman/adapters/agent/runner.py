@@ -67,6 +67,7 @@ async def _run_affect_detector(
         return
     try:
         import re
+
         clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
         if clean:
             await detector.process(clean, thinking=thinking, session_id=session_id)
@@ -818,9 +819,7 @@ class AtmanRunner:
                 thinking_text = _extract_thinking_from_messages(result.new_messages())
 
                 # Passive NLP affect analysis — anomaly/divergence detection
-                await _run_affect_detector(
-                    output_text, thinking_text, session_manager, session_id
-                )
+                await _run_affect_detector(output_text, thinking_text, session_manager, session_id)
 
                 # Auto-record value-based refusals as key moments (silent, no agent nudging)
                 with contextlib.suppress(Exception):
