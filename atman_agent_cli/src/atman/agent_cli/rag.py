@@ -582,6 +582,9 @@ class RAGIndex:
         if self._reranker:
             prs = [[q_txt, c.content] for c in cand_li]
             sc_list = self._reranker.compute_score(prs, normalize=True)
+            # FlagReranker returns float for single pair, not list
+            if not isinstance(sc_list, list):
+                sc_list = [sc_list]
             pr = sorted(zip(sc_list, cand_li, strict=True), reverse=True)[:nn]
             return [c for _, c in pr]
         return cand_li[:nn]
