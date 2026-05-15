@@ -30,13 +30,13 @@ def test_runner_core_reports_on_complete_failures() -> None:
     from atman.eval.runner_core import RunnerCore
 
     class FailingCompleteReporter:
-        def on_run_start(self, context: "RunContext") -> None:
+        def on_run_start(self, context: RunContext) -> None:
             _ = context
 
-        def on_run_item(self, context: "RunContext", item: "BenchmarkItemResult") -> None:
+        def on_run_item(self, context: RunContext, item: BenchmarkItemResult) -> None:
             _ = context, item
 
-        def on_run_complete(self, outcome: "BenchmarkRunOutcome") -> None:
+        def on_run_complete(self, outcome: BenchmarkRunOutcome) -> None:
             _ = outcome
             raise RuntimeError("complete sink unavailable")
 
