@@ -173,7 +173,7 @@ class TestAgentConfig:
         assert config.enable_key_moments is True
         assert config.model.model == "test"
         assert config.model.temperature == 0.7
-        assert config.model.max_tokens == 2000
+        assert config.model.max_tokens == 8192
 
     def test_custom_config(self):
         """Test AgentConfig with custom values."""
@@ -207,7 +207,7 @@ class TestModelConfig:
 
         assert config.model == "test"
         assert config.temperature == 0.7
-        assert config.max_tokens == 2000
+        assert config.max_tokens == 8192
 
     def test_openai_model(self):
         """Test configuring OpenAI model."""
@@ -248,3 +248,59 @@ class TestModelConfig:
 
         with pytest.raises(ValueError):
             ModelConfig(max_tokens=-100)
+
+
+def test_agent_factory_experience_adapter_duplicate_reframing_maps_correctly() -> None:
+    """_ExperienceAdapter must not report STORED when FileStateStore skips a duplicate."""
+    from datetime import UTC, datetime
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    from atman.adapters.agent.factory import _ExperienceAdapter
+    from atman.adapters.storage import FileStateStore
+    from atman.core.models import (
+        EmotionalDepth,
+        ExperienceRecord,
+        FeltSense,
+        KeyMoment,
+        ReframingNote,
+        SessionExperience,
+    )
+    from atman.core.models.experience import ReframingNoteAppendResult
+
+    with TemporaryDirectory() as tmp:
+        store = FileStateStore(Path(tmp))
+        sid = uuid4()
+        felt = FeltSense(
+            emotional_valence=0.1,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+        )
+        moment = KeyMoment(what_happened="ev", how_i_felt=felt, why_it_matters="y")
+        exp = SessionExperience(
+            session_id=sid,
+            key_moment_ids=[moment.id],
+            avg_emotional_intensity=0.5,
+            has_profound_moment=False,
+            importance=0.5,
+            salience=0.5,
+            timestamp=datetime.now(UTC),
+        )
+        rec = ExperienceRecord(experience=exp)
+        store.create_experience(rec)
+        adapter = _ExperienceAdapter(store)
+        eid = rec.experience.id
+        note = ReframingNote(
+            reflection="first",
+            reflection_type="growth",
+            triggered_by="run-dup-test",
+        )
+        assert adapter.add_reframing_note(eid, note) == ReframingNoteAppendResult.STORED
+        dup = ReframingNote(
+            reflection="second body",
+            reflection_type="growth",
+            triggered_by="run-dup-test",
+        )
+        assert (
+            adapter.add_reframing_note(eid, dup) == ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
+        )

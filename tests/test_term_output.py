@@ -103,7 +103,9 @@ def test_print_experience_record_full(term_console: io.StringIO) -> None:
     )
     session = SessionExperience(
         session_id=uuid4(),
-        key_moments=[moment],
+        key_moment_ids=[moment.id],
+        avg_emotional_intensity=moment.how_i_felt.emotional_intensity,
+        has_profound_moment=moment.how_i_felt.depth == EmotionalDepth.PROFOUND,
     )
     session.add_reframing_note(
         ReframingNote(
@@ -116,7 +118,8 @@ def test_print_experience_record_full(term_console: io.StringIO) -> None:
     print_experience_record(record)
     print_experience_record(record, prefix="  ")
     out = term_console.getvalue()
-    assert "Event" in out
+    assert str(moment.id) in out
+    assert "Key moments" in out
     assert "Rethought" in out
 
 
@@ -126,6 +129,15 @@ def test_print_salience_table(term_console: io.StringIO) -> None:
     print_salience_table([(0, 1.0), (7, 0.5)], title="Decay")
     assert "Decay" in term_console.getvalue()
     assert "0.5000" in term_console.getvalue()
+
+
+def test_print_plain_brackets_not_markup(term_console: io.StringIO) -> None:
+    from atman.term import print_plain
+
+    print_plain("list[int] and arr[0] are visible")
+    out = term_console.getvalue()
+    assert "list[int]" in out
+    assert "arr[0]" in out
 
 
 def test_demo_pace_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:

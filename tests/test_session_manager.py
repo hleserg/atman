@@ -4,6 +4,7 @@ Tests for Session Manager.
 Tests session lifecycle, key moment recording, and experience creation.
 """
 
+import json
 import threading
 from datetime import UTC, datetime
 from unittest.mock import patch
@@ -169,7 +170,7 @@ def test_record_key_moment_with_valid_coloring(session_manager):
         values_touched=["honesty"],
     )
 
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     active_session = manager.get_active_session(context.session_id)
     assert active_session is not None
@@ -194,7 +195,7 @@ def test_record_key_moment_without_coloring_requires_incomplete_flag(session_man
     )
 
     with pytest.raises(ValueError, match="no emotional coloring"):
-        manager.record_key_moment(context.session_id, moment_no_flag)
+        manager.append_key_moment_input(context.session_id, moment_no_flag)
 
 
 def test_record_key_moment_with_incomplete_coloring_flag_is_allowed(session_manager):
@@ -211,7 +212,7 @@ def test_record_key_moment_with_incomplete_coloring_flag_is_allowed(session_mana
         incomplete_coloring=True,  # Explicitly marked as incomplete
     )
 
-    manager.record_key_moment(context.session_id, moment_with_flag)
+    manager.append_key_moment_input(context.session_id, moment_with_flag)
 
     active_session = manager.get_active_session(context.session_id)
     assert active_session is not None
@@ -232,7 +233,7 @@ def test_finish_session_creates_experience_and_eigenstate(session_manager, temp_
         why_it_matters="Learning",
         values_touched=["honesty"],
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     # Finish session
     result = manager.finish_session(
@@ -256,7 +257,7 @@ def test_finish_session_creates_experience_and_eigenstate(session_manager, temp_
     stored_exp = experiences[0].experience
     assert stored_exp.session_id == context.session_id
     assert stored_exp.recorded_by == "session_manager"
-    assert len(stored_exp.key_moments) == 1
+    assert len(stored_exp.key_moment_ids) == 1
 
 
 def test_finish_session_without_key_moments_fails(session_manager):
@@ -283,7 +284,7 @@ def test_stored_experience_matches_recorded_key_moment(session_manager, temp_sto
         why_it_matters="Testing storage round-trip",
         values_touched=["honesty"],
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     result = manager.finish_session(
         session_id=context.session_id,
@@ -292,9 +293,11 @@ def test_stored_experience_matches_recorded_key_moment(session_manager, temp_sto
 
     experiences = temp_storage.list_recent_experiences(limit=1)
     stored_exp = experiences[0].experience
+    stored_moment = temp_storage.get_key_moment(stored_exp.key_moment_ids[0])
+    assert stored_moment is not None
 
     assert result.key_moments[0].what_happened == original_what
-    assert stored_exp.key_moments[0].what_happened == original_what
+    assert stored_moment.what_happened == original_what
     assert stored_exp.recorded_by == "session_manager"
 
 
@@ -335,7 +338,7 @@ def test_key_moment_when_uses_recorded_at_before_finish(
         depth=EmotionalDepth.SURFACE,
         why_it_matters="Order matters",
     )
-    manager_t0.record_key_moment(context.session_id, moment)
+    manager_t0.append_key_moment_input(context.session_id, moment)
 
     # Finish session at T1 (later time) using new clock
     clock_t1 = FrozenClock(datetime(2024, 1, 15, 13, 0, 0, tzinfo=UTC))
@@ -356,7 +359,7 @@ def test_finish_session_twice_second_raises_not_found(session_manager):
     """After successful finish, session is removed; second finish is SessionNotFoundError."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -375,7 +378,7 @@ def test_concurrent_finish_second_raises_already_finished(session_manager):
     """While first finish holds persistence, second finish sees is_finished and raises."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -417,7 +420,7 @@ def test_concurrent_finish_second_raises_already_finished(session_manager):
 def test_alignment_check_false_requires_notes(session_manager):
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -461,7 +464,7 @@ def test_max_active_sessions_limit(temp_storage, identity_fixture, narrative_fix
 def test_overall_emotional_tone_out_of_range_raises(session_manager):
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -495,7 +498,7 @@ def test_valence_zero_with_intensity_allowed_without_incomplete_flag(session_man
     """High intensity with neutral valence is allowed (arousal without hedonic tone)."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="Ambiguous affect",
@@ -543,7 +546,7 @@ def test_eigenstate_cognitive_load_from_event_count(session_manager):
                 description=f"e{i}",
             ),
         )
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="k",
@@ -561,7 +564,7 @@ def test_eigenstate_cognitive_load_from_event_count(session_manager):
 def test_record_after_finish_raises(session_manager):
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -603,7 +606,7 @@ def test_record_key_moment_during_finish_raises(session_manager):
     """Key moments cannot be appended while finish_session is persisting."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="x",
@@ -635,7 +638,7 @@ def test_record_key_moment_during_finish_raises(session_manager):
         t.start()
         assert started.wait(timeout=2)
         with pytest.raises(SessionAlreadyFinishedError):
-            manager.record_key_moment(context.session_id, late_moment)
+            manager.append_key_moment_input(context.session_id, late_moment)
         unblock.set()
         t.join(timeout=5)
 
@@ -656,7 +659,7 @@ def test_resource_warning_can_be_recorded_as_key_moment(session_manager):
         what_changed="Learned to monitor resources during session",
     )
 
-    manager.record_key_moment(context.session_id, warning_moment)
+    manager.append_key_moment_input(context.session_id, warning_moment)
 
     active_session = manager.get_active_session(context.session_id)
     assert active_session is not None
@@ -687,7 +690,7 @@ def test_session_not_found_errors(session_manager):
     )
 
     with pytest.raises(SessionNotFoundError):
-        manager.record_key_moment(fake_session_id, moment)
+        manager.append_key_moment_input(fake_session_id, moment)
 
     with pytest.raises(SessionNotFoundError):
         manager.finish_session(fake_session_id)
@@ -710,7 +713,7 @@ def test_multiple_key_moments_in_session(session_manager):
     ]
 
     for moment in moments:
-        manager.record_key_moment(context.session_id, moment)
+        manager.append_key_moment_input(context.session_id, moment)
 
     result = manager.finish_session(context.session_id)
 
@@ -735,7 +738,7 @@ def test_eigenstate_captures_session_state(session_manager):
         values_touched=["honesty", "competence"],
         principles_questioned=["always_be_certain"],
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     result = manager.finish_session(
         session_id=context.session_id,
@@ -766,7 +769,7 @@ def test_finish_session_storage_failure_allows_retry(session_manager, temp_stora
         depth=EmotionalDepth.SURFACE,
         why_it_matters="Testing persistence order",
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     # Mock create_experience to fail
     def failing_create_experience(record):
@@ -813,7 +816,7 @@ def test_session_experience_has_identity_snapshot_provenance(session_manager, te
         depth=EmotionalDepth.SURFACE,
         why_it_matters="Testing identity snapshot linkage",
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
     # Finish session
     result = manager.finish_session(context.session_id)
@@ -852,7 +855,7 @@ def test_finish_session_updates_recent_narrative(session_manager, temp_storage):
         why_it_matters="Demonstrated technical competence",
         values_touched=["competence", "growth"],
     )
-    manager.record_key_moment(context1.session_id, moment)
+    manager.append_key_moment_input(context1.session_id, moment)
 
     # Get narrative before finish
     narrative_before = temp_storage.load_narrative(agent_id)
@@ -876,7 +879,7 @@ def test_finish_session_updates_recent_narrative(session_manager, temp_storage):
     assert recent_content_before in recent_content_after
     assert "Successfully delivered complex work" in recent_content_after
     assert "competence" in recent_content_after or "growth" in recent_content_after
-    assert "positive" in recent_content_after  # Overall tone was 0.6
+    assert "positive" in recent_content_after  # Overall tone was 0.6 (English output)
 
     # Start second session - should load updated narrative
     context2 = manager.start_session(agent_id)
@@ -892,7 +895,7 @@ def test_finish_session_appends_to_recent_narrative_without_erasing_existing_con
     context = manager.start_session(agent_id)
     existing_context = "Recent narrative"
 
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="Preserve narrative context",
@@ -946,7 +949,7 @@ def test_finish_session_retry_skips_duplicate_narrative_after_post_narrative_fai
     """If narrative persisted then a simulated failure fires, retry must not append twice."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="narrative idempotency",
@@ -985,7 +988,7 @@ def test_finish_session_retries_narrative_updated_at_conflict(session_manager, t
     """A transient optimistic-lock conflict should be retried before failing the finish."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="optimistic lock retry",
@@ -1025,7 +1028,7 @@ def test_finish_session_missing_narrative_rolls_back_for_retry(session_manager, 
     """If narrative disappears after partial persistence, the live session stays retryable."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="missing narrative",
@@ -1052,7 +1055,7 @@ def test_finish_session_retry_after_eigenstate_failure_does_not_duplicate_experi
 ):
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)
-    manager.record_key_moment(
+    manager.append_key_moment_input(
         context.session_id,
         KeyMomentInput(
             what_happened="partial persist",
@@ -1098,17 +1101,21 @@ def test_finish_session_rejects_conflicting_deterministic_experience_id(
         depth=EmotionalDepth.SURFACE,
         why_it_matters="stored experience identity must match",
     )
-    manager.record_key_moment(context.session_id, moment)
+    manager.append_key_moment_input(context.session_id, moment)
 
+    km_conflict = moment.to_key_moment()
     conflicting_record = ExperienceRecord(
         experience=SessionExperience(
             id=deterministic_session_experience_id(context.session_id),
             session_id=uuid4(),
             timestamp=frozen_clock.now(),
-            key_moments=[moment.to_key_moment()],
+            key_moment_ids=[km_conflict.id],
+            avg_emotional_intensity=km_conflict.how_i_felt.emotional_intensity,
+            has_profound_moment=km_conflict.how_i_felt.depth == EmotionalDepth.PROFOUND,
         )
     )
     temp_storage.create_experience(conflicting_record)
+    temp_storage.store_key_moments(conflicting_record.experience.session_id, [km_conflict])
 
     with pytest.raises(ValueError, match="belongs to another session"):
         manager.finish_session(context.session_id)
@@ -1175,3 +1182,1257 @@ def test_start_session_ignores_eigenstate_from_different_identity(tmp_path):
     mgr = SessionManager(store)
     ctx = mgr.start_session(id_b)
     assert ctx.last_eigenstate is None
+
+
+# NOTE: Domain invariant tests (test_unexamined_invariant_*) moved to test_domain_invariants.py
+# per AGENTS.md convention for cross-cutting invariants (§26.5).
+
+
+# Key moment separation tests
+
+
+def test_key_moment_separation_distinct_from_events(session_manager):
+    """Key moments are a separate dimension from events - not derived from events."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    # Record event with similar content
+    manager.record_event(
+        context.session_id,
+        SessionEvent(
+            session_id=context.session_id,
+            event_type="task",
+            description="Task completed successfully",
+        ),
+    )
+
+    # Record key moment with similar content
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Task completed successfully",
+            emotional_valence=0.7,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.MEANINGFUL,
+            why_it_matters="First successful task",
+        ),
+    )
+
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    # Both structures coexist independently
+    assert len(active.events) == 1
+    assert len(active.key_moments) == 1
+    # But they're distinct objects
+    assert active.events[0].description == "Task completed successfully"
+    assert active.key_moments[0].what_happened == "Task completed successfully"
+
+
+# Immutability tests
+
+
+def test_key_moment_immutability_after_append(session_manager):
+    """Once appended, key moments cannot be modified via external references."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    original_what = "Original content"
+    moment_input = KeyMomentInput(
+        what_happened=original_what,
+        emotional_valence=0.5,
+        emotional_intensity=0.5,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Immutability test",
+    )
+
+    manager.append_key_moment_input(context.session_id, moment_input)
+
+    # Mutate the input after appending
+    moment_input.what_happened = "Modified content"
+
+    # Stored moment should be unchanged
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.key_moments[0].what_happened == original_what
+
+
+# Journal lifecycle tests
+
+
+def test_journal_lifecycle_events_survive_session_completion(session_manager, temp_storage):
+    """Events recorded during session are preserved through finish_session."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    # Record events
+    event_descriptions = ["Event A", "Event B", "Event C"]
+    for desc in event_descriptions:
+        manager.record_event(
+            context.session_id,
+            SessionEvent(
+                session_id=context.session_id,
+                event_type="journal_entry",
+                description=desc,
+            ),
+        )
+
+    # Add key moment (required for finish)
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Key event",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="Required for finish",
+        ),
+    )
+
+    result = manager.finish_session(context.session_id)
+
+    # Events should be preserved in result
+    assert len(result.events) == 3
+    assert [e.description for e in result.events] == event_descriptions
+
+
+def test_journal_lifecycle_event_timestamps_are_immutable(
+    temp_storage, identity_fixture, narrative_fixture
+):
+    """Event timestamps must not change when recorded at different clock times."""
+    temp_storage.save_identity(identity_fixture)
+    temp_storage.save_narrative(narrative_fixture)
+
+    clock_t0 = FrozenClock(datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC))
+    manager = SessionManager(temp_storage, clock=clock_t0)
+    context = manager.start_session(identity_fixture.id)
+
+    # Record event at T0
+    event_t0 = SessionEvent(
+        session_id=context.session_id,
+        event_type="test",
+        description="Event at T0",
+        timestamp=clock_t0.now(),
+    )
+    manager.record_event(context.session_id, event_t0)
+
+    # Record another event - timestamp from event should be preserved
+    active = manager.get_active_session(context.session_id)
+    assert active is not None
+    assert active.events[0].timestamp == datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
+
+
+# Orphan recovery tests
+
+
+def test_orphan_recovery_finish_idempotent_after_experience_persisted(
+    session_manager, temp_storage
+):
+    """If experience persisted but eigenstate failed, retry must skip experience creation."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="orphan recovery test",
+            emotional_valence=0.3,
+            emotional_intensity=0.4,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="idempotency",
+        ),
+    )
+
+    # First finish attempt fails after experience creation
+    real_save_eigenstate = temp_storage.save_eigenstate
+    first_call = {"done": False}
+
+    def fail_eigenstate_once(es: Eigenstate) -> Eigenstate:
+        if not first_call["done"]:
+            first_call["done"] = True
+            # Experience is already created at this point
+            raise RuntimeError("Simulated eigenstate failure")
+        return real_save_eigenstate(es)
+
+    with (
+        patch.object(temp_storage, "save_eigenstate", side_effect=fail_eigenstate_once),
+        pytest.raises(RuntimeError, match="Simulated eigenstate failure"),
+    ):
+        manager.finish_session(context.session_id)
+
+    # Session should still be active for retry
+    assert manager.get_active_session(context.session_id) is not None
+
+    # Retry should succeed without duplicating experience
+    result = manager.finish_session(context.session_id)
+    assert result.eigenstate is not None
+
+    # Only one experience should exist
+    from atman.core.ports.state_store import SessionExperienceQuery
+
+    rows = temp_storage.search_experiences(SessionExperienceQuery(context.session_id), limit=10)
+    assert len(rows) == 1
+
+
+def test_orphan_recovery_deterministic_id_prevents_cross_session_pollution(
+    temp_storage, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Deterministic experience ID must prevent one session from hijacking another's record."""
+    temp_storage.save_identity(identity_fixture)
+    temp_storage.save_narrative(narrative_fixture)
+    manager = SessionManager(temp_storage, clock=frozen_clock)
+
+    # Start first session and create orphaned experience record
+    context1 = manager.start_session(identity_fixture.id)
+    moment1 = KeyMomentInput(
+        what_happened="Session 1 event",
+        emotional_valence=0.3,
+        emotional_intensity=0.4,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Session 1",
+    )
+    km1 = moment1.to_key_moment()
+
+    # Manually create orphaned experience for session 1
+    orphaned_exp_id = deterministic_session_experience_id(context1.session_id)
+    orphan_record = ExperienceRecord(
+        experience=SessionExperience(
+            id=orphaned_exp_id,
+            session_id=context1.session_id,
+            timestamp=frozen_clock.now(),
+            key_moment_ids=[km1.id],
+            avg_emotional_intensity=0.4,
+            has_profound_moment=False,
+        )
+    )
+    temp_storage.create_experience(orphan_record)
+
+    # Start second session
+    context2 = manager.start_session(identity_fixture.id)
+    manager.append_key_moment_input(
+        context2.session_id,
+        KeyMomentInput(
+            what_happened="Session 2 event",
+            emotional_valence=0.5,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.SURFACE,
+            why_it_matters="Session 2",
+        ),
+    )
+
+    # Session 2 finish should succeed with its own unique ID
+    manager.finish_session(context2.session_id)
+    exp_id_2 = deterministic_session_experience_id(context2.session_id)
+
+    # IDs must be different
+    assert exp_id_2 != orphaned_exp_id
+
+    # Both experiences should exist independently
+    from atman.core.ports.state_store import SessionExperienceQuery
+
+    exp1_records = temp_storage.search_experiences(
+        SessionExperienceQuery(context1.session_id), limit=10
+    )
+    exp2_records = temp_storage.search_experiences(
+        SessionExperienceQuery(context2.session_id), limit=10
+    )
+
+    assert len(exp1_records) == 1
+    assert len(exp2_records) == 1
+    assert exp1_records[0].experience.session_id == context1.session_id
+    assert exp2_records[0].experience.session_id == context2.session_id
+
+
+def test_journal_created_on_key_moment(tmp_path, identity_fixture, narrative_fixture, frozen_clock):
+    """Test that journal is created when key moment is appended."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "journal_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    moment = KeyMomentInput(
+        what_happened="Test event",
+        emotional_valence=0.5,
+        emotional_intensity=0.7,
+        depth=EmotionalDepth.MEANINGFUL,
+        why_it_matters="Testing journal",
+    )
+    manager.append_key_moment_input(context.session_id, moment)
+
+    # Check journal exists
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    # Parse journal and verify entry
+    with journal_path.open("r") as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "key_moment"
+        assert entry["what_happened"] == "Test event"
+
+
+def test_journal_records_facts_read(tmp_path, identity_fixture, narrative_fixture, frozen_clock):
+    """Test that journal records facts read during session."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "journal_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    fact_ids = [uuid4(), uuid4()]
+    manager._note_facts_read(context.session_id, fact_ids)
+
+    # Check journal exists
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    # Parse journal and verify entry
+    with journal_path.open("r") as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "facts_read"
+        assert len(entry["fact_ids"]) == 2
+
+
+def test_journal_deleted_on_finish(tmp_path, identity_fixture, narrative_fixture, frozen_clock):
+    """Test that journal is deleted after successful finish_session."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "journal_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    moment = KeyMomentInput(
+        what_happened="Test event",
+        emotional_valence=0.5,
+        emotional_intensity=0.7,
+        depth=EmotionalDepth.MEANINGFUL,
+        why_it_matters="Testing journal deletion",
+    )
+    manager.append_key_moment_input(context.session_id, moment)
+
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    # Finish session
+    manager.finish_session(context.session_id)
+
+    # Journal should be deleted
+    assert not journal_path.exists()
+
+
+def test_orphan_recovery_on_start_session(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphaned journals are recovered on start_session."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "orphan_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Create an orphaned journal manually
+    orphan_session_id = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    # Write key moments to orphan journal
+    moment_id = uuid4()
+    with orphan_journal.open("w") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Orphaned moment",
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    # Store the key moment in storage so recovery can find it
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    key_moment = KeyMoment(
+        id=moment_id,
+        what_happened="Orphaned moment",
+        how_i_felt=FeltSense(
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+        ),
+        why_it_matters="Orphaned",
+        when=frozen_clock.now(),
+        values_touched=[],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+    store.store_key_moments(orphan_session_id, [key_moment])
+
+    assert orphan_journal.exists()
+
+    # Start a new session - should trigger orphan recovery
+    manager.start_session(identity_fixture.id)
+
+    # Orphan journal should be deleted
+    assert not orphan_journal.exists()
+
+    # SessionExperience should be created
+    experience_id = deterministic_session_experience_id(orphan_session_id)
+    recovered_exp = store.get_experience(experience_id)
+    assert recovered_exp is not None
+    assert recovered_exp.experience.session_id == orphan_session_id
+    assert recovered_exp.experience.close_reason == "interrupted"
+    assert recovered_exp.experience.incomplete_coloring is True
+    assert len(recovered_exp.experience.key_moment_ids) == 1
+
+
+def test_orphan_recovery_preserves_journal_fact_refs(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Recovered interrupted sessions keep the facts that shaped the orphaned work."""
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "orphan_fact_refs_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    orphan_session_id = uuid4()
+    moment_id = uuid4()
+    fact_from_moment = uuid4()
+    fact_from_read = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    key_moment = KeyMoment(
+        id=moment_id,
+        what_happened="Interrupted work with factual context",
+        how_i_felt=FeltSense(
+            emotional_valence=0.2,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.MEANINGFUL,
+        ),
+        why_it_matters="Facts shaped this interrupted stretch of work",
+        when=frozen_clock.now(),
+        values_touched=["truthfulness"],
+        principles_questioned=[],
+        fact_refs=[fact_from_moment],
+    )
+
+    with orphan_journal.open("w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": key_moment.what_happened,
+                "moment": key_moment.model_dump(mode="json"),
+                "fact_refs": [str(fid) for fid in key_moment.fact_refs],
+            },
+            f,
+        )
+        f.write("\n")
+        json.dump(
+            {
+                "type": "facts_read",
+                "timestamp": frozen_clock.now().isoformat(),
+                "fact_ids": [str(fact_from_read), str(fact_from_moment)],
+            },
+            f,
+        )
+        f.write("\n")
+
+    manager.start_session(identity_fixture.id)
+
+    recovered = store.get_experience(deterministic_session_experience_id(orphan_session_id))
+    assert recovered is not None
+    assert recovered.experience.session_id == orphan_session_id
+    assert recovered.experience.key_moment_ids == [moment_id]
+    assert set(recovered.experience.fact_refs) == {fact_from_moment, fact_from_read}
+    assert recovered.experience.close_reason == "interrupted"
+    assert not orphan_journal.exists()
+
+
+def test_orphan_recovery_keeps_existing_experience_journal_when_artifacts_incomplete(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Existing experience alone is not enough to discard the recovery journal."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "orphan_skip_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Create orphaned journal
+    orphan_session_id = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    moment_id = uuid4()
+    with orphan_journal.open("w") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Already saved",
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    # Pre-create the experience in storage
+    experience_id = deterministic_session_experience_id(orphan_session_id)
+    experience = SessionExperience(
+        id=experience_id,
+        session_id=orphan_session_id,
+        timestamp=frozen_clock.now(),
+        key_moment_ids=[moment_id],
+        recorded_by="test",
+        importance=0.5,
+        salience=0.5,
+    )
+    store.create_experience(ExperienceRecord(experience=experience))
+
+    # Start new session - recovery cannot finish artifacts without the key moment payload.
+    manager.start_session(identity_fixture.id)
+
+    # Journal must remain as the only recovery source.
+    assert orphan_journal.exists()
+
+    # Experience should still exist (not duplicated)
+    recovered_exp = store.get_experience(experience_id)
+    assert recovered_exp is not None
+    assert recovered_exp.experience.recorded_by == "test"  # Original, not recovered
+    assert store.load_latest_eigenstate(session_id=orphan_session_id) is None
+
+
+def test_orphan_recovery_completes_existing_experience_after_crash(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Crash after experience persistence must still recover eigenstate and narrative."""
+    store = FileStateStore(workspace=tmp_path / "post_experience_crash_store")
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "post_experience_crash_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Experience persisted before crash",
+            emotional_valence=0.5,
+            emotional_intensity=0.7,
+            depth=EmotionalDepth.MEANINGFUL,
+            why_it_matters="Recovery must complete downstream state",
+            values_touched=["continuity"],
+        ),
+    )
+
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    with (
+        patch.object(store, "save_eigenstate", side_effect=RuntimeError("eigenstate crash")),
+        pytest.raises(RuntimeError, match="eigenstate crash"),
+    ):
+        manager.finish_session(
+            context.session_id,
+            overall_emotional_tone=0.5,
+            key_insight="Recovered insight",
+        )
+
+    experience_id = deterministic_session_experience_id(context.session_id)
+    assert store.get_experience(experience_id) is not None
+    assert store.load_latest_eigenstate(session_id=context.session_id) is None
+
+    # Simulate process death: the OS would release the advisory lock while the journal remains.
+    lock_file = manager._journal_locks.pop(context.session_id)
+    manager._release_journal_file(lock_file, unlink=False)
+
+    recovery_manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    next_context = recovery_manager.start_session(identity_fixture.id)
+
+    assert not journal_path.exists()
+    recovered_eigenstate = store.load_latest_eigenstate(
+        session_id=context.session_id,
+        identity_id=identity_fixture.id,
+    )
+    assert recovered_eigenstate is not None
+    assert next_context.last_eigenstate is not None
+    assert next_context.last_eigenstate.session_id == context.session_id
+
+    recovered_narrative = store.load_narrative(identity_fixture.id)
+    assert recovered_narrative is not None
+    assert "Experienced 1 significant moment with an overall neutral emotional tone." in (
+        recovered_narrative.recent_layer.content
+    )
+    assert str(context.session_id) in recovered_narrative.recent_layer.content
+
+
+def test_orphan_recovery_deletes_existing_journal_when_finish_artifacts_complete(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """A fully completed session journal is stale and safe to delete."""
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+    workspace = tmp_path / "complete_existing_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    session_id = uuid4()
+    moment = KeyMoment(
+        id=uuid4(),
+        what_happened="Completed before recovery",
+        how_i_felt=FeltSense(
+            emotional_valence=0.4,
+            emotional_intensity=0.6,
+            depth=EmotionalDepth.MEANINGFUL,
+        ),
+        why_it_matters="This session already has all finish artifacts",
+        when=frozen_clock.now(),
+        values_touched=["continuity"],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+    store.create_key_moment(moment)
+    store.create_experience(
+        ExperienceRecord(
+            experience=SessionExperience(
+                id=deterministic_session_experience_id(session_id),
+                session_id=session_id,
+                timestamp=frozen_clock.now(),
+                key_moment_ids=[moment.id],
+                recorded_by="session_manager",
+            )
+        )
+    )
+    result = SessionResult(
+        session_id=session_id,
+        started_at=frozen_clock.now(),
+        finished_at=frozen_clock.now(),
+        key_moments=[moment],
+        identity_id=identity_fixture.id,
+        is_finished=True,
+    )
+    result.eigenstate = manager._create_eigenstate(result)
+    store.save_eigenstate(result.eigenstate)
+    manager._save_session_narrative_update(result)
+
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    journal_path = sessions_dir / f"active_{session_id}.jsonl"
+    with journal_path.open("w", encoding="utf-8") as f:
+        f.write("\n")
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment.id),
+                "moment": moment.model_dump(mode="json"),
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    manager.start_session(identity_fixture.id)
+
+    assert not journal_path.exists()
+    assert store.get_experience(deterministic_session_experience_id(session_id)) is not None
+
+
+def test_recovery_key_moments_uses_existing_after_duplicate_restore(
+    identity_fixture, narrative_fixture
+):
+    """Recovery tolerates another path storing the journaled KeyMoment first."""
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+    manager = SessionManager(store)
+    moment = KeyMoment(
+        id=uuid4(),
+        what_happened="Stored concurrently",
+        how_i_felt=FeltSense(
+            emotional_valence=0.1,
+            emotional_intensity=0.5,
+            depth=EmotionalDepth.SURFACE,
+        ),
+        why_it_matters="Duplicate recovery should stay idempotent",
+        values_touched=[],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+    get_calls = {"count": 0}
+
+    def get_after_duplicate(moment_id):  # type: ignore[no-untyped-def]
+        assert moment_id == moment.id
+        get_calls["count"] += 1
+        return None if get_calls["count"] == 1 else moment
+
+    with (
+        patch.object(store, "get_key_moment", side_effect=get_after_duplicate),
+        patch.object(store, "create_key_moment", side_effect=ValueError("duplicate")),
+    ):
+        loaded = manager._load_recovery_key_moments(
+            uuid4(),
+            [moment.id],
+            {moment.id: moment},
+        )
+
+    assert loaded == [moment]
+
+
+def test_orphan_recovery_handles_malformed_journal(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphan recovery handles malformed JSON lines gracefully."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "malformed_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    orphan_session_id = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    # Write mix of valid and invalid lines
+    with orphan_journal.open("w") as f:
+        f.write("invalid json\n")
+        f.write("{}\n")  # Missing required fields
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(uuid4()),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Valid moment",
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    # Should not raise - just skip bad lines
+    manager.start_session(identity_fixture.id)
+
+    # The valid-looking line has no recoverable KeyMoment payload, so keep the
+    # journal instead of deleting the only remaining recovery source.
+    assert orphan_journal.exists()
+
+
+def test_journal_not_created_without_workspace(identity_fixture, narrative_fixture, frozen_clock):
+    """Test that journal is not created when workspace is not configured."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    # No workspace parameter
+    manager = SessionManager(store, clock=frozen_clock)
+    context = manager.start_session(identity_fixture.id)
+
+    moment = KeyMomentInput(
+        what_happened="Test event",
+        emotional_valence=0.5,
+        emotional_intensity=0.7,
+        depth=EmotionalDepth.MEANINGFUL,
+        why_it_matters="No journal",
+    )
+    manager.append_key_moment_input(context.session_id, moment)
+
+    # Should not raise - journal operations should be no-op
+    manager.finish_session(context.session_id)
+
+
+def test_orphan_recovery_skips_currently_active_sessions(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphan recovery skips journals for currently active sessions."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "active_skip_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Start session A
+    context_a = manager.start_session(identity_fixture.id)
+
+    # Record key moment for session A
+    moment = KeyMomentInput(
+        what_happened="Active session moment",
+        emotional_valence=0.5,
+        emotional_intensity=0.7,
+        depth=EmotionalDepth.MEANINGFUL,
+        why_it_matters="Testing active skip",
+    )
+    manager.append_key_moment_input(context_a.session_id, moment)
+
+    # Journal should exist for session A
+    journal_path_a = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context_a.session_id}.jsonl"
+    )
+    assert journal_path_a.exists()
+
+    # Start session B - recovery should skip session A's journal (it's active)
+    _ = manager.start_session(identity_fixture.id)
+
+    # Session A's journal should still exist (not treated as orphan)
+    assert journal_path_a.exists()
+
+    # SessionExperience should NOT exist yet for session A
+    experience_id_a = deterministic_session_experience_id(context_a.session_id)
+    recovered_exp = store.get_experience(experience_id_a)
+    assert recovered_exp is None
+
+    # Finish session A properly
+    manager.finish_session(context_a.session_id, close_reason="timeout_sleep")
+
+    # Now experience should exist with correct close_reason
+    final_exp = store.get_experience(experience_id_a)
+    assert final_exp is not None
+    assert final_exp.experience.close_reason == "timeout_sleep"  # Not "interrupted"
+    assert final_exp.experience.recorded_by == "session_manager"  # Not "session_manager_recovery"
+
+
+def test_orphan_recovery_skips_journals_locked_by_another_manager(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """A second process must not recover a session that is still live elsewhere."""
+    store = FileStateStore(workspace=tmp_path / "cross_manager_store")
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "cross_manager_workspace"
+    manager_a = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context_a = manager_a.start_session(identity_fixture.id)
+
+    manager_a.append_key_moment_input(
+        context_a.session_id,
+        KeyMomentInput(
+            what_happened="Still active in manager A",
+            emotional_valence=0.3,
+            emotional_intensity=0.7,
+            depth=EmotionalDepth.MEANINGFUL,
+            why_it_matters="Cross-process recovery must not steal live sessions",
+        ),
+    )
+
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context_a.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    manager_b = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    manager_b.start_session(identity_fixture.id)
+
+    experience_id_a = deterministic_session_experience_id(context_a.session_id)
+    assert store.get_experience(experience_id_a) is None
+    assert journal_path.exists()
+
+    manager_a.finish_session(context_a.session_id, close_reason="timeout_sleep")
+    final_exp = store.get_experience(experience_id_a)
+    assert final_exp is not None
+    assert final_exp.experience.close_reason == "timeout_sleep"
+    assert final_exp.experience.recorded_by == "session_manager"
+
+
+def test_append_key_moment_writes_journal_for_affect_detector(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that append_key_moment (used by AffectDetector) writes journal entries."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "affect_journal_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    # Create a KeyMoment directly (as AffectDetector would)
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    moment = KeyMoment(
+        what_happened="Affect-detected moment",
+        how_i_felt=FeltSense(
+            emotional_valence=0.6,
+            emotional_intensity=0.8,
+            depth=EmotionalDepth.MEANINGFUL,
+        ),
+        why_it_matters="Detected by affect system",
+        when=frozen_clock.now(),
+        values_touched=["curiosity"],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+
+    # Use append_key_moment (AffectDetector path)
+    manager.append_key_moment(context.session_id, moment)
+
+    # Check journal exists and has entry
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+
+    with journal_path.open("r") as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "key_moment"
+        assert entry["what_happened"] == "Affect-detected moment"
+        assert entry["moment"]["what_happened"] == "Affect-detected moment"
+
+
+def test_orphan_recovery_loads_key_moments_from_storage(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Test that orphan recovery loads KeyMoment objects from storage for better metadata."""
+    store = InMemoryStateStore()
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "recovery_metadata_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+
+    # Create orphaned journal
+    orphan_session_id = uuid4()
+    sessions_dir = workspace / str(identity_fixture.id) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    orphan_journal = sessions_dir / f"active_{orphan_session_id}.jsonl"
+
+    # Create a key moment with profound depth
+    from atman.core.models.experience import FeltSense, KeyMoment
+
+    moment_id = uuid4()
+    key_moment = KeyMoment(
+        id=moment_id,
+        what_happened="Profound moment",
+        how_i_felt=FeltSense(
+            emotional_valence=0.8,
+            emotional_intensity=0.9,
+            depth=EmotionalDepth.PROFOUND,
+        ),
+        why_it_matters="Deep insight",
+        when=frozen_clock.now(),
+        values_touched=["wisdom"],
+        principles_questioned=[],
+        fact_refs=[],
+    )
+
+    # Store the key moment in storage
+    store.store_key_moments(orphan_session_id, [key_moment])
+
+    # Write journal entry
+    with orphan_journal.open("w") as f:
+        json.dump(
+            {
+                "type": "key_moment",
+                "moment_id": str(moment_id),
+                "timestamp": frozen_clock.now().isoformat(),
+                "what_happened": "Profound moment",
+                "fact_refs": [],
+            },
+            f,
+        )
+        f.write("\n")
+
+    # Start new session - should trigger recovery with loaded metadata
+    manager.start_session(identity_fixture.id)
+
+    # Check recovered experience has better metadata
+    experience_id = deterministic_session_experience_id(orphan_session_id)
+    recovered_exp = store.get_experience(experience_id)
+    assert recovered_exp is not None
+    assert recovered_exp.experience.has_profound_moment is True  # Loaded from storage
+    assert recovered_exp.experience.avg_emotional_intensity == 0.9  # Loaded from storage
+
+
+def test_orphan_recovery_restores_journaled_key_moment_payload(
+    tmp_path, identity_fixture, narrative_fixture, frozen_clock
+):
+    """Orphan recovery must not create experiences pointing at missing KeyMoment rows."""
+    store = FileStateStore(workspace=tmp_path / "recovery_payload_store")
+    store.save_identity(identity_fixture)
+    store.save_narrative(narrative_fixture)
+
+    workspace = tmp_path / "recovery_payload_workspace"
+    manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    context = manager.start_session(identity_fixture.id)
+
+    moment = KeyMomentInput(
+        what_happened="Journaled but not finished",
+        emotional_valence=0.4,
+        emotional_intensity=0.8,
+        depth=EmotionalDepth.PROFOUND,
+        why_it_matters="This would be lost without payload recovery",
+        values_touched=["continuity"],
+        fact_refs=[uuid4()],
+    )
+    manager.append_key_moment_input(context.session_id, moment)
+
+    journal_path = (
+        workspace / str(identity_fixture.id) / "sessions" / f"active_{context.session_id}.jsonl"
+    )
+    assert journal_path.exists()
+    assert store.get_key_moments_for_session(context.session_id) == []
+
+    # Simulate process crash: OS releases the advisory lock while the journal remains.
+    lock_file = manager._journal_locks.pop(context.session_id)
+    manager._release_journal_file(lock_file, unlink=False)
+
+    recovery_manager = SessionManager(store, clock=frozen_clock, workspace=workspace)
+    recovery_manager.start_session(identity_fixture.id)
+
+    assert not journal_path.exists()
+    experience_id = deterministic_session_experience_id(context.session_id)
+    recovered_exp = store.get_experience(experience_id)
+    assert recovered_exp is not None
+    assert recovered_exp.experience.recorded_by == "session_manager_recovery"
+    assert recovered_exp.experience.close_reason == "interrupted"
+    assert len(recovered_exp.experience.key_moment_ids) == 1
+
+    restored_moment = store.get_key_moment(recovered_exp.experience.key_moment_ids[0])
+    assert restored_moment is not None
+    assert restored_moment.what_happened == "Journaled but not finished"
+    assert restored_moment.how_i_felt.depth == EmotionalDepth.PROFOUND
+
+
+# ============================================================================
+# E21.7 — Unexamined Facts Tests
+# ============================================================================
+
+
+def test_unexamined_facts_empty_when_no_facts_read(session_manager, temp_storage):
+    """E21.7: unexamined_fact_refs is empty when no facts were read."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Simple moment",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            why_it_matters="Just happened",
+            depth=EmotionalDepth.SURFACE,
+        ),
+    )
+
+    manager.finish_session(
+        context.session_id,
+        overall_emotional_tone=0.5,
+        key_insight="Simple session",
+    )
+
+    # Get experience from storage
+    exp_id = deterministic_session_experience_id(context.session_id)
+    exp_record = temp_storage.get_experience(exp_id)
+    assert exp_record is not None
+    assert exp_record.experience.unexamined_fact_refs == []
+
+
+def test_unexamined_facts_empty_when_all_facts_colored(session_manager, temp_storage):
+    """E21.7: unexamined_fact_refs is empty when all read facts appear in key moments."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    fact_id_1 = uuid4()
+    fact_id_2 = uuid4()
+
+    # Note facts were read
+    manager._note_facts_read(context.session_id, [fact_id_1, fact_id_2])
+
+    # Create key moment that references both facts
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Used both facts",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            why_it_matters="Integrated facts",
+            depth=EmotionalDepth.MEANINGFUL,
+            fact_refs=[fact_id_1, fact_id_2],
+        ),
+    )
+
+    manager.finish_session(
+        context.session_id,
+        overall_emotional_tone=0.5,
+        key_insight="All facts colored",
+    )
+
+    # Check unexamined is empty
+    exp_id = deterministic_session_experience_id(context.session_id)
+    exp_record = temp_storage.get_experience(exp_id)
+    assert exp_record is not None
+    assert exp_record.experience.unexamined_fact_refs == []
+
+
+def test_unexamined_facts_contains_only_uncolored_facts(session_manager, temp_storage):
+    """E21.7: unexamined_fact_refs contains only facts read but not in key moments."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    fact_id_colored = uuid4()
+    fact_id_unexamined_1 = uuid4()
+    fact_id_unexamined_2 = uuid4()
+
+    # Note all facts were read
+    manager._note_facts_read(
+        context.session_id, [fact_id_colored, fact_id_unexamined_1, fact_id_unexamined_2]
+    )
+
+    # Create key moment that only references one fact
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Used one fact",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            why_it_matters="Partial integration",
+            depth=EmotionalDepth.MEANINGFUL,
+            fact_refs=[fact_id_colored],
+        ),
+    )
+
+    manager.finish_session(
+        context.session_id,
+        overall_emotional_tone=0.5,
+        key_insight="Some facts unexamined",
+    )
+
+    # Check unexamined contains the two uncolored facts
+    exp_id = deterministic_session_experience_id(context.session_id)
+    exp_record = temp_storage.get_experience(exp_id)
+    assert exp_record is not None
+    assert set(exp_record.experience.unexamined_fact_refs) == {
+        fact_id_unexamined_1,
+        fact_id_unexamined_2,
+    }
+
+
+def test_unexamined_facts_excludes_facts_colored_across_multiple_moments(
+    session_manager, temp_storage
+):
+    """E21.7: Facts colored in ANY key moment are not unexamined."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    fact_id_1 = uuid4()
+    fact_id_2 = uuid4()
+    fact_id_3 = uuid4()
+    fact_id_unexamined = uuid4()
+
+    # Note all facts were read
+    manager._note_facts_read(
+        context.session_id, [fact_id_1, fact_id_2, fact_id_3, fact_id_unexamined]
+    )
+
+    # Create first key moment referencing fact_id_1 and fact_id_2
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="First moment",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            why_it_matters="Used facts 1 and 2",
+            depth=EmotionalDepth.MEANINGFUL,
+            fact_refs=[fact_id_1, fact_id_2],
+        ),
+    )
+
+    # Create second key moment referencing fact_id_3
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Second moment",
+            emotional_valence=0.3,
+            emotional_intensity=0.6,
+            why_it_matters="Used fact 3",
+            depth=EmotionalDepth.PROFOUND,
+            fact_refs=[fact_id_3],
+        ),
+    )
+
+    manager.finish_session(
+        context.session_id,
+        overall_emotional_tone=0.4,
+        key_insight="Multiple moments",
+    )
+
+    # Check unexamined contains only the uncolored fact
+    exp_id = deterministic_session_experience_id(context.session_id)
+    exp_record = temp_storage.get_experience(exp_id)
+    assert exp_record is not None
+    assert exp_record.experience.unexamined_fact_refs == [fact_id_unexamined]
+
+
+def test_unexamined_facts_aggregated_fact_refs_includes_all_facts(session_manager, temp_storage):
+    """E21.7: SessionExperience.fact_refs includes both colored and unexamined facts."""
+    manager, agent_id = session_manager
+    context = manager.start_session(agent_id)
+
+    fact_id_colored = uuid4()
+    fact_id_unexamined = uuid4()
+
+    # Note facts were read
+    manager._note_facts_read(context.session_id, [fact_id_colored, fact_id_unexamined])
+
+    # Create key moment that only colors one fact
+    manager.append_key_moment_input(
+        context.session_id,
+        KeyMomentInput(
+            what_happened="Partial coloring",
+            emotional_valence=0.5,
+            emotional_intensity=0.5,
+            why_it_matters="Used one fact",
+            depth=EmotionalDepth.SURFACE,
+            fact_refs=[fact_id_colored],
+        ),
+    )
+
+    manager.finish_session(
+        context.session_id,
+        overall_emotional_tone=0.5,
+        key_insight="Mixed facts",
+    )
+
+    # Check fact_refs contains both colored and unexamined
+    exp_id = deterministic_session_experience_id(context.session_id)
+    exp_record = temp_storage.get_experience(exp_id)
+    assert exp_record is not None
+    assert set(exp_record.experience.fact_refs) == {fact_id_colored, fact_id_unexamined}

@@ -11,6 +11,7 @@ import time
 
 from rich import box
 from rich.console import Console, Group
+from rich.markup import escape
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.rule import Rule
@@ -62,19 +63,19 @@ def demo_pace() -> None:
 
 
 def print_ok(message: str) -> None:
-    console.print(f"[term.ok]✓[/term.ok] {message}")
+    console.print(f"[term.ok]✓[/term.ok] {escape(message)}")
 
 
 def print_err(message: str) -> None:
-    console_err.print(f"[term.err]✗[/term.err] {message}")
+    console_err.print(f"[term.err]✗[/term.err] {escape(message)}")
 
 
 def print_warn(message: str) -> None:
-    console_err.print(f"[term.warn]![/term.warn] {message}")
+    console_err.print(f"[term.warn]![/term.warn] {escape(message)}")
 
 
 def print_info(message: str) -> None:
-    console.print(message)
+    console.print(message, markup=False, highlight=False)
 
 
 def print_banner(title: str, subtitle: str | None = None) -> None:
@@ -94,6 +95,29 @@ def print_section(title: str) -> None:
 
 def print_help_text(text: str) -> None:
     console.print(text, markup=False, highlight=False)
+
+
+def print_plain(message: str, *, end: str = "\n") -> None:
+    """
+    Print user- or LLM-provided text without interpreting Rich markup.
+
+    Use for arbitrary reply bodies so ``[...]`` in model output is not treated as tags.
+    """
+
+    console.print(message, markup=False, highlight=False, end=end)
+
+
+def print_prompt(prompt: str) -> None:
+    """
+    Print an input prompt without newline, with flush for immediate display.
+
+    Used for interactive input prompts like "You: " or "Menu> ".
+    Rich Console doesn't expose flush parameter directly, so we use
+    end="" and rely on console.file.flush() for immediate visibility.
+    """
+    console.print(prompt, markup=False, highlight=False, end="")
+    if hasattr(console.file, "flush"):
+        console.file.flush()
 
 
 def _indent_width(prefix: str) -> int:
@@ -139,33 +163,14 @@ def print_experience_record(record: ExperienceRecord, prefix: str = "") -> None:
 
     parts: list[Table | Panel] = [main]
 
-    for i, moment in enumerate(exp.key_moments, 1):
-        felt = (
-            f"valence={moment.how_i_felt.emotional_valence:.2f}, "
-            f"intensity={moment.how_i_felt.emotional_intensity:.2f}, "
-            f"depth={moment.how_i_felt.depth.value}"
-        )
-        lines = [
-            moment.what_happened,
-            "",
-            f"[term.dim]When[/term.dim] {moment.when.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"[term.dim]Felt[/term.dim] {felt}",
-            f"[term.dim]Why it matters[/term.dim] {moment.why_it_matters}",
-        ]
-        if moment.values_touched:
-            lines.append(f"[term.dim]Values[/term.dim] {', '.join(moment.values_touched)}")
-        if moment.principles_confirmed:
-            lines.append(f"[term.dim]Confirmed[/term.dim] {', '.join(moment.principles_confirmed)}")
-        if moment.principles_questioned:
-            lines.append(
-                f"[term.dim]Questioned[/term.dim] {', '.join(moment.principles_questioned)}"
-            )
-        if moment.what_changed:
-            lines.append(f"[term.dim]Changed[/term.dim] {moment.what_changed}")
+    # Key moments are now stored separately by ID
+    # Show count and IDs, not full details
+    if exp.key_moment_ids:
+        moment_lines = [f"• {mid}" for mid in exp.key_moment_ids]
         parts.append(
             Panel(
-                "\n".join(lines),
-                title=f"[term.title]Key moment {i}[/term.title]",
+                "\n".join(moment_lines),
+                title=f"[term.title]Key moments ({len(exp.key_moment_ids)})[/term.title]",
                 border_style="dim",
                 padding=(1, 2),
             )

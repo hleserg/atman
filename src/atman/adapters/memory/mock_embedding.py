@@ -2,12 +2,13 @@
 MockEmbeddingAdapter - deterministic hash-based embedding for testing.
 
 Generates reproducible embeddings without external dependencies.
-Uses 2560-dimensional vectors to match qwen3-embedding:4b dimensions.
+Uses 1024-dimensional vectors to match bge-m3 dimensions.
 """
 
 import hashlib
 import math
-from typing import override
+
+from typing_extensions import override
 
 from atman.core.ports.embedding import EmbeddingPort
 
@@ -17,10 +18,10 @@ class MockEmbeddingAdapter(EmbeddingPort):
     Mock embedding adapter for testing.
 
     Generates deterministic embeddings based on text hashing.
-    Uses 2560-dimensional vectors to match qwen3-embedding:4b dimensions.
+    Uses 1024-dimensional vectors to match bge-m3 dimensions.
     """
 
-    _DIMENSION = 2560
+    _DIMENSION = 1024
 
     @override
     def embed(self, text: str) -> list[float]:
@@ -59,7 +60,7 @@ class MockEmbeddingAdapter(EmbeddingPort):
     @override
     def model_name(self) -> str:
         """Return model identifier."""
-        return "mock-embedding:768d"
+        return "mock-embedding:1024d"
 
     @override
     def similarity(self, vec1: list[float], vec2: list[float]) -> float:

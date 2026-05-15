@@ -214,7 +214,7 @@ def test_full_lifecycle_invariants():
             recorded_at=base_time + timedelta(minutes=5),
         )
 
-        session_manager.record_key_moment(context.session_id, moment1)
+        session_manager.append_key_moment_input(context.session_id, moment1)
 
         moment2 = KeyMomentInput(
             what_happened="Helped a colleague",
@@ -226,7 +226,7 @@ def test_full_lifecycle_invariants():
             recorded_at=base_time + timedelta(minutes=10),
         )
 
-        session_manager.record_key_moment(context.session_id, moment2)
+        session_manager.append_key_moment_input(context.session_id, moment2)
 
         # Finish session - use a new clock for finish time
         finish_clock = FrozenClock(base_time + timedelta(minutes=20))
@@ -249,7 +249,7 @@ def test_full_lifecycle_invariants():
 
         stored_experience_before = store.get_experience(experience_id)
         assert stored_experience_before is not None
-        key_moments_count_before = len(stored_experience_before.experience.key_moments)
+        key_moments_count_before = len(stored_experience_before.experience.key_moment_ids)
 
         # Try to finish session again - should not duplicate
         with contextlib.suppress(Exception):
@@ -257,7 +257,7 @@ def test_full_lifecycle_invariants():
 
         stored_experience_after = store.get_experience(experience_id)
         assert stored_experience_after is not None
-        assert len(stored_experience_after.experience.key_moments) == key_moments_count_before
+        assert len(stored_experience_after.experience.key_moment_ids) == key_moments_count_before
 
         # --- INVARIANT 4: identity_snapshot_id propagates correctly ---
         assert stored_experience_after.experience.identity_snapshot_id == initial_snapshot_id
@@ -380,7 +380,7 @@ def test_immutability_enforcement():
             values_touched=["test"],
         )
 
-        session_manager.record_key_moment(context.session_id, moment)
+        session_manager.append_key_moment_input(context.session_id, moment)
 
         session_manager.finish_session(
             context.session_id,
@@ -398,11 +398,16 @@ def test_immutability_enforcement():
 
         # Verify we cannot modify the core experience data through the store
         # (the experience itself is immutable in Pydantic, but verify storage contract)
-        assert len(original.experience.key_moments) == 1
-        original_moment_text = original.experience.key_moments[0].what_happened
+        assert len(original.experience.key_moment_ids) == 1
+        original_moment_id = original.experience.key_moment_ids[0]
+        original_moment = store.get_key_moment(original_moment_id)
+        assert original_moment is not None
+        original_moment_text = original_moment.what_happened
 
         # Try to retrieve again - should be unchanged
         retrieved_again = store.get_experience(experience_id)
         assert retrieved_again is not None
-        assert len(retrieved_again.experience.key_moments) == 1
-        assert retrieved_again.experience.key_moments[0].what_happened == original_moment_text
+        assert len(retrieved_again.experience.key_moment_ids) == 1
+        retrieved_moment = store.get_key_moment(retrieved_again.experience.key_moment_ids[0])
+        assert retrieved_moment is not None
+        assert retrieved_moment.what_happened == original_moment_text

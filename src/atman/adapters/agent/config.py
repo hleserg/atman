@@ -7,6 +7,8 @@ and LLM model settings.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -32,9 +34,14 @@ class ModelConfig(BaseModel):
         description="Sampling temperature for model generation",
     )
     max_tokens: int = Field(
-        default=2000,
+        default=8192,
         gt=0,
-        description="Maximum tokens for model response",
+        description="Maximum output tokens for model response (maps to Ollama num_predict / OpenAI max_tokens)",
+    )
+    context_limit: int = Field(
+        default=262144,
+        gt=0,
+        description="Total context window size — input + output (maps to Ollama num_ctx). Set to match the deployed model's actual limit.",
     )
 
 
@@ -75,5 +82,41 @@ class AgentConfig(BaseModel):
         default=True,
         description="Enable record_key_moment tool",
     )
+    context_tail_messages: int = Field(
+        default=10,
+        gt=0,
+        description="Number of recent messages to retain in context window",
+    )
+    session_timeout_minutes: int = Field(
+        default=7,
+        gt=0,
+        description="Session timeout in minutes before automatic termination",
+    )
+    enable_free_time: bool = Field(
+        default=True,
+        description="Enable free time processing between sessions",
+    )
+    show_agent_monologue: bool = Field(
+        default=False,
+        description="Display agent internal reasoning and thought process",
+    )
 
     model: ModelConfig = Field(default_factory=ModelConfig)
+
+    thinking: bool = Field(
+        default=False,
+        description=(
+            "Enable thinking/reasoning mode for the LLM. "
+            "Disabled by default: qwen3 with thinking=True and tool calling "
+            "produces broken tool args and returns tool results as JSON text."
+        ),
+    )
+    memory_injection_mode: Literal["system_prompt", "assistant_message", "user_message"] = Field(
+        default="assistant_message",
+        description=(
+            "Where to inject recalled memory context into the agent. "
+            "'assistant_message': as agent's own prior output (recommended — feels like recall). "
+            "'system_prompt': appended to instructions (requires access to system prompt). "
+            "'user_message': as a user-side turn (fallback for restricted host systems)."
+        ),
+    )

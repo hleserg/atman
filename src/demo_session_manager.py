@@ -171,7 +171,7 @@ def main() -> None:
         "not guessing them later",
     )
 
-    session_manager.record_key_moment(context.session_id, moment1)
+    session_manager.append_key_moment_input(context.session_id, moment1)
     term.print_ok("Key moment 1 recorded")
     term.print_info(f"  What: {moment1.what_happened[:60]}...")
     term.print_info(
@@ -194,7 +194,7 @@ def main() -> None:
         what_changed="Increased confidence in my ability to handle architectural complexity",
     )
 
-    session_manager.record_key_moment(context.session_id, moment2)
+    session_manager.append_key_moment_input(context.session_id, moment2)
     term.print_ok("Key moment 2 recorded")
     term.print_info(f"  What: {moment2.what_happened[:60]}...")
     term.print_info(
@@ -221,7 +221,7 @@ def main() -> None:
     term.print_ok("Session finished successfully")
     term.print_info(f"  Duration: {(result.finished_at - result.started_at).total_seconds():.1f}s")
     term.print_info(f"  Events recorded: {len(result.events)}")
-    term.print_info(f"  Key moments: {len(result.key_moments)}")
+    term.print_info(f"  Key moment IDs: {len(result.key_moments)}")
     term.print_info(f"  Overall tone: {result.overall_emotional_tone:+.1f}")
     term.print_info(f"  Key insight: {result.key_insight[:80]}...")
     term.demo_pace()
@@ -249,7 +249,7 @@ def main() -> None:
         term.print_info(f"  Experience ID: {exp.id}")
         term.print_info(f"  Session ID: {exp.session_id}")
         term.print_info(f"  Recorded by: {exp.recorded_by}")
-        term.print_info(f"  Key moments: {len(exp.key_moments)}")
+        term.print_info(f"  Key moment IDs: {len(exp.key_moment_ids)}")
         term.print_info(f"  Incomplete coloring: {exp.incomplete_coloring}")
         term.print_info(f"  Importance: {exp.importance:.1f}")
         term.print_info(f"  Salience: {exp.salience:.1f}")

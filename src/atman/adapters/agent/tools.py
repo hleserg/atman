@@ -11,14 +11,11 @@ All tools receive RunContext[AtmanDeps] as the first parameter,
 giving them access to services and session state.
 """
 
-from typing import Literal
-
 from pydantic_ai import RunContext
 
 from atman.adapters.agent.deps import AtmanDeps
-from atman.core.models import KeyMomentInput
+from atman.affect.models import AgentMemoryReport
 from atman.core.models.experience import EmotionalDepth
-
 
 # PLAYBOOK-START
 # id: error-returning-tool-callbacks
@@ -45,13 +42,33 @@ from atman.core.models.experience import EmotionalDepth
 # Also requires explicit input validation up-front, since you can't rely
 # on Pydantic's "raise on invalid" behavior.
 # PLAYBOOK-END
-def record_key_moment(
+_DEPTH_ALIASES: dict[str, str] = {
+    "significant": "meaningful",
+    "important": "meaningful",
+    "notable": "meaningful",
+    "moderate": "meaningful",
+    "identity": "profound",
+    "existential": "profound",
+    "deep": "profound",
+    "fundamental": "profound",
+    "transformative": "profound",
+    "core": "profound",
+    "minor": "surface",
+    "light": "surface",
+    "casual": "surface",
+    "trivial": "surface",
+    "superficial": "surface",
+    "shallow": "surface",
+}
+
+
+async def record_key_moment(
     ctx: RunContext[AtmanDeps],
     what_happened: str,
     why_it_matters: str,
     emotional_valence: float = 0.0,
     emotional_intensity: float = 0.5,
-    depth: Literal["surface", "meaningful", "profound"] = "meaningful",
+    depth: str = "meaningful",
 ) -> str:
     """
     Record a key moment during the current session.
@@ -62,8 +79,8 @@ def record_key_moment(
         why_it_matters: Why this moment is significant
         emotional_valence: Emotional tone (-1.0 negative to +1.0 positive)
         emotional_intensity: Intensity of emotion (0.0 to 1.0)
-        depth: How deeply this touched the agent's identity
-            ("surface" | "meaningful" | "profound")
+        depth: How deeply this touched the agent's identity.
+            Must be one of: "surface", "meaningful", "profound".
 
     Returns:
         Confirmation message
@@ -73,6 +90,12 @@ def record_key_moment(
     """
     if not ctx.deps.session_id:
         return "Error: No active session. Cannot record key moment outside of a session."
+
+    depth = _DEPTH_ALIASES.get(depth.lower(), depth.lower())
+    try:
+        EmotionalDepth(depth)
+    except ValueError:
+        return f"Error: invalid depth {depth!r}. Use one of: 'surface', 'meaningful', 'profound'."
 
     # Validate emotional values
     if not -1.0 <= emotional_valence <= 1.0:
@@ -93,17 +116,25 @@ def record_key_moment(
             "to record a key moment."
         )
 
+    det = ctx.deps.session_manager.affect_detector
+    if det is None:
+        return (
+            "Error: AffectDetector is not configured on SessionManager "
+            "(requires affect_workspace + affect_config). Cannot record key moment."
+        )
+
     try:
-        key_moment = KeyMomentInput(
-            what_happened=what_happened,
-            why_it_matters=why_it_matters,
+        report = AgentMemoryReport(
+            content=what_happened,
             emotional_valence=emotional_valence,
             emotional_intensity=emotional_intensity,
-            depth=EmotionalDepth(depth),
+            emotional_depth=EmotionalDepth(depth),
+            why_it_matters=why_it_matters,
+            tags=[f"depth:{depth}"],
         )
-        ctx.deps.session_manager.record_key_moment(ctx.deps.session_id, key_moment)
+        await det.submit_self_report(report, session_id=ctx.deps.session_id)
         summary = what_happened if len(what_happened) <= 50 else f"{what_happened[:50]}..."
-        return f"Key moment recorded: {summary}"
+        return f"Key moment recorded via AffectDetector: {summary}"
     except Exception as e:
         return f"Error recording key moment: {e!s}"
 
@@ -133,5 +164,52 @@ def log_experience(
     summary = description if len(description) <= 30 else f"{description[:30]}..."
     return (
         "Experience logging is handled automatically at session end. "
-        f"Use record_key_moment to capture significant moments: {summary}"
+        f"Use record_key_moment (AffectDetector-backed) to capture significant moments: {summary}"
     )
+
+
+def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:
+    """
+    Request immediate session restart.
+
+    Args:
+        ctx: Run context with AtmanDeps
+        reason: Optional reason for restart
+
+    Returns:
+        Sentinel string indicating restart was requested
+
+    This tool returns a sentinel string that the session runner will detect
+    and use to trigger session restart logic. The runner is responsible for
+    handling the actual restart workflow (E22.5).
+
+    The sentinel format uses newline as delimiter when reason is provided
+    to ensure unambiguous parsing.
+    """
+    _ = ctx  # Unused; reserved for future validation
+    if reason:
+        return f"__ATMAN_RESTART_REQUESTED__\n{reason}"
+    return "__ATMAN_RESTART_REQUESTED__"
+
+
+def wait_session(ctx: RunContext[AtmanDeps], minutes: int) -> str:
+    """
+    Request session pause for specified minutes.
+
+    Args:
+        ctx: Run context with AtmanDeps
+        minutes: Number of minutes to wait (must be > 0)
+
+    Returns:
+        Sentinel string indicating wait was requested, or error message
+
+    This tool returns a sentinel string that the session runner will detect
+    and use to trigger wait/pause logic. The runner is responsible for
+    handling the actual wait workflow (E22.5).
+    """
+    _ = ctx  # Unused; reserved for future validation
+
+    if minutes <= 0:
+        return f"Error: minutes must be positive, got {minutes}"
+
+    return f"__ATMAN_WAIT_REQUESTED__{minutes}"

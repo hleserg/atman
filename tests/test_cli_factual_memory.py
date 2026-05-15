@@ -21,7 +21,13 @@ _UUID_RE = re.compile(
 
 
 def _run_cli(stdin: str, home: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "HOME": str(home)}
+    # Force JSONL file backend so REPL tests do not depend on PostgreSQL or deploy defaults.
+    env = {**os.environ, "HOME": str(home), "ATMAN_MEMORY_BACKEND": "file"}
+    # Redirecting HOME makes Python resolve user-site to $HOME/.local (empty). Preserve
+    # the real user base so editable/pip --user installs (e.g. pydantic-settings) stay importable.
+    user_local = Path.home() / ".local"
+    if user_local.is_dir():
+        env["PYTHONUSERBASE"] = str(user_local)
     return subprocess.run(
         [sys.executable, "-m", "atman.cli"],
         input=stdin,

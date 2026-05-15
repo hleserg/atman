@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced webui demo-e2e-scenario playbook-extract playbook-check playbook-audit
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -27,7 +27,7 @@ test-integration:
 audit:
 	@python3 -c "\
 	import importlib.metadata as md; f=open('/tmp/_atman_reqs.txt','w');\
-	[f.write(n.split('>=')[0].split('==')[0].split('<')[0].strip()+'=='+md.version(n.split('>=')[0].split('==')[0].split('<')[0].strip())+'\n') for r in (md.distribution('atman').requires or []) if 'extra' not in r for n in [r.split(';')[0].strip()]];\
+	[f.write(n.split('[')[0].split('>=')[0].split('==')[0].split('<')[0].strip()+'=='+md.version(n.split('[')[0].split('>=')[0].split('==')[0].split('<')[0].strip())+'\n') for r in (md.distribution('atman').requires or []) if 'extra' not in r for n in [r.split(';')[0].strip()]];\
 	f.close()"
 	pip-audit -r /tmp/_atman_reqs.txt
 	@rm -f /tmp/_atman_reqs.txt
@@ -104,12 +104,26 @@ demo-webui demo-webui-paced:
 demo-webui-fast:
 	ATMAN_DEMO_PACE=off python3 src/demo_web_dashboard.py
 
+# Eval Runner walkthrough (see docs/features/eval-runner/README.md).
+demo-eval-runner demo-eval-runner-paced:
+	ATMAN_DEMO_PACE=1 python3 src/demo_eval_runner.py
+
+demo-eval-runner-fast:
+	ATMAN_DEMO_PACE=off python3 src/demo_eval_runner.py
+
+# Eval Runner CLI (module-only, isolated from production entry points).
+eval-list:
+	python3 -m atman.eval.benchmark_runner list
+
+eval-run:
+	python3 -m atman.eval.benchmark_runner run noop
+
 # Web dashboard — runs Streamlit web UI (see docs/features/web-dashboard/).
 webui:
 	python3 -m streamlit run src/atman/web_dashboard/app.py
 
 # E2E demo scenario: generates docs/demo-data/*.json for atmanai.dev/demo.html.
-# See e2e/scenarios/value_drift_under_pressure.py and docs/features/demo-e2e/README.md.
+# See e2e/scenarios/value_drift_under_pressure.py and docs/demo.html.
 demo-e2e-scenario:
 	PYTHONPATH=. python3 e2e/scenarios/value_drift_under_pressure.py
 
@@ -127,10 +141,10 @@ playbook-audit:
 # ===== Eval / Production isolation =====
 # (added by setup_prod_eval_boundary.sh — see docs/architecture/PROD_EVAL_BOUNDARY.md)
 
-.PHONY: lint-boundary verify-prod-isolation eval-db-init eval-db-migrate eval-db-downgrade eval-up eval-down
+.PHONY: lint-boundary verify-prod-isolation eval-db-init eval-db-migrate eval-db-downgrade eval-db-test eval-up eval-down
 
 lint-boundary:
-	lint-imports
+	python3 -c "from importlinter.cli import lint_imports_command; lint_imports_command()"
 
 verify-prod-isolation:
 	bash scripts/infra/verify_prod_isolation.sh
@@ -144,6 +158,9 @@ eval-db-migrate:
 eval-db-downgrade:
 	alembic -c eval/migrations/alembic.ini downgrade -1
 
+eval-db-test:
+	pytest tests/test_eval_storage_integration.py -v
+
 COMPOSE_EVAL = docker compose -f docker-compose.yml -f docker-compose.eval.yml
 
 eval-up:
@@ -151,3 +168,27 @@ eval-up:
 
 eval-down:
 	$(COMPOSE_EVAL) down
+
+# --- Agent CLI split-tree helpers (preflight / LLM readiness; scripts/agent_cli/README.md).
+MOCK_LLM_PORT ?= 18080
+
+agent-preflight:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/preflight.py
+
+agent-wait-llm:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/wait_for_llm.py
+
+agent-smoke:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/smoke_imports.py
+
+agent-mock-llm:
+	PYTHONPATH=atman_agent_cli/src:src python3 scripts/agent_cli/mock_openai_llm.py --bind 127.0.0.1 --port $(MOCK_LLM_PORT)
+
+agent-cli-lint:
+	ruff check scripts/agent_cli/
+
+typecheck-agent-cli:
+	pyright --project atman_agent_cli/pyrightconfig.json
+
+agent-check-prep: agent-cli-lint typecheck-agent-cli agent-smoke agent-preflight
+	@echo "Agent prep gates done (scripts + permissive pyright + smoke + preflight)."

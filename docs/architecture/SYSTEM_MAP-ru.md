@@ -24,7 +24,7 @@
 | Файл | Назначение | Публичные классы |
 |------|------------|------------------|
 | `core/models/fact.py` | Верифицируемые факты и связи между ними | `FactRecord`, `Relation` |
-| `core/models/experience.py` | Прожитый опыт, ключевые моменты, переосмысление | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
+| `core/models/experience.py` | Прожитый опыт, ключевые моменты (с `id: UUID` для независимого хранения), переосмысление, метаданные завершения сессии (E22.7: `close_reason`, `restart_reason`, `user_language`) | `SessionExperience`, `KeyMoment`, `FeltSense`, `ContextHalo`, `ReframingNote`, `EmotionalDepth`, `ReframingNoteAppendResult` |
 | `core/models/identity.py` | Самопредставление агента (ценности, привычки, принципы, цели, открытые вопросы) | `Identity`, `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`, `IdentitySnapshot`, `HelpfulnessLevel` |
 | `core/models/narrative.py` | Документ самонарратива (CORE/RECENT/THREADS) и собственное состояние | `NarrativeDocument`, `NarrativeLayer`, `NarrativeThread`, `Eigenstate` (`schema_version`, опциональный `identity_id`), `LayerType` |
 | `core/models/session.py` | Модели сессионного runtime: контекст, события, входящий key moment, результат, сводка активных | `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult`, `ActiveSessionSummary` |
@@ -37,7 +37,7 @@
 |------|------------|-----------|
 | `core/ports/memory_backend.py` | Интерфейс факт-памяти | `FactualMemory` (ABC) |
 | `core/ports/clock.py` | Доменные часы для воспроизводимости | `ClockPort` (Protocol) |
-| `core/ports/state_store.py` | Хранилище опыта/identity/нарратива | `StateStore`, `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery` |
+| `core/ports/state_store.py` | Хранилище опыта/identity/нарратива/eigenstate/ключевых моментов | `StateStore` (с `create_key_moment`, `list_key_moments`, `get_key_moment`), `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` |
 | `core/ports/reflection.py` | Зависимости Reflection Engine; `ReflectionModel` возвращает DTO (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
 | **`core/ports/reflection_store.py`** | **E27**: Интерфейс таблицы PostgreSQL `reflections` | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
 | `core/ports/embedding.py` | Интерфейс эмбеддингов для семантического поиска | `EmbeddingPort` (ABC) — `embed()`, `embed_batch()`, `dimension()`, `model_name()` |
@@ -52,7 +52,7 @@
 | `core/services/identity_service.py` | Жизненный цикл identity: bootstrap, update, snapshot | `IdentityService` |
 | `core/services/narrative_service.py` | Документ нарратива: создание, обновление, архивация, валидация | `NarrativeService` |
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции | `NarrativeRevisionService` |
-| `core/services/session_manager.py` | Сессионный runtime: старт, запись событий/key moments, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
+| `core/services/session_manager.py` | Сессионный runtime: старт, `record_event` (опциональный async **AffectDetector** + **авто-запись ценностных отказов**), `append_key_moment` / `append_key_moment_input`, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`, опционально `affect_workspace` + `AffectDetectorConfig`, **опционально `workspace` для JSONL-журналов сессий, межпроцессных journal-locks и orphan recovery**, **тихая детекция отказов через `RefusalDetectorConfig`**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 | `core/services/session_working_memory.py` | In-session кэш для предотвращения повторных поисков | `SessionWorkingMemory`, `CachedItem` |
@@ -64,7 +64,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `config.py` | Pydantic Settings: `EmbeddingSettings` с `EMBEDDING_BACKEND`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `EMBEDDING_OLLAMA_HOST`, `EMBEDDING_TIMEOUT` |
+| `config.py` | Pydantic settings (`EmbeddingSettings`, `LLMSettings`, `MemorySettings`), **`OpenAILLMConfig`** (base_url, api_key, model, timeout, max_retries с валидацией ≥1), **`AnthropicLLMConfig`** (api_key, model, max_tokens), фабрика `build_memory_backend()`, **фабрика `build_embedding_adapter()`** (выбор FlagEmbedding/Ollama/Mock backend), `validate_embedding_dimension()` (проверка размерности при старте); по умолчанию: embedding backend=`ollama` с `bge-m3`/1024d (FlagEmbedding backend использует `flag_model="BAAI/bge-m3"` с настройками FP16/batch_size/max_length), LLM=`gemma3:27b-it-qat`, factual memory=`FileBackend`; поддерживает `ATMAN_MEMORY_BACKEND=postgres|file|inmemory`, `EMBEDDING_BACKEND=ollama|flag|mock`; **fallback устаревших переменных окружения**: `OLLAMA_HOST`→`EMBEDDING_OLLAMA_HOST`, `OLLAMA_EMBED_MODEL`→`EMBEDDING_MODEL`, `ATMAN_OLLAMA_BASE_URL`→`LLM_OLLAMA_HOST`, `ATMAN_OLLAMA_MODEL`→`LLM_MODEL` |
 | `core/exceptions.py` | `AtmanError`, `GovernanceRejectedError`, `NarrativePersistenceConflictError`, `SessionNotFoundError`, `SessionAlreadyFinishedError`, `TooManyActiveSessionsError` |
 | `core/clock_impl.py` | `SystemClock`, `FrozenClock` |
 | `core/narrative_write_audit.py` | Хуки аудита коммитов нарратива |
@@ -72,24 +72,54 @@
 | `core/reflection_run_keys.py` | Детерминированные ключи прогонов рефлексии |
 | `eval/migrations/versions/0001_add_embed_model_column.sql` | SQL-миграция: добавляет колонку `embed_model TEXT` в `facts`, `key_moments`, `identity_snapshots` для отслеживаемости модели (E25.4) |
 
+### 1.4a. Affect detector (`src/atman/affect/`, E21)
+
+| Файл | Назначение | Публичный API |
+|------|------------|---------------|
+| `affect/models.py` | DTO метрик, результата детектора, self-report агента | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport` (опц. `emotional_depth` → глубина `KeyMoment.how_i_felt`), `TriggerReason` |
+| `affect/metrics.py` | Восемь поведенческих метрик + эвристика искренности | функции плотностей и `nrc_emotion_score`, `min_length_gate`, `sincerity_score`, … |
+| `affect/baseline.py` | Скользящие z-score + JSONL `{workspace}/affect_baseline.jsonl` | `RollingBaseline` |
+| `affect/detector.py` | Определение языка, триггеры (аномалия / random sample / расхождение thinking↔сообщение / self-report), запись `KeyMoment` через callback | `AffectDetector`, `AffectDetectorConfig`; CLI `python -m atman.affect.detector --demo` |
+| `affect/refusal_detector.py` | Текстовая детекция ценностных отказов (LLM не требуется) — три слоя: (1) морфология через pymorphy3 (глаголы отказа + отрицание+модальность), (2) семантический контекст NRC эмоций (плотность disgust/anger для морального фрейма), (3) исключение технической неспособности (техническая неспособность vs этическая позиция); опциональный LLM-fallback для неопределённой зоны | `is_value_refusal`, `score_refusal`, `RefusalDetectorConfig`, `RefusalScore` |
+| `affect/emolex/` | Вендоренный NRC Emotion Lexicon (ru/en) + pymorphy3 | `emotion_score`, `tokenize`, JSON-словари |
+
 ### 1.5. Адаптеры (`src/atman/adapters/`)
 
 | Файл | Реализует порт | Поведение |
 |------|----------------|-----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking |
-| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 2560-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:768d"` |
+| `adapters/memory/postgres_backend.py` (`PostgresFactualMemory`) | `FactualMemory` | PostgreSQL `public.facts` / `public.fact_relations`, RLS через `ATMAN_CURRENT_AGENT`, опциональный `EmbeddingPort` с fallback на `ILIKE` |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 1024-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:1024d"` |
 | `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
-| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `qwen3-embedding:4b` (2560-мерные); `model_name()` возвращает настроенную модель; доступен `health_check()` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `bge-m3` (1024-мерные); env: `EMBEDDING_MODEL`, `EMBEDDING_OLLAMA_HOST` (устаревшие: `OLLAMA_EMBED_MODEL`, `OLLAMA_HOST`); `model_name()` возвращает настроенную модель; доступен `health_check()` |
+| `adapters/memory/flag_embedding.py` (`FlagEmbeddingAdapter`) | `EmbeddingPort` | Нативный FlagEmbedding SDK (BGEM3FlagModel) через PyTorch; ленивая загрузка модели (~570MB в `~/.cache/huggingface/`); поддержка dense (1024d) + sparse (lexical) + ColBERT через `embed_batch_full()`; настраиваемые FP16, batch_size, max_length, device; не требует внешнего процесса; по умолчанию: `BAAI/bge-m3`; env: `EMBEDDING_FLAG_MODEL`, `EMBEDDING_USE_FP16`, `EMBEDDING_BATCH_SIZE`, `EMBEDDING_MAX_LENGTH` |
 | `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory трекинг использования |
-| `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти |
-| `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта |
-| `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) |
+| `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
+| `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
+| `adapters/storage/in_memory_state_store.py` (`InMemoryStateStore`) | `StateStore` | полная реализация в памяти с deep copies (опыт + identity + нарратив + eigenstate + словарь ключевых моментов) |
+| `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) + `key_moments.jsonl` (append-only JSONL с восстановлением после повреждений) |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | хранилища выводов рефлексии |
+|| **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **Реализация PostgreSQL** (только операции KeyMoment, psycopg3; другие методы StateStore выбрасывают `NotImplementedError`) |
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: в памяти с симуляцией BIGSERIAL + RLS |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
 | `adapters/reflection/mock_reflection_model.py` (`MockReflectionModel`) | `ReflectionModel` | детерминированный мок |
+| **`adapters/reflection/openai_reflection_model.py`** (**`OpenAIReflectionModel`**) | **`ReflectionModel`** | **Универсальный OpenAI-совместимый адаптер** с `OpenAILLMConfig` (base_url, api_key, model, timeout, настраиваемые повторные попытки); **`adapters/reflection/__init__.py`** экспортирует фабрику **`get_reflection_model()`** (env `ATMAN_REFLECTION_BACKEND=openai|anthropic|mock`, по умолчанию: `openai`) |
 | `adapters/reflection/fixture_loader.py` | — | загрузка фикстур для демо |
+| `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | конфигурация Pydantic AI модели + среды выполнения агента: лимиты контекстного окна, таймаут сессии, переключатель свободного времени, видимость монолога, **режим внедрения памяти** (`assistant_message`/`user_message`/`system_prompt` для универсальной доставки контекста памяти) (E22.1, E26-R1, E26-R2, E26-R4) |
+| `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | замороженный DI-контейнер, связывающий `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; фабрика `from_config` переносит валидированные лимиты из `AgentConfig`; опциональное поле `injected_context` для режима `system_prompt` |
+| `adapters/agent/memory_injection.py` (`inject_memory`, `MemoryInjectionMode`) | — | Универсальное внедрение памяти тремя режимами: (1) `assistant_message` — вставляет `ModelResponse` в начало истории (по умолчанию; совместимо с OpenAI/Ollama), (2) `user_message` — оборачивает память как пользовательский ход (совместимо с Anthropic), (3) `system_prompt` — устанавливает `deps.injected_context` для добавления через `build_instructions` (legacy путь pydantic-ai) |
+| `adapters/agent/instructions.py` (`build_instructions`, `build_memory_context`) | — | `build_instructions`: строит поведенческие правила (как агент использует инструменты, обязательства); идентичность/нарратив перемещены в `build_memory_context()` для доставки через `inject_memory()`; когда `memory_injection_mode == "system_prompt"`, добавляет `deps.injected_context` |
+| `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`, `restart_session`, `wait_session`) | — | инструменты Pydantic AI: `record_key_moment` → `AffectDetector.submit_self_report` когда `SessionManager` настроен на аффект; `log_experience` — redirect-заглушка; `restart_session` / `wait_session` возвращают sentinel-строки для управления сессией (E22.4) |
+| `adapters/agent/factory.py` (`build_deps`) | — | сборка `AtmanDeps`, `SessionManager`, `FileStateStore`, сервисов, опционально `AffectDetector` из workspace и `AgentConfig`; bootstrap отсутствующих identity/narrative для новых runner-workspace и проводка `SessionManager(workspace=...)`, чтобы crash-журналы были активны |
+| `adapters/agent/runner.py` (`AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_check_token_usage`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`) | — | обёртка жизненного цикла сессии с обработкой сигналов, restart loop, мониторингом токенов и таймаут/меню (E22.2, E22.3, E22.5, E22.6); мониторинг токенов: прогрессивные предупреждения на 70/80/90%, принудительное закрытие на 95% (`_check_token_usage`); очередь-based stdin reader (без race condition при таймауте); детекция restart: sentinel → finish session с `close_reason="restart"` → построение пакета (ключевые моменты + причина + хвост) → новая сессия с обновлённым `AtmanDeps`; таймаут сессии → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; создаёт минимальный `KeyMoment` если пусто; сохраняет exit-коды |
+| `agents_registry.py` (`AgentsRegistry`) | — | реестр экземпляров агентов в PostgreSQL (app/admin URL); используется `src/run_agent.py` |
+
+### 1.5b. Опциональный локальный coding-agent (**не** в wheel ядра — каталог `atman_agent_cli/`)
+
+| Путь | Заметки |
+|------|---------|
+| `atman_agent_cli/src/atman/agent_cli/` | Textual/RAG-слой поверх ядра. Исходники вне стандартного пакета `atman`; `PYTHONPATH=atman_agent_cli/src:src`, `pip install -e ".[agent-cli]"`; см. `scripts/agent_cli/`, `atman_agent_cli/RUNBOOK.md`. Перечисленные в контракте пространства имён **`src/atman`** не импортируют **`atman.agent_cli`** (`.importlinter`). |
 
 ### 1.6. CLI / TUI / Web / Демо
 
@@ -114,12 +144,35 @@
 | `src/demo_reflection.py` | demo | micro→daily→deep с фикстурами |
 | `src/demo_full_corpus.py` | demo | все `e2e/fixtures/sessions/*` → SessionManager → micro/daily/deep + сводка Rich ([issue #158](https://github.com/hleserg/atman/issues/158)) |
 | `src/demo_web_dashboard.py` | demo | подсказка запуска веб-дашборда |
+| `src/demo_eval_runner.py` | demo | E1 Evaluation Runner walkthrough: список реестра → RunnerCore + JsonlReporter → noop benchmark → идемпотентный перезапуск |
+| `src/run_agent.py` | entrypoint | запуск REPL агента через `AgentsRegistry` + `AtmanRunner` (БД из `DATABASE_URL`) |
+| `agent/atman_agent.py`, `agent/config.py` | test agent | фабрика test-user на Pydantic AI (`create_agent`) с OpenAI-compatible provider-конфигом (`AgentLLMConfig`); top-level `agent` включён в wheel через Hatch |
+| `scripts/migrate_embeddings.py` | ops | миграция PostgreSQL `facts` с 2560-мерных Qwen-эмбеддингов на 1024-мерные BGE-M3; перестраивает схему/индекс `facts.embedding` и re-embed в одной транзакции |
 | `e2e/generate_fixtures.py` | e2e | генератор JSON-фикстур сессий через LLM (`python -m e2e.generate_fixtures`); по умолчанию корпуса 20 `en/` + 20 `ru/` с параллельным запуском локалей; Anthropic tool_use, два прохода; флаги `--corpus-policy strict|soft`, `--max-corpus-regen N` (ограничение хвоста в strict); опционально `[e2e]`; кандидат для ручной/secret-gated автоматизации ([issue #141](https://github.com/hleserg/atman/issues/141)) |
 | `e2e/models.py`, `e2e/validation.py`, `e2e/llm.py`, `e2e/prompts.py` | e2e | схема фикстур, валидаторы внутри/между сессиями, вызов API, промпты |
 | `e2e/full_loop.py`, `e2e/__main__.py` | e2e | интеграционный прогон WP-01..05 на JSON-фикстурах сессий (`python -m e2e`); вручную/опционально и подходит для точечного smoke job в GitHub Actions |
 | `e2e/scenarios/value_drift_under_pressure.py` | e2e/demo | детерминированный E2E-сценарий для atmanai.dev/demo.html: инициализирует идентичность с принципом честности, прогоняет Сессию 1 (дрейф ценностей + самокоррекция), микро+дневная рефлексия, обновление идентичности, Сессия 2 (то же давление, выравнивание); записывает 11 JSON-снимков в `docs/demo-data/`; `make demo-e2e-scenario` |
+| `e2e/scenarios/session_lifecycle_interrupt.py` | e2e | прерванная сессия и восстановление журнала: KeyboardInterrupt / SIGTERM / crash, обнаружение осиротевшего journal, идемпотентное восстановление при следующем start_session() |
+| `e2e/scenarios/session_lifecycle_restart.py` | e2e | лимит контекста и перезапуск сессии: предупреждение при 70%, restart_session(reason=...), новая сессия с restart package |
+| `e2e/scenarios/session_lifecycle_timeout.py` | e2e | таймаут и меню свободного времени: неактивность пользователя, системное меню свободного времени, агент выбирает команду (sleep/reflect/exit) |
 | `docs/demo-data/` | данные сайта | 11 JSON-файлов, генерируемых `make demo-e2e-scenario`; используются `docs/demo.html` |
 | `docs/demo.html` | сайт | статическая страница E2E-прогона; 11 шагов; двуязычная EN/RU; загружает JSON из `docs/demo-data/`; без build step, без React |
+
+### 1.7. Оценочная подсистема (`src/atman/eval/`, `eval/`, `scripts/eval/`)
+
+| Путь | Категория | Назначение |
+|------|-----------|------------|
+| `src/atman/eval/__init__.py` | optional namespace | импортирует `_deps_check`; `import atman.eval` быстро падает без extra `eval` |
+| `src/atman/eval/_deps_check.py` | dependency guard | проверяет canary-зависимости из `[project.optional-dependencies].eval` и показывает понятную подсказку установки |
+| `src/atman/eval/benchmark_runner.py` | CLI модуль | E1 benchmark runner CLI с командами `list`/`run`; `python -m atman.eval.benchmark_runner list` / `python -m atman.eval.benchmark_runner run <key>` |
+| `src/atman/eval/runner_core.py`, `src/atman/eval/run_context.py` | eval runtime | lifecycle benchmark, типизированный контекст запуска, детерминированные app-level idempotency keys с учётом execution-affecting seed, fanout репортеров (`on_run_start/on_run_item/on_run_complete`) |
+| `src/atman/eval/registry.py`, `src/atman/eval/benchmarks/noop.py` | реестр benchmark | decorator-based регистрация и lookup (`register`, `get`, `list_benchmarks`) + встроенный noop smoke benchmark |
+| `src/atman/eval/reporters/base.py`, `src/atman/eval/reporters/jsonl_reporter.py`, `src/atman/eval/reporters/db_reporter.py` | reporting | Reporter ABC + JSONL-события lifecycle + PostgreSQL-запись в `eval.benchmark_runs` / `eval.run_items` |
+| `src/atman/eval/seed_manager.py`, `src/atman/eval/hardware.py` | runtime metadata | управление seed и hardware probe с graceful fallback без NVML/GPU |
+| `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | конфигурация Alembic для изолированной PostgreSQL-схемы `eval` |
+| `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
+| `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |
+| `src/demo_eval_runner.py`, `docs/features/eval-runner/README.md`, `docs/features/eval-runner/README-ru.md` | demo/docs | воспроизводимый walkthrough E1 runner + двуязычная документация |
 
 ---
 
@@ -134,7 +187,7 @@
 | `ExperienceService` ↔ `StateStore` | `core/services/experience_service.py` → `core/ports/state_store.py` | DI |
 | `IdentityService` ↔ `StateStore` | `core/services/identity_service.py` → `core/ports/state_store.py` | DI |
 | `NarrativeService` ↔ `StateStore` | `core/services/narrative_service.py` → `core/ports/state_store.py` | DI |
-| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | старт: identity/narrative + `IdentitySnapshot`; `finish_session`: детерминированный `SessionExperience.id` (uuid5 от `session_id`) для идемпотентных ретраев; загрузка eigenstate с фильтром `identity_id`; обновление recent narrative через `save_narrative(..., expected_updated_at=...)` |
+| `SessionManager` ↔ `StateStore` | `core/services/session_manager.py` → `core/ports/state_store.py` | старт: identity/narrative + `IdentitySnapshot`; `finish_session`: детерминированный `SessionExperience.id` (uuid5 от `session_id`) для идемпотентных ретраев; active journals держат advisory lock, чтобы другой `SessionManager` не восстановил live-сессию; session journal включает полный payload `KeyMoment`, чтобы orphan recovery мог восстановить отсутствующие строки моментов вместо создания висячих ссылок; если падение происходит после записи experience, но до eigenstate/narrative, recovery достраивает недостающие артефакты завершения перед удалением journal; вызывает `get_key_moment` + `create_key_moment` для каждого момента (идемпотентность ретраев); вычисляет `unexamined_fact_refs` (факты из `_facts_read`, но не упомянутые в `fact_refs` ни одного key moment); загрузка eigenstate с фильтром `identity_id`; обновление recent narrative через `save_narrative(..., expected_updated_at=...)` |
 | `NarrativeRevisionService` ↔ `NarrativeRepository` | `core/services/narrative_revision.py` → `core/ports/reflection.py` | оптимистическая блокировка |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
 | `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
@@ -145,20 +198,32 @@
 
 | Адаптер | Реализует |
 |---------|-----------|
-| `InMemoryBackend`, `FileBackend` | `FactualMemory` |
-| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore` | `StateStore` |
-| `MockReflectionModel` | `ReflectionModel` |
+| `InMemoryBackend`, `FileBackend`, `PostgresFactualMemory` | `FactualMemory` |
+| `InMemoryExperienceStore`, `JsonlExperienceStore`, `FileStateStore`, `PostgresStateStore` | `StateStore` |
+| `MockReflectionModel`, **`OpenAIReflectionModel`** | `ReflectionModel` |
 | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` | соответствующие порты |
 | **`InMemoryReflectionStore`** | **`ReflectionStore`** (E27) |
+| `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter`, `FlagEmbeddingAdapter` | `EmbeddingPort` |
+| `InMemoryUsageLog` | `MemoryUsageLog` |
+
+### 2.2a. Agent adapter ↔ сервисы
+
+| Связка | Файлы | Тип |
+|--------|-------|-----|
+| `AtmanDeps` ↔ `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore` | `adapters/agent/deps.py` | DI-контейнер (frozen dataclass); опциональный `injected_context` для режима `system_prompt` внедрения памяти |
+| `record_key_moment` / `log_experience` / `restart_session` / `wait_session` ↔ `AffectDetector.submit_self_report` / `SessionManager` | `adapters/agent/tools.py` → `affect/detector.py` + `core/services/session_manager.py` | Async Pydantic AI инструменты → affect write gateway (`record_key_moment` требует `affect_workspace` + config для `SessionManager`; `restart_session` / `wait_session` возвращают sentinel-строки для детекции в E22.5 runner) |
+| `build_instructions` / `build_memory_context` / `inject_memory` ↔ `StateStore.load_identity` / `load_narrative` | `adapters/agent/instructions.py`, `adapters/agent/memory_injection.py` → `core/ports/state_store.py` | Динамический билдер system-prompt + билдер контекста памяти + универсальное внедрение (три режима: `assistant_message` / `user_message` / `system_prompt`) |
+| `chat` / `_force_finish` / `_do_restart` / `_handle_menu_mode` / `_handle_free_time_mode` ↔ `SessionManager` | `adapters/agent/runner.py` → `core/services/session_manager.py` | регистрация signal handler + exception boundary + restart loop + таймаут/меню (E22.2, E22.5, E22.6, E22.7); вызывает `append_key_moment_input()`, `get_active_session()`, `finish_session(..., close_reason=...)` при прерывании и restart; restart workflow: завершает сессию с `close_reason="restart"`, строит package, запускает новую сессию, обновляет `AtmanDeps` с новым `session_id`; инжекция wake-up сообщения из `close_reason` последней сессии; таймаут → menu mode (reflect/wait/sleep/save_to_memory/free_time); `AtmanRunner.chat()` переводит SIGTERM в async input queue для graceful shutdown |
 
 ### 2.3. CLI ↔ сервис
 
 | CLI | Проводка | Файл |
 |-----|----------|------|
-| `cli.py` | `FileBackend` напрямую как `FactualMemory` | `cli.py:14-24` |
+| `cli.py` | фабрика `build_memory_backend()` (`FileBackend` по умолчанию, выбор `postgres|file|inmemory` через env) | `config.py`, `cli.py` |
 | `cli_experience.py` | `ExperienceService(JsonlExperienceStore)` | `cli_experience.py:17-29` |
 | `cli_identity.py` | `IdentityService(FileStateStore)` + `NarrativeService(FileStateStore)` | `cli_identity.py:15-29` |
 | `cli_reflection.py` | `Micro/Daily/DeepReflectionService` + fixture_loader | `cli_reflection.py:18-47` |
+| `benchmark_runner.py` (module-only) | `RunnerCore` + `registry` + `reporters` (`jsonl`, опционально DB) | `eval/benchmark_runner.py` |
 
 ### 2.4. Демо ↔ реальные объекты
 
@@ -170,6 +235,7 @@
 | `demo_session_manager.py` | `FileStateStore` → `SessionManager` (загрузка identity/narrative, запись событий/моментов, сохранение experience/eigenstate) |
 | `demo_reflection.py` | моки + fixture_loader → `MicroReflectionService` → `DailyReflectionService` → `DeepReflectionService` |
 | `demo_full_corpus.py` | JSON сессий `e2e` → `FileStateStore` + `SessionManager` + `StateStore*Adapter` → micro → daily (за UTC-сутки) → deep; `DeterministicReflectionModel` |
+| `demo_eval_runner.py` | `list_benchmarks()` → `RunnerCore([JsonlReporter])` + `noop` benchmark → идемпотентный перезапуск с тем же `git_sha` → JSONL-артефакт |
 
 ### 2.5. TUI / Web ↔ подпроцессы
 
@@ -272,10 +338,10 @@ PrincipleRevisionAdvisor — пересмотр принципов
 Файлы: `docs/features/session-manager/`, `src/demo_session_manager.py`, `tests/test_session_manager.py`.
 
 1. `SessionManager.start_session(agent_id)` → загружает identity, narrative, eigenstate → `SessionContext`.
-2. Во время сессии: `record_event(...)` отслеживает сырые события от нижнего агента.
-3. `record_key_moment(...)` фиксирует значимые моменты с обязательной эмоциональной окраской (valence/intensity/depth).
+2. Во время сессии: `record_event(...)` отслеживает сырые события от нижнего агента и при наличии конфигурации планирует **AffectDetector**; **ценностные отказы авто-детектируются через `RefusalDetectorConfig` и молча записываются как key moments** без уведомления агента.
+3. Программные моменты: `append_key_moment_input` / `append_key_moment`; инструмент агента `record_key_moment` → `AffectDetector.submit_self_report(...)` с обязательной эмоциональной окраской (valence/intensity/depth).
 4. Если окраска неполная → флаг `incomplete_coloring=True` (честность об ограничении).
-5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`.
+5. `finish_session(...)` → создаёт `SessionExperience` (`recorded_by="session_manager"`) + `Eigenstate`; принимает опциональные `close_reason`, `restart_reason`, **`user_language`** для wake-up контекста при старте следующей сессии.
 6. Оба сохраняются через `StateStore` (опыт immutable, eigenstate для следующей сессии).
 7. Ключевой инвариант: эмоциональная окраска ОБЯЗАНА быть (от реального переживания) или явно помечена неполной.
 8. `KeyMomentInput.recorded_at` копируется в `KeyMoment.when` для согласованной временной шкалы относительно валидации и `finish`.
@@ -305,7 +371,8 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Пустой `Identity.self_description` | `min_length=1` | `core/models/identity.py:30` |
 | `CoreValue.confidence` вне 0..1 | `@field_validator` | `core/models/identity.py:52-58` |
 | `FeltSense.emotional_valence` вне -1..+1 | `@field_validator` | `core/models/experience.py:57-67` |
-| `KeyMomentInput` с нулевым valence/intensity без `incomplete_coloring` | `SessionManager.record_key_moment` → `ValueError` | `core/services/session_manager.py` |
+| `KeyMomentInput` с нулевым valence/intensity без `incomplete_coloring` | `SessionManager.append_key_moment_input` → `ValueError` | `core/services/session_manager.py` |
+| Устаревший `SessionManager.record_key_moment(...)` | `AttributeError` (сообщение ссылается на `AffectDetector`) | `core/services/session_manager.py` |
 | `alignment_check=False` с пустым `alignment_notes` | `SessionManager.finish_session` → `ValueError` | `core/services/session_manager.py` |
 | Повторный `finish_session` после успешного завершения | сессия снята с активного реестра → `SessionNotFoundError` | `core/services/session_manager.py` |
 | Конкурентный второй `finish_session` пока первый пишет в store | `SessionAlreadyFinishedError` | `core/services/session_manager.py` |
@@ -369,7 +436,18 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `e48a060`, `83df039` | Правки ruff lint/format/type | в основном закрыто |
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
-| `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`) |
+| `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`, `tests/test_eval_migrations.py::test_benchmark_runs_migration_rolls_december_partition_to_next_year`, `tests/test_eval_migrations.py::test_benchmark_runs_sql_mirror_documents_default_partition_safety_net`) |
+| текущий PR | PostgreSQL RLS допускал owner-role bypass для `reflections` и открывал `fact_relations` без RLS | покрыто (`tests/test_postgres_migration_security.py`) |
+| текущий PR | CLI факт-памяти по умолчанию выбирал PostgreSQL и падал без локальной БД, нарушая локальный путь без внешних сервисов | покрыто (`tests/test_cli_factual_memory.py`) |
+| текущий PR | Orphan recovery сессии создавал `SessionExperience` со ссылками на отсутствующие `KeyMoment` после crash/interrupt | покрыто (`tests/test_session_manager.py::test_orphan_recovery_restores_journaled_key_moment_payload`) |
+| текущий PR | Новые workspace для `run_agent.py` создавали записи в реестре, но падали до REPL из-за отсутствующих identity/narrative и неактивных журналов | покрыто (`tests/test_runner.py::test_build_deps_bootstraps_state_and_enables_session_journal`) |
+| текущий PR | `PostgresStateStore.create_key_moment()` писал placeholder session ID, из-за чего последующий `store_key_moments()` не связывал момент с реальной сессией | покрыто (`tests/test_postgres_state_store.py::test_store_key_moments_updates_placeholder_session`) |
+| текущий PR | Второй `SessionManager` мог восстановить и удалить active-session journal, который всё ещё принадлежал live-процессу | покрыто (`tests/test_session_manager.py::test_orphan_recovery_skips_journals_locked_by_another_manager`) |
+| текущий PR | Падение после записи `SessionExperience`, но до eigenstate/narrative заставляло orphan recovery удалить последний journal без достраивания артефактов непрерывности | покрыто (`tests/test_session_manager.py::test_orphan_recovery_completes_existing_experience_after_crash`) |
+| текущий PR | Идемпотентность Eval Runner игнорировала `seed`, молча пропуская разные seeded benchmark runs в одном процессе | покрыто (`tests/atman_eval/test_runner_core.py::test_runner_core_runs_distinct_seeds_for_same_git_sha`) |
+| текущий PR | SIGTERM до первого key moment завершал сессию как обычную, а не как `interrupted` | покрыто (`tests/test_runner.py::test_atman_runner_sigterm_empty_session_persists_interrupted`) |
+| текущий PR | BGE-M3 по умолчанию создавал 1024-мерные эмбеддинги, пока PostgreSQL схемы/deploy defaults/search casts оставались на старых предположениях о векторах, ломая запись embedded facts, re-embedding или semantic search | покрыто (`tests/test_postgres_migration_security.py::test_facts_migration_matches_bge_m3_embedding_dimension`, `tests/test_postgres_migration_security.py::test_agent_schema_matches_bge_m3_embedding_dimension`, `tests/test_postgres_migration_security.py::test_embedding_migration_rebuilds_schema_before_writing_vectors`, `tests/test_postgres_backend.py::test_search_uses_halfvec_literal_for_semantic_ordering`, `tests/test_deploy_package.py::test_deploy_schema_matches_bge_m3_fact_embedding_dimension`, `tests/test_deploy_package.py::test_deploy_defaults_match_bge_m3_embedding_dimension`, `tests/test_deploy_package.py::test_inline_setup_schemas_match_bge_m3_fact_embedding_dimension`) |
+| текущий PR | Фабрика Pydantic AI test agent передавала неподдерживаемые kwargs `base_url` / `api_key`, а пакет `agent` не попадал в wheel | покрыто (`tests/agent/test_atman_agent.py::test_agent_can_be_constructed_without_llm_endpoint`, `tests/agent/test_atman_agent.py::test_agent_package_is_included_in_wheel`) |
 
 ### 5.2. Из инспекции кода
 
