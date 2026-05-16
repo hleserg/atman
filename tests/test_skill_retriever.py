@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import textwrap
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,7 +14,7 @@ from atman.skills.retriever import SkillRetriever, _cosine_similarity
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _make_skill_with_manifest(tmp_path: Path, agent_id, name: str, keywords: list[str]) -> Skill:

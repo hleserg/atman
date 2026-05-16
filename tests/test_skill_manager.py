@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,7 +17,7 @@ from atman.skills.retriever import SkillRetriever
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _make_active_skill(store: InMemorySkillStore, agent_id, name: str, tmp_path: Path) -> Skill:

@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
-
-import pytest
 
 from atman.skills.models import Skill, SkillKind, SkillOrigin, SkillStatus
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _make_skill(name: str, description: str, user_pinned: bool = True, agent_id=None) -> Skill:

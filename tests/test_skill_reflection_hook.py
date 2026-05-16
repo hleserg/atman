@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
-
-import pytest
 
 from atman.skills.noop import NoopSkillManager
 
@@ -18,12 +14,11 @@ class TestMicroReflectionSkillHook:
     def _make_micro_reflection(self, skill_manager=None):
         from unittest.mock import MagicMock
 
-        from atman.core.services.narrative_revision import NarrativeRevisionService
-        from atman.core.services.reflection_service import MicroReflectionService
         from atman.adapters.storage.in_memory_reflection_store import InMemoryReflectionEventStore
         from atman.core.models import NarrativeDocument
         from atman.core.models.narrative import LayerType, NarrativeLayer
-        from atman.core.models.reflection import NarrativeUpdateOutput
+        from atman.core.services.narrative_revision import NarrativeRevisionService
+        from atman.core.services.reflection_service import MicroReflectionService
 
         # Mock experience repo with one experience
         experience = MagicMock()
