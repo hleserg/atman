@@ -381,7 +381,11 @@ class PostgresFactualMemory(FactualMemory):
             params.append(f"%{query}%")
             order_sql = "f.created_at DESC"
         else:
-            order_sql = "f.created_at DESC"
+            # No query: order by salience DESC so the candidate pool returned
+            # to embedding-based RAG (PassiveMemoryInjector.surface_for_context
+            # passes query=None) contains the most important facts. Matches
+            # InMemoryBackend/FileBackend behavior.
+            order_sql = "f.salience DESC NULLS LAST, f.created_at DESC"
 
         where_sql = " AND ".join(conditions) if conditions else "TRUE"
 

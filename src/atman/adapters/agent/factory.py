@@ -131,12 +131,19 @@ def build_deps(
         from atman.core.services.passive_memory_injector import PassiveMemoryInjector
 
         try:
+            from atman.adapters.memory.bm25_embedding import BM25EmbeddingAdapter
+
             _embedding = build_embedding_adapter()
             _factual_memory = _build_mem()
+            # BM25 is zero-dependency and provides a second retrieval signal
+            # fused with the dense embedding via Reciprocal Rank Fusion. It
+            # rescues exact lexical matches that dense encoders can rank low.
+            _bm25 = BM25EmbeddingAdapter()
             passive_memory_injector = PassiveMemoryInjector(
                 embedding=_embedding,
                 factual_memory=_factual_memory,
                 state_store=state_store,
+                bm25=_bm25,
             )
         except Exception:
             import logging as _logging
