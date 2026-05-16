@@ -592,9 +592,7 @@ class IdentityService:
             )
         identity.self_description = before
 
-    def _revert_identity_list_append(
-        self, identity: Identity, change: SelfAppliedChange
-    ) -> None:
+    def _revert_identity_list_append(self, identity: Identity, change: SelfAppliedChange) -> None:
         field_name = self._IDENTITY_LIST_FIELDS[change.target_kind]
         before_list = change.before_snapshot.get(field_name)
         if not isinstance(before_list, list):

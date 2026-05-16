@@ -89,9 +89,7 @@ class ReflectionOverloadMonitor:
             by_day[event.timestamp.date()] = by_day.get(event.timestamp.date(), 0) + 1
 
         # Need to see >threshold runs on *every* day of the window.
-        days_in_window = [
-            (now - timedelta(days=i)).date() for i in range(self._daily_window_days)
-        ]
+        days_in_window = [(now - timedelta(days=i)).date() for i in range(self._daily_window_days)]
         if not all(by_day.get(d, 0) > self._daily_per_day_threshold for d in days_in_window):
             return None
 

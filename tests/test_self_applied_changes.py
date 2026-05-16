@@ -11,6 +11,7 @@ auditable record that can be reverted.
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -62,8 +63,8 @@ def test_source_requires_rationale_and_confidence():
 # ---------------------------------------------------------------------------
 
 
-def _make_change(**overrides) -> SelfAppliedChange:
-    defaults = dict(
+def _make_change(**overrides: Any) -> SelfAppliedChange:
+    defaults: dict[str, Any] = dict(
         actor=SelfChangeActor.REFLECTION_DAILY,
         reflection_event_id=uuid4(),
         target_kind=SelfChangeTargetKind.IDENTITY_PRINCIPLE,
@@ -99,7 +100,9 @@ def test_store_list_filters_and_orders_newest_first():
     newer = _make_change(actor=SelfChangeActor.REFLECTION_DEEP)
     store.save(older)
     # ensure ordering not dependent on insertion order — bump applied_at
-    newer = newer.model_copy(update={"applied_at": datetime(2030, 1, 1, tzinfo=older.applied_at.tzinfo)})
+    newer = newer.model_copy(
+        update={"applied_at": datetime(2030, 1, 1, tzinfo=older.applied_at.tzinfo)}
+    )
     store.save(newer)
 
     assert store.list() == [newer, older]
@@ -153,7 +156,9 @@ def test_store_only_active_filter():
 # ---------------------------------------------------------------------------
 
 
-def _identity_service(tmp: Path, *, with_audit: bool = True) -> tuple[IdentityService, InMemorySelfAppliedChangeStore]:
+def _identity_service(
+    tmp: Path, *, with_audit: bool = True
+) -> tuple[IdentityService, InMemorySelfAppliedChangeStore]:
     audit = InMemorySelfAppliedChangeStore() if with_audit else None
     svc = IdentityService(FileStateStore(tmp), self_applied_change_store=audit)
     return svc, audit  # type: ignore[return-value]
@@ -345,11 +350,18 @@ class _StubNarrativeRepo:
     def get_current(self) -> NarrativeDocument | None:
         return self._doc
 
-    def update(self, draft: NarrativeDocument, expected_updated_at) -> None:
-        # optimistic concurrency check (mirrors real adapters)
+    def update(
+        self,
+        narrative: NarrativeDocument,
+        *,
+        expected_updated_at: datetime | None = None,
+    ) -> None:
         if expected_updated_at != self._doc.updated_at:
             raise RuntimeError("etag mismatch")
-        self._doc = draft
+        self._doc = narrative
+
+    def get_history(self) -> list[NarrativeDocument]:
+        return [self._doc]
 
 
 class _NullReflectionModel:
@@ -387,7 +399,9 @@ def test_apply_self_layer_update_changes_core_and_audits():
         "I am someone who keeps growing.",
         _make_source(actor=SelfChangeActor.REFLECTION_DEEP),
     )
-    assert repo.get_current().core_layer.content == "I am someone who keeps growing."
+    current = repo.get_current()
+    assert current is not None
+    assert current.core_layer.content == "I am someone who keeps growing."
     assert record.target_kind == SelfChangeTargetKind.NARRATIVE_CORE_LAYER
     assert record.before_snapshot["content"] == before
     assert record.after_snapshot["content"] == "I am someone who keeps growing."
@@ -402,7 +416,9 @@ def test_apply_self_layer_update_recent_layer():
         "Today felt different.",
         _make_source(),
     )
-    assert repo.get_current().recent_layer.content == "Today felt different."
+    current = repo.get_current()
+    assert current is not None
+    assert current.recent_layer.content == "Today felt different."
     assert record.target_kind == SelfChangeTargetKind.NARRATIVE_RECENT_LAYER
     assert record.before_snapshot["content"] == before
 
@@ -421,7 +437,9 @@ def test_narrative_revert_self_change_restores_layer():
         _make_source(),
     )
     svc.revert_self_change(record.id, reason="too soon")
-    assert repo.get_current().core_layer.content == record.before_snapshot["content"]
+    current = repo.get_current()
+    assert current is not None
+    assert current.core_layer.content == record.before_snapshot["content"]
 
 
 def test_narrative_revert_rejects_identity_kind():

@@ -379,9 +379,7 @@ class NarrativeRevisionService:
         store.save(change)
         return change
 
-    def revert_self_change(
-        self, self_applied_id: UUID, reason: str
-    ) -> SelfAppliedChange:
+    def revert_self_change(self, self_applied_id: UUID, reason: str) -> SelfAppliedChange:
         """
         Revert a previously self-applied narrative layer change.
 
@@ -409,9 +407,7 @@ class NarrativeRevisionService:
 
         before_content = change.before_snapshot.get("content")
         if not isinstance(before_content, str):
-            raise ValueError(
-                f"self_applied_change {self_applied_id} has malformed before_snapshot"
-            )
+            raise ValueError(f"self_applied_change {self_applied_id} has malformed before_snapshot")
 
         base = self.narrative_repo.get_current()
         if not base:

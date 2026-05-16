@@ -46,7 +46,9 @@ def test_run_key_differs_across_levels():
 # ---------------------------------------------------------------------------
 
 
-def _request(*, reason: str = "x", level: ReflectionRequestLevel = ReflectionRequestLevel.DAILY) -> ReflectionRequest:
+def _request(
+    *, reason: str = "x", level: ReflectionRequestLevel = ReflectionRequestLevel.DAILY
+) -> ReflectionRequest:
     when = datetime.now(UTC)
     return ReflectionRequest(
         level=level,

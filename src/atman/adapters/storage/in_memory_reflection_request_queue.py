@@ -34,11 +34,7 @@ class InMemoryReflectionRequestQueue(ReflectionRequestQueue):
         level: ReflectionRequestLevel,
         limit: int | None = None,
     ) -> list[ReflectionRequest]:
-        rows = [
-            r
-            for r in self._by_id.values()
-            if r.level == level and not r.is_consumed
-        ]
+        rows = [r for r in self._by_id.values() if r.level == level and not r.is_consumed]
         rows.sort(key=lambda r: r.requested_at)
         if limit is not None:
             rows = rows[:limit]

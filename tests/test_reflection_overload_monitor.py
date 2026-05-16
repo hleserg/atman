@@ -85,9 +85,15 @@ def test_daily_not_triggered_if_one_day_below_threshold():
     # day 0: 2 runs, day 1: 1 run, day 2: 2 runs — middle day below threshold
     events.append(_event(level=ReflectionLevel.DAILY, when=now.replace(hour=8)))
     events.append(_event(level=ReflectionLevel.DAILY, when=now.replace(hour=21)))
-    events.append(_event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=1)).replace(hour=12)))
-    events.append(_event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=2)).replace(hour=8)))
-    events.append(_event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=2)).replace(hour=20)))
+    events.append(
+        _event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=1)).replace(hour=12))
+    )
+    events.append(
+        _event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=2)).replace(hour=8))
+    )
+    events.append(
+        _event(level=ReflectionLevel.DAILY, when=(now - timedelta(days=2)).replace(hour=20))
+    )
 
     sink = InMemoryOverloadAlertSink()
     monitor = ReflectionOverloadMonitor(_store_with(events), sink, clock=_FixedClock(now))

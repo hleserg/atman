@@ -33,6 +33,4 @@ class InMemoryOverloadAlertSink(ReflectionOverloadAlertSink):
         message: str,
         details: dict,
     ) -> None:
-        self.alerts.append(
-            OverloadAlert(severity=severity, message=message, details=dict(details))
-        )
+        self.alerts.append(OverloadAlert(severity=severity, message=message, details=dict(details)))

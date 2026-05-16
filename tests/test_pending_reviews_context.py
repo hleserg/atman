@@ -185,5 +185,3 @@ def test_resolve_tool_decision_aliases_map_correctly():
         refreshed = inbox.get(item.id)
         assert refreshed is not None
         assert refreshed.resolution == expected
-
-

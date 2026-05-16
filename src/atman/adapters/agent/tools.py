@@ -271,8 +271,7 @@ def resolve_pending_review(
     resolution = _RESOLUTION_ALIASES.get(decision_norm)
     if resolution is None:
         return (
-            f"Error: unknown decision '{decision}'. "
-            "Use accepted | rejected | modified | dismissed."
+            f"Error: unknown decision '{decision}'. Use accepted | rejected | modified | dismissed."
         )
 
     note_clean = note.strip()
@@ -296,10 +295,7 @@ def resolve_pending_review(
     except ValueError as exc:
         return f"Error: {exc}"
 
-    return (
-        f"Resolved review {resolved.id} as {resolution.value}. "
-        f"Note: {note_clean}"
-    )
+    return f"Resolved review {resolved.id} as {resolution.value}. Note: {note_clean}"
 
 
 _LEVEL_ALIASES: dict[str, ReflectionRequestLevel] = {
