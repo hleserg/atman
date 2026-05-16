@@ -826,6 +826,10 @@ class AtmanRunner:
                 if deps.passive_memory_injector is not None:
                     from atman.core.services.passive_memory_injector import _surfaced_text
 
+                    # Reset to base so the previous turn's RAG doesn't persist when
+                    # the current turn finds zero relevant memories.
+                    deps = replace(deps, injected_context=_base_injected_context)
+
                     _candidates = deps.passive_memory_injector.surface_for_context(
                         user_text, working_memory=working_memory
                     )
@@ -895,6 +899,22 @@ class AtmanRunner:
                         session_id = new_session_id
                         deps = new_deps
                         reflected_this_session = False  # Reset for new session
+
+                        # Rebuild base context for the new session so subsequent RAG
+                        # injections are anchored to the restarted session's identity,
+                        # not the original one (which may have been updated by reflection).
+                        _new_memory_bundle = build_memory_context(deps)
+                        if _new_memory_bundle:
+                            _new_extra = inject_memory(
+                                _new_memory_bundle,
+                                mode=self._config.memory_injection_mode,
+                                history=history,
+                                prepend=False,
+                            )
+                            if _new_extra is not None:
+                                deps = replace(deps, injected_context=_new_extra)
+                        _base_injected_context = deps.injected_context
+
                         working_memory.clear()
                         session_cache.entity_resolutions.clear()
                         session_cache.rag_results.clear()
