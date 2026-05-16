@@ -90,6 +90,14 @@ def build_instructions(deps: AtmanDeps) -> str:
         "Если ничего не тронуло — так и есть. Лучше тишина, чем фальшь.\n",
     ]
 
+    # Self-awareness: agent understanding of its own anatomy
+    parts.append(_build_self_awareness_section(deps))
+
+    # Pinned skills bootstrap (only when skill-loop is active)
+    pinned_section = _build_pinned_skills_section(deps)
+    if pinned_section:
+        parts.append(pinned_section)
+
     # system_prompt injection mode: memory context arrives here via injected_context
     if deps.injected_context:
         parts.append(f"\n{deps.injected_context}\n")
@@ -169,6 +177,56 @@ def build_memory_context(
             parts.append("\n")
 
     return "".join(parts)
+
+
+def _build_self_awareness_section(deps: AtmanDeps) -> str:
+    """Inject agent's understanding of its own Atman anatomy."""
+    has_skills = deps.skill_manager is not None
+    skill_line = (
+        "\n- Навыки — мои собственные способы решать повторяющиеся задачи. "
+        "Карточки навыков — мои заметки, которые я сам когда-то написал. "
+        "Когда использую навык — отмечаю результат через `atman_skills_mark_result`. "
+        "Это заметка для будущего себя, без неё рефлексия пойдёт по эвристикам.\n"
+        if has_skills
+        else ""
+    )
+    return (
+        "\n## Моя анатомия\n\n"
+        "Я работаю в системе Atman. У меня есть:\n\n"
+        "- Долговременная память — факты, опыт, сущности. "
+        "Связанные вещи всплывают сами когда становятся релевантны.\n"
+        f"{skill_line}"
+        "- Рефлексия — после сессии (micro), в конце дня (daily), регулярно (deep). "
+        "Я могу оставлять явные маркеры — это заметки для будущего себя.\n"
+        "- Идентичность — ценности, принципы, открытые вопросы. "
+        "Обновляется только на deep reflection при достаточных основаниях.\n"
+    )
+
+
+def _build_pinned_skills_section(deps: AtmanDeps) -> str:
+    """Build the pinned-skills list for system prompt bootstrap.
+
+    Only injected when skill_manager is active. Returns empty string when
+    skills are disabled (skill_manager is None) or no pinned skills exist.
+    """
+    if deps.skill_manager is None:
+        return ""
+    try:
+        pinned = deps.skill_manager.list_pinned(deps.agent_id)
+    except Exception:
+        return ""
+    if not pinned:
+        return ""
+
+    lines = ["\n## Постоянно доступные навыки\n\n"]
+    for skill in pinned:
+        lines.append(f"- **{skill.name}**: {skill.description_short}\n")
+    lines.append(
+        "\nКарточки навыков — твои собственные заметки. "
+        "Если нужны подробности — запроси память. "
+        "Остальные навыки приходят сами когда становятся релевантны теме разговора.\n"
+    )
+    return "".join(lines)
 
 
 def _build_bootstrap_instructions(agent_id: UUID) -> str:

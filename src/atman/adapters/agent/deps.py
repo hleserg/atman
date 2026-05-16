@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from atman.core.services.passive_memory_injector import PassiveMemoryInjector
     from atman.core.services.reflection_service import MicroReflectionService
     from atman.core.services.session_manager import SessionManager
+    from atman.skills.port import SkillManagerPort
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,11 @@ class AtmanDeps:
     """Optional RAG pipeline. When present, surfaces relevant facts and key moments
     before each agent.run() call and respects the configured rag_token_budget."""
 
+    skill_manager: SkillManagerPort | None = None
+    """Optional skill-loop manager. When None (skills.enabled=false), all skill
+    operations are silently skipped. When present, provides pinned-skill bootstrap
+    injection, trigger routing, invocation tracking, and reflection processing."""
+
     @classmethod
     def from_config(
         cls,
@@ -102,6 +108,7 @@ class AtmanDeps:
         pending_review_inbox: PendingHumanReviewInbox | None = None,
         reflection_request_queue: ReflectionRequestQueue | None = None,
         passive_memory_injector: PassiveMemoryInjector | None = None,
+        skill_manager: SkillManagerPort | None = None,
     ) -> AtmanDeps:
         """
         Build :class:`AtmanDeps` from a validated :class:`AgentConfig`.
@@ -127,4 +134,5 @@ class AtmanDeps:
             pending_review_inbox=pending_review_inbox,
             reflection_request_queue=reflection_request_queue,
             passive_memory_injector=passive_memory_injector,
+            skill_manager=skill_manager,
         )

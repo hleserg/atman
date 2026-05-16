@@ -101,6 +101,24 @@ class MemorySettings(BaseModel):
     file_path: str = "~/.atman/facts.jsonl"
 
 
+class SkillsSettings(BaseModel):
+    """Skill-loop configuration.
+
+    All thresholds are intentionally in config (not hardcoded) so agents with
+    different usage patterns can tune their own auto-pin / auto-downgrade cadence.
+
+    enabled=False disables the entire skill-loop: no bootstrap injection, no
+    retriever, no tools, no reflection hook. Tables are always created regardless.
+    """
+
+    enabled: bool = True
+    skills_root: str = "~/.atman/agents"  # root dir; agent folders named by UUID
+    auto_pin_threshold_uses: int = 3       # uses within window to trigger auto-pin
+    auto_pin_threshold_sessions: int = 10  # session window for auto-pin threshold
+    auto_downgrade_sessions: int = 20      # sessions without use → remove auto-pin
+    min_confidence: float = 0.65           # default router confidence threshold
+
+
 class Settings(BaseSettings):
     """Global application settings."""
 
@@ -115,6 +133,7 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = EmbeddingSettings()
     llm: LLMSettings = LLMSettings()
     memory: MemorySettings = MemorySettings()
+    skills: SkillsSettings = SkillsSettings()
 
 
 # Global settings instance
