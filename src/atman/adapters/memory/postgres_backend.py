@@ -263,53 +263,66 @@ class PostgresFactualMemory(FactualMemory):
 
     # ── FactualMemory port ────────────────────────────────────────────────────
 
+    def _insert_fact_rows(
+        self,
+        cur: Any,
+        record: FactRecord,
+        agent_id: UUID,
+    ) -> None:
+        """Issue the INSERT(s) for a fact and its inline relations on an existing cursor.
+
+        Does NOT commit — caller is responsible for transaction boundary so that
+        callers like :meth:`add_fact_with_entities` can group the fact insert
+        and entity-link inserts into one atomic unit.
+        """
+        embedding_vec = self._try_embed(record.content)
+        embedding_sql = _vec_str(embedding_vec) if embedding_vec else None
+
+        cur.execute(
+            """
+            INSERT INTO public.facts (
+                id, agent_id, content, source, tags, created_at, metadata,
+                status, invalidated_at, invalidation_note, superseded_by,
+                disputed_at, confirmation_count, last_confirmed_at, salience,
+                embedding
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s::halfvec
+            )
+            """,
+            [
+                str(record.id),
+                str(agent_id),
+                record.content,
+                record.source,
+                list(record.tags),
+                record.created_at,
+                Jsonb(record.metadata),
+                record.status.value,
+                record.invalidated_at,
+                record.invalidation_note,
+                str(record.superseded_by) if record.superseded_by else None,
+                record.disputed_at,
+                record.confirmation_count,
+                record.last_confirmed_at,
+                record.salience,
+                embedding_sql,
+            ],
+        )
+        for rel in record.relations:
+            self._insert_relation(cur, record.id, rel.target_id, rel.relation_type, rel.metadata)
+
     def add_fact(self, record: FactRecord) -> FactRecord:
         """Insert a fact and its pre-populated relations into the database."""
         conn = self._require_conn()
         self._set_agent_context(conn)
 
         agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
-        embedding_vec = self._try_embed(record.content)
-        embedding_sql = _vec_str(embedding_vec) if embedding_vec else None
 
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO public.facts (
-                    id, agent_id, content, source, tags, created_at, metadata,
-                    status, invalidated_at, invalidation_note, superseded_by,
-                    disputed_at, confirmation_count, last_confirmed_at, salience,
-                    embedding
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s::halfvec
-                )
-                """,
-                [
-                    str(record.id),
-                    str(agent_id),
-                    record.content,
-                    record.source,
-                    list(record.tags),
-                    record.created_at,
-                    Jsonb(record.metadata),
-                    record.status.value,
-                    record.invalidated_at,
-                    record.invalidation_note,
-                    str(record.superseded_by) if record.superseded_by else None,
-                    record.disputed_at,
-                    record.confirmation_count,
-                    record.last_confirmed_at,
-                    record.salience,
-                    embedding_sql,
-                ],
-            )
-            for rel in record.relations:
-                self._insert_relation(
-                    cur, record.id, rel.target_id, rel.relation_type, rel.metadata
-                )
+            self._insert_fact_rows(cur, record, agent_id)
 
         conn.commit()
         stored = record.model_copy(deep=True)
@@ -548,29 +561,42 @@ class PostgresFactualMemory(FactualMemory):
         record: FactRecord,
         entities: list[tuple[UUID, str]],
     ) -> FactRecord:
-        """Insert a fact and its entity links in a single transaction."""
-        stored = self.add_fact(record)
-        if not entities:
-            return stored
+        """Insert a fact and its entity links atomically in a single transaction.
 
-        agent_id = stored.agent_id
-        if agent_id is None:
-            return stored
-        schema = self._agent_schema(agent_id)
-        if schema is None:
-            return stored
+        If any entity-link INSERT fails (FK violation, connection drop), the
+        fact row is rolled back too — callers will never observe a fact
+        without its declared entity links. Falls back to plain ``add_fact``
+        behaviour when ``entities`` is empty or the agent's schema can't be
+        resolved (no agents row).
+        """
+        if not entities:
+            return self.add_fact(record)
 
         conn = self._require_conn()
+        self._set_agent_context(conn)
+        agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
+        schema = self._agent_schema(agent_id)
+        if schema is None:
+            # No per-agent schema yet — fact persists without entity links,
+            # which is the closest non-atomic graceful fallback we can offer.
+            return self.add_fact(record)
+
         with conn.cursor() as cur:
+            self._insert_fact_rows(cur, record, agent_id)
             for entity_id, role in entities:
                 cur.execute(
                     f"INSERT INTO {schema}.fact_entities "  # type: ignore[arg-type]
                     "(fact_id, entity_id, agent_id, role) "
                     "VALUES (%s, %s, %s, %s) "
                     "ON CONFLICT (fact_id, entity_id, role) DO NOTHING",
-                    [str(stored.id), str(entity_id), str(agent_id), role],
+                    [str(record.id), str(entity_id), str(agent_id), role],
                 )
+        # Single commit — either both fact + links land or both roll back on
+        # exception (psycopg auto-rolls-back the open transaction on error).
         conn.commit()
+
+        stored = record.model_copy(deep=True)
+        stored.agent_id = agent_id
         return stored
 
     def find_facts_by_entity(

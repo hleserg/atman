@@ -123,12 +123,16 @@ class MRebelRelationAdapter(EntityRelationExtractor):
 
 
 def _parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
-    """Parse a REBEL-formatted ``<triplet> subj <subj_type> obj <obj_type> rel`` string.
+    """Parse a REBEL-formatted ``<triplet>`` string into ``(subj, obj, relation)``.
 
-    REBEL/mREBEL emit triplets delimited by ``<triplet>``. Within each triplet,
-    the subject is followed by ``<subj_type>`` and the object by ``<obj_type>``,
-    then the relation label. Type tags are discarded here; only ``(subj, obj,
-    relation)`` is returned.
+    mREBEL (`Babelscape/mrebel-large`) emits a four-marker format::
+
+        <triplet> Alice <subj> person <subj_type> Bob <obj> person <obj_type> spouse
+
+    Legacy single-language REBEL outputs a two-marker format with only
+    ``<subj_type>`` / ``<obj_type>``. Both are handled here. The subject- and
+    object-type tags are discarded; the relation label (which may be
+    multi-word, e.g. ``"located in"``) is preserved verbatim.
     """
     if not decoded:
         return []
@@ -137,22 +141,37 @@ def _parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
         chunk = chunk.strip()
         if not chunk:
             continue
+
+        # ── Subject ────────────────────────────────────────────────────
         if "<subj>" in chunk:
+            # Four-marker: "Alice <subj> person <subj_type> Bob <obj> person <obj_type> spouse"
             subj_part, _, rest = chunk.partition("<subj>")
+            # Discard subj_type tag and its content (subject type label) — keep only
+            # what follows <subj_type> for the next stage.
+            if "<subj_type>" in rest:
+                _, _, rest = rest.partition("<subj_type>")
         elif "<subj_type>" in chunk:
+            # Two-marker fallback: "Alice <subj_type> person <obj_type> Bob spouse"
             subj_part, _, rest = chunk.partition("<subj_type>")
         else:
-            # No subject delimiter — skip
             continue
+
+        # ── Object ─────────────────────────────────────────────────────
         if "<obj>" in rest:
             obj_part, _, relation_part = rest.partition("<obj>")
+            # Discard obj_type tag and its content (object type label) — keep only
+            # the trailing relation label.
+            if "<obj_type>" in relation_part:
+                _, _, relation_part = relation_part.partition("<obj_type>")
         elif "<obj_type>" in rest:
             obj_part, _, relation_part = rest.partition("<obj_type>")
         else:
             continue
+
         subj_text = subj_part.strip()
         obj_text = obj_part.strip()
-        relation = relation_part.strip().split()[0] if relation_part.strip() else ""
+        # Preserve multi-word relation labels verbatim ("located in", "capital of", …)
+        relation = relation_part.strip()
         if not subj_text or not obj_text or not relation:
             continue
         out.append((subj_text, obj_text, relation))

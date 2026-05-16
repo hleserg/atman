@@ -141,6 +141,12 @@ class PostgresEntityRegistry(EntityRegistry):
         self._conn: psycopg.Connection[Any] | None = None
         self._fixed_serial_id: int | None = serial_id
         self._serial_cache: dict[UUID, int] = {}
+        # entity_id → schema_name cache so we don't scan information_schema.schemata
+        # on every single-entity operation (get_entity, add_alias, merge_entities,
+        # update_last_seen, flag_disambiguation). The cache survives until the
+        # instance is dropped — entities never move between schemas, so a single
+        # successful lookup is permanent for the lifetime of this registry.
+        self._entity_schema_cache: dict[UUID, str] = {}
         self._embedding_threshold = embedding_threshold
 
     # ------------------------------------------------------------------
@@ -198,9 +204,26 @@ class PostgresEntityRegistry(EntityRegistry):
     def _resolve_schema_for_entity(self, entity_id: UUID) -> sql.Identifier | None:
         """Locate the agent schema that owns the given entity_id.
 
-        Searches every ``agent_%`` schema's entities table. Returns the
-        sql.Identifier on first hit, or None when the entity does not exist.
+        Fast path (most common in production): when this registry was
+        constructed with a fixed ``serial_id``, we skip the schema scan and
+        return that schema directly. This is the case for any caller that
+        knows which agent it's operating on.
+
+        Cached path: a previously resolved entity_id → schema mapping is
+        kept in-process so subsequent lookups for the same entity are O(1)
+        even on multi-agent registries.
+
+        Fallback (multi-agent registry, first-time lookup): scan every
+        ``agent_%`` schema's entities table for the row. Hits are cached.
         """
+        # Fast path — registry bound to a specific agent's schema.
+        if self._fixed_serial_id is not None:
+            return sql.Identifier(f"agent_{self._fixed_serial_id}")
+
+        cached = self._entity_schema_cache.get(entity_id)
+        if cached is not None:
+            return sql.Identifier(cached)
+
         conn = self._get_conn()
         with conn.cursor() as cur:
             cur.execute(
@@ -218,6 +241,7 @@ class PostgresEntityRegistry(EntityRegistry):
                 )
                 cur.execute(query, {"entity_id": entity_id})
                 if cur.fetchone() is not None:
+                    self._entity_schema_cache[entity_id] = schema_name
                     return sql.Identifier(schema_name)
         return None
 
