@@ -11,6 +11,10 @@
 --   psql -d atman -f migrations/versions/0015_move_subjective_tables.sql
 --
 -- Rollback: restore from backup; forward-only data migration.
+--
+-- Multi-agent backfill: rows in public.self_applied_changes with agent_id IS NULL
+-- (narrative-only) and public.pending_human_review without context.agent_id are
+-- copied only when public.agents has a single row. Verify counts before 0016 DROP.
 
 -- Grants for atman_app on per-agent schema (tables + BIGSERIAL sequences).
 CREATE OR REPLACE FUNCTION public.grant_agent_schema_app_privileges(schema_name TEXT)

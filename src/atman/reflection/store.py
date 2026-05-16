@@ -188,6 +188,7 @@ class ReflectionStore:
         return event
 
     def get(self, reflection_id: int, *, agent_id: UUID | None = None) -> ReflectionEvent | None:
+        """Load by id from ``agent_{N}.reflections``; pass ``agent_id`` or set ``ATMAN_CURRENT_AGENT``."""
         conn = self._require_conn()
         resolved_agent = agent_id or self._agent_uuid_from_env()
         if resolved_agent is None:
@@ -206,6 +207,7 @@ class ReflectionStore:
     def list_by_session(
         self, session_id: UUID, *, agent_id: UUID | None = None
     ) -> list[ReflectionEvent]:
+        """List reflections for a session; pass ``agent_id`` to skip cross-schema scan."""
         conn = self._require_conn()
         if agent_id is not None:
             schema = self._schema_for_agent(agent_id)
