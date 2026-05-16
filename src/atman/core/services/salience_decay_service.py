@@ -4,6 +4,7 @@ import math
 from datetime import UTC, datetime
 from uuid import UUID
 
+from atman.core.models.experience import EmotionalDepth
 from atman.core.ports.salience_decay import SalienceDecayService
 from atman.core.ports.state_store import StateStore
 
@@ -12,10 +13,11 @@ class InMemorySalienceDecayService(SalienceDecayService):
     """
     Framework-agnostic SalienceDecayService backed by StateStore.
 
-    Operates on ExperienceRecord objects, which carry salience,
-    last_accessed_at, and depth metadata (has_profound_moment,
-    avg_emotional_intensity). Records are retrieved via the StateStore
-    and updated in-place through mark_accessed / direct field mutation.
+    Operates on KeyMoment records (v2 architecture). Key moments carry
+    `salience`, `salience_at`, `last_accessed_at`, `access_count`, and
+    `how_i_felt.depth` for choosing the decay rate. Updated moments are
+    persisted via `store_key_moment` (idempotent upsert), so changes
+    survive across `list_key_moments` calls that return deep copies.
     """
 
     def __init__(self, state_store: StateStore) -> None:
@@ -52,74 +54,64 @@ class InMemorySalienceDecayService(SalienceDecayService):
         min_salience: float = 0.01,
     ) -> int:
         """
-        Decay salience for experiences not accessed since cutoff.
+        Decay salience for key moments not accessed since cutoff.
 
-        Iterates all ExperienceRecord objects from the store. For each
-        record whose last_accessed_at is before the cutoff, applies:
+        Iterates all KeyMoment objects from the store. For each moment whose
+        `last_accessed_at` is before the cutoff, applies:
 
             new_salience = max(min_salience, salience * exp(-lambda * days))
 
-        The lambda is chosen based on depth metadata:
-          - has_profound_moment=True  → decay_lambda_profound
-          - avg_emotional_intensity >= 0.6 → decay_lambda_meaningful
-          - otherwise                 → decay_lambda_surface
+        The lambda is chosen based on the moment's emotional depth:
+          - profound   → decay_lambda_profound
+          - meaningful → decay_lambda_meaningful
+          - surface    → decay_lambda_surface
 
-        Returns the count of records whose salience was actually updated.
+        Updated moments are persisted via `store_key_moment` (idempotent
+        upsert). Returns the count of moments whose salience was updated.
 
         Note on `agent_id` scoping:
-            This in-memory adapter operates on a per-process StateStore that is
-            single-agent by construction (one InMemoryStateStore per agent in tests
-            and demos), and per-agent in Postgres via the `agent_N.*` schema
-            mechanism (each PostgresStateStore is bound to one agent's schema).
-            Therefore `list_recent_experiences()` is already agent-scoped at the
-            store boundary, and we do not need to filter records here. If a future
-            shared-tenant StateStore is introduced, `StateStore` will need an
-            agent-filtered listing method, and this implementation will be updated
-            to use it.
+            The StateStore is agent-scoped at the boundary — per-agent schema
+            in Postgres, per-process instance in-memory — so additional
+            agent_id filtering is not required here. agent_id is accepted to
+            satisfy the port contract and to allow future multi-tenant stores
+            to filter.
         """
-        # agent_id is accepted to satisfy the port contract; scoping happens at
-        # the StateStore boundary (per-agent schema / per-process instance).
-        del agent_id
+        del agent_id  # scoping at StateStore boundary; see docstring
         now = datetime.now(UTC)
-        # Retrieve all experiences; large limit covers in-memory stores.
-        records = self._store.list_recent_experiences(limit=10_000)
+        moments = self._store.list_key_moments()
+
+        cutoff_aware = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=UTC)
+        now_aware = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
 
         updated = 0
-        for record in records:
-            exp = record.experience
-            last_accessed = exp.last_accessed_at
-
-            # Ensure both datetimes are comparable (add UTC if naive)
+        for moment in moments:
+            last_accessed = moment.last_accessed_at
             if last_accessed.tzinfo is None:
                 last_accessed = last_accessed.replace(tzinfo=UTC)
-            cutoff_aware = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=UTC)
 
             if last_accessed >= cutoff_aware:
                 continue
 
-            # Choose decay lambda based on depth metadata
-            if exp.has_profound_moment:
+            depth = moment.how_i_felt.depth
+            if depth == EmotionalDepth.PROFOUND:
                 lam = decay_lambda_profound
-            elif exp.avg_emotional_intensity >= 0.6:
+            elif depth == EmotionalDepth.MEANINGFUL:
                 lam = decay_lambda_meaningful
             else:
                 lam = decay_lambda_surface
 
-            now_aware = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
             days = (now_aware - last_accessed).total_seconds() / 86400.0
-            new_salience = max(min_salience, exp.salience * math.exp(-lam * days))
+            new_salience = max(min_salience, moment.salience * math.exp(-lam * days))
 
-            if new_salience != exp.salience:
-                exp.salience = new_salience
+            if new_salience != moment.salience:
+                moment.salience = new_salience
+                moment.salience_at = now_aware
+                # Persist the updated moment via idempotent upsert.
+                self._store.store_key_moment(moment)
                 updated += 1
 
         return updated
 
     def mark_accessed(self, moment_id: UUID) -> None:
-        """
-        Update last_accessed_at and increment access_count for an experience.
-
-        Delegates to StateStore.mark_accessed, which treats the moment_id
-        as an ExperienceRecord identifier.
-        """
-        self._store.mark_accessed(moment_id)
+        """Mark a key moment as accessed (updates last_accessed_at, access_count)."""
+        self._store.mark_moment_accessed(moment_id)

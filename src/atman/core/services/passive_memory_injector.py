@@ -114,7 +114,9 @@ class PassiveMemoryInjector:
             SurfacedMemory(
                 item=moment_by_id[r.key_moment_id],
                 source=r.source,
-                score=r.final_score or r.score,
+                # Use `is not None` rather than `or` so a legitimate 0.0
+                # reranker score is not silently overridden by retrieval score.
+                score=r.final_score if r.final_score is not None else r.score,
             )
             for r in ranked
             if r.key_moment_id in moment_by_id
