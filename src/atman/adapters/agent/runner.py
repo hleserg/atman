@@ -695,6 +695,9 @@ class AtmanRunner:
             restart_session,
             wait_session,
         )
+        from atman.core.services.passive_memory_injector import build_rag_context
+        from atman.core.services.session_cache import SessionCache
+        from atman.core.services.session_working_memory import SessionWorkingMemory
         from atman.term import print_err, print_info, print_plain, print_prompt, print_warn
 
         deps, session_manager, _store = build_deps(self._workspace, self._agent_id, self._config)
@@ -706,6 +709,9 @@ class AtmanRunner:
         interrupted = False
         original_sigterm_handler: Any = None
         user_language = "ru"  # updated from user messages as session progresses
+        # Per-session optimization caches (live exactly one session)
+        working_memory = SessionWorkingMemory()
+        session_cache = SessionCache()
 
         # E22.6: Start dedicated stdin reader thread with current event loop
         loop = asyncio.get_event_loop()
@@ -810,6 +816,22 @@ class AtmanRunner:
                 # Detect user language from their message (most recent wins)
                 if len(user_text.strip()) >= 4:
                     user_language = "ru" if _is_mostly_cyrillic(user_text) else "en"
+
+                # Surface relevant memories via RAG when PassiveMemoryInjector is wired.
+                # build_rag_context caps the result to rag_token_budget tokens.
+                if deps.passive_memory_injector is not None:
+                    _candidates = deps.passive_memory_injector.surface_for_context(
+                        user_text, working_memory=working_memory
+                    )
+                    _rag = build_rag_context(
+                        _candidates, budget=self._config.rag_token_budget
+                    )
+                    _LOG.debug(
+                        "RAG: items=%d tokens=%d session_cache=%s",
+                        len(_rag.items),
+                        _rag.tokens_used,
+                        session_cache.stats(),
+                    )
 
                 try:
                     result = await agent.run(
@@ -944,6 +966,15 @@ class AtmanRunner:
             if original_sigterm_handler is not None:
                 signal.signal(signal.SIGTERM, original_sigterm_handler)
             self._stop_stdin_reader()
+            # Release per-session caches to free memory
+            working_memory.clear()
+            session_cache.entity_resolutions.clear()
+            session_cache.rag_results.clear()
+            if deps.passive_memory_injector is not None:
+                with contextlib.suppress(Exception):
+                    la = getattr(deps.passive_memory_injector, "_linguistic_analyzer", None)
+                    if la is not None and hasattr(la, "clear_session_cache"):
+                        la.clear_session_cache()
             if session_id is not None:
                 try:
                     # Pass close_reason if session was interrupted
