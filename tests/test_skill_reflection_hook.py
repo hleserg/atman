@@ -20,11 +20,10 @@ class TestMicroReflectionSkillHook:
         from atman.core.services.narrative_revision import NarrativeRevisionService
         from atman.core.services.reflection_service import MicroReflectionService
 
-        # Mock experience repo with one experience
-        experience = MagicMock()
-        experience.id = uuid4()
-        experience_repo = MagicMock()
-        experience_repo.get_by_session.return_value = [experience]
+        # Mock session repo (R-Micro uses SessionRepository)
+        session_repo = MagicMock()
+        session_repo.get_session.return_value = MagicMock()
+        session_repo.get_key_moments_for_session.return_value = [MagicMock()]
 
         # Mock narrative revision
         narrative_revision = MagicMock(spec=NarrativeRevisionService)
@@ -38,7 +37,7 @@ class TestMicroReflectionSkillHook:
         narrative_revision.narrative_repo.get_current.return_value = narrative_doc
 
         service = MicroReflectionService(
-            experience_repo=experience_repo,
+            session_repo=session_repo,
             narrative_revision=narrative_revision,
             event_store=InMemoryReflectionEventStore(),
             skill_manager=skill_manager,
