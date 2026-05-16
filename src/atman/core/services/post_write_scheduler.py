@@ -26,9 +26,31 @@ from atman.core.ports.maintenance_queue import MaintenanceQueue
 _LOG = logging.getLogger(__name__)
 
 
+# PLAYBOOK-START
+# id: deterministic-run-keys-for-async-enqueue
+# category: design-patterns
+# title: Deterministic Run Keys for De-Duplicated Async Job Enqueue
+# status: refined
+# since: 2026-05-16
+#
+# Pattern: derive a deterministic `run_key` from `(job_name, resource_id)` (and
+# anything else that semantically identifies "the same logical job for this
+# resource"). Pass the key to the queue at enqueue time; the queue treats
+# repeat enqueues with a matching key as no-ops (return the existing pending
+# / running row instead of inserting a duplicate).
+#
+# Why generalizable: any post-write hook fired from a request-handler hot
+# path will be triggered N times for the same resource under retries,
+# replays, or competing observers. Without a run_key the queue accumulates
+# duplicate work; with one, idempotency falls out for free without
+# distributed locks. Composes with the cron-table-as-queue pattern (see
+# 0011_maintenance_jobs.sql) and with the Skip-Locked claim pattern.
 def _moment_run_key(job_name: JobName, moment_id: UUID) -> str:
     """Deterministic idempotency key for moment-scoped enrichment jobs."""
     return f"{job_name.value}:moment:{moment_id}"
+
+
+# PLAYBOOK-END
 
 
 class PostWriteScheduler:
@@ -81,6 +103,27 @@ class PostWriteScheduler:
                     "Failed to enqueue %s for moment %s — continuing", job_name.value, moment.id
                 )
 
+    # PLAYBOOK-START
+    # id: fire-and-forget-asyncio-task-strong-refs
+    # category: design-patterns
+    # title: Fire-and-Forget Asyncio Tasks with Strong-Reference Lifetime
+    # status: refined
+    # since: 2026-05-16
+    #
+    # Pattern: when scheduling a background task with `loop.create_task(...)`
+    # from inside a service, asyncio holds only a WEAK reference to the task.
+    # A naive `_ = loop.create_task(coro)` lets the task be garbage-collected
+    # mid-flight (see CPython issue tracker), so the coroutine may never run
+    # to completion. Solution: keep a strong reference in an instance-level
+    # `set[asyncio.Task]`, add the task on creation, and register a
+    # `set.discard` done-callback so it self-removes when finished. Combine
+    # with a separate exception-logger done-callback so silent crashes
+    # surface in logs.
+    #
+    # Why generalizable: every async service that wants fire-and-forget
+    # behaviour (post-write hooks, audit observers, telemetry emitters)
+    # hits this exact pitfall. The set-of-tasks pattern is the cure
+    # recommended in the asyncio docs but is rarely written down.
     async def schedule_for_key_moment_async(
         self,
         moment: KeyMoment,
@@ -111,6 +154,8 @@ class PostWriteScheduler:
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
         task.add_done_callback(_log_task_exception)
+
+    # PLAYBOOK-END
 
 
 def _log_task_exception(task: asyncio.Task[None]) -> None:

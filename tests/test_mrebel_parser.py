@@ -21,16 +21,16 @@ def test_four_marker_multi_word_relation_preserved() -> None:
     assert out == [("Paris", "France", "located in")]
 
 
-def test_two_marker_legacy_format() -> None:
-    """Single-language REBEL fallback without <subj>/<obj> markers."""
+def test_two_marker_legacy_format_dropped() -> None:
+    """Single-language REBEL output without <subj>/<obj> markers is intentionally dropped.
+
+    Its layout ``subj <subj_type> subj_type_label <obj_type> obj relation``
+    cannot be unambiguously split — the object text and the relation share
+    the trailing fragment with no separator. The parser drops the triplet
+    rather than emitting garbage that would never match a detected entity.
+    """
     out = _parse_rebel_triplets("<triplet> Alice <subj_type> person <obj_type> Bob spouse")
-    assert (
-        out == [("Alice", "person <obj_type> Bob spouse", "")]
-        or out == [("Alice", "person", "Bob spouse")]
-        or out == [("Alice", "Bob", "spouse")]
-    )
-    # The two-marker fallback layout in the wild varies; what matters is that
-    # at least subject+object are extracted without garbage type tags.
+    assert out == []
 
 
 def test_multiple_triplets() -> None:

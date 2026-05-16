@@ -41,16 +41,22 @@ class MRebelRelationAdapter(EntityRelationExtractor):
         self,
         model_name: str = "Babelscape/mrebel-large",
         device: str = "cpu",
-        confidence_threshold: float = 0.5,
     ) -> None:
         if not _TRANSFORMERS_AVAILABLE:
             raise ImportError(
                 "transformers is not installed. Install with: "
                 "pip install 'atman[linguistic]' or 'pip install transformers'"
             )
+        # NOTE: a confidence_threshold parameter is intentionally NOT exposed
+        # here. The HF text2text-generation pipeline does not emit per-token
+        # or per-triplet probabilities through its default API, so any
+        # threshold we accept would be a no-op (the prior implementation
+        # silently dropped the value, which misled callers). To filter by
+        # generation likelihood, wire `output_scores=True` on the underlying
+        # `.generate()` call and post-process — out of scope for this
+        # adapter today.
         self._model_name = model_name
         self._device = device
-        self._threshold = confidence_threshold
         self._pipeline: Any = None
 
     def _get_pipeline(self) -> Any:
@@ -129,10 +135,14 @@ def _parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
 
         <triplet> Alice <subj> person <subj_type> Bob <obj> person <obj_type> spouse
 
-    Legacy single-language REBEL outputs a two-marker format with only
-    ``<subj_type>`` / ``<obj_type>``. Both are handled here. The subject- and
-    object-type tags are discarded; the relation label (which may be
-    multi-word, e.g. ``"located in"``) is preserved verbatim.
+    Subject- and object-type tags are discarded; the relation label
+    (which may be multi-word, e.g. ``"located in"``) is preserved verbatim.
+
+    The legacy two-marker format from single-language REBEL is NOT supported
+    — its layout ``subj <subj_type> subj_type_label <obj_type> obj relation``
+    cannot be unambiguously split (object text and relation are
+    space-separated in a single trailing fragment). Triplets in that format
+    are dropped silently.
     """
     if not decoded:
         return []
@@ -143,18 +153,14 @@ def _parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
             continue
 
         # ── Subject ────────────────────────────────────────────────────
-        if "<subj>" in chunk:
-            # Four-marker: "Alice <subj> person <subj_type> Bob <obj> person <obj_type> spouse"
-            subj_part, _, rest = chunk.partition("<subj>")
-            # Discard subj_type tag and its content (subject type label) — keep only
-            # what follows <subj_type> for the next stage.
-            if "<subj_type>" in rest:
-                _, _, rest = rest.partition("<subj_type>")
-        elif "<subj_type>" in chunk:
-            # Two-marker fallback: "Alice <subj_type> person <obj_type> Bob spouse"
-            subj_part, _, rest = chunk.partition("<subj_type>")
-        else:
+        if "<subj>" not in chunk:
+            # Two-marker REBEL output is ambiguous (see docstring) — drop.
             continue
+        subj_part, _, rest = chunk.partition("<subj>")
+        # Discard subj_type tag and its content (subject type label) — keep only
+        # what follows <subj_type> for the next stage.
+        if "<subj_type>" in rest:
+            _, _, rest = rest.partition("<subj_type>")
 
         # ── Object ─────────────────────────────────────────────────────
         if "<obj>" in rest:
