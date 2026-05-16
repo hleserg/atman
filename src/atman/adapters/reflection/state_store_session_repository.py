@@ -17,6 +17,7 @@ needing to invent an ``ExperienceRecord`` shell.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import overload
 from uuid import UUID
 
 from atman.core.models.experience import KeyMoment, ReframingNote, ReframingNoteAppendResult
@@ -67,33 +68,50 @@ class StateStoreSessionRepository:
     def get_session(self, session_id: UUID) -> Session | None:
         return self._store.get_session(session_id)
 
+    @overload
+    def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]: ...
+
+    @overload
+    def list_recent_sessions(self, *, limit: int = 10) -> list[Session]: ...
+
     def list_recent_sessions(
         self, agent_id: UUID | None = None, *, limit: int = 10
     ) -> list[Session]:
         return self._store.list_recent_sessions(self._resolve_agent_id(agent_id), limit=limit)
 
+    @overload
+    def get_sessions_in_range(
+        self, agent_id: UUID, start: datetime, end: datetime
+    ) -> list[Session]: ...
+
+    @overload
+    def get_sessions_in_range(self, agent_id: datetime, start: datetime) -> list[Session]: ...
+
     def get_sessions_in_range(
         self,
-        agent_id_or_start: UUID | datetime,
-        start_or_end: datetime,
+        agent_id: UUID | datetime,
+        start: datetime,
         end: datetime | None = None,
     ) -> list[Session]:
         """Filter sessions whose ``started_at`` falls in ``[start, end]``.
 
         Accepts two call shapes for ergonomic use:
-          - ``(agent_id, start, end)`` — explicit
-          - ``(start, end)`` — uses the constructor-time default agent_id
+          - ``(agent_id, start, end)`` — explicit agent UUID
+          - ``(start, end)`` — first arg is range start; uses default ``agent_id``
         """
-        if isinstance(agent_id_or_start, datetime):
-            agent_id = self._resolve_agent_id(None)
-            start = agent_id_or_start
-            end_val = start_or_end
+        if isinstance(agent_id, datetime):
+            resolved_agent = self._resolve_agent_id(None)
+            range_start = agent_id
+            range_end = start
         else:
-            agent_id = self._resolve_agent_id(agent_id_or_start)
-            start = start_or_end
-            end_val = end  # type: ignore[assignment]
-            if end_val is None:  # pragma: no cover — defensive
+            resolved_agent = self._resolve_agent_id(agent_id)
+            range_start = start
+            range_end = end
+            if range_end is None:  # pragma: no cover — defensive
                 raise ValueError("get_sessions_in_range: end must be provided")
+        agent_id = resolved_agent
+        start = range_start
+        end_val = range_end
 
         # Pull a generous window via list_recent_sessions; filter by range.
         # For deployments where sessions/day is high this should become a
@@ -127,13 +145,13 @@ class StateStoreSessionRepository:
         silently skip the append on collision; others append blindly), so
         post-hoc length comparison would misclassify the outcome.
         """
-        if note.triggered_by:
-            existing = self._store.get_experience(session_id)
-            if existing is not None and any(
-                n.triggered_by == note.triggered_by for n in existing.experience.reframing_notes
-            ):
-                return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
-
+        existing = self._store.get_experience(session_id)
+        if existing is None:
+            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+        if note.triggered_by and any(
+            n.triggered_by == note.triggered_by for n in existing.experience.reframing_notes
+        ):
+            return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
         result = self._store.add_reframing_note(session_id, note)
         if result is None:
             return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND

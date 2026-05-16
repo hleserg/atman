@@ -125,3 +125,22 @@ def test_row_to_session_preserves_unexamined_fact_refs() -> None:
     row = _session_row(unexamined_fact_refs=fact_ids)
     session = _row_to_session(row)
     assert session.unexamined_fact_refs == fact_ids
+
+
+def test_list_agent_schemas_query_restricts_to_numeric_serial_suffix() -> None:
+    pytest.importorskip("psycopg")
+    from atman.adapters.state.postgres_state_store import PostgresStateStore
+
+    store = PostgresStateStore(serial_id=1)
+    captured: list[str] = []
+
+    class _FakeCursor:
+        def execute(self, query: str, params: object = None) -> None:
+            captured.append(query)
+
+        def fetchall(self) -> list[dict[str, str]]:
+            return []
+
+    store._list_agent_schemas(_FakeCursor())
+    assert captured
+    assert "^agent_[0-9]+$" in captured[0]

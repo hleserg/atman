@@ -10,6 +10,7 @@ import pytest
 from atman.adapters.reflection.state_store_session_repository import (
     StateStoreSessionRepository,
 )
+from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_state_store import InMemoryStateStore
 from atman.core.models import ExperienceRecord, SessionExperience
 from atman.core.models.experience import (
@@ -187,6 +188,32 @@ def test_add_reframing_note_duplicate_trigger_returns_duplicate() -> None:
     note = ReframingNote(reflection="r", reflection_type="growth", triggered_by="trigger-1")
     first = repo.add_reframing_note(sid, note)
     assert first is ReframingNoteAppendResult.STORED
-    # Second call with same triggered_by — should be detected as duplicate
+    # Second call with same triggered_by — duplicate must not be persisted
     second = repo.add_reframing_note(sid, note)
     assert second is ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
+    record = store.get_experience(sid)
+    assert record is not None
+    assert len(record.experience.reframing_notes) == 1
+
+
+def test_add_reframing_note_duplicate_trigger_file_store_returns_duplicate(
+    tmp_path,
+) -> None:
+    store = FileStateStore(workspace=tmp_path)
+    sid = uuid4()
+    m = _make_moment(sid)
+    exp = SessionExperience(
+        id=sid,
+        session_id=sid,
+        timestamp=datetime.now(UTC),
+        key_moment_ids=[m.id],
+    )
+    store.create_experience(ExperienceRecord(experience=exp))
+
+    repo = StateStoreSessionRepository(store)
+    note = ReframingNote(reflection="r", reflection_type="growth", triggered_by="trigger-1")
+    assert repo.add_reframing_note(sid, note) is ReframingNoteAppendResult.STORED
+    assert repo.add_reframing_note(sid, note) is ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
+    record = store.get_experience(sid)
+    assert record is not None
+    assert len(record.experience.reframing_notes) == 1

@@ -210,6 +210,17 @@ class PostgresStateStore(StateStore):
     def _schema_ident(self, agent_id: UUID) -> sql.Identifier:
         return sql.Identifier(f"agent_{self._resolve_serial_id(agent_id)}")
 
+    def _list_agent_schemas(self, cur: Any) -> list[str]:
+        """Return per-agent schema names (agent_<serial_id>), excluding stray matches."""
+        cur.execute(
+            """
+            SELECT schema_name
+            FROM information_schema.schemata
+            WHERE schema_name ~ '^agent_[0-9]+$'
+            """
+        )
+        return [r["schema_name"] for r in cur.fetchall()]
+
     def _resolve_schema_for_session(self, session_id: UUID) -> sql.Identifier | None:
         """Locate the agent schema that owns a given session_id.
 
@@ -221,15 +232,7 @@ class PostgresStateStore(StateStore):
             return sql.Identifier(f"agent_{self._fixed_serial_id}")
         conn = self._get_conn()
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT schema_name
-                FROM information_schema.schemata
-                WHERE schema_name LIKE 'agent_%'
-                """
-            )
-            schemas = [r["schema_name"] for r in cur.fetchall()]
-            for schema_name in schemas:
+            for schema_name in self._list_agent_schemas(cur):
                 q = sql.SQL("SELECT 1 FROM {s}.sessions WHERE id = %(sid)s").format(
                     s=sql.Identifier(schema_name)
                 )
@@ -252,15 +255,7 @@ class PostgresStateStore(StateStore):
             return sql.Identifier(f"agent_{self._fixed_serial_id}")
         conn = self._get_conn()
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT schema_name
-                FROM information_schema.schemata
-                WHERE schema_name LIKE 'agent_%'
-                """
-            )
-            schemas = [r["schema_name"] for r in cur.fetchall()]
-            for schema_name in schemas:
+            for schema_name in self._list_agent_schemas(cur):
                 q = sql.SQL("SELECT 1 FROM {s}.key_moments WHERE id = %(mid)s").format(
                     s=sql.Identifier(schema_name)
                 )
