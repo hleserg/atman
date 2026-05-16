@@ -298,7 +298,7 @@ BEGIN
     EXECUTE format($sql$
         CREATE TABLE IF NOT EXISTS %I.key_moments (
             id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            session_id               UUID NOT NULL REFERENCES %I.sessions(id) ON DELETE RESTRICT,
+            session_id               UUID NOT NULL CONSTRAINT key_moments_session_fk REFERENCES %I.sessions(id) ON DELETE RESTRICT,
             agent_id                 UUID NOT NULL REFERENCES public.agents(id) ON DELETE CASCADE,
             what_happened            TEXT NOT NULL,
             emotional_valence        FLOAT NOT NULL CHECK (emotional_valence BETWEEN -1 AND 1),
