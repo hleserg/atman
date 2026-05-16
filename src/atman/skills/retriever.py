@@ -56,9 +56,7 @@ class SkillRetriever:
                 message_embedding = None
 
         for skill in candidates:
-            confidence, reason = self._score(
-                skill, message_lower, message_embedding
-            )
+            confidence, reason = self._score(skill, message_lower, message_embedding)
             if confidence < skill_min_confidence(skill):
                 continue
             strength = (
@@ -91,17 +89,13 @@ class SkillRetriever:
         embedding_score, embedding_reason = 0.0, ""
 
         if message_embedding is not None:
-            embedding_score, embedding_reason = self._embedding_score(
-                skill, message_embedding
-            )
+            embedding_score, embedding_reason = self._embedding_score(skill, message_embedding)
 
         if keyword_score >= embedding_score:
             return keyword_score, keyword_reason
         return embedding_score, embedding_reason
 
-    def _keyword_score(
-        self, skill: Skill, message_lower: str
-    ) -> tuple[float, str]:
+    def _keyword_score(self, skill: Skill, message_lower: str) -> tuple[float, str]:
         """1.0 on substring keyword match, 0.0 otherwise.
 
         Uses substring search rather than word-boundary regex to handle
@@ -113,9 +107,7 @@ class SkillRetriever:
                 return 1.0, f'matched keyword "{kw}"'
         return 0.0, ""
 
-    def _embedding_score(
-        self, skill: Skill, message_embedding: list[float]
-    ) -> tuple[float, str]:
+    def _embedding_score(self, skill: Skill, message_embedding: list[float]) -> tuple[float, str]:
         """Cosine similarity against each anchor; return max score."""
         anchors = _anchors_from_skill(skill)
         if not anchors:
@@ -142,10 +134,12 @@ class SkillRetriever:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def skill_min_confidence(skill: Skill) -> float:
     """Read min_confidence from SKILL.md if available, else fall back to 0.65."""
     try:
         from atman.skills.manifest import parse_skill_md
+
         manifest = parse_skill_md(skill.manifest_path)
         return manifest.min_confidence
     except Exception:
@@ -155,6 +149,7 @@ def skill_min_confidence(skill: Skill) -> float:
 def _keywords_from_skill(skill: Skill) -> list[str]:
     try:
         from atman.skills.manifest import parse_skill_md
+
         return parse_skill_md(skill.manifest_path).triggers_keywords
     except Exception:
         return []
@@ -163,6 +158,7 @@ def _keywords_from_skill(skill: Skill) -> list[str]:
 def _anchors_from_skill(skill: Skill) -> list[str]:
     try:
         from atman.skills.manifest import parse_skill_md
+
         return parse_skill_md(skill.manifest_path).triggers_embedding_anchors
     except Exception:
         return []
@@ -172,6 +168,7 @@ def _card_text(skill: Skill) -> str:
     """First ~500 chars of SKILL.md body for context injection."""
     try:
         from atman.skills.manifest import parse_skill_md
+
         body = parse_skill_md(skill.manifest_path).body
         return body[:500].strip()
     except Exception:

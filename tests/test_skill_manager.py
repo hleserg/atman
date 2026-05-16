@@ -177,6 +177,7 @@ class TestSkillManagerCapture:
         )
 
         from atman.skills.manifest import parse_skill_md
+
         manifest = parse_skill_md(skill.manifest_path)
         assert manifest.name == "parse-csv"
         assert "Parses CSV" in manifest.description

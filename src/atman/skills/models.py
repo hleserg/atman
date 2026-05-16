@@ -31,7 +31,7 @@ class Skill:
     id: UUID
     agent_id: UUID
     entity_id: UUID  # soft ref → agent_{N}.entities.id
-    name: str        # kebab-case, matches SKILL.md metadata.name
+    name: str  # kebab-case, matches SKILL.md metadata.name
     description: str
     version: str
     kind: SkillKind
@@ -74,8 +74,8 @@ class SkillInvocation:
     started_at: datetime
     ended_at: datetime | None
     preliminary_status: str | None  # executing|executed_ok|executed_fail|executed_unknown
-    final_status: str | None        # helped|didnt_help|unclear; None until micro reflection
-    agent_marker: str | None        # helped|didnt_help|unclear (explicit agent signal)
+    final_status: str | None  # helped|didnt_help|unclear; None until micro reflection
+    agent_marker: str | None  # helped|didnt_help|unclear (explicit agent signal)
     agent_marker_note: str | None
     user_feedback_hints: list[str] = field(default_factory=list)
     behavioral_hints: list[str] = field(default_factory=list)
@@ -95,7 +95,7 @@ class SuggestionStrength(StrEnum):
 class SkillSuggestion:
     skill_id: str
     skill_name: str
-    card_text: str      # first ~500 chars of SKILL.md body
-    confidence: float   # 0..1
-    reason: str         # human-readable explanation of why this skill was suggested
+    card_text: str  # first ~500 chars of SKILL.md body
+    confidence: float  # 0..1
+    reason: str  # human-readable explanation of why this skill was suggested
     strength: SuggestionStrength

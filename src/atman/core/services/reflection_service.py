@@ -223,6 +223,7 @@ class MicroReflectionService:
         # Runs after narrative update; errors are logged but never surface to caller.
         if self._skill_manager is not None and agent_id is not None:
             import logging as _logging
+
             try:
                 self._skill_manager.process_session_skills(agent_id, session_id)
             except Exception as _exc:

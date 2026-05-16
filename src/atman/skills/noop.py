@@ -52,9 +52,7 @@ class NoopSkillManager:
         status: str,
         note: str | None = None,
     ) -> None:
-        raise SkillsDisabledError(
-            "Skill loop is disabled. mark_result() has no effect."
-        )
+        raise SkillsDisabledError("Skill loop is disabled. mark_result() has no effect.")
 
     def capture(
         self,

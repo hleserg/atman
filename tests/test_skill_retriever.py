@@ -72,7 +72,9 @@ class TestSkillRetriever:
     def test_keyword_match_returns_suggestion(self, tmp_path):
         store = InMemorySkillStore()
         # Use "outlet" (English) so substring match is unambiguous
-        skill = _make_skill_with_manifest(tmp_path, self.agent_id, "outlet-control", ["розетк", "outlet"])
+        skill = _make_skill_with_manifest(
+            tmp_path, self.agent_id, "outlet-control", ["розетк", "outlet"]
+        )
         store.save_skill(skill)
 
         retriever = SkillRetriever(store=store, embedding=None)

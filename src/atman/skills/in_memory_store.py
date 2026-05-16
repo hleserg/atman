@@ -29,9 +29,7 @@ class InMemorySkillStore:
         self._skills[skill.id] = skill
 
     def get_skill_by_name(self, agent_id: UUID, name: str) -> Skill | None:
-        return next(
-            (s for s in self._skills_for(agent_id) if s.name == name), None
-        )
+        return next((s for s in self._skills_for(agent_id) if s.name == name), None)
 
     def get_skill_by_id(self, skill_id: UUID) -> Skill | None:
         return self._skills.get(skill_id)
@@ -50,9 +48,7 @@ class InMemorySkillStore:
         return [
             s
             for s in self._skills_for(agent_id)
-            if s.status == SkillStatus.active
-            and not s.user_pinned
-            and not s.auto_pinned
+            if s.status == SkillStatus.active and not s.user_pinned and not s.auto_pinned
         ]
 
     def update_skill_status(self, skill_id: UUID, status: SkillStatus) -> None:
@@ -91,9 +87,7 @@ class InMemorySkillStore:
             updated_at=_now(),
         )
 
-    def bump_sessions_since_use(
-        self, agent_id: UUID, exclude_skill_ids: set[UUID]
-    ) -> None:
+    def bump_sessions_since_use(self, agent_id: UUID, exclude_skill_ids: set[UUID]) -> None:
         for skill_id, s in list(self._skills.items()):
             if s.agent_id != agent_id:
                 continue
@@ -174,13 +168,9 @@ class InMemorySkillStore:
             ended_at=_now(),
         )
 
-    def write_agent_marker(
-        self, invocation_id: UUID, marker: str, note: str | None
-    ) -> None:
+    def write_agent_marker(self, invocation_id: UUID, marker: str, note: str | None) -> None:
         inv = self._invocations[invocation_id]
-        self._invocations[invocation_id] = replace(
-            inv, agent_marker=marker, agent_marker_note=note
-        )
+        self._invocations[invocation_id] = replace(inv, agent_marker=marker, agent_marker_note=note)
 
     def append_behavioral_hint(self, invocation_id: UUID, hint: str) -> None:
         inv = self._invocations[invocation_id]

@@ -105,6 +105,7 @@ class SkillManager:
         if manifest_path.exists():
             try:
                 from atman.skills.manifest import parse_skill_md
+
                 manifest = parse_skill_md(manifest_path)
                 if manifest.runtime_entry:
                     self._run_entry(
@@ -154,14 +155,12 @@ class SkillManager:
                 )
             except subprocess.TimeoutExpired:
                 self._store.set_preliminary_status(
-                    invocation_id, "executed_fail", exit_code=-1,
-                    output_summary="timeout after 60s"
+                    invocation_id, "executed_fail", exit_code=-1, output_summary="timeout after 60s"
                 )
             except Exception as exc:
                 _log.warning("Skill subprocess error: %s", exc)
                 self._store.set_preliminary_status(
-                    invocation_id, "executed_fail", exit_code=-1,
-                    output_summary=str(exc)[:500]
+                    invocation_id, "executed_fail", exit_code=-1, output_summary=str(exc)[:500]
                 )
         else:
             # inline / none — mark as unknown (agent decides outcome)
@@ -188,9 +187,7 @@ class SkillManager:
         instructions: str | None = None,
     ) -> Skill:
         if not name or not name.replace("-", "").replace("_", "").isalnum():
-            raise ValueError(
-                f"Skill name must be kebab-case alphanumeric, got {name!r}"
-            )
+            raise ValueError(f"Skill name must be kebab-case alphanumeric, got {name!r}")
 
         skill_root = self._agents_root / str(agent_id) / "skills" / name
         skill_root.mkdir(parents=True, exist_ok=True)
@@ -216,6 +213,7 @@ class SkillManager:
             scripts_dir = skill_root / "scripts"
             scripts_dir.mkdir(exist_ok=True)
             import shutil
+
             shutil.copy2(code_path, scripts_dir / code_path.name)
 
         # Create a placeholder entity_id — real entity registration happens
@@ -275,13 +273,9 @@ class SkillManager:
             used_skill_ids.add(inv.skill_id)
 
             if final_status == "helped":
-                self._store.update_stats(
-                    inv.skill_id, success_delta=1, last_used_at=_now()
-                )
+                self._store.update_stats(inv.skill_id, success_delta=1, last_used_at=_now())
             elif final_status == "didnt_help":
-                self._store.update_stats(
-                    inv.skill_id, failure_delta=1, last_used_at=_now()
-                )
+                self._store.update_stats(inv.skill_id, failure_delta=1, last_used_at=_now())
                 self._store.set_revision_needed(inv.skill_id)
             # 'unclear' — no stat change, no revision flag
 
@@ -316,9 +310,7 @@ class SkillManager:
             helped_hints = sum(
                 1 for h in inv.behavioral_hints if "helped" in h or "topic_closed" in h
             )
-            failed_hints = sum(
-                1 for h in inv.behavioral_hints if "didnt_help" in h or "retry" in h
-            )
+            failed_hints = sum(1 for h in inv.behavioral_hints if "didnt_help" in h or "retry" in h)
             if helped_hints > failed_hints:
                 return "helped"
             if failed_hints > helped_hints:
@@ -337,15 +329,27 @@ class SkillManager:
         active_skills = self._store.list_by_status(agent_id, SkillStatus.active)
         for skill in active_skills:
             # Auto-downgrade: only for auto_pinned (user_pinned is sacred)
-            if skill.auto_pinned and not skill.user_pinned and skill.sessions_since_use >= self._config.auto_downgrade_sessions:
+            if (
+                skill.auto_pinned
+                and not skill.user_pinned
+                and skill.sessions_since_use >= self._config.auto_downgrade_sessions
+            ):
                 self._store.update_pinning(skill.id, auto_pinned=False)
-                _log.info("Auto-downgraded skill '%s' (idle %d sessions)",
-                          skill.name, skill.sessions_since_use)
+                _log.info(
+                    "Auto-downgraded skill '%s' (idle %d sessions)",
+                    skill.name,
+                    skill.sessions_since_use,
+                )
 
             # Auto-pin: skill used enough times in recent window
             # Simplified: check if invocations_count justifies auto-pin
             # (full window tracking would require per-session history query)
-            if not skill.auto_pinned and not skill.user_pinned and skill.invocations_count >= self._config.auto_pin_threshold_uses:
+            if (
+                not skill.auto_pinned
+                and not skill.user_pinned
+                and skill.invocations_count >= self._config.auto_pin_threshold_uses
+            ):
                 self._store.update_pinning(skill.id, auto_pinned=True)
-                _log.info("Auto-pinned skill '%s' (%d invocations)",
-                          skill.name, skill.invocations_count)
+                _log.info(
+                    "Auto-pinned skill '%s' (%d invocations)", skill.name, skill.invocations_count
+                )

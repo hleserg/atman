@@ -63,6 +63,7 @@ def cmd_list(args: list[str]) -> None:
     else:
         # Show all statuses
         from atman.skills.models import SkillStatus
+
         skills = []
         for st in SkillStatus:
             skills.extend(store.list_by_status(agent_id, st))
@@ -102,7 +103,9 @@ def cmd_show(args: list[str]) -> None:
     print(f"Kind:       {skill.kind.value}")
     print(f"Origin:     {skill.origin.value}")
     print(f"Pinned:     user={skill.user_pinned} auto={skill.auto_pinned}")
-    print(f"Stats:      invocations={skill.invocations_count} success={skill.success_count} fail={skill.failure_count}")
+    print(
+        f"Stats:      invocations={skill.invocations_count} success={skill.success_count} fail={skill.failure_count}"
+    )
     print(f"Idle:       sessions_since_use={skill.sessions_since_use}")
     print(f"Revision:   needed={skill.revision_needed} priority={skill.revision_priority}")
     print(f"Manifest:   {skill.manifest_path}")
@@ -128,6 +131,7 @@ def cmd_disable(args: list[str]) -> None:
         sys.exit(1)
 
     from atman.skills.models import SkillStatus
+
     store.update_skill_status(skill.id, SkillStatus.disabled)
     print(f"Skill '{name}' disabled.")
 
@@ -148,6 +152,7 @@ def cmd_enable(args: list[str]) -> None:
         sys.exit(1)
 
     from atman.skills.models import SkillStatus
+
     store.update_skill_status(skill.id, SkillStatus.active)
     print(f"Skill '{name}' enabled (active).")
 
@@ -201,8 +206,10 @@ def cmd_archive(args: list[str]) -> None:
 def cmd_inspect_invocations(args: list[str]) -> None:
     """atman-skills inspect-invocations <name> [--agent <uuid>] [--last N]"""
     if not args:
-        print("Usage: atman-skills inspect-invocations <name> [--agent <uuid>] [--last N]",
-              file=sys.stderr)
+        print(
+            "Usage: atman-skills inspect-invocations <name> [--agent <uuid>] [--last N]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     last_n = 10
@@ -225,7 +232,9 @@ def cmd_inspect_invocations(args: list[str]) -> None:
     print("(Use --last N to adjust count)")
     print(f"Skill ID: {skill.id}")
     print("Full invocation history requires direct DB query:")
-    print(f"  SELECT * FROM public.skill_invocations WHERE skill_id = '{skill.id}' ORDER BY started_at DESC LIMIT {last_n};")  # nosec B608
+    print(
+        f"  SELECT * FROM public.skill_invocations WHERE skill_id = '{skill.id}' ORDER BY started_at DESC LIMIT {last_n};"  # nosec B608
+    )
 
 
 def cmd_force_revise(args: list[str]) -> None:

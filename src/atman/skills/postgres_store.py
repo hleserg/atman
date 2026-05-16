@@ -205,9 +205,7 @@ class PostgresSkillStore:
         # No RLS context needed for lookup by PK when called internally;
         # use a generic connection without agent scoping.
         with psycopg.connect(self._db_url, row_factory=cast(Any, dict_row)) as conn:
-            row = conn.execute(
-                "SELECT * FROM public.skills WHERE id = %s", [skill_id]
-            ).fetchone()
+            row = conn.execute("SELECT * FROM public.skills WHERE id = %s", [skill_id]).fetchone()
         return _row_to_skill(cast(Any, row)) if row else None
 
     def list_pinned(self, agent_id: UUID) -> list[Skill]:
@@ -273,7 +271,8 @@ class PostgresSkillStore:
         params.append(skill_id)
         with psycopg.connect(self._db_url) as conn:
             conn.execute(
-                f"UPDATE public.skills SET {', '.join(parts)} WHERE id = %s", params  # nosec B608
+                f"UPDATE public.skills SET {', '.join(parts)} WHERE id = %s",  # nosec B608
+                params,
             )
 
     def update_stats(
@@ -297,9 +296,7 @@ class PostgresSkillStore:
                 [success_delta, failure_delta, last_used_at, _now(), skill_id],
             )
 
-    def bump_sessions_since_use(
-        self, agent_id: UUID, exclude_skill_ids: set[UUID]
-    ) -> None:
+    def bump_sessions_since_use(self, agent_id: UUID, exclude_skill_ids: set[UUID]) -> None:
         with psycopg.connect(self._db_url) as conn:
             if exclude_skill_ids:
                 conn.execute(
@@ -399,9 +396,7 @@ class PostgresSkillStore:
                 [status, exit_code, output_summary, _now(), invocation_id],
             )
 
-    def write_agent_marker(
-        self, invocation_id: UUID, marker: str, note: str | None
-    ) -> None:
+    def write_agent_marker(self, invocation_id: UUID, marker: str, note: str | None) -> None:
         with psycopg.connect(self._db_url) as conn:
             conn.execute(
                 "UPDATE public.skill_invocations SET agent_marker = %s, agent_marker_note = %s WHERE id = %s",

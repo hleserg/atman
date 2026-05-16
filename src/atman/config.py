@@ -113,10 +113,10 @@ class SkillsSettings(BaseModel):
 
     enabled: bool = True
     skills_root: str = "~/.atman/agents"  # root dir; agent folders named by UUID
-    auto_pin_threshold_uses: int = 3       # uses within window to trigger auto-pin
+    auto_pin_threshold_uses: int = 3  # uses within window to trigger auto-pin
     auto_pin_threshold_sessions: int = 10  # session window for auto-pin threshold
-    auto_downgrade_sessions: int = 20      # sessions without use → remove auto-pin
-    min_confidence: float = 0.65           # default router confidence threshold
+    auto_downgrade_sessions: int = 20  # sessions without use → remove auto-pin
+    min_confidence: float = 0.65  # default router confidence threshold
 
 
 class Settings(BaseSettings):

@@ -71,9 +71,7 @@ def make_skill_tools(
                     parsed_args = json.loads(args)
                 except json.JSONDecodeError:
                     parsed_args = {"raw": args}
-            invocation_id = skill_manager.invoke(
-                skill.id, parsed_args, agent_id, session_id
-            )
+            invocation_id = skill_manager.invoke(skill.id, parsed_args, agent_id, session_id)
             return (
                 f"Skill '{skill_name}' invoked. invocation_id={invocation_id}\n"
                 "After you see the result, call atman_skills_mark_result with your verdict."

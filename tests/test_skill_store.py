@@ -88,8 +88,10 @@ class TestInMemorySkillStore:
 
     def test_list_pinned_disabled_excluded(self):
         pinned = _make_skill(
-            agent_id=self.agent_id, name="pinned",
-            user_pinned=True, status=SkillStatus.disabled,
+            agent_id=self.agent_id,
+            name="pinned",
+            user_pinned=True,
+            status=SkillStatus.disabled,
         )
         self.store.save_skill(pinned)
         assert self.store.list_pinned(self.agent_id) == []
@@ -180,7 +182,9 @@ class TestInMemorySkillStore:
         self.store.save_skill(skill)
         inv_id = self.store.create_invocation(skill.id, self.agent_id, uuid4())
         self.store.write_agent_marker(inv_id, "helped", "worked great")
-        invocations = self.store.get_unprocessed_invocations(self.agent_id, self.store._invocations[inv_id].session_id)
+        invocations = self.store.get_unprocessed_invocations(
+            self.agent_id, self.store._invocations[inv_id].session_id
+        )
         assert invocations[0].agent_marker == "helped"
         assert invocations[0].agent_marker_note == "worked great"
 
