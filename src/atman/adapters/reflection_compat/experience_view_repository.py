@@ -76,6 +76,13 @@ def _build_session_experience(session: Session, moments_for_session: list) -> Se
         has_profound_moment=has_profound,
         incomplete_coloring=incomplete,
         fact_refs=fact_refs,
+        # Intentional drop: Session.overall_tone and Session.key_insight are
+        # NOT propagated into SessionExperience. Reflection Engine only
+        # WRITES these names onto its own output events (ReflectionEvent.
+        # key_insight, etc.) — it never reads them off an experience record.
+        # When Reflection migrates off ExperienceRepository (see
+        # docs/architecture/REFLECTION_FUTURE.md), it will consume the
+        # Session model directly and these fields become accessible again.
     )
 
 
