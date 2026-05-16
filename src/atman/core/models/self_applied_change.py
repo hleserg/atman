@@ -88,6 +88,15 @@ class SelfAppliedChange(BaseModel):
     reflection_event_id: UUID
     target_kind: SelfChangeTargetKind
 
+    agent_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Agent whose identity this change targets. Required for identity "
+            "kinds (set by IdentityService.apply_self_change); narrative kinds "
+            "leave it None since narrative ownership is keyed by identity_id."
+        ),
+    )
+
     target_ref: str = Field(
         description=(
             "Stable reference within the target. For list-shaped fields this is the "

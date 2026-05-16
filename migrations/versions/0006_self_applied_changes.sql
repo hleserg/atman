@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS public.self_applied_changes (
     id UUID PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL,
 
+    -- Agent whose identity this change targets. NULL for narrative-only
+    -- changes, where ownership is keyed by narrative.identity_id instead.
+    -- RLS is intentionally not enabled here; we currently run single-agent
+    -- per workspace and verification happens in the service layer.
+    agent_id UUID,
+
     actor TEXT NOT NULL CHECK (
         actor IN ('reflection_daily', 'reflection_deep', 'human_via_reflection_review')
     ),
@@ -60,3 +66,5 @@ CREATE INDEX IF NOT EXISTS self_applied_changes_target_kind_idx
     ON public.self_applied_changes(target_kind);
 CREATE INDEX IF NOT EXISTS self_applied_changes_reflection_event_idx
     ON public.self_applied_changes(reflection_event_id);
+CREATE INDEX IF NOT EXISTS self_applied_changes_agent_idx
+    ON public.self_applied_changes(agent_id) WHERE agent_id IS NOT NULL;

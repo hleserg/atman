@@ -22,6 +22,7 @@ from atman.adapters.storage.in_memory_self_applied_changes import (
 )
 from atman.core.models import (
     CoreValue,
+    Goal,
     OpenQuestion,
     Principle,
     SelfAppliedChange,
@@ -29,6 +30,7 @@ from atman.core.models import (
     SelfChangeSource,
     SelfChangeTargetKind,
 )
+from atman.core.models.identity import GoalHorizon, GoalOwner
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.services import IdentityService
@@ -233,6 +235,28 @@ def test_apply_self_change_self_description_records_before_and_after():
         }
 
 
+def test_apply_self_change_goal_uses_content_field():
+    # Regression: Goal exposes `content`, not `statement` — _target_ref_for_item
+    # must use content[:80] or apply_self_change crashes with AttributeError.
+    with TemporaryDirectory() as d:
+        svc, _ = _identity_service(Path(d))
+        agent = uuid4()
+        svc.bootstrap_identity(agent)
+        goal = Goal(
+            content="Finish onboarding before next sprint",
+            horizon=GoalHorizon.MEDIUM,
+            owner=GoalOwner.AGENT,
+        )
+        record = svc.apply_self_change(
+            agent,
+            SelfChangeTargetKind.IDENTITY_GOAL,
+            goal,
+            _make_source(),
+        )
+        assert record.target_ref.startswith("goal:")
+        assert "Finish onboarding" in record.target_ref
+
+
 def test_apply_self_change_rejects_wrong_payload_type():
     with TemporaryDirectory() as d:
         svc, _ = _identity_service(Path(d))
@@ -336,6 +360,29 @@ def test_revert_self_change_unknown_id():
         svc.bootstrap_identity(agent)
         with pytest.raises(KeyError):
             svc.revert_self_change(agent, uuid4(), reason="x")
+
+
+def test_revert_self_change_rejects_cross_agent_change():
+    # Two workspaces (FileStateStore stores one identity per workspace),
+    # sharing a single SelfAppliedChangeStore so the audit row from agent A
+    # is visible to the service handling agent B.
+    audit = InMemorySelfAppliedChangeStore()
+    with TemporaryDirectory() as da, TemporaryDirectory() as db:
+        svc_a = IdentityService(FileStateStore(Path(da)), self_applied_change_store=audit)
+        svc_b = IdentityService(FileStateStore(Path(db)), self_applied_change_store=audit)
+        agent_a = uuid4()
+        agent_b = uuid4()
+        svc_a.bootstrap_identity(agent_a)
+        svc_b.bootstrap_identity(agent_b)
+        record = svc_a.apply_self_change(
+            agent_a,
+            SelfChangeTargetKind.IDENTITY_SELF_DESCRIPTION,
+            "from-a",
+            _make_source(),
+        )
+        assert record.agent_id == agent_a
+        with pytest.raises(ValueError, match="different agent"):
+            svc_b.revert_self_change(agent_b, record.id, reason="oops")
 
 
 # ---------------------------------------------------------------------------

@@ -443,6 +443,7 @@ class IdentityService:
         self.state_store.save_identity(identity)
 
         change = SelfAppliedChange(
+            agent_id=agent_id,
             actor=source.actor,
             reflection_event_id=source.reflection_event_id,
             target_kind=target_kind,
@@ -493,6 +494,11 @@ class IdentityService:
             raise KeyError(f"self_applied_change {self_applied_id} not found")
         if change.reverted_at is not None:
             raise ValueError(f"self_applied_change {self_applied_id} already reverted")
+        if change.agent_id is not None and change.agent_id != agent_id:
+            raise ValueError(
+                f"self_applied_change {self_applied_id} belongs to a different agent "
+                f"({change.agent_id}); cannot revert against {agent_id}"
+            )
 
         identity = self.state_store.load_identity(agent_id)
         if identity is None:
@@ -579,7 +585,7 @@ class IdentityService:
         if kind == SelfChangeTargetKind.IDENTITY_HABIT:
             return f"habit:{payload.statement[:80]}"
         if kind == SelfChangeTargetKind.IDENTITY_GOAL:
-            return f"goal:{payload.statement[:80]}"
+            return f"goal:{payload.content[:80]}"
         if kind == SelfChangeTargetKind.IDENTITY_OPEN_QUESTION:
             return f"open_question:{payload.question[:80]}"
         return kind.value
