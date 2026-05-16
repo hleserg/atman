@@ -258,7 +258,12 @@ class ScenarioDailyReflectionService(DailyReflectionService):
     """
 
     def _detect_patterns(
-        self, experiences: list[Any], identity: Identity, run_key: str
+        self,
+        experiences: list[Any],
+        identity: Identity,
+        run_key: str,
+        *,
+        agent_reasons: list[str] | None = None,
     ) -> list[Any]:
         # Bypass the len < 2 guard for demo purposes
         if not experiences:
@@ -269,6 +274,8 @@ class ScenarioDailyReflectionService(DailyReflectionService):
             "identity_values": ", ".join(v.name for v in identity.core_values),
             "known_habits": ", ".join(h.statement for h in identity.habits),
         }
+        if agent_reasons:
+            context["agent_requested_focus"] = " | ".join(agent_reasons)
         detection = self.reflection_model.detect_pattern(experiences=experiences, context=context)
         pattern_description = detection.description.strip()
         if not pattern_description or len(pattern_description) < 10:
