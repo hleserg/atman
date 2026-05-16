@@ -85,6 +85,11 @@ def daily_pattern_detection_key(run_key: str, pattern_type_value: str) -> str:
     return f"pattern|daily|{run_key}|{pattern_type_value}"
 
 
+def daily_marker_pattern_detection_key(run_key: str, signal_type: str, signal_value: str) -> str:
+    """Fingerprint for a per-marker daily pattern slot (one per signal_type+value)."""
+    return f"pattern|daily|{run_key}|marker|{signal_type}|{signal_value}"
+
+
 def deep_pattern_detection_key(run_key: str, pattern_type_value: str) -> str:
     """Fingerprint for a deep pattern slot (one per pattern type)."""
     return f"pattern|deep|{run_key}|{pattern_type_value}"

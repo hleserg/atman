@@ -88,6 +88,14 @@ class PatternCandidate(BaseModel):
         description="Schema version for migrations and safe export/import",
     )
 
+    # PROVENANCE — which KeyMoments grounded this pattern (set by aggregators
+    # that work directly off KeyMoment streams; `examples` typically holds
+    # SessionExperience ids, which is a different scope).
+    based_on_moment_ids: list[UUID] = Field(
+        default_factory=list,
+        description="KeyMoment ids this pattern was derived from (when applicable)",
+    )
+
     # Implications
     related_values: list[str] = Field(
         default_factory=list, description="Values related to this pattern"

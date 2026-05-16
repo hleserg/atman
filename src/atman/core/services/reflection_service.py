@@ -54,6 +54,7 @@ from atman.core.reflection_run_keys import (
 )
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.session_experience_view import build_session_experience
+from atman.core.services.structured_markers_aggregator import StructuredMarkersAggregator
 
 
 # PLAYBOOK-START
@@ -286,6 +287,7 @@ class DailyReflectionService:
         *,
         clock: ClockPort | None = None,
         reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
+        structured_markers_aggregator: StructuredMarkersAggregator | None = None,
     ):
         """Initialize daily reflection service."""
         self.session_repo = session_repo
@@ -296,6 +298,9 @@ class DailyReflectionService:
         self._clock = clock or SystemClock()
         self._reflection_event_observer = (
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
+        )
+        self._structured_markers_aggregator = (
+            structured_markers_aggregator or StructuredMarkersAggregator(pattern_store)
         )
 
     def reflect(self, date: datetime) -> ReflectionEvent:
@@ -314,10 +319,12 @@ class DailyReflectionService:
 
         sessions = self.session_repo.get_sessions_in_range(start, end)
         experiences: list[SessionExperience] = []
+        all_moments: list = []
         for s in sessions:
             moments = self.session_repo.get_key_moments_for_session(s.id)
             if not moments:
                 continue
+            all_moments.extend(moments)
             experiences.append(build_session_experience(s, moments))
 
         if not experiences:
@@ -342,6 +349,10 @@ class DailyReflectionService:
         reframing_count, reframing_nf, reframing_sr, reframing_dup = self._add_reframing_notes(
             experiences, patterns_detected, run_key
         )
+        # Marker-aggregation runs after reframing so the LLM-driven reframing
+        # prompt isn't polluted with deterministic marker descriptions.
+        marker_patterns = self._structured_markers_aggregator.analyze(all_moments, run_key=run_key)
+        patterns_detected.extend(marker_patterns)
 
         notes = "outcome=daily_ok"
         if reframing_nf or reframing_sr:
