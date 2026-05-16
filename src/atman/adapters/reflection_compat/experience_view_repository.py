@@ -92,6 +92,17 @@ class ExperienceViewRepository:
 
     Implements ExperienceRepository protocol so Reflection Engine needs no changes.
     experience_id is treated as session_id throughout this adapter.
+
+    Required StateStore capability:
+        The backing StateStore MUST implement Session persistence
+        (get_session, create_session, update_session, list_recent_sessions)
+        and the per-session key_moment lookup (get_key_moments_for_session).
+        Adapters with these implemented today: InMemoryStateStore,
+        FileStateStore. Stores that only provide the default no-op Session
+        methods from the StateStore port will cause get() to always return
+        None — surface this loudly upstream when wiring (e.g. at
+        application bootstrap) rather than silently producing empty
+        reflection inputs.
     """
 
     def __init__(self, state_store: StateStore) -> None:

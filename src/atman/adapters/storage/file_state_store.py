@@ -22,6 +22,7 @@ from atman.core.models import (
     NarrativeDocument,
     ReframingNote,
 )
+from atman.core.models.session import Session
 from atman.core.ports.state_store import (
     DateRangeQuery,
     DepthQuery,
@@ -80,6 +81,9 @@ class FileStateStore(StateStore):
 
         self.key_moments_dir = self.workspace / "key_moments"
         self.key_moments_dir.mkdir(exist_ok=True)
+
+        self.sessions_dir = self.workspace / "sessions"
+        self.sessions_dir.mkdir(exist_ok=True)
 
         # Paths for current state files
         self.identity_path = self.workspace / "identity.json"
@@ -560,3 +564,48 @@ class FileStateStore(StateStore):
             key_moments = [km for km in key_moments if km.session_id == session_id]
 
         return key_moments
+
+    # ----- Session operations (v2 — needed by ExperienceViewRepository) ------
+
+    def _session_path(self, session_id: UUID) -> Path:
+        return self.sessions_dir / f"{session_id}.json"
+
+    def create_session(self, session: Session) -> Session:
+        """Persist a new session record as {sessions_dir}/{id}.json."""
+        path = self._session_path(session.id)
+        self._write_json_atomically(path, session.model_dump_json(indent=2))
+        return session
+
+    def get_session(self, session_id: UUID) -> Session | None:
+        """Retrieve session by ID, or None if not stored."""
+        path = self._session_path(session_id)
+        if not path.exists():
+            return None
+        data = _read_json_file(path)
+        return Session.model_validate(data)
+
+    def update_session(self, session: Session) -> Session:
+        """Update session metadata via atomic write (replace-by-id)."""
+        path = self._session_path(session.id)
+        self._write_json_atomically(path, session.model_dump_json(indent=2))
+        return session
+
+    def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
+        """List most recent sessions for an agent, newest first."""
+        sessions: list[Session] = []
+        for session_file in self.sessions_dir.glob("*.json"):
+            try:
+                data = _read_json_file(session_file)
+                s = Session.model_validate(data)
+            except (json.JSONDecodeError, ValueError):
+                import warnings
+
+                warnings.warn(
+                    f"Skipping corrupted session file {session_file}",
+                    stacklevel=2,
+                )
+                continue
+            if s.agent_id == agent_id:
+                sessions.append(s)
+        sessions.sort(key=lambda s: s.started_at, reverse=True)
+        return sessions[:limit]

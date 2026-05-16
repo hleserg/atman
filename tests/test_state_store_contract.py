@@ -722,8 +722,8 @@ def _make_session(agent_id: UUID | None = None) -> Session:
 
 def test_create_and_get_session(store: StateStore) -> None:
     """Sessions can be created and retrieved by id."""
-    if not isinstance(store, InMemoryStateStore):
-        pytest.skip("Only InMemoryStateStore persists Session in this iteration")
+    if not isinstance(store, InMemoryStateStore | FileStateStore):
+        pytest.skip("Store does not persist Session in this iteration")
     s = _make_session()
     store.create_session(s)
     fetched = store.get_session(s.id)
@@ -741,8 +741,8 @@ def test_get_session_unknown_returns_none(store: StateStore) -> None:
 
 def test_update_session_persists_changes(store: StateStore) -> None:
     """update_session persists field changes (close_reason, agent_recap)."""
-    if not isinstance(store, InMemoryStateStore):
-        pytest.skip("Only InMemoryStateStore persists Session in this iteration")
+    if not isinstance(store, InMemoryStateStore | FileStateStore):
+        pytest.skip("Store does not persist Session in this iteration")
     s = _make_session()
     store.create_session(s)
     s.close_reason = "forced"
@@ -756,8 +756,8 @@ def test_update_session_persists_changes(store: StateStore) -> None:
 
 def test_list_recent_sessions_filters_by_agent_and_orders(store: StateStore) -> None:
     """list_recent_sessions returns only matching agent's sessions, newest first."""
-    if not isinstance(store, InMemoryStateStore):
-        pytest.skip("Only InMemoryStateStore persists Session in this iteration")
+    if not isinstance(store, InMemoryStateStore | FileStateStore):
+        pytest.skip("Store does not persist Session in this iteration")
     agent_a = uuid4()
     agent_b = uuid4()
 
