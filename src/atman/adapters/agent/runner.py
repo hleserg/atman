@@ -780,6 +780,10 @@ class AtmanRunner:
 
             print_info("Session started. Empty line or Ctrl-D to exit.\n")
             timeout_seconds = self._config.session_timeout_minutes * 60
+            # Snapshot the static context (identity + narrative) set at session start.
+            # Per-turn RAG results are layered on top of this base each turn, never
+            # accumulated, so injected_context stays bounded by rag_token_budget.
+            _base_injected_context = deps.injected_context
 
             while True:
                 print_prompt("You: ")
@@ -843,11 +847,11 @@ class AtmanRunner:
                             prepend=False,
                         )
                         if _rag_extra is not None:
-                            # Append to existing injected_context instead of replacing it,
-                            # so the initial identity/narrative bundle is not lost.
+                            # Always base on the session-start snapshot, not on the
+                            # previous turn's deps, so RAG content doesn't accumulate.
                             _combined = (
-                                f"{deps.injected_context}\n{_rag_extra}"
-                                if deps.injected_context
+                                f"{_base_injected_context}\n{_rag_extra}"
+                                if _base_injected_context
                                 else _rag_extra
                             )
                             deps = replace(deps, injected_context=_combined)
