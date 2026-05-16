@@ -600,6 +600,69 @@ def test_daily_reflection_detects_patterns() -> None:
     assert len(event.experiences_analyzed) == 2
 
 
+def test_daily_reflection_emits_marker_patterns_when_signal_recurs() -> None:
+    """Daily reflection should add a marker-pattern when ≥5 moments share a marker."""
+    anchor = datetime(2026, 9, 15, 12, 0, 0, tzinfo=UTC)
+    experiences = [
+        create_test_experience().model_copy(update={"timestamp": anchor}) for _ in range(2)
+    ]
+
+    identity = Identity()
+    exp_repo = MockExperienceRepo(experiences)
+    # Inject structured_markers on enough moments (across both sessions) to trip
+    # the default threshold of 5.
+    all_moments: list[KeyMoment] = []
+    for sid in list(exp_repo._moments_by_session.keys()):
+        all_moments.extend(exp_repo._moments_by_session[sid])
+    while len(all_moments) < 5:
+        # Append extra moments to the first session so the aggregator has
+        # enough material; SessionRepository surface picks them up.
+        sid = next(iter(exp_repo._moments_by_session.keys()))
+        extra = KeyMoment(
+            session_id=sid,
+            what_happened="extra",
+            how_i_felt=FeltSense(
+                emotional_valence=0.0,
+                emotional_intensity=0.5,
+                depth=EmotionalDepth.MEANINGFUL,
+            ),
+            why_it_matters="extra",
+        )
+        exp_repo._moments_by_session[sid].append(extra)
+        all_moments.append(extra)
+    for m in all_moments:
+        m.structured_markers = {"cognitive_load": "high"}
+
+    identity_repo = MockIdentityRepo(identity)
+    pattern_store = InMemoryPatternStore()
+    reflection_model = MockReflectionModel()
+    event_store = InMemoryReflectionEventStore()
+
+    service = DailyReflectionService(
+        session_repo=exp_repo,
+        identity_repo=identity_repo,
+        pattern_store=pattern_store,
+        reflection_model=reflection_model,
+        event_store=event_store,
+    )
+
+    event = service.reflect(anchor)
+
+    # At least one marker-derived pattern was recorded.
+    marker_patterns = [p for p in pattern_store.get_all() if "structured_markers" in p.description]
+    assert len(marker_patterns) == 1
+    assert marker_patterns[0].based_on_moment_ids
+    # And it shows up in patterns_detected on the event.
+    assert marker_patterns[0].id in event.patterns_detected
+
+    # Re-running is idempotent — no duplicate pattern row.
+    service.reflect(anchor)
+    marker_patterns_after = [
+        p for p in pattern_store.get_all() if "structured_markers" in p.description
+    ]
+    assert len(marker_patterns_after) == 1
+
+
 def test_daily_reflection_adds_reframing_notes() -> None:
     """Test that daily reflection can add reframing notes."""
     anchor = datetime(2026, 9, 15, 12, 0, 0, tzinfo=UTC)
