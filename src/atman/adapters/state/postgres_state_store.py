@@ -233,7 +233,15 @@ class PostgresStateStore(StateStore):
                 q = sql.SQL("SELECT 1 FROM {s}.sessions WHERE id = %(sid)s").format(
                     s=sql.Identifier(schema_name)
                 )
-                cur.execute(q, {"sid": session_id})
+                # Swallow UndefinedTable: some agent_% schemas (backup,
+                # archive, test fixtures, or partially-migrated agents)
+                # may not have the v2 sessions table yet — skip them rather
+                # than aborting the whole scan.
+                try:
+                    cur.execute(q, {"sid": session_id})
+                except psycopg.errors.UndefinedTable:
+                    conn.rollback()
+                    continue
                 if cur.fetchone() is not None:
                     return sql.Identifier(schema_name)
         return None
@@ -256,7 +264,12 @@ class PostgresStateStore(StateStore):
                 q = sql.SQL("SELECT 1 FROM {s}.key_moments WHERE id = %(mid)s").format(
                     s=sql.Identifier(schema_name)
                 )
-                cur.execute(q, {"mid": moment_id})
+                # See _resolve_schema_for_session for rationale.
+                try:
+                    cur.execute(q, {"mid": moment_id})
+                except psycopg.errors.UndefinedTable:
+                    conn.rollback()
+                    continue
                 if cur.fetchone() is not None:
                     return sql.Identifier(schema_name)
         return None

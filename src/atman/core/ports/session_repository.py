@@ -40,14 +40,31 @@ class SessionRepository(Protocol):
         """Return the persisted Session row by id, or None when absent."""
         ...
 
-    def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
-        """List the most recent sessions for ``agent_id``, newest first."""
+    def list_recent_sessions(
+        self, agent_id: UUID | None = None, *, limit: int = 10
+    ) -> list[Session]:
+        """List the most recent sessions for ``agent_id``, newest first.
+
+        ``agent_id`` is optional so adapters bound to a single agent at
+        construction time (e.g. :class:`StateStoreSessionRepository` with
+        ``agent_id=...``) can be called without it. Adapters with no
+        default agent MUST raise ``ValueError`` when called without one.
+        """
         ...
 
     def get_sessions_in_range(
-        self, agent_id: UUID, start: datetime, end: datetime
+        self,
+        agent_id_or_start: UUID | datetime,
+        start_or_end: datetime,
+        end: datetime | None = None,
     ) -> list[Session]:
-        """Sessions started in the closed interval ``[start, end]`` (UTC)."""
+        """Sessions started in the closed interval ``[start, end]`` (UTC).
+
+        Two call shapes are accepted:
+          - ``(agent_id, start, end)`` — explicit agent filter
+          - ``(start, end)`` — uses the constructor-time default agent_id
+            (must be set; otherwise adapters MUST raise ``ValueError``)
+        """
         ...
 
     def get_key_moments_for_session(self, session_id: UUID) -> list[KeyMoment]:

@@ -116,27 +116,25 @@ class StateStoreSessionRepository:
 
         Compat shim: under v2 the legacy ``experience_id`` argument on
         :meth:`StateStore.add_reframing_note` is treated as ``session_id``
-        (matching the prior :class:`ExperienceViewRepository` mapping). When
-        the StateStore returns ``None`` it means no experience record exists
-        for this session yet — which is the normal case for fresh sessions
-        that finished without going through the legacy experience flow. We
-        report :attr:`ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND` so
-        Reflection logs the outcome explicitly. A future migration of
-        ``StateStore.add_reframing_note`` to a session-anchored signature
-        will replace this shim.
+        (matching the prior :class:`ExperienceViewRepository` mapping). A
+        future R2 migration will replace this shim with a session-anchored
+        port signature.
+
+        Dedup is **pre-checked** here instead of inferred post-hoc: we read
+        the existing experience and short-circuit on a matching
+        ``triggered_by``. This is necessary because the underlying
+        StateStore implementations disagree on dedup semantics (some
+        silently skip the append on collision; others append blindly), so
+        post-hoc length comparison would misclassify the outcome.
         """
+        if note.triggered_by:
+            existing = self._store.get_experience(session_id)
+            if existing is not None and any(
+                n.triggered_by == note.triggered_by for n in existing.experience.reframing_notes
+            ):
+                return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
+
         result = self._store.add_reframing_note(session_id, note)
         if result is None:
             return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
-        # Check for the duplicate-trigger contract: the in-memory and file
-        # stores keep the existing note rather than appending when
-        # `triggered_by` collides.
-        if note.triggered_by:
-            triggers = [
-                n.triggered_by
-                for n in result.experience.reframing_notes
-                if n.triggered_by == note.triggered_by
-            ]
-            if len(triggers) > 1:
-                return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
         return ReframingNoteAppendResult.STORED
