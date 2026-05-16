@@ -8,7 +8,7 @@
 -- This is additive and idempotent.
 --
 -- Usage:
---   psql -d atman -f migrations/versions/0007_pending_human_review.sql
+--   psql -d atman -f migrations/versions/0013_pending_human_review.sql
 --
 -- Rollback:
 --   DROP TABLE IF EXISTS public.pending_human_review CASCADE;

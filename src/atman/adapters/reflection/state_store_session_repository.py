@@ -22,6 +22,7 @@ from uuid import UUID
 from atman.core.models.experience import KeyMoment, ReframingNote, ReframingNoteAppendResult
 from atman.core.models.session import Session
 from atman.core.ports.state_store import StateStore
+from atman.core.services.session_manager import deterministic_session_experience_id
 
 
 class StateStoreSessionRepository:
@@ -130,14 +131,25 @@ class StateStoreSessionRepository:
         silently skip the append on collision; others append blindly), so
         post-hoc length comparison would misclassify the outcome.
         """
-        existing = self._store.get_experience(session_id)
+        # In v2 storage, ExperienceRecord rows are keyed by a deterministic
+        # uuid5 derived from session_id (see
+        # ``deterministic_session_experience_id``) — not the session_id itself.
+        # Translate at the boundary so production paths that go through real
+        # StateStore implementations (FileStateStore, InMemoryStateStore,
+        # PostgresStateStore) actually find the row. Test fixtures that store
+        # experiences keyed by session_id directly fall back below.
+        experience_id = deterministic_session_experience_id(session_id)
+        existing = self._store.get_experience(experience_id)
         if existing is None:
-            return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+            existing = self._store.get_experience(session_id)
+            if existing is None:
+                return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
+            experience_id = session_id
         if note.triggered_by and any(
             n.triggered_by == note.triggered_by for n in existing.experience.reframing_notes
         ):
             return ReframingNoteAppendResult.DUPLICATE_TRIGGERED_BY
-        result = self._store.add_reframing_note(session_id, note)
+        result = self._store.add_reframing_note(experience_id, note)
         if result is None:
             return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
         return ReframingNoteAppendResult.STORED

@@ -12,7 +12,7 @@
 -- This is additive and idempotent.
 --
 -- Usage:
---   psql -d atman -f migrations/versions/0006_self_applied_changes.sql
+--   psql -d atman -f migrations/versions/0012_self_applied_changes.sql
 --
 -- Rollback:
 --   DROP TABLE IF EXISTS public.self_applied_changes CASCADE;
