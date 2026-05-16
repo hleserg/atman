@@ -170,12 +170,9 @@ class PostgresPendingHumanReviewInbox(PendingHumanReviewInbox):
         if limit is not None:
             params["limit"] = limit
         q = (
-            sql.SQL("SELECT * FROM {schema}.pending_human_review WHERE ")
-            .format(schema=schema)
+            sql.SQL("SELECT * FROM {schema}.pending_human_review WHERE ").format(schema=schema)
             + where_sql
-            + sql.SQL(
-                " ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END, created_at"
-            )
+            + sql.SQL(" ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END, created_at")
             + limit_sql
         )
         with conn.cursor(row_factory=dict_row) as cur:

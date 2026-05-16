@@ -180,8 +180,7 @@ class PostgresSelfAppliedChangeStore(SelfAppliedChangeStore):
         if limit is not None:
             params["limit"] = limit
         q = (
-            sql.SQL("SELECT * FROM {schema}.self_applied_changes WHERE ")
-            .format(schema=schema)
+            sql.SQL("SELECT * FROM {schema}.self_applied_changes WHERE ").format(schema=schema)
             + where_sql
             + order_sql
             + limit_sql
