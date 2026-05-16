@@ -37,6 +37,7 @@ from atman.core.models import (
     ExperienceRecord,
     KeyMoment,
     KeyMomentInput,
+    Session,
     SessionContext,
     SessionEvent,
     SessionExperience,
@@ -539,6 +540,31 @@ class SessionManager:
                 identity_id=identity.id,
             )
 
+        # v2: persist Session row so ExperienceViewRepository, decay jobs,
+        # and Reflection follow-ups have a canonical session record.
+        # The base StateStore port's `create_session` is a no-op default that
+        # returns the session unchanged — no exception. Concrete adapters
+        # (InMemoryStateStore, FileStateStore, PostgresStateStore) implement
+        # real persistence and may raise on genuine failures (DB connection
+        # lost, disk full, etc.). If that happens, roll back the in-memory
+        # registry entry so the orphan does not count toward
+        # max_active_sessions, then re-raise so the caller knows the start
+        # failed (the caller never receives the session_id here).
+        try:
+            self._state_store.create_session(
+                Session(
+                    id=context.session_id,
+                    agent_id=agent_id,
+                    started_at=context.started_at,
+                    status="active",
+                    identity_snapshot_id=stored_snapshot.id,
+                )
+            )
+        except Exception:
+            with self._lock:
+                self._active_sessions.pop(context.session_id, None)
+            raise
+
         journal_lock = self._try_lock_journal(identity.id, context.session_id)
         if journal_lock is not None:
             with self._lock:
@@ -811,16 +837,49 @@ class SessionManager:
 
         # Persist experience, eigenstate, and update narrative
         # If this fails, rollback is_finished flag to allow retry
+
+        # Compute close_reason cast and unexamined fact refs UNCONDITIONALLY
+        # so the post-persist update_session block (which runs on BOTH the
+        # new-experience and recovery paths) sees the caller-supplied values.
+        # Otherwise a retry after a crash would silently rewrite the Session
+        # row with status='completed' and close_reason=NULL.
+        _allowed_close_reasons = (
+            "timeout_sleep",
+            "menu_timeout",
+            "restart",
+            "forced",
+            "interrupted",
+        )
+        safe_close_reason: (
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+        ) = (
+            cast(
+                Literal[
+                    "timeout_sleep",
+                    "menu_timeout",
+                    "restart",
+                    "forced",
+                    "interrupted",
+                ],
+                close_reason,
+            )
+            if close_reason in _allowed_close_reasons
+            else None
+        )
+        # Compute unexamined facts (read but not colored by any key moment).
+        # Identical to the inner-branch computation; precomputed here so the
+        # recovery path also gets correct unexamined_fact_refs.
+        _colored_fact_ids: set[UUID] = set()
+        for _moment in session_result.key_moments:
+            _colored_fact_ids.update(_moment.fact_refs)
+        unexamined_fact_refs: list[UUID] = list(session_result._facts_read - _colored_fact_ids)
+
         try:
             existing_record = self._state_store.get_experience(experience_id)
             if existing_record is None:
-                # Compute colored_fact_ids (facts referenced in key moments)
-                colored_fact_ids: set[UUID] = set()
-                for moment in session_result.key_moments:
-                    colored_fact_ids.update(moment.fact_refs)
-
-                # Compute unexamined facts (read but not colored)
-                unexamined_fact_refs = list(session_result._facts_read - colored_fact_ids)
+                # Reuse the pre-computed values from above so the new-experience
+                # path stays consistent with the recovery path's update_session.
+                colored_fact_ids = _colored_fact_ids
 
                 # Aggregate all fact_refs (union of colored and unexamined)
                 fact_refs_set: set[UUID] = set()
@@ -851,31 +910,6 @@ class SessionManager:
                         m.how_i_felt.depth == EmotionalDepth.PROFOUND
                         for m in session_result.key_moments
                     )
-
-                _allowed_close_reasons = (
-                    "timeout_sleep",
-                    "menu_timeout",
-                    "restart",
-                    "forced",
-                    "interrupted",
-                )
-                safe_close_reason: (
-                    Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"]
-                    | None
-                ) = (
-                    cast(
-                        Literal[
-                            "timeout_sleep",
-                            "menu_timeout",
-                            "restart",
-                            "forced",
-                            "interrupted",
-                        ],
-                        close_reason,
-                    )
-                    if close_reason in _allowed_close_reasons
-                    else None
-                )
 
                 experience = SessionExperience(
                     id=experience_id,
@@ -909,6 +943,26 @@ class SessionManager:
             self._state_store.save_eigenstate(eigenstate)
 
             self._save_session_narrative_update(session_result)
+
+            # v2: update Session row with close metadata. The base StateStore
+            # port returns None from get_session and returns the session
+            # unchanged from update_session by default, so legacy adapters
+            # without Session persistence naturally degrade to a no-op
+            # via the `existing_session is None` guard. Real exceptions from
+            # concrete adapters (DB errors, IO errors) propagate so the
+            # caller can react instead of silently losing data.
+            existing_session = self._state_store.get_session(session_id)
+            if existing_session is not None:
+                closed_status: Literal["completed", "interrupted"] = (
+                    "interrupted" if safe_close_reason in {"interrupted", "forced"} else "completed"
+                )
+                existing_session.status = closed_status
+                existing_session.ended_at = session_result.finished_at
+                existing_session.close_reason = safe_close_reason  # type: ignore[assignment]
+                existing_session.restart_reason = restart_reason or ""
+                existing_session.user_language = user_language
+                existing_session.unexamined_fact_refs = list(unexamined_fact_refs)
+                self._state_store.update_session(existing_session)
 
         except Exception:
             # Rollback is_finished flag to allow retry of finish_session()

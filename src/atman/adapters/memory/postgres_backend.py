@@ -263,53 +263,66 @@ class PostgresFactualMemory(FactualMemory):
 
     # ── FactualMemory port ────────────────────────────────────────────────────
 
+    def _insert_fact_rows(
+        self,
+        cur: Any,
+        record: FactRecord,
+        agent_id: UUID,
+    ) -> None:
+        """Issue the INSERT(s) for a fact and its inline relations on an existing cursor.
+
+        Does NOT commit — caller is responsible for transaction boundary so that
+        callers like :meth:`add_fact_with_entities` can group the fact insert
+        and entity-link inserts into one atomic unit.
+        """
+        embedding_vec = self._try_embed(record.content)
+        embedding_sql = _vec_str(embedding_vec) if embedding_vec else None
+
+        cur.execute(
+            """
+            INSERT INTO public.facts (
+                id, agent_id, content, source, tags, created_at, metadata,
+                status, invalidated_at, invalidation_note, superseded_by,
+                disputed_at, confirmation_count, last_confirmed_at, salience,
+                embedding
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s::halfvec
+            )
+            """,
+            [
+                str(record.id),
+                str(agent_id),
+                record.content,
+                record.source,
+                list(record.tags),
+                record.created_at,
+                Jsonb(record.metadata),
+                record.status.value,
+                record.invalidated_at,
+                record.invalidation_note,
+                str(record.superseded_by) if record.superseded_by else None,
+                record.disputed_at,
+                record.confirmation_count,
+                record.last_confirmed_at,
+                record.salience,
+                embedding_sql,
+            ],
+        )
+        for rel in record.relations:
+            self._insert_relation(cur, record.id, rel.target_id, rel.relation_type, rel.metadata)
+
     def add_fact(self, record: FactRecord) -> FactRecord:
         """Insert a fact and its pre-populated relations into the database."""
         conn = self._require_conn()
         self._set_agent_context(conn)
 
         agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
-        embedding_vec = self._try_embed(record.content)
-        embedding_sql = _vec_str(embedding_vec) if embedding_vec else None
 
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO public.facts (
-                    id, agent_id, content, source, tags, created_at, metadata,
-                    status, invalidated_at, invalidation_note, superseded_by,
-                    disputed_at, confirmation_count, last_confirmed_at, salience,
-                    embedding
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s::halfvec
-                )
-                """,
-                [
-                    str(record.id),
-                    str(agent_id),
-                    record.content,
-                    record.source,
-                    list(record.tags),
-                    record.created_at,
-                    Jsonb(record.metadata),
-                    record.status.value,
-                    record.invalidated_at,
-                    record.invalidation_note,
-                    str(record.superseded_by) if record.superseded_by else None,
-                    record.disputed_at,
-                    record.confirmation_count,
-                    record.last_confirmed_at,
-                    record.salience,
-                    embedding_sql,
-                ],
-            )
-            for rel in record.relations:
-                self._insert_relation(
-                    cur, record.id, rel.target_id, rel.relation_type, rel.metadata
-                )
+            self._insert_fact_rows(cur, record, agent_id)
 
         conn.commit()
         stored = record.model_copy(deep=True)
@@ -521,3 +534,128 @@ class PostgresFactualMemory(FactualMemory):
 
         conn.commit()
         return rows
+
+    # ------------------------------------------------------------------
+    # Entity-link operations (v2 — agent_N.fact_entities, migration 0007)
+    # ------------------------------------------------------------------
+
+    def _agent_schema(self, agent_id: UUID) -> str | None:
+        """Return ``agent_<serial_id>`` schema name, or None if not registered."""
+        conn = self._require_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT serial_id FROM public.agents WHERE id = %s",
+                [str(agent_id)],
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            serial_id = row.get("serial_id")
+        else:
+            serial_id = row[0]
+        return f"agent_{serial_id}" if serial_id is not None else None
+
+    def add_fact_with_entities(
+        self,
+        record: FactRecord,
+        entities: list[tuple[UUID, str]],
+    ) -> FactRecord:
+        """Insert a fact and its entity links atomically in a single transaction.
+
+        If any entity-link INSERT fails (FK violation, connection drop), the
+        fact row is rolled back too — callers will never observe a fact
+        without its declared entity links. Falls back to plain ``add_fact``
+        behaviour when ``entities`` is empty or the agent's schema can't be
+        resolved (no agents row).
+        """
+        if not entities:
+            return self.add_fact(record)
+
+        conn = self._require_conn()
+        self._set_agent_context(conn)
+        agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
+        schema = self._agent_schema(agent_id)
+        if schema is None:
+            # No per-agent schema yet — fact persists without entity links,
+            # which is the closest non-atomic graceful fallback we can offer.
+            return self.add_fact(record)
+
+        with conn.cursor() as cur:
+            self._insert_fact_rows(cur, record, agent_id)
+            for entity_id, role in entities:
+                # `schema` is `agent_<int>` derived from public.agents row;
+                # all user-supplied data bound via %s params.
+                cur.execute(
+                    f"INSERT INTO {schema}.fact_entities "  # type: ignore[arg-type] # nosec B608
+                    "(fact_id, entity_id, agent_id, role) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (fact_id, entity_id, role) DO NOTHING",
+                    [str(record.id), str(entity_id), str(agent_id), role],
+                )
+        # Single commit — either both fact + links land or both roll back on
+        # exception (psycopg auto-rolls-back the open transaction on error).
+        conn.commit()
+
+        stored = record.model_copy(deep=True)
+        stored.agent_id = agent_id
+        return stored
+
+    def find_facts_by_entity(
+        self,
+        entity_id: UUID,
+        roles: list[str] | None = None,
+        *,
+        limit: int = 20,
+    ) -> list[FactRecord]:
+        """Return facts linked to ``entity_id``, optionally filtered by role.
+
+        Requires ``ATMAN_CURRENT_AGENT`` to be set so the per-agent schema
+        can be located; returns ``[]`` otherwise.
+        """
+        agent_id_str = os.environ.get("ATMAN_CURRENT_AGENT")
+        if not agent_id_str:
+            return []
+        schema = self._agent_schema(UUID(agent_id_str))
+        if schema is None:
+            # _agent_schema() already ran a SELECT on public.agents which
+            # opens an implicit transaction; commit to release the snapshot
+            # so the connection isn't left idle-in-transaction.
+            self._require_conn().commit()
+            return []
+
+        conn = self._require_conn()
+        self._set_agent_context(conn)
+
+        params: list[Any] = [str(entity_id)]
+        role_clause = ""
+        if roles:
+            role_clause = "AND fe.role = ANY(%s)"
+            params.append(list(roles))
+        params.append(limit)
+
+        with conn.cursor() as cur:
+            # `schema` is `agent_<int>` from public.agents lookup, `role_clause`
+            # is one of two static strings; entity_id / roles / limit bound
+            # via %s params.
+            fact_ids_sql = (
+                f"SELECT fe.fact_id FROM {schema}.fact_entities fe "  # nosec B608
+                f"WHERE fe.entity_id = %s {role_clause} LIMIT %s"
+            )
+            cur.execute(fact_ids_sql, params)  # type: ignore[arg-type]
+            rows = cur.fetchall()
+        fact_ids = [(row["fact_id"] if isinstance(row, dict) else row[0]) for row in rows]
+        if not fact_ids:
+            conn.commit()
+            return []
+
+        with conn.cursor() as cur:
+            facts = self._load_rows(
+                cur,
+                "f.id = ANY(%s)",
+                [fact_ids],
+                "f.created_at DESC",
+                limit,
+            )
+        conn.commit()
+        return facts

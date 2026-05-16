@@ -41,7 +41,8 @@
 
 | Файл | Назначение | Контракты |
 |------|------------|-----------|
-| `core/ports/memory_backend.py` | Интерфейс факт-памяти | `FactualMemory` (ABC) |
+| `core/ports/memory_backend.py` | Интерфейс факт-памяти; **v2**: `add_fact_with_entities` + `find_facts_by_entity` для таблиц entity-link | `FactualMemory` (ABC) |
+| `core/ports/entity_relations.py` | Извлечение бинарных отношений (mREBEL / правила) | `EntityRelationExtractor` (ABC), `ExtractedRelation` |
 | `core/ports/clock.py` | Доменные часы для воспроизводимости | `ClockPort` (Protocol) |
 | `core/ports/state_store.py` | Хранилище опыта/identity/нарратива/eigenstate/ключевых моментов; **v2**: расширен sessions API (`create_session`, `get_session`, `update_session`, `list_recent_sessions`) и API самостоятельных KeyMoment (`store_key_moment` — идемпотентный upsert, `mark_moment_accessed`, `update_moment_structured_markers`, `find_moments_by_entity`) | `StateStore` (с `create_key_moment`, `store_key_moment`, `list_key_moments`, `get_key_moment`, `mark_moment_accessed`, `update_moment_structured_markers`, `find_moments_by_entity`, `create_session`, `get_session`, `update_session`, `list_recent_sessions`), `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` |
 | `core/ports/entity_registry.py` | Entity Registry — шаблон resolve-or-create с уровнями L1/L2/L3 (точный псевдоним → косинусное сходство → новая сущность) | `EntityRegistry` (ABC): `resolve_or_create`, `get_entity`, `find_by_name`, `add_alias`, `merge_entities`, `update_last_seen`, `list_entities`, `flag_disambiguation` |
@@ -79,6 +80,7 @@
 | `core/services/divergence_detector.py` | Детекция расхождения thinking↔сообщение на основе правил | `DivergenceDetector` |
 | `core/services/salience_decay_service.py` | Экспоненциальное затухание salience с λ по `EmotionalDepth`; `InMemorySalienceDecayService` для unit-тестов | `InMemorySalienceDecayService` |
 | `core/services/maintenance_worker.py` | Забор и диспетчеризация задач обслуживания (salience decay, memory guardian scan) из `MaintenanceQueue` | `MaintenanceWorker` |
+| `core/services/post_write_scheduler.py` | Fire-and-forget постановка задач обогащения (mREBEL, lingvo) с ключом `(job_name, key_moment_id)`; sync + asyncio-task варианты | `PostWriteScheduler` |
 | `core/services/emotional_echo.py` | Historical emotional context builder | `EmotionalEcho`, `EchoItem` |
 | `core/services/conflict_detector.py` | Обнаружение противоречий между активными фактами | `ConflictDetector`, `FactConflict` |
 
@@ -123,7 +125,13 @@
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) + `key_moments.jsonl`; **v2**: фильтрация по `session_id` в `list_key_moments` |
 | `adapters/memory/in_memory_entity_registry.py` (`InMemoryEntityRegistry`) | `EntityRegistry` | L1 (точный псевдоним, регистронезависимо) + L2 (косинус ≥ 0.85) + L3 (создание); потокобезопасный; хелперы `clear()`/`count()` для тестов |
 | `adapters/memory/in_memory_entity_stance.py` (`InMemoryEntityStanceStore`) | `EntityStanceStore` | цепочка замещений; потокобезопасный |
+| `adapters/memory/postgres_entity_stance.py` (`PostgresEntityStanceStore`) | `EntityStanceStore` | цепочка замещений в `agent_N.entity_stance`; разрешение serial_id на агента; psycopg3 |
+| `adapters/memory/postgres_entity_registry.py` (`PostgresEntityRegistry`) | `EntityRegistry` | Те же L1/L2/L3 над `agent_N.entities` + `agent_N.entity_aliases`; `halfvec` косинус для L2; guarded psycopg3 |
+| `adapters/memory/in_memory_memory_guardian.py` (`InMemoryMemoryGuardian`) | `MemoryGuardian` | scan_orphan_entities + scan_merge_candidates + scan_stale_moments + scan_embedding_gaps + жизненный цикл findings |
 | `adapters/memory/noop_reranker.py` (`NoOpReranker`) | `MemoryReranker` | passthrough — возвращает кандидатов с сортировкой по score; deploy без модели реранкера |
+| `adapters/memory/bge_reranker.py` (`BgeReranker`) | `MemoryReranker` | `BAAI/bge-reranker-v2-m3` через FlagEmbedding; ленивая загрузка; guarded imports; fallback на исходный порядок при ошибке инференса |
+| `adapters/maintenance/postgres_queue.py` (`PostgresMaintenanceQueue`) | `MaintenanceQueue` | `claim_batch` через CTE c SKIP LOCKED над `public.maintenance_jobs`; run_key идемпотентность; psycopg3 |
+| `adapters/linguistic/mrebel_adapter.py` (`MRebelRelationAdapter`) | `EntityRelationExtractor` | `Babelscape/mrebel-large` через transformers `text2text-generation`; ленивая загрузка; парсер 4-маркерного формата REBEL; guarded imports |
 | `adapters/linguistic/noop_adapter.py` (`NoOpLinguisticAnalyzer`) | `LinguisticAnalyzer` | возвращает пустые, но корректные объекты анализа; default при `LINGUISTIC_ENABLED=false` |
 | `adapters/linguistic/gliner_minilm_adapter.py` (`GLiNERPlusMiniLMAdapter`) | `LinguisticAnalyzer` | GLiNER (`urchade/gliner_multi-v2.1`) + MiniLM NLI; ленивая загрузка; guarded imports; эвристики расхождения для русского языка; требует `pip install -e ".[linguistic]"` |
 | `adapters/maintenance/in_memory_queue.py` (`InMemoryMaintenanceQueue`) | `MaintenanceQueue` | идемпотентность через run_key; атомарный `claim_batch`; все статусные переходы |
@@ -245,11 +253,13 @@
 | **`InMemoryReflectionStore`** | **`ReflectionStore`** (E27) |
 | `MockEmbeddingAdapter`, `BM25EmbeddingAdapter`, `OllamaEmbeddingAdapter`, `FlagEmbeddingAdapter` | `EmbeddingPort` |
 | `InMemoryUsageLog` | `MemoryUsageLog` |
-| `InMemoryEntityRegistry` | `EntityRegistry` |
-| `InMemoryEntityStanceStore` | `EntityStanceStore` |
+| `InMemoryEntityRegistry`, `PostgresEntityRegistry` | `EntityRegistry` |
+| `InMemoryEntityStanceStore`, `PostgresEntityStanceStore` | `EntityStanceStore` |
+| `InMemoryMemoryGuardian` | `MemoryGuardian` |
 | `NoOpLinguisticAnalyzer`, `GLiNERPlusMiniLMAdapter` | `LinguisticAnalyzer` |
-| `NoOpReranker` | `MemoryReranker` |
-| `InMemoryMaintenanceQueue` | `MaintenanceQueue` |
+| `NoOpReranker`, `BgeReranker` | `MemoryReranker` |
+| `InMemoryMaintenanceQueue`, `PostgresMaintenanceQueue` | `MaintenanceQueue` |
+| `MRebelRelationAdapter` | `EntityRelationExtractor` |
 | `ExperienceViewRepository` (`adapters/reflection_compat/`) | `ExperienceRepository` (compat мост для Reflection) |
 
 ### 2.2a. Agent adapter ↔ сервисы
