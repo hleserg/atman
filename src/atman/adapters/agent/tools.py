@@ -351,7 +351,10 @@ def request_reflection(
         run_key=run_key,
         requested_at=now,
     )
-    stored = queue.enqueue(request)
+    try:
+        stored = queue.enqueue(request)
+    except Exception as exc:
+        return f"Error queuing reflection request: {exc!s}"
     if stored.id != request.id:
         return (
             f"Already queued (same reason within the hour): "
