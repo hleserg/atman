@@ -236,7 +236,7 @@ Connections between two or more parts. These are seams that may break independen
 | `resolve_pending_review` ↔ `PendingHumanReviewInbox` | `adapters/agent/tools.py` → `core/ports/pending_human_review.py` | **R11.7** tool registered only when inbox is in `AtmanDeps`; runner injects unresolved items as first system message |
 | `request_reflection` ↔ `ReflectionRequestQueue` | `adapters/agent/tools.py` → `core/ports/reflection_request_queue.py` | **R12** tool registered only when queue is in `AtmanDeps`; idempotent via `agent_driven_run_key` (UTC hour bucket) |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | reads experience, updates recent layer |
-| `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection |
+| `DailyReflectionService` ↔ `SessionRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | pattern detection (R3 — migrated off `ExperienceRepository`; synthesises virtual `SessionExperience` via `services/session_experience_view.build_session_experience`) |
 | `DeepReflectionService` ↔ all reflection ports | `core/services/reflection_service.py` | health + identity + narrative update |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | analyzes patterns in identity context |
 | `ConflictDetector` ↔ `FactualMemory` | `core/services/conflict_detector.py` → `core/ports/memory_backend.py` | DI; lightweight contradiction scan over ACTIVE candidates returned by `search()` |

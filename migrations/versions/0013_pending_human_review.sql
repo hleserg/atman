@@ -1,4 +1,4 @@
--- Migration 0007: Pending human review inbox for reflection's "I'm not sure" items.
+-- Migration 0013: Pending human review inbox for reflection's "I'm not sure" items.
 --
 -- Reflection (Daily/Deep) writes items here when it is not confident enough to
 -- apply an identity/narrative change on its own. The agent runner picks up

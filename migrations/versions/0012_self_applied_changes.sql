@@ -1,4 +1,4 @@
--- Migration 0006: Audit table for self-applied identity/narrative changes.
+-- Migration 0012: Audit table for self-applied identity/narrative changes.
 --
 -- Reflection (Daily and Deep) may apply identity or narrative revisions
 -- on its own through `IdentityService.apply_self_change` /

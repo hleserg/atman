@@ -240,7 +240,7 @@
 | `resolve_pending_review` ↔ `PendingHumanReviewInbox` | `adapters/agent/tools.py` → `core/ports/pending_human_review.py` | **R11.7** инструмент регистрируется только при наличии inbox в `AtmanDeps`; runner вкладывает нерешённые элементы первым system-сообщением |
 | `request_reflection` ↔ `ReflectionRequestQueue` | `adapters/agent/tools.py` → `core/ports/reflection_request_queue.py` | **R12** инструмент регистрируется только при наличии очереди в `AtmanDeps`; идемпотентность через `agent_driven_run_key` (UTC hour bucket) |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
-| `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
+| `DailyReflectionService` ↔ `SessionRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов (R3 — мигрирован с `ExperienceRepository`; синтезирует виртуальные `SessionExperience` через `services/session_experience_view.build_session_experience`) |
 | `DeepReflectionService` ↔ все рефлексионные порты | `core/services/reflection_service.py` | здоровье + апдейт identity и нарратива |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | анализ паттернов в контексте identity |
 
