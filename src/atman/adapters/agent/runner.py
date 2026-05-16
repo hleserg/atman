@@ -843,7 +843,14 @@ class AtmanRunner:
                             prepend=False,
                         )
                         if _rag_extra is not None:
-                            deps = replace(deps, injected_context=_rag_extra)
+                            # Append to existing injected_context instead of replacing it,
+                            # so the initial identity/narrative bundle is not lost.
+                            _combined = (
+                                f"{deps.injected_context}\n{_rag_extra}"
+                                if deps.injected_context
+                                else _rag_extra
+                            )
+                            deps = replace(deps, injected_context=_combined)
 
                 try:
                     result = await agent.run(

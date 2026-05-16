@@ -49,7 +49,7 @@ def _surfaced_text(mem: SurfacedMemory) -> str:
     if isinstance(item, KeyMoment):
         return f"{item.what_happened} {item.why_it_matters}"
     if isinstance(item, SessionExperience):
-        return getattr(item, "key_insight", "") or ""
+        return getattr(item, "agent_recap", "") or ""
     return ""
 
 
