@@ -17,6 +17,10 @@ from atman.core.ports.reflection import (
     ReflectionModel,
 )
 from atman.core.ports.pending_human_review import PendingHumanReviewInbox
+from atman.core.ports.reflection_overload_alert import (
+    ReflectionOverloadAlertSink,
+    ReflectionOverloadSeverity,
+)
 from atman.core.ports.self_applied_changes import SelfAppliedChangeStore
 from atman.core.ports.state_store import (
     DateRangeQuery,
@@ -47,6 +51,8 @@ __all__ = [
     "ReflectionEventPersistenceObserver",
     "ReflectionEventStore",
     "ReflectionModel",
+    "ReflectionOverloadAlertSink",
+    "ReflectionOverloadSeverity",
     "SelfAppliedChangeStore",
     "SessionExperienceQuery",
     "StateStore",
