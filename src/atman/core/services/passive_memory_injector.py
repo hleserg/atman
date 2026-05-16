@@ -230,7 +230,7 @@ class PassiveMemoryInjector:
         scored_facts: list[tuple[FactRecord, float]] = []
         if eligible:
             batch_embeddings = self.embedding.embed_batch([f.content for f in eligible])
-            for fact, fact_embedding in zip(eligible, batch_embeddings):
+            for fact, fact_embedding in zip(eligible, batch_embeddings, strict=True):
                 score = self.embedding.similarity(query_embedding, fact_embedding)
                 if score >= self.min_threshold:
                     scored_facts.append((fact, float(score)))
@@ -289,7 +289,7 @@ class PassiveMemoryInjector:
         bm25_vecs = self._bm25.embed_batch([f.content for f in facts_only])
         bm25_scores: dict[UUID, float] = {
             fact.id: float(self._bm25.similarity(bm25_qvec, vec))
-            for fact, vec in zip(facts_only, bm25_vecs)
+            for fact, vec in zip(facts_only, bm25_vecs, strict=True)
         }
 
         emb_sorted = sorted(scored_facts, key=lambda x: x[1], reverse=True)
