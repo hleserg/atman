@@ -820,6 +820,8 @@ class AtmanRunner:
                 # Surface relevant memories via RAG when PassiveMemoryInjector is wired.
                 # build_rag_context caps the result to rag_token_budget tokens.
                 if deps.passive_memory_injector is not None:
+                    from atman.core.services.passive_memory_injector import _surfaced_text
+
                     _candidates = deps.passive_memory_injector.surface_for_context(
                         user_text, working_memory=working_memory
                     )
@@ -830,6 +832,18 @@ class AtmanRunner:
                         _rag.tokens_used,
                         session_cache.stats(),
                     )
+                    if _rag.items:
+                        _rag_bundle = "\n".join(
+                            f"[{m.source}] {_surfaced_text(m)}" for m in _rag.items
+                        )
+                        _rag_extra = inject_memory(
+                            _rag_bundle,
+                            mode=self._config.memory_injection_mode,
+                            history=history,
+                            prepend=False,
+                        )
+                        if _rag_extra is not None:
+                            deps = replace(deps, injected_context=_rag_extra)
 
                 try:
                     result = await agent.run(
@@ -870,6 +884,10 @@ class AtmanRunner:
                         session_id = new_session_id
                         deps = new_deps
                         reflected_this_session = False  # Reset for new session
+                        working_memory.clear()
+                        session_cache.entity_resolutions.clear()
+                        session_cache.rag_results.clear()
+                        session_cache.dirty_entities.clear()
 
                         print_info("Session restarted successfully.\n")
                         continue  # Skip output, continue loop with new session
@@ -968,6 +986,7 @@ class AtmanRunner:
             working_memory.clear()
             session_cache.entity_resolutions.clear()
             session_cache.rag_results.clear()
+            session_cache.dirty_entities.clear()
             if deps.passive_memory_injector is not None:
                 with contextlib.suppress(Exception):
                     la = getattr(deps.passive_memory_injector, "_linguistic_analyzer", None)
