@@ -315,9 +315,7 @@ class AffectDetector:
     ) -> AffectRecord:
         """Agent-originated memory with optional objective enrichment."""
         if self.config.use_llm_analysis:
-            _LOG.warning(
-                "LLM sincerity path not implemented — proceeding without it"
-            )
+            _LOG.warning("LLM sincerity path not implemented — proceeding without it")
 
         tags = list(dict.fromkeys([*report.tags, "affect:self-report"]))
         demonstrates: dict[str, Any] | None = None

@@ -1163,9 +1163,7 @@ class AtmanRunner:
                     retry_count += 1
                     continue
                 if deps.passive_memory_injector is None:
-                    print_warn(
-                        "Memory not available (set ATMAN_LINGUISTIC_ENABLED=true to enable)"
-                    )
+                    print_warn("Memory not available (set ATMAN_LINGUISTIC_ENABLED=true to enable)")
                     retry_count += 1
                     continue
                 from atman.core.models.fact import FactRecord
