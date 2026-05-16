@@ -97,6 +97,7 @@ atman = "atman.cli:main"
 atman-experience = "atman.cli_experience:main"
 atman-identity = "atman.cli_identity:main"
 atman-maintenance = "atman.cli_maintenance:main"
+atman-skills = "atman.skills.cli:main"
 atman-dev = "atman.tui.app:main"
 atman-web = "atman.web_dashboard:main"
 devui = "atman.tui.app:main"
@@ -183,6 +184,12 @@ omit = [
     "src/atman/adapters/reflection/mock_reflection_model.py",
     "src/atman/core/models/experience.py",
     "src/atman/core/models/identity.py",
+    # Skills layer — DB-dependent, CLI, Protocol interfaces (no real DB in CI)
+    "src/atman/skills/cli.py",
+    "src/atman/skills/postgres_store.py",
+    "src/atman/skills/agent_tools.py",
+    "src/atman/skills/store.py",
+    "src/atman/skills/port.py",
 ]
 
 [tool.coverage.report]

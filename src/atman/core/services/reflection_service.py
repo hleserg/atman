@@ -143,6 +143,7 @@ class MicroReflectionService:
         *,
         clock: ClockPort | None = None,
         reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
+        skill_manager=None,  # SkillManagerPort | None — optional, avoids circular import
     ):
         """Initialize micro reflection service."""
         self.session_repo = session_repo
@@ -152,13 +153,16 @@ class MicroReflectionService:
         self._reflection_event_observer = (
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
         )
+        self._skill_manager = skill_manager
 
-    def reflect(self, session_id: UUID) -> ReflectionEvent:
+    def reflect(self, session_id: UUID, agent_id: UUID | None = None) -> ReflectionEvent:
         """
         Perform micro reflection for a session.
 
         Args:
             session_id: ID of the session to reflect on
+            agent_id: Agent UUID, required for skill-loop processing.
+                      If None, skill processing is skipped silently.
 
         Returns:
             ReflectionEvent recording what was done
@@ -214,6 +218,19 @@ class MicroReflectionService:
                 error_message=f"{type(exc).__name__}: {exc}",
             )
             raise
+
+        # Skill-loop hook: process invocations, update stats, auto-pin/downgrade.
+        # Runs after narrative update; errors are logged but never surface to caller.
+        if self._skill_manager is not None and agent_id is not None:
+            import logging as _logging
+
+            try:
+                self._skill_manager.process_session_skills(agent_id, session_id)
+            except Exception as _exc:
+                _logging.getLogger(__name__).warning(
+                    "Skill-loop processing failed for session %s: %s", session_id, _exc
+                )
+
         return event
 
     def _create_skipped_micro_event(

@@ -125,6 +125,7 @@ def build_deps(
     # Uses the configured embedding backend (ollama/flag) and the same
     # state_store that the session will write to.
     passive_memory_injector = None
+    _embedding_adapter = None
     if os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true":
         from atman.config import build_embedding_adapter
         from atman.config import build_memory_backend as _build_mem
@@ -133,14 +134,14 @@ def build_deps(
         try:
             from atman.adapters.memory.bm25_embedding import BM25EmbeddingAdapter
 
-            _embedding = build_embedding_adapter()
+            _embedding_adapter = build_embedding_adapter()
             _factual_memory = _build_mem()
             # BM25 is zero-dependency and provides a second retrieval signal
             # fused with the dense embedding via Reciprocal Rank Fusion. It
             # rescues exact lexical matches that dense encoders can rank low.
             _bm25 = BM25EmbeddingAdapter()
             passive_memory_injector = PassiveMemoryInjector(
-                embedding=_embedding,
+                embedding=_embedding_adapter,
                 factual_memory=_factual_memory,
                 state_store=state_store,
                 bm25=_bm25,
@@ -150,6 +151,38 @@ def build_deps(
 
             _logging.getLogger(__name__).warning(
                 "Failed to build PassiveMemoryInjector — RAG disabled", exc_info=True
+            )
+
+    # Build optional skill-loop when skills.enabled=true (default).
+    skill_manager = None
+    from atman.config import settings as _settings
+
+    if _settings.skills.enabled:
+        try:
+            from pathlib import Path as _Path
+
+            from atman.skills.manager import SkillManager
+            from atman.skills.postgres_store import PostgresSkillStore
+            from atman.skills.projection import PydanticAgentProjector
+            from atman.skills.retriever import SkillRetriever
+
+            _skill_store = PostgresSkillStore(db_url=_settings.database_url)
+            _skill_retriever = SkillRetriever(
+                store=_skill_store,
+                embedding=_embedding_adapter,  # reuse if already built
+            )
+            skill_manager = SkillManager(
+                store=_skill_store,
+                retriever=_skill_retriever,
+                projector=PydanticAgentProjector(),
+                config=_settings.skills,
+                agents_root=_Path(_settings.skills.skills_root).expanduser(),
+            )
+        except Exception:
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "Failed to build SkillManager — skill-loop disabled", exc_info=True
             )
 
     deps = AtmanDeps.from_config(
@@ -164,6 +197,7 @@ def build_deps(
         pending_review_inbox=InMemoryPendingHumanReviewInbox(),
         reflection_request_queue=InMemoryReflectionRequestQueue(),
         passive_memory_injector=passive_memory_injector,
+        skill_manager=skill_manager,
     )
 
     return deps, session_manager, state_store
