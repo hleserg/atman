@@ -784,6 +784,9 @@ class AtmanRunner:
             # Per-turn RAG results are layered on top of this base each turn, never
             # accumulated, so injected_context stays bounded by rag_token_budget.
             _base_injected_context = deps.injected_context
+            # Tracks the last RAG message appended to history (assistant_message /
+            # user_message modes) so it can be removed before the next turn's injection.
+            _last_rag_history_msg: object = None
 
             while True:
                 print_prompt("You: ")
@@ -827,8 +830,17 @@ class AtmanRunner:
                 if _pmi is not None:
                     from atman.core.services.passive_memory_injector import _surfaced_text
 
-                    # Reset to base so the previous turn's RAG doesn't persist when
-                    # the current turn finds zero relevant memories.
+                    # Remove last turn's RAG message from history (assistant_message /
+                    # user_message modes) before injecting fresh results, so only one
+                    # turn's worth of RAG is present in the context at any time.
+                    if _last_rag_history_msg is not None:
+                        with contextlib.suppress(ValueError):
+                            history.remove(_last_rag_history_msg)
+                        _last_rag_history_msg = None
+
+                    # Reset injected_context to base so the previous turn's RAG
+                    # doesn't persist in system_prompt mode when the current turn
+                    # finds zero relevant memories.
                     deps = replace(deps, injected_context=_base_injected_context)
 
                     _candidates = _pmi.surface_for_context(user_text, working_memory=working_memory)
@@ -843,6 +855,7 @@ class AtmanRunner:
                         _rag_bundle = "\n".join(
                             f"[{m.source}] {_surfaced_text(m)}" for m in _rag.items
                         )
+                        _history_len_before = len(history)
                         _rag_extra = inject_memory(
                             _rag_bundle,
                             mode=self._config.memory_injection_mode,
@@ -850,14 +863,17 @@ class AtmanRunner:
                             prepend=False,
                         )
                         if _rag_extra is not None:
-                            # Always base on the session-start snapshot, not on the
-                            # previous turn's deps, so RAG content doesn't accumulate.
+                            # system_prompt mode: combine base + current RAG.
                             _combined = (
                                 f"{_base_injected_context}\n{_rag_extra}"
                                 if _base_injected_context
                                 else _rag_extra
                             )
                             deps = replace(deps, injected_context=_combined)
+                        elif len(history) > _history_len_before:
+                            # History-based modes: capture the appended message so
+                            # we can remove it before the next turn's injection.
+                            _last_rag_history_msg = history[-1]
 
                 try:
                     result = await agent.run(
@@ -913,6 +929,7 @@ class AtmanRunner:
                             if _new_extra is not None:
                                 deps = replace(deps, injected_context=_new_extra)
                         _base_injected_context = deps.injected_context
+                        _last_rag_history_msg = None
 
                         working_memory.clear()
                         session_cache.entity_resolutions.clear()
