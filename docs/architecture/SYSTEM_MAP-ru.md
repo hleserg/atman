@@ -73,6 +73,7 @@
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции; **R11.5** `apply_self_layer_update` / `revert_self_change` для core/recent слоёв с аудитом через опциональный `SelfAppliedChangeStore` | `NarrativeRevisionService` |
 | `core/services/session_manager.py` | Сессионный runtime: старт, `record_event` (опциональный async **AffectDetector** + **авто-запись ценностных отказов**), `append_key_moment` / `append_key_moment_input`, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`, опционально `affect_workspace` + `AffectDetectorConfig`, **опционально `workspace` для JSONL-журналов сессий, межпроцессных journal-locks и orphan recovery**, **тихая детекция отказов через `RefusalDetectorConfig`**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
+| `core/services/session_experience_view.py` (R3) | Мост-хелпер: синтезирует виртуальный `SessionExperience` из `Session` + `list[KeyMoment]`, чтобы промпты `ReflectionModel` работали после миграции `DailyReflectionService` с `ExperienceRepository`; удаляется когда `ReflectionModel` начнёт принимать `(Session, moments)` напрямую | `build_session_experience` |
 | `core/services/reflection_overload_monitor.py` (R13) | Анализирует `ReflectionEventStore` (Daily >1/день×3д → WARNING, Deep >1/3д → CRITICAL); шлёт алерты в sink; не «чинит» темп — это сигнал к калибровке | `ReflectionOverloadMonitor` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 | `core/services/session_working_memory.py` | In-session кэш для предотвращения повторных поисков | `SessionWorkingMemory`, `CachedItem` |
@@ -240,7 +241,7 @@
 | `resolve_pending_review` ↔ `PendingHumanReviewInbox` | `adapters/agent/tools.py` → `core/ports/pending_human_review.py` | **R11.7** инструмент регистрируется только при наличии inbox в `AtmanDeps`; runner вкладывает нерешённые элементы первым system-сообщением |
 | `request_reflection` ↔ `ReflectionRequestQueue` | `adapters/agent/tools.py` → `core/ports/reflection_request_queue.py` | **R12** инструмент регистрируется только при наличии очереди в `AtmanDeps`; идемпотентность через `agent_driven_run_key` (UTC hour bucket) |
 | `MicroReflectionService` ↔ `ExperienceRepository` + `NarrativeRepository` | `core/services/reflection_service.py` | чтение опыта, апдейт recent-слоя |
-| `DailyReflectionService` ↔ `ExperienceRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов |
+| `DailyReflectionService` ↔ `SessionRepository` + `PatternStore` + `ReflectionEventStore` | `core/services/reflection_service.py` | детекция паттернов (R3 — мигрирован с `ExperienceRepository`; синтезирует виртуальные `SessionExperience` через `services/session_experience_view.build_session_experience`) |
 | `DeepReflectionService` ↔ все рефлексионные порты | `core/services/reflection_service.py` | здоровье + апдейт identity и нарратива |
 | `PrincipleRevisionAdvisor` ↔ `PatternCandidate` + `Identity` | `core/services/principle_advisor.py` | анализ паттернов в контексте identity |
 
@@ -313,7 +314,7 @@ MicroReflectionService — читает ExperienceRepository
   ↓ обновляет
 NarrativeRepository (recent-слой) — оптимистическая блокировка
   ↓
-DailyReflectionService — читает опыт за UTC-сутки, детектит паттерны
+DailyReflectionService — читает сессии + key moments через SessionRepository за UTC-сутки, детектит паттерны
   ↓ сохраняет
 PatternStore + ReflectionEventStore
   ↓
