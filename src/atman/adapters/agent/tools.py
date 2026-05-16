@@ -297,7 +297,7 @@ def resolve_pending_review(
         return f"Error: {exc}"
 
     return (
-        f"Resolved review {resolved.id} as {resolved.resolution.value}. "
+        f"Resolved review {resolved.id} as {resolution.value}. "
         f"Note: {note_clean}"
     )
 

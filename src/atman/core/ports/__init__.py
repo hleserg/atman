@@ -5,6 +5,7 @@ Core ports для Atman.
 from atman.core.ports.embedding import EmbeddingPort
 from atman.core.ports.memory_backend import FactualMemory
 from atman.core.ports.memory_usage_log import MemoryUsageLog, MemoryUsageRecord, UsageType
+from atman.core.ports.pending_human_review import PendingHumanReviewInbox
 from atman.core.ports.reflection import (
     ExperienceRepository,
     HealthAssessmentStore,
@@ -16,7 +17,6 @@ from atman.core.ports.reflection import (
     ReflectionEventStore,
     ReflectionModel,
 )
-from atman.core.ports.pending_human_review import PendingHumanReviewInbox
 from atman.core.ports.reflection_overload_alert import (
     ReflectionOverloadAlertSink,
     ReflectionOverloadSeverity,

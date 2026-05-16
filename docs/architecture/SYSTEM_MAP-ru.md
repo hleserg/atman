@@ -33,6 +33,9 @@
 | `core/models/maintenance.py` | Модели очереди технического обслуживания для фоновых/cron задач (salience decay, memory guardian) | `MaintenanceJob`, `JobName`, `JobStatus` |
 | `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Йоды), структурированные ответы модели (MODEL-01 / #146), **персистентность рефлексий в PostgreSQL** (E27) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment`, `ReframingNoteOutput`, `PatternDetectionOutput`, `NarrativeUpdateOutput`, `HealthCriterionOutput`, **`ReflectionRecord`** |
 | `core/models/governance.py` | Решения governance для мутаций ядра нарратива | `GovernanceDecision`, `GovernanceMode` |
+| `core/models/self_applied_change.py` (R11.5) | Аудит-запись об изменении identity/narrative, применённом самой рефлексией (rationale, опорные moment id, snapshot до) | `SelfAppliedChange`, `SelfChangeSource`, `SelfChangeTargetKind`, `SelfChangeActor` |
+| `core/models/pending_human_review.py` (R11.7) | Очередь предложений, в которых рефлексия не уверена и передаёт человеку | `PendingReview`, `PendingReviewDraft`, `PendingReviewKind`, `Priority`, `Resolution` |
+| `core/models/reflection_request.py` (R12) | Запрос рефлексии от агента через тул `request_reflection` | `ReflectionRequest`, `ReflectionRequestLevel` |
 
 ### 1.2. Порты / интерфейсы (`src/atman/core/ports/`)
 
@@ -50,6 +53,10 @@
 | `core/ports/memory_guardian.py` | Сканирование качества памяти и персистенс находок | `MemoryGuardian` (ABC): `scan_orphan_entities`, `scan_merge_candidates`, `scan_stale_moments`, `scan_embedding_gaps`, `write_finding`, `get_unresolved`, `resolve_finding` |
 | `core/ports/reflection.py` | Зависимости Reflection Engine; `ReflectionModel` возвращает DTO (#146) | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `ReflectionModel`, `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore`, `ReflectionEventPersistenceObserver`, `NarrativeWriteAuditPort` |
 | **`core/ports/reflection_store.py`** | **E27**: Интерфейс таблицы PostgreSQL `reflections` | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
+| `core/ports/self_applied_changes.py` (R11.5) | Аудит-стор самостоятельно применённых рефлексией изменений (append + revert) | `SelfAppliedChangeStore` (Protocol) |
+| `core/ports/pending_human_review.py` (R11.7) | Inbox для предложений с низкой уверенностью | `PendingHumanReviewInbox` (Protocol) |
+| `core/ports/reflection_request_queue.py` (R12) | Очередь запросов рефлексии от агента | `ReflectionRequestQueue` (Protocol) |
+| `core/ports/reflection_overload_alert.py` (R13) | Sink для алертов о нездоровом темпе рефлексии (сигнал калибровки, не авто-фикс) | `ReflectionOverloadAlertSink` (Protocol), `OverloadAlert`, `AlertSeverity` |
 | `core/ports/embedding.py` | Интерфейс эмбеддингов для семантического поиска | `EmbeddingPort` (ABC) — `embed()`, `embed_batch()`, `dimension()`, `model_name()` |
 | `core/ports/memory_middleware.py` | Точка интеграции middleware памяти для live agent | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
 | `core/ports/memory_usage_log.py` | Трекинг использования памяти для рефлексии | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
@@ -64,6 +71,7 @@
 | `core/services/narrative_revision.py` | Обновления нарратива во время рефлексии с контролем конкуренции | `NarrativeRevisionService` |
 | `core/services/session_manager.py` | Сессионный runtime: старт, `record_event` (опциональный async **AffectDetector** + **авто-запись ценностных отказов**), `append_key_moment` / `append_key_moment_input`, завершение с eigenstate (потокобезопасный реестр, опциональный `max_active_sessions`, опционально `affect_workspace` + `AffectDetectorConfig`, **опционально `workspace` для JSONL-журналов сессий, межпроцессных journal-locks и orphan recovery**, **тихая детекция отказов через `RefusalDetectorConfig`**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; ошибки сессий в `core/exceptions.py` |
 | `core/services/reflection_service.py` | Три уровня рефлексии: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
+| `core/services/reflection_overload_monitor.py` (R13) | Анализирует `ReflectionEventStore` (Daily >1/день×3д → WARNING, Deep >1/3д → CRITICAL); шлёт алерты в sink; не «чинит» темп — это сигнал к калибровке | `ReflectionOverloadMonitor` |
 | `core/services/principle_advisor.py` | Различение привычки и принципа; советник пересмотра принципов | `PrincipleRevisionAdvisor` |
 | `core/services/session_working_memory.py` | In-session кэш для предотвращения повторных поисков | `SessionWorkingMemory`, `CachedItem` |
 | `core/services/passive_memory_injector.py` | Автоматический surfacing через embedding similarity + ассоциативный expand; **v2**: ambient-режим с опциональными `LinguisticAnalyzer` + `MemoryReranker` — entity anchors + параллельные запросы + реранкинг, если оба сконфигурированы; без них — старый dense-поиск; `surface_key_moments_for_context()` через самостоятельные key moments | `PassiveMemoryInjector`, `SurfacedMemory` |
@@ -121,6 +129,11 @@
 | `adapters/maintenance/in_memory_queue.py` (`InMemoryMaintenanceQueue`) | `MaintenanceQueue` | идемпотентность через run_key; атомарный `claim_batch`; все статусные переходы |
 | `adapters/reflection_compat/experience_view_repository.py` (`ExperienceViewRepository`) | `ExperienceRepository` (compat мост для Reflection) | `experience_id ≡ session_id`; строит виртуальный `SessionExperience` из `Session` + `list[KeyMoment]`; Reflection Engine без изменений |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | хранилища выводов рефлексии |
+| `adapters/storage/in_memory_self_applied_changes.py` (R11.5) | `SelfAppliedChangeStore` | append-only аудит; поддерживает revert через snapshot до изменения |
+| `adapters/storage/in_memory_pending_human_review.py` (R11.7) | `PendingHumanReviewInbox` | сортировка priority-first / oldest-first; resolve выставляет resolved_at + applied_change_id |
+| `adapters/storage/in_memory_reflection_request_queue.py` (R12) | `ReflectionRequestQueue` | идемпотентность в пределах UTC-часа через `agent_driven_run_key(reason, hour)` |
+| `adapters/observability/in_memory_overload_alert_sink.py` (R13) | `ReflectionOverloadAlertSink` | алерты в памяти; падения sink подавляются, чтобы монитор не валил вызывающего |
+| `adapters/agent/pending_reviews_context.py` (R11.7) | — | `format_pending_reviews_block`: priority-first, oldest-first, обрезка контекста |
 || **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **Реализация PostgreSQL** (только операции KeyMoment, psycopg3; другие методы StateStore выбрасывают `NotImplementedError`) |
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: в памяти с симуляцией BIGSERIAL + RLS |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: функции-помощники для персистенса рефлексий (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |

@@ -30,6 +30,9 @@ All paths are absolute relative to the repository root.
 | `core/models/maintenance.py` | Maintenance queue models for background/cron jobs (salience decay, memory guardian) | `MaintenanceJob`, `JobName`, `JobStatus` |
 | `core/models/reflection.py` | Reflection processes, patterns, health assessment (Jahoda criteria), structured LLM/mock outputs (MODEL-01 / #146), **PostgreSQL reflections persistence** (E27) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment`, `ReframingNoteOutput`, `PatternDetectionOutput`, `NarrativeUpdateOutput`, `HealthCriterionOutput`, **`ReflectionRecord`** |
 | `core/models/governance.py` | Governance decisions for core narrative mutations | `GovernanceDecision`, `GovernanceMode` |
+| `core/models/self_applied_change.py` (R11.5) | Audit row for identity/narrative changes reflection applies on its own (rationale, supporting moment ids, before-snapshot) | `SelfAppliedChange`, `SelfChangeSource`, `SelfChangeTargetKind`, `SelfChangeActor` |
+| `core/models/pending_human_review.py` (R11.7) | Inbox items for changes reflection is not confident enough to self-apply | `PendingReview`, `PendingReviewDraft`, `PendingReviewKind`, `Priority`, `Resolution` |
+| `core/models/reflection_request.py` (R12) | Agent-driven `request_reflection` queue entry | `ReflectionRequest`, `ReflectionRequestLevel` |
 
 ### 1.2. Ports / interfaces (`src/atman/core/ports/`)
 
@@ -50,6 +53,10 @@ All paths are absolute relative to the repository root.
 | `core/ports/memory_middleware.py` (E24) | Memory surfacing context wrapping | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
 | `core/ports/memory_usage_log.py` (E24.10) | Audit log for surfaced/used memory items | `MemoryUsageLog` (ABC), `MemoryUsageRecord`, `UsageType` |
 | `core/ports/reflection_store.py` (E27) | PostgreSQL `reflections` table interface | `ReflectionStore` (ABC): `add`, `get`, `list_by_session`, `list_recent`, `list_by_level`, `list_by_experience` |
+| `core/ports/self_applied_changes.py` (R11.5) | Audit store for reflection self-applied changes (append + revert) | `SelfAppliedChangeStore` (Protocol) |
+| `core/ports/pending_human_review.py` (R11.7) | Pending-review inbox for low-confidence reflection proposals | `PendingHumanReviewInbox` (Protocol) |
+| `core/ports/reflection_request_queue.py` (R12) | Queue for agent-driven reflection requests | `ReflectionRequestQueue` (Protocol) |
+| `core/ports/reflection_overload_alert.py` (R13) | Sink for reflection-cadence alerts (recalibration signal, not auto-fix) | `ReflectionOverloadAlertSink` (Protocol), `OverloadAlert`, `AlertSeverity` |
 
 ### 1.3. Services (`src/atman/core/services/`)
 
@@ -61,6 +68,7 @@ All paths are absolute relative to the repository root.
 | `core/services/narrative_revision.py` | Narrative updates during reflection with concurrency control | `NarrativeRevisionService` |
 | `core/services/session_manager.py` | Session runtime: start, `record_event` (optional async **AffectDetector** hook + **value refusal auto-recording**), `append_key_moment` / `append_key_moment_input`, finish with eigenstate (thread-safe registry, optional `max_active_sessions`, optional `affect_workspace` + `AffectDetectorConfig`, **optional `workspace` for JSONL session journals, inter-process journal locks, and orphan recovery**, **silent refusal detection via `RefusalDetectorConfig`**) | `SessionManager`, `MAX_EIGENSTATE_ITEMS`; session errors live in `core/exceptions.py` |
 | `core/services/reflection_service.py` | Three reflection levels: micro, daily, deep | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |
+| `core/services/reflection_overload_monitor.py` (R13) | Inspects `ReflectionEventStore` for abnormal cadence (Daily >1/day×3d → WARNING, Deep >1/3d → CRITICAL); emits alerts via sink; never auto-fixes — overload is a recalibration signal | `ReflectionOverloadMonitor` |
 | `core/services/principle_advisor.py` | Distinguish habit vs principle; advise on principle revision | `PrincipleRevisionAdvisor` |
 | `core/services/conflict_detector.py` (E24.5) | Detect contradictions between active facts; produces small cognitive tension signals | `ConflictDetector`, `FactConflict` |
 | `core/services/emotional_echo.py` (E24.7) | Build historical emotional context from recent experiences (recency × intensity) | `EmotionalEcho`, `EchoItem` |
@@ -117,6 +125,11 @@ All paths are absolute relative to the repository root.
 | `adapters/maintenance/in_memory_queue.py` (`InMemoryMaintenanceQueue`) | `MaintenanceQueue` | run_key idempotency; atomic `claim_batch`; all status transitions |
 | `adapters/reflection_compat/experience_view_repository.py` (`ExperienceViewRepository`) | `ExperienceRepository` (Reflection compat) | maps `experience_id ≡ session_id`; builds virtual `SessionExperience` from `Session` + `list[KeyMoment]`; Reflection Engine unchanged via this adapter |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | reflection output stores |
+| `adapters/storage/in_memory_self_applied_changes.py` (R11.5) | `SelfAppliedChangeStore` | append-only audit; supports revert by walking back to before-snapshot |
+| `adapters/storage/in_memory_pending_human_review.py` (R11.7) | `PendingHumanReviewInbox` | priority-first / oldest-first ordering; resolution sets resolved_at + applied_change_id |
+| `adapters/storage/in_memory_reflection_request_queue.py` (R12) | `ReflectionRequestQueue` | idempotent within UTC hour bucket via `agent_driven_run_key(reason, hour)` |
+| `adapters/observability/in_memory_overload_alert_sink.py` (R13) | `ReflectionOverloadAlertSink` | captures alerts in-memory; sink failures suppressed so monitor cannot crash callers |
+| `adapters/agent/pending_reviews_context.py` (R11.7) | — | `format_pending_reviews_block` helper: priority-first, oldest-first, context truncation |
 || **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **PostgreSQL implementation** (KeyMoment operations only, psycopg3; other StateStore methods raise `NotImplementedError`) |
 | **`adapters/storage/in_memory_postgres_reflection_store.py`** (`InMemoryReflectionStore`) | **`ReflectionStore`** | **E27**: in-memory with BIGSERIAL + RLS simulation |
 | `adapters/storage/reflection_persistence_helper.py` | — | **E27**: helper functions for persisting reflections (`persist_micro_reflection`, `persist_daily_reflection`, `persist_deep_reflection`) |
