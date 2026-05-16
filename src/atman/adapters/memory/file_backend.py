@@ -140,12 +140,18 @@ class FileBackend(FactualMemory):
         *,
         include_invalidated: bool = False,
     ) -> list[FactRecord]:
-        """Ищет факты по запросу и тегам."""
-        results = []
+        """Ищет факты по запросу и тегам.
 
+        query — case-insensitive substring filter (для CLI/точного поиска).
+        Для семантического RAG передавайте ``query=None`` и фильтруйте
+        по embedding similarity на уровне сервиса.
+
+        Результаты сортируются по убыванию salience.
+        """
         normalized_query = query.lower() if query else None
         normalized_tags = [t.lower() for t in tags] if tags else None
 
+        candidates: list[FactRecord] = []
         for fact in self._facts.values():
             if not include_invalidated and fact.status != FactStatus.ACTIVE:
                 continue
@@ -158,12 +164,10 @@ class FileBackend(FactualMemory):
                 if not all(tag in fact_tags_lower for tag in normalized_tags):
                     continue
 
-            results.append(fact.model_copy(deep=True))
+            candidates.append(fact.model_copy(deep=True))
 
-            if len(results) >= limit:
-                break
-
-        return results
+        candidates.sort(key=lambda f: f.salience, reverse=True)
+        return candidates[:limit]
 
     def confirm_fact(self, fact_id: UUID) -> bool:
         """Confirm a fact and persist changes."""

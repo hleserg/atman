@@ -3,7 +3,9 @@ PassiveMemoryInjector - automatic memory surfacing.
 
 Surfaces relevant facts and experiences automatically based on:
 1. Embedding similarity (top-K semantic search)
-2. 1-hop associative graph expansion (related facts via relations)
+2. Optional BM25 lexical signal fused with embedding via Reciprocal Rank Fusion
+3. Optional cross-encoder reranking (when reranker is configured)
+4. 1-hop associative graph expansion (related facts via relations)
 
 When LinguisticAnalyzer + MemoryReranker are provided (LINGUISTIC_ENABLED=True),
 uses ambient-anchor mode: parallel queries per entity/anchor type, then reranking.
@@ -17,6 +19,8 @@ from atman.core.models.fact import FactStatus
 from atman.core.ports import EmbeddingPort, FactualMemory
 from atman.core.ports.state_store import StateStore
 from atman.core.services.session_working_memory import SessionWorkingMemory
+
+RRF_K = 60
 
 
 @dataclass
@@ -37,8 +41,10 @@ class RagContext:
 
 
 def estimate_tokens(text: str) -> int:
-    """Fast token count heuristic (no tokenizer needed): 4 chars ≈ 1 token."""
-    return len(text) // 4
+    """Token count heuristic. UTF-8 byte length / 3 — calibrated to work
+    reasonably for both ASCII (~1 token per 4 chars) and multibyte scripts
+    like Cyrillic where each char is ~2 bytes and tokenizes more densely."""
+    return max(1, len(text.encode("utf-8")) // 3) if text else 0
 
 
 def _surfaced_text(mem: SurfacedMemory) -> str:
@@ -95,6 +101,8 @@ class PassiveMemoryInjector:
         memory_reranker: object | None = None,
         ambient_top_k: int = 50,
         reranker_top_n: int = 10,
+        bm25: EmbeddingPort | None = None,
+        candidate_pool_size: int = 0,
     ) -> None:
         self.embedding = embedding
         self.factual_memory = factual_memory
@@ -106,6 +114,18 @@ class PassiveMemoryInjector:
         self._reranker = memory_reranker
         self._ambient_top_k = ambient_top_k
         self._reranker_top_n = reranker_top_n
+        self._bm25 = bm25
+        self._candidate_pool_size = candidate_pool_size
+
+    @property
+    def candidate_pool_size(self) -> int:
+        """How many candidates to pull from backend before embedding scoring.
+
+        Larger pool = better recall but slower (each candidate gets embedded).
+        Defaults to ``max(top_k * 10, 50)`` so that with default top_k=5
+        we sample 50 facts by salience and let embedding/BM25 select the best.
+        """
+        return self._candidate_pool_size or max(self.top_k * 10, 50)
 
     @property
     def _ambient_mode(self) -> bool:
@@ -176,62 +196,147 @@ class PassiveMemoryInjector:
         """
         Surface relevant memories for given context.
 
-        Args:
-            context_text: The current context/situation text
-            working_memory: Optional cache to avoid re-surfacing
-
-        Returns:
-            list[SurfacedMemory]: Surfaced relevant memories
+        Pipeline:
+        1. Pull candidate pool from backend ordered by salience
+           (``query=None`` — substring filter is bypassed; semantic ranking
+           is the service's responsibility).
+        2. Score each candidate by dense embedding similarity.
+        3. If BM25 adapter is configured, score by BM25 as well and fuse
+           with embedding via Reciprocal Rank Fusion.
+        4. If ambient mode is enabled (linguistic analyzer + reranker),
+           rerank the top candidates via the cross-encoder.
+        5. Expand 1-hop via associative graph; associative items get
+           a real embedding similarity score, not a hardcoded constant.
         """
         surfaced: list[SurfacedMemory] = []
         seen_ids: set[UUID] = set()
 
-        # 1. Embedding similarity search for facts
         query_embedding = self.embedding.embed(context_text)
 
-        # Get candidate facts
         candidate_facts = self.factual_memory.search(
-            query=context_text, limit=self.top_k * 2, include_invalidated=False
+            query=None,
+            limit=self.candidate_pool_size,
+            include_invalidated=False,
         )
 
-        # Score by embedding similarity
+        # Embedding scoring + working-memory dedup + empty-content skip
         scored_facts: list[tuple[FactRecord, float]] = []
         for fact in candidate_facts:
             if not fact.content.strip():
                 continue
-
-            # Check working memory
             if working_memory and working_memory.has(fact.id):
                 continue
-
             fact_embedding = self.embedding.embed(fact.content)
             score = self.embedding.similarity(query_embedding, fact_embedding)
-
             if score >= self.min_threshold:
-                scored_facts.append((fact, score))
+                scored_facts.append((fact, float(score)))
 
-        # Sort by score and take top_k
-        scored_facts.sort(key=lambda x: x[1], reverse=True)
-        for fact, score in scored_facts[: self.top_k]:
+        if not scored_facts:
+            return surfaced
+
+        # Optional BM25 RRF fusion — lifts exact lexical matches that the
+        # dense encoder might rank low, without dropping semantic matches.
+        ordered = self._fuse_with_bm25(context_text, scored_facts)
+
+        # Optional cross-encoder reranking (ambient mode).
+        ordered = self._apply_reranker(context_text, ordered)
+
+        for fact, score in ordered[: self.top_k]:
             surfaced.append(SurfacedMemory(item=fact, source="similarity", score=score))
             seen_ids.add(fact.id)
-
-            # Add to working memory if provided
             if working_memory:
                 working_memory.add_fact(fact)
 
-        # 2. Associative graph expansion (1-hop)
+        # Associative graph expansion (1-hop) — score by real embedding
+        # similarity, capped at 0.5 so associative items never outrank a
+        # direct semantic match.
         if self.associative_expand:
             related_facts = self._associative_expand(seen_ids)
             for fact in related_facts:
-                if fact.id not in seen_ids:
-                    surfaced.append(SurfacedMemory(item=fact, source="associative", score=0.5))
-                    seen_ids.add(fact.id)
-
-                    if working_memory:
-                        working_memory.add_fact(fact)
+                if fact.id in seen_ids or not fact.content.strip():
+                    continue
+                rel_embedding = self.embedding.embed(fact.content)
+                rel_score = float(self.embedding.similarity(query_embedding, rel_embedding))
+                surfaced.append(
+                    SurfacedMemory(item=fact, source="associative", score=min(rel_score, 0.5))
+                )
+                seen_ids.add(fact.id)
+                if working_memory:
+                    working_memory.add_fact(fact)
 
         return surfaced
+
+    def _fuse_with_bm25(
+        self,
+        context_text: str,
+        scored_facts: list[tuple[FactRecord, float]],
+    ) -> list[tuple[FactRecord, float]]:
+        """Reciprocal Rank Fusion of embedding ranks and BM25 ranks.
+
+        Returns scored_facts sorted by fused score. Embedding scores are
+        preserved on the tuples for downstream use; only ordering changes.
+        When ``self._bm25`` is None, falls back to plain embedding sort.
+        """
+        if self._bm25 is None:
+            return sorted(scored_facts, key=lambda x: x[1], reverse=True)
+
+        bm25_qvec = self._bm25.embed(context_text)
+        bm25_scores: dict[UUID, float] = {}
+        for fact, _ in scored_facts:
+            vec = self._bm25.embed(fact.content)
+            bm25_scores[fact.id] = float(self._bm25.similarity(bm25_qvec, vec))
+
+        emb_sorted = sorted(scored_facts, key=lambda x: x[1], reverse=True)
+        bm25_sorted = sorted(bm25_scores.items(), key=lambda x: x[1], reverse=True)
+        emb_rank = {f.id: i for i, (f, _) in enumerate(emb_sorted)}
+        bm25_rank = {fid: i for i, (fid, _) in enumerate(bm25_sorted)}
+        missing = len(scored_facts)
+
+        def rrf(fid: UUID) -> float:
+            return 1.0 / (RRF_K + emb_rank.get(fid, missing)) + 1.0 / (
+                RRF_K + bm25_rank.get(fid, missing)
+            )
+
+        return sorted(scored_facts, key=lambda x: rrf(x[0].id), reverse=True)
+
+    def _apply_reranker(
+        self,
+        context_text: str,
+        scored_facts: list[tuple[FactRecord, float]],
+    ) -> list[tuple[FactRecord, float]]:
+        """Cross-encoder reranking of the top candidates.
+
+        Only runs when ambient mode is enabled. Reranker operates on the
+        top ``reranker_top_n`` so cost stays bounded.
+        """
+        if not (self._ambient_mode and scored_facts):
+            return scored_facts
+
+        from atman.core.ports.memory_reranker import SurfacedMemory as RankedMemory
+
+        head = scored_facts[: self._reranker_top_n]
+        tail = scored_facts[self._reranker_top_n :]
+        ranked_input = [
+            RankedMemory(
+                key_moment_id=fact.id,
+                text=fact.content,
+                score=score,
+                source="similarity",
+            )
+            for fact, score in head
+        ]
+        ranked = self._reranker.rerank(  # type: ignore[union-attr]
+            context_text, ranked_input, top_n=len(ranked_input)
+        )
+        fact_by_id = {f.id: f for f, _ in head}
+        reordered: list[tuple[FactRecord, float]] = []
+        for r in ranked:
+            fact = fact_by_id.get(r.key_moment_id)
+            if fact is None:
+                continue
+            new_score = r.final_score if r.final_score is not None else r.score
+            reordered.append((fact, float(new_score)))
+        return reordered + tail
 
     def _associative_expand(self, seed_fact_ids: set[UUID]) -> list[FactRecord]:
         """

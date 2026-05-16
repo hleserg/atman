@@ -46,14 +46,20 @@ class InMemoryBackend(FactualMemory):
         """
         Ищет факты по запросу и тегам.
 
-        Поиск по query использует простое вхождение подстроки (case-insensitive).
-        Поиск по tags требует совпадения всех указанных тегов.
-        """
-        results = []
+        query — case-insensitive substring filter для CLI-сценариев точного
+        лексического поиска. Для семантического RAG передавайте ``query=None``
+        и фильтруйте по embedding similarity на уровне сервиса
+        (см. ``PassiveMemoryInjector``).
 
+        tags — жёсткий фильтр: все указанные теги должны присутствовать.
+
+        Результаты сортируются по убыванию salience, чтобы при усечении
+        ``limit`` сохранялись наиболее важные факты.
+        """
         normalized_query = query.lower() if query else None
         normalized_tags = [t.lower() for t in tags] if tags else None
 
+        candidates: list[FactRecord] = []
         for fact in self._facts.values():
             if not include_invalidated and fact.status != FactStatus.ACTIVE:
                 continue
@@ -66,12 +72,10 @@ class InMemoryBackend(FactualMemory):
                 if not all(tag in fact_tags_lower for tag in normalized_tags):
                     continue
 
-            results.append(fact.model_copy(deep=True))
+            candidates.append(fact.model_copy(deep=True))
 
-            if len(results) >= limit:
-                break
-
-        return results
+        candidates.sort(key=lambda f: f.salience, reverse=True)
+        return candidates[:limit]
 
     def invalidate_fact(
         self,
