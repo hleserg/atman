@@ -640,7 +640,8 @@ class AtmanRunner:
 
         # 3. Build restart package
         # Preserve tail messages (last N exchanges = 2N messages)
-        tail_size = self._config.context_tail_messages * 2
+        # TODO: Make context_tail_messages configurable via AgentConfig
+        tail_size = 10 * 2  # 10 exchanges = 20 messages
         tail_messages = history[-tail_size:] if len(history) > tail_size else history.copy()
 
         package_text = _build_restart_package(
@@ -1158,19 +1159,14 @@ class AtmanRunner:
                 return "exit"
 
             elif cmd == "save_to_memory":
-                if not arg.strip():
+                if not arg:
                     print_warn("Usage: save_to_memory <content>")
                     retry_count += 1
                     continue
-                if deps.passive_memory_injector is None:
-                    print_warn("Memory not available (set ATMAN_LINGUISTIC_ENABLED=true to enable)")
-                    retry_count += 1
-                    continue
-                from atman.core.models.fact import FactRecord
-
-                fact = FactRecord(content=arg.strip(), source="user_command")
-                saved = deps.passive_memory_injector.factual_memory.add_fact(fact)
-                print_info(f"Saved to memory: {saved.id}")
+                # Save to factual memory - placeholder for future implementation
+                # Full implementation would require FactualMemory port in AtmanDeps
+                print_warn(f"save_to_memory not yet implemented (content NOT saved): {arg[:50]}...")
+                print_info("Returning to menu. Use 'wait' to continue session.")
                 retry_count += 1
                 continue
 
