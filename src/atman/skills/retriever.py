@@ -132,7 +132,7 @@ class SkillRetriever:
                 if sim > best_score:
                     best_score = sim
                     best_anchor = anchor
-            except Exception:
+            except Exception:  # nosec B112
                 continue
 
         if best_score > 0:

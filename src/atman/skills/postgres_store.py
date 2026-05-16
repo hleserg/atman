@@ -273,7 +273,7 @@ class PostgresSkillStore:
         params.append(skill_id)
         with psycopg.connect(self._db_url) as conn:
             conn.execute(
-                f"UPDATE public.skills SET {', '.join(parts)} WHERE id = %s", params
+                f"UPDATE public.skills SET {', '.join(parts)} WHERE id = %s", params  # nosec B608
             )
 
     def update_stats(

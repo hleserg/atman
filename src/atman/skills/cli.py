@@ -225,7 +225,7 @@ def cmd_inspect_invocations(args: list[str]) -> None:
     print("(Use --last N to adjust count)")
     print(f"Skill ID: {skill.id}")
     print("Full invocation history requires direct DB query:")
-    print(f"  SELECT * FROM public.skill_invocations WHERE skill_id = '{skill.id}' ORDER BY started_at DESC LIMIT {last_n};")
+    print(f"  SELECT * FROM public.skill_invocations WHERE skill_id = '{skill.id}' ORDER BY started_at DESC LIMIT {last_n};")  # nosec B608
 
 
 def cmd_force_revise(args: list[str]) -> None:

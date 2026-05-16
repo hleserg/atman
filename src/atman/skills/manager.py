@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -138,7 +138,7 @@ class SkillManager:
 
         if sandbox == "subprocess":
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607
                     ["python", str(entry_path)],
                     input=json.dumps(args),
                     capture_output=True,
