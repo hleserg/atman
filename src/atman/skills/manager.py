@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -28,7 +28,7 @@ _log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SkillManager:
@@ -337,17 +337,15 @@ class SkillManager:
         active_skills = self._store.list_by_status(agent_id, SkillStatus.active)
         for skill in active_skills:
             # Auto-downgrade: only for auto_pinned (user_pinned is sacred)
-            if skill.auto_pinned and not skill.user_pinned:
-                if skill.sessions_since_use >= self._config.auto_downgrade_sessions:
-                    self._store.update_pinning(skill.id, auto_pinned=False)
-                    _log.info("Auto-downgraded skill '%s' (idle %d sessions)",
-                              skill.name, skill.sessions_since_use)
+            if skill.auto_pinned and not skill.user_pinned and skill.sessions_since_use >= self._config.auto_downgrade_sessions:
+                self._store.update_pinning(skill.id, auto_pinned=False)
+                _log.info("Auto-downgraded skill '%s' (idle %d sessions)",
+                          skill.name, skill.sessions_since_use)
 
             # Auto-pin: skill used enough times in recent window
             # Simplified: check if invocations_count justifies auto-pin
             # (full window tracking would require per-session history query)
-            if not skill.auto_pinned and not skill.user_pinned:
-                if skill.invocations_count >= self._config.auto_pin_threshold_uses:
-                    self._store.update_pinning(skill.id, auto_pinned=True)
-                    _log.info("Auto-pinned skill '%s' (%d invocations)",
-                              skill.name, skill.invocations_count)
+            if not skill.auto_pinned and not skill.user_pinned and skill.invocations_count >= self._config.auto_pin_threshold_uses:
+                self._store.update_pinning(skill.id, auto_pinned=True)
+                _log.info("Auto-pinned skill '%s' (%d invocations)",
+                          skill.name, skill.invocations_count)

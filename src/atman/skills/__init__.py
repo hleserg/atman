@@ -24,13 +24,13 @@ from atman.skills.noop import NoopSkillManager, SkillsDisabledError
 from atman.skills.port import SkillManagerPort
 
 __all__ = [
+    "NoopSkillManager",
     "Skill",
     "SkillInvocation",
     "SkillKind",
+    "SkillManagerPort",
     "SkillOrigin",
     "SkillStatus",
     "SkillSuggestion",
-    "SkillManagerPort",
-    "NoopSkillManager",
     "SkillsDisabledError",
 ]

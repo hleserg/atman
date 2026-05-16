@@ -9,7 +9,6 @@ atman.skills.enabled. Write commands return an error when skills are disabled.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from uuid import UUID
 
 

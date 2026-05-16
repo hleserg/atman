@@ -4,23 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
 
 
-class SkillKind(str, Enum):
+class SkillKind(StrEnum):
     active = "active"
     passive = "passive"
 
 
-class SkillStatus(str, Enum):
+class SkillStatus(StrEnum):
     draft = "draft"
     active = "active"
     disabled = "disabled"
 
 
-class SkillOrigin(str, Enum):
+class SkillOrigin(StrEnum):
     in_session = "in_session"
     reflection_pattern = "reflection_pattern"
     external = "external"
@@ -85,7 +85,7 @@ class SkillInvocation:
     processed_at: datetime | None = None
 
 
-class SuggestionStrength(str, Enum):
+class SuggestionStrength(StrEnum):
     suggest = "suggest"
     strong_suggest = "strong-suggest"
     passive_auto_invoke = "passive-auto-invoke"

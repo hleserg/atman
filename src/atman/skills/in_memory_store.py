@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
-from pathlib import Path
+from dataclasses import replace
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from atman.skills.models import Skill, SkillInvocation, SkillKind, SkillOrigin, SkillStatus
+from atman.skills.models import Skill, SkillInvocation, SkillStatus
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class InMemorySkillStore:

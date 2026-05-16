@@ -9,32 +9,38 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 from atman.skills.models import Skill, SkillInvocation, SkillKind, SkillOrigin, SkillStatus
 
-try:
+if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
-except ImportError:
-    psycopg = None  # type: ignore[assignment]
-    dict_row = None  # type: ignore[assignment]
-    Jsonb = None  # type: ignore[assignment]
-    warnings.warn(
-        "psycopg not installed. PostgresSkillStore requires PostgreSQL support. "
-        "Install with: pip install 'psycopg[binary]'",
-        ImportWarning,
-        stacklevel=2,
-    )
+else:
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        from psycopg.types.json import Jsonb
+    except ImportError:
+        psycopg = None  # type: ignore[assignment]
+        dict_row = None  # type: ignore[assignment]
+        Jsonb = None  # type: ignore[assignment]
+        warnings.warn(
+            "psycopg not installed. PostgresSkillStore requires PostgreSQL support. "
+            "Install with: pip install 'psycopg[binary]'",
+            ImportWarning,
+            stacklevel=2,
+        )
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _row_to_skill(row: dict) -> Skill:
@@ -105,7 +111,7 @@ class PostgresSkillStore:
     @contextmanager
     def _conn(self, agent_id: UUID) -> Generator[Any, None, None]:
         """Open a connection with RLS session variable set."""
-        with psycopg.connect(self._db_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self._db_url, row_factory=cast(Any, dict_row)) as conn:
             conn.execute(
                 "SELECT set_config('atman.current_agent', %s, true)",
                 [str(agent_id)],
@@ -198,11 +204,11 @@ class PostgresSkillStore:
     def get_skill_by_id(self, skill_id: UUID) -> Skill | None:
         # No RLS context needed for lookup by PK when called internally;
         # use a generic connection without agent scoping.
-        with psycopg.connect(self._db_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self._db_url, row_factory=cast(Any, dict_row)) as conn:
             row = conn.execute(
                 "SELECT * FROM public.skills WHERE id = %s", [skill_id]
             ).fetchone()
-        return _row_to_skill(row) if row else None
+        return _row_to_skill(cast(Any, row)) if row else None
 
     def list_pinned(self, agent_id: UUID) -> list[Skill]:
         with self._conn(agent_id) as conn:
@@ -419,7 +425,7 @@ class PostgresSkillStore:
     def get_unprocessed_invocations(
         self, agent_id: UUID, session_id: UUID
     ) -> list[SkillInvocation]:
-        with psycopg.connect(self._db_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self._db_url, row_factory=cast(Any, dict_row)) as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM public.skill_invocations
@@ -428,7 +434,7 @@ class PostgresSkillStore:
                 """,
                 [agent_id, session_id],
             ).fetchall()
-        return [_row_to_invocation(r) for r in rows]
+        return [_row_to_invocation(cast(Any, r)) for r in rows]
 
     def set_final_status(self, invocation_id: UUID, final_status: str) -> None:
         with psycopg.connect(self._db_url) as conn:
