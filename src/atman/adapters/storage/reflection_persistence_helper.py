@@ -25,7 +25,7 @@ def persist_micro_reflection(
     content: str,
     *,
     summary: str | None = None,
-    experience_refs: list[UUID] | None = None,
+    session_refs: list[UUID] | None = None,
     reframing_note_ids: list[UUID] | None = None,
     model_provider: str | None = "ollama",
     model_name: str | None = None,
@@ -40,7 +40,7 @@ def persist_micro_reflection(
         session_id: Session UUID (populated for micro reflections)
         content: Generated reflection text
         summary: Optional short summary
-        experience_refs: List of experience UUIDs analyzed
+        session_refs: List of experience UUIDs analyzed
         reframing_note_ids: List of reframing note UUIDs created
         model_provider: LLM provider (default: 'ollama')
         model_name: Specific model used
@@ -55,7 +55,7 @@ def persist_micro_reflection(
         "session_id": session_id,
         "content": content,
         "summary": summary,
-        "experience_refs": experience_refs or [],
+        "session_refs": session_refs or [],
         "reframing_note_ids": reframing_note_ids or [],
         "model_provider": model_provider,
         "model_name": model_name,
@@ -75,7 +75,7 @@ def persist_daily_reflection(
     content: str,
     *,
     summary: str | None = None,
-    experience_refs: list[UUID] | None = None,
+    session_refs: list[UUID] | None = None,
     reframing_note_ids: list[UUID] | None = None,
     model_provider: str | None = "ollama",
     model_name: str | None = None,
@@ -90,7 +90,7 @@ def persist_daily_reflection(
         period_end: End of analyzed period
         content: Generated reflection text
         summary: Optional short summary
-        experience_refs: List of experience UUIDs analyzed
+        session_refs: List of experience UUIDs analyzed
         reframing_note_ids: List of reframing note UUIDs created
         model_provider: LLM provider (default: 'ollama')
         model_name: Specific model used
@@ -105,7 +105,7 @@ def persist_daily_reflection(
         period_end=period_end,
         content=content,
         summary=summary,
-        experience_refs=experience_refs or [],
+        session_refs=session_refs or [],
         reframing_note_ids=reframing_note_ids or [],
         model_provider=model_provider,
         model_name=model_name,
@@ -121,7 +121,7 @@ def persist_deep_reflection(
     content: str,
     *,
     summary: str | None = None,
-    experience_refs: list[UUID] | None = None,
+    session_refs: list[UUID] | None = None,
     reframing_note_ids: list[UUID] | None = None,
     health_assessment: HealthAssessment | None = None,
     identity: Identity | None = None,
@@ -141,7 +141,7 @@ def persist_deep_reflection(
         period_end: End of analyzed period
         content: Generated reflection text
         summary: Optional short summary
-        experience_refs: List of experience UUIDs analyzed
+        session_refs: List of experience UUIDs analyzed
         reframing_note_ids: List of reframing note UUIDs created
         health_assessment: Optional health assessment result
         identity: Optional identity snapshot
@@ -166,7 +166,7 @@ def persist_deep_reflection(
         period_end=period_end,
         content=content,
         summary=summary,
-        experience_refs=experience_refs or [],
+        session_refs=session_refs or [],
         reframing_note_ids=reframing_note_ids or [],
         model_provider=model_provider,
         model_name=model_name,

@@ -74,7 +74,7 @@ class InMemoryReflectionStore(ReflectionStore):
                 period_end=record.period_end,
                 content=record.content,
                 summary=record.summary,
-                experience_refs=record.experience_refs,
+                session_refs=record.session_refs,
                 reframing_note_ids=record.reframing_note_ids,
                 model_provider=record.model_provider,
                 model_name=record.model_name,
@@ -184,7 +184,7 @@ class InMemoryReflectionStore(ReflectionStore):
         """
         List all reflections that analyzed a specific experience.
 
-        Uses array containment check on experience_refs.
+        Uses array containment check on session_refs.
         Applies RLS filter.
 
         Args:
@@ -197,7 +197,7 @@ class InMemoryReflectionStore(ReflectionStore):
             results = [
                 r
                 for r in self._reflections.values()
-                if experience_id in r.experience_refs
+                if experience_id in r.session_refs
                 and (self._current_agent_id is None or r.agent_id == self._current_agent_id)
             ]
             return sorted(results, key=lambda r: r.created_at, reverse=True)

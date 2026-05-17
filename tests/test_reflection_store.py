@@ -237,7 +237,7 @@ def test_list_by_experience_finds_matching_refs(store: InMemoryReflectionStore):
             agent_id=agent_id,
             level=ReflectionLevel.DAILY,
             content="Analyzed exp1",
-            experience_refs=[exp1],
+            session_refs=[exp1],
         )
     )
     store.add(
@@ -245,7 +245,7 @@ def test_list_by_experience_finds_matching_refs(store: InMemoryReflectionStore):
             agent_id=agent_id,
             level=ReflectionLevel.DAILY,
             content="Analyzed exp2",
-            experience_refs=[exp2],
+            session_refs=[exp2],
         )
     )
     r3 = store.add(
@@ -253,7 +253,7 @@ def test_list_by_experience_finds_matching_refs(store: InMemoryReflectionStore):
             agent_id=agent_id,
             level=ReflectionLevel.DEEP,
             content="Analyzed both",
-            experience_refs=[exp1, exp2],
+            session_refs=[exp1, exp2],
         )
     )
 
@@ -271,7 +271,7 @@ def test_list_by_experience_empty_when_no_refs(store: InMemoryReflectionStore):
             agent_id=agent_id,
             level=ReflectionLevel.DAILY,
             content="Test",
-            experience_refs=[],
+            session_refs=[],
         )
     )
 
@@ -343,12 +343,12 @@ def test_rls_set_current_agent_filters_list_by_experience(store: InMemoryReflect
 
     store.add(
         ReflectionRecord(
-            agent_id=agent1, level=ReflectionLevel.DAILY, content="A1", experience_refs=[exp1]
+            agent_id=agent1, level=ReflectionLevel.DAILY, content="A1", session_refs=[exp1]
         )
     )
     store.add(
         ReflectionRecord(
-            agent_id=agent2, level=ReflectionLevel.DAILY, content="A2", experience_refs=[exp1]
+            agent_id=agent2, level=ReflectionLevel.DAILY, content="A2", session_refs=[exp1]
         )
     )
 
