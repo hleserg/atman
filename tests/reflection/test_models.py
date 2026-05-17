@@ -28,7 +28,7 @@ class TestReflectionEvent:
         assert event.period_start is None
         assert event.period_end is None
         assert event.summary is None
-        assert event.experience_refs == []
+        assert event.session_refs == []
         assert event.reframing_note_ids == []
         assert event.model_provider is None
         assert event.model_name is None
@@ -53,7 +53,7 @@ class TestReflectionEvent:
             period_end=datetime(2026, 5, 10, 23, 59, 59, tzinfo=UTC),
             content="This is a detailed reflection content",
             summary="Brief summary",
-            experience_refs=[exp_ref1, exp_ref2],
+            session_refs=[exp_ref1, exp_ref2],
             reframing_note_ids=[note_ref1],
             model_provider="ollama",
             model_name="qwen3.5:9b",
@@ -68,7 +68,7 @@ class TestReflectionEvent:
         assert event.period_start is not None
         assert event.period_end is not None
         assert event.summary == "Brief summary"
-        assert len(event.experience_refs) == 2
+        assert len(event.session_refs) == 2
         assert len(event.reframing_note_ids) == 1
         assert event.model_provider == "ollama"
         assert event.model_name == "qwen3.5:9b"
@@ -215,8 +215,8 @@ class TestReflectionEvent:
         assert event.period_start == period_start
         assert event.period_end == period_end
 
-    def test_experience_refs_defaults_to_empty_list(self) -> None:
-        """Test that experience_refs defaults to empty list."""
+    def test_session_refs_defaults_to_empty_list(self) -> None:
+        """Test that session_refs defaults to empty list."""
         agent_id = uuid4()
         event = ReflectionEvent(
             agent_id=agent_id,
@@ -224,7 +224,7 @@ class TestReflectionEvent:
             content="valid content",
         )
 
-        assert event.experience_refs == []
+        assert event.session_refs == []
 
     def test_reframing_note_ids_defaults_to_empty_list(self) -> None:
         """Test that reframing_note_ids defaults to empty list."""

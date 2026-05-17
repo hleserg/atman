@@ -64,9 +64,9 @@ class ReflectionEvent(BaseModel):
         default=None,
         description="Optional short title/summary",
     )
-    experience_refs: list[UUID] = Field(
+    session_refs: list[UUID] = Field(
         default_factory=list,
-        description="IDs of experiences analyzed in this reflection",
+        description="IDs of sessions analyzed in this reflection (R15 — was 'experience_refs'; one virtual SessionExperience per Session, so the ids match by construction)",
     )
     reframing_note_ids: list[UUID] = Field(
         default_factory=list,
@@ -121,7 +121,7 @@ class ReflectionEvent(BaseModel):
                 "level": "daily",
                 "content": "I noticed a pattern in my recent interactions where I tend to...",
                 "summary": "Pattern of over-explaining",
-                "experience_refs": [],
+                "session_refs": [],
                 "reframing_note_ids": [],
                 "model_provider": "ollama",
                 "model_name": "qwen3.5:9b",

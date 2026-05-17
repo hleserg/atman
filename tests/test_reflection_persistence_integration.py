@@ -40,7 +40,7 @@ def test_persist_micro_reflection_after_session():
         session_id=session_id,
         content=content,
         summary="Positive collaborative session",
-        experience_refs=[exp_id1, exp_id2],
+        session_refs=[exp_id1, exp_id2],
         model_provider="ollama",
         model_name="qwen3.5:9b",
     )
@@ -52,7 +52,7 @@ def test_persist_micro_reflection_after_session():
     assert record.period_start is None  # Not used for micro
     assert record.period_end is None
     assert "collaborative" in record.content
-    assert len(record.experience_refs) == 2
+    assert len(record.session_refs) == 2
 
     # Verify retrieval
     assert record.id is not None
@@ -84,7 +84,7 @@ def test_persist_daily_reflection_pattern_detection():
         period_end=today_end,
         content=content,
         summary="Pattern: over-explaining when uncertain",
-        experience_refs=[uuid4(), uuid4(), uuid4()],
+        session_refs=[uuid4(), uuid4(), uuid4()],
         model_provider="ollama",
         model_name="qwen3.5:9b",
     )
@@ -96,7 +96,7 @@ def test_persist_daily_reflection_pattern_detection():
     assert record.period_start == today_start
     assert record.period_end == today_end
     assert "over-explain" in record.content
-    assert len(record.experience_refs) == 3
+    assert len(record.session_refs) == 3
 
     # Verify list_by_level
     daily_reflections = store.list_by_level(agent_id, ReflectionLevel.DAILY)
@@ -129,7 +129,7 @@ def test_persist_deep_reflection_with_health_assessment():
         period_end=week_end,
         content=content,
         summary="Weekly health check: stable growth",
-        experience_refs=[uuid4() for _ in range(10)],
+        session_refs=[uuid4() for _ in range(10)],
         reframing_note_ids=[uuid4(), uuid4()],
         model_provider="ollama",
         model_name="qwen3.5:9b",
@@ -141,7 +141,7 @@ def test_persist_deep_reflection_with_health_assessment():
     assert record.session_id is None
     assert record.period_start == week_start
     assert record.period_end == week_end
-    assert len(record.experience_refs) == 10
+    assert len(record.session_refs) == 10
     assert len(record.reframing_note_ids) == 2
 
     # Verify list_by_level
@@ -264,7 +264,7 @@ def test_list_reflections_by_experience():
         agent_id=agent_id,
         session_id=uuid4(),
         content="Analyzed exp_target",
-        experience_refs=[exp_target],
+        session_refs=[exp_target],
     )
 
     persist_micro_reflection(
@@ -272,7 +272,7 @@ def test_list_reflections_by_experience():
         agent_id=agent_id,
         session_id=uuid4(),
         content="Analyzed exp_other",
-        experience_refs=[exp_other],
+        session_refs=[exp_other],
     )
 
     r3 = persist_daily_reflection(
@@ -281,7 +281,7 @@ def test_list_reflections_by_experience():
         period_start=datetime.now(UTC) - timedelta(days=1),
         period_end=datetime.now(UTC),
         content="Analyzed both",
-        experience_refs=[exp_target, exp_other],
+        session_refs=[exp_target, exp_other],
     )
 
     # Query reflections that analyzed exp_target

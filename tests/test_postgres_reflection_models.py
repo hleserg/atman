@@ -37,7 +37,7 @@ def test_reflection_record_minimal_micro():
     assert record.period_end is None
     assert record.content == "Session completed successfully."
     assert record.summary is None
-    assert record.experience_refs == []
+    assert record.session_refs == []
     assert record.reframing_note_ids == []
     assert record.model_provider is None
     assert record.model_name is None
@@ -81,7 +81,7 @@ def test_reflection_record_full_fields():
         session_id=session_id,
         content="Detailed reflection on the session",
         summary="Good session with clear progress",
-        experience_refs=[exp_id_1, exp_id_2],
+        session_refs=[exp_id_1, exp_id_2],
         reframing_note_ids=[note_id_1],
         model_provider="ollama",
         model_name="qwen3.5:9b",
@@ -91,7 +91,7 @@ def test_reflection_record_full_fields():
 
     assert record.id == 42
     assert record.summary == "Good session with clear progress"
-    assert record.experience_refs == [exp_id_1, exp_id_2]
+    assert record.session_refs == [exp_id_1, exp_id_2]
     assert record.reframing_note_ids == [note_id_1]
     assert record.model_provider == "ollama"
     assert record.model_name == "qwen3.5:9b"
@@ -159,7 +159,7 @@ def test_reflection_record_json_roundtrip():
         created_at=created_at,
         content="Reflection content",
         summary="Summary",
-        experience_refs=[exp_id],
+        session_refs=[exp_id],
         model_provider="ollama",
         model_name="qwen3.5:9b",
         schema_version=1,
@@ -179,7 +179,7 @@ def test_reflection_record_json_roundtrip():
     assert restored.created_at == original.created_at
     assert restored.content == original.content
     assert restored.summary == original.summary
-    assert restored.experience_refs == original.experience_refs
+    assert restored.session_refs == original.session_refs
     assert restored.model_provider == original.model_provider
     assert restored.model_name == original.model_name
     assert restored.schema_version == original.schema_version
@@ -213,21 +213,21 @@ def test_reflection_record_dict_roundtrip():
     assert restored.content == original.content
 
 
-def test_reflection_record_experience_refs_empty_list():
-    """Empty experience_refs list is valid."""
+def test_reflection_record_session_refs_empty_list():
+    """Empty session_refs list is valid."""
     agent_id = uuid4()
 
     record = ReflectionRecord(
         agent_id=agent_id,
         level=ReflectionLevel.DEEP,
         content="Deep reflection without specific experience references",
-        experience_refs=[],
+        session_refs=[],
     )
 
-    assert record.experience_refs == []
+    assert record.session_refs == []
 
 
-def test_reflection_record_multiple_experience_refs():
+def test_reflection_record_multiple_session_refs():
     """Multiple experience references are preserved in order."""
     agent_id = uuid4()
     exp_ids = [uuid4() for _ in range(5)]
@@ -236,10 +236,10 @@ def test_reflection_record_multiple_experience_refs():
         agent_id=agent_id,
         level=ReflectionLevel.DAILY,
         content="Analyzed multiple experiences",
-        experience_refs=exp_ids,
+        session_refs=exp_ids,
     )
 
-    assert record.experience_refs == exp_ids
+    assert record.session_refs == exp_ids
 
 
 def test_reflection_record_reframing_note_ids_preserved():

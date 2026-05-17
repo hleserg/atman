@@ -40,7 +40,7 @@ from atman.reflection.models import ReflectionEvent, ReflectionLevel
 
 _REFLECTION_COLUMNS = """
     id, agent_id, level, created_at, session_id, period_start, period_end,
-    content, summary, experience_refs, reframing_note_ids,
+    content, summary, session_refs, reframing_note_ids,
     model_provider, model_name, schema_version, metadata
 """
 
@@ -153,7 +153,7 @@ class ReflectionStore:
             """
             INSERT INTO {schema}.reflections (
                 agent_id, level, created_at, session_id, period_start, period_end,
-                content, summary, experience_refs, reframing_note_ids,
+                content, summary, session_refs, reframing_note_ids,
                 model_provider, model_name, schema_version, metadata
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
@@ -172,7 +172,7 @@ class ReflectionStore:
                     event.period_end,
                     event.content,
                     event.summary,
-                    event.experience_refs,
+                    event.session_refs,
                     event.reframing_note_ids,
                     event.model_provider,
                     event.model_name,

@@ -12,7 +12,8 @@
 > R12 (agent-driven `request_reflection` тул + drain очереди в Daily/Deep),
 > R6 (`DivergenceAggregator` + `DivergenceEventStore` порт), R8 (`FindingsTriage`),
 > R7 (`EntityStanceFormulator` — Daily формулирует, Deep пересматривает),
-> R9 (`EntityRelationsFormulator` + `EntityRelationStore` порт; Deep).
+> R9 (`EntityRelationsFormulator` + `EntityRelationStore` порт; Deep),
+> R15 (миграция `reflections.experience_refs` → `session_refs`).
 >
 > Этот документ — единое место, куда собраны все изменения Reflection Engine,
 > которые понадобятся **после** того как память переедет на новую архитектуру
@@ -100,13 +101,15 @@ class SessionRepository(Protocol):
 - `ALTER TABLE reframing_notes DROP COLUMN experience_id`
 - `ADD CONSTRAINT reframing_notes_session_fk FOREIGN KEY (session_id) REFERENCES sessions(id)`
 
-### 3.5 `reflections.experience_refs`
+### 3.5 `reflections.experience_refs` → `session_refs` (✅ R15)
 
-Текущая колонка хранит `UUID[]` — ссылки на старые `experiences.id`. После переезда:
-- Семантически это уже `session_id[]` (потому что `experiences.id` бэкфилит в `session_id`).
-- Можно либо переименовать колонку в `session_refs`, либо оставить имя как есть и задокументировать что значения интерпретируются как `session_id`.
+Колонка переименована миграцией `0017_reflections_session_refs.sql` —
+идемпотентный rename per-agent с пересозданием GIN-индекса под новым именем.
+Pydantic-модель `ReflectionRecord.session_refs` (`core/models/reflection.py`)
+и SQL-запросы в `reflection/store.py` уже используют новое имя.
 
-Рекомендация: переименовать одной миграцией, чтобы не было путаницы. PatternStore хранит то же.
+`ReflectionEvent.experiences_analyzed` (отдельная модель в reflection_service)
+**не** переименовывается — это другой контракт, и его scope шире чем R15.
 
 ---
 
@@ -341,7 +344,7 @@ Reflection использует отдельную LLM (`gemma3:27b-it-qat` че
 | R12 | Тулы `request_reflection` для agent-driven | `adapters/agent/tools.py`; `DailyReflectionService` / `DeepReflectionService` дрейнят очередь | ✅ done |
 | R13 | `reflection_overload` мониторинг | новый компонент | ✅ done (PR #559) |
 | R14 | Удаление `ExperienceViewRepository` compat-адаптера | удалён `src/atman/adapters/reflection_compat/` | ✅ done |
-| R15 | Переименование `reflections.experience_refs` → `session_refs` (если решено) | новая миграция | TODO |
+| R15 | Переименование `reflections.experience_refs` → `session_refs` | `migrations/versions/0017_reflections_session_refs.sql` (идемпотентная rename per-agent), плюс `ReflectionRecord.session_refs` в `core/models/reflection.py`, `reflection/store.py` SQL и хелперы хранения | ✅ done |
 
 Эти этапы можно делать параллельно с поздними этапами основного плана, если основные миграции памяти уже на проде стабилизировались.
 

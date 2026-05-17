@@ -108,7 +108,7 @@ class ReflectionStore(ABC):
         """
         List all reflections that analyzed a specific experience.
 
-        Uses GIN index on experience_refs array.
+        Uses GIN index on session_refs array.
 
         Args:
             experience_id: Experience UUID
