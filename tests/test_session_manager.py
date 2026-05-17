@@ -1800,7 +1800,9 @@ def test_orphan_recovery_completes_existing_experience_after_crash(
     assert "Experienced 1 significant moment with an overall positive emotional tone." in (
         recovered_narrative.recent_layer.content
     )
-    assert str(context.session_id) in recovered_narrative.recent_layer.content
+    # Finish completion is tracked in a dedicated field, not in prose
+    # (HLE-50: reflections may overwrite recent_layer, so prose markers are unreliable).
+    assert context.session_id in recovered_narrative.finished_session_ids
 
 
 def test_orphan_recovery_deletes_existing_journal_when_finish_artifacts_complete(

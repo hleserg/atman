@@ -339,9 +339,15 @@ class SessionManager:
             return False
 
         narrative = self._state_store.load_narrative(agent_id)
-        return narrative is not None and _session_finish_marker(session_id) in (
-            narrative.recent_layer.content
-        )
+        if narrative is None:
+            return False
+        if session_id in narrative.finished_session_ids:
+            return True
+        # Legacy fallback: narratives written before the dedicated tracking
+        # field carried a hidden marker inside recent_layer.content. Reflection
+        # passes overwrite recent_layer, so this signal is unreliable — kept
+        # only to recognise pre-migration data.
+        return _session_finish_marker(session_id) in narrative.recent_layer.content
 
     def _recover_finish_artifacts_from_existing_experience(
         self,
@@ -1089,7 +1095,7 @@ class SessionManager:
         if session_result.identity_id is None:
             return
         identity_id = session_result.identity_id
-        marker = _session_finish_marker(session_result.session_id)
+        session_id = session_result.session_id
         last_err: BaseException | None = None
         for _ in range(_NARRATIVE_SAVE_RETRIES):
             narrative = self._state_store.load_narrative(identity_id)
@@ -1099,15 +1105,21 @@ class SessionManager:
                     "session experience/eigenstate saved but narrative not updated. "
                     "This breaks the session lifecycle contract."
                 )
-            if marker in narrative.recent_layer.content:
+            if session_id in narrative.finished_session_ids:
                 return
-            update_text = f"{self._build_narrative_update(session_result)}\n{marker}"
+            # Legacy compatibility: pre-HLE-50 finishes embedded the marker in
+            # recent_layer prose. If we see it, treat the session as finished
+            # without re-appending the summary.
+            if _session_finish_marker(session_id) in narrative.recent_layer.content:
+                return
+            update_text = self._build_narrative_update(session_result)
             existing_content = narrative.recent_layer.content.strip()
             next_content = (
                 f"{existing_content}\n\n{update_text}" if existing_content else update_text
             )
             expected_at = narrative.updated_at
             narrative.update_recent_layer(next_content)
+            narrative.mark_session_finished(session_id)
             try:
                 self._state_store.save_narrative(
                     narrative,
