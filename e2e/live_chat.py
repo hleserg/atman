@@ -34,6 +34,10 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from rich.console import Console
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.text import Text
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.factory import build_deps
@@ -72,6 +76,66 @@ TOOLS = (
 )
 
 
+_rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
+
+# ── Atman dev console ─────────────────────────────────────────────────────────
+
+
+class AtmanConsole:
+    """Collects per-turn Atman internals and displays them with Rich formatting.
+
+    Call ``add()`` to queue events, ``flush()`` to render and clear.
+    Output goes to stdout via the shared Rich console — visually distinct from
+    the plain-text conversation via color and border, but never injected into
+    the agent context.
+    """
+
+    _SEVERITY_COLOR = {"LOW": "dim yellow", "MEDIUM": "yellow", "HIGH": "red bold"}
+
+    def __init__(self) -> None:
+        self._events: list[tuple[str, str, str]] = []  # (icon, label, value)
+
+    def add(self, icon: str, label: str, value: str = "") -> None:
+        self._events.append((icon, label, value))
+
+    def flush(self, title: str = "atman") -> None:
+        if not self._events:
+            return
+        lines = Text()
+        for i, (icon, label, value) in enumerate(self._events):
+            if i:
+                lines.append("\n")
+            lines.append(f"  {icon} ", style="")
+            lines.append(f"{label:<18}", style="cyan dim")
+            if value:
+                lines.append(value, style="white")
+        _rc.print(
+            Panel(lines, title=f"[dim cyan]{title}[/dim cyan]",
+                  border_style="steel_blue1 dim", padding=(0, 0)),
+        )
+        self._events.clear()
+
+    def rule(self, title: str = "") -> None:
+        _rc.print(Rule(title, style="steel_blue1 dim"))
+
+    def ok(self, msg: str) -> None:
+        _rc.print(f"  [green]✓[/green] [dim]{msg}[/dim]")
+
+    def warn(self, msg: str) -> None:
+        _rc.print(f"  [yellow]⚠[/yellow]  {msg}")
+
+    def err(self, msg: str) -> None:
+        _rc.print(f"  [red]✗[/red]  {msg}")
+
+    def finding(self, severity: str, ftype: str, desc: str) -> None:
+        color = self._SEVERITY_COLOR.get(severity.upper(), "white")
+        _rc.print(f"  [dim]finding[/dim]  [{color}]{severity}[/{color}]"
+                  f"  [dim]{ftype}:[/dim]  {desc[:120]}")
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+
 def _sanitize_history(messages: list) -> list:
     """Strip lone surrogate chars from pydantic-ai message history.
 
@@ -102,26 +166,50 @@ def _sanitize_history(messages: list) -> list:
         return messages  # best-effort; return original if sanitization fails
 
 
-def _register_entities(text: str, deps) -> None:
-    """Extract entities from user message and register them in the shared registry.
-
-    This is the "user-message ingestion path" that populates EntityRegistry so
-    AmbientMemoryService.compose_injection() can resolve anchors on subsequent
-    queries. Without this call the registry stays empty and ambient RAG returns
-    nothing even when linguistic analysis is enabled.
-    """
+def _register_entities(text: str, deps, con: AtmanConsole) -> None:
+    """Extract entities from user message and register them in the shared registry."""
     if deps.ambient_memory is None or deps.entity_registry is None:
         return
     try:
         analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
-        for entity in analysis.entities or []:
+        entities = analysis.entities or []
+        if entities:
+            parts = "  ".join(
+                f"[bold]{e.text}[/bold][dim]·{e.entity_type.value}[/dim]"
+                for e in entities
+            )
+            con.add("🔍", "entities", parts)
+        else:
+            con.add("🔍", "entities", "[dim]none detected[/dim]")
+        for entity in entities:
             deps.entity_registry.resolve_or_create(
                 deps.agent_id,
                 entity.text,
                 entity.entity_type,
             )
-    except Exception:  # noqa: BLE001 — never break the REPL for this
-        pass
+    except Exception:  # noqa: BLE001
+        con.add("🔍", "entities", "[dim red]analysis error[/dim red]")
+
+
+def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
+    """Call compose_injection for diagnostic display only — NOT injected into agent."""
+    if deps.ambient_memory is None:
+        return
+    try:
+        result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
+        items = result.items
+        if not items:
+            con.add("🧭", "ambient RAG", f"[dim]0 items  tokens={result.tokens_used}[/dim]")
+        else:
+            summary = "  ".join(
+                f"[dim]{it.kind}[/dim] [cyan]{(it.anchor_text or '')[:20]}[/cyan]"
+                f"[dim] s={it.score:.2f}[/dim]"
+                for it in items[:5]
+            )
+            tail = f"[dim]  +{len(items)-5} more[/dim]" if len(items) > 5 else ""
+            con.add("🧭", "ambient RAG", f"{summary}{tail}  [dim]tokens={result.tokens_used}[/dim]")
+    except Exception as e:  # noqa: BLE001
+        con.add("🧭", "ambient RAG", f"[dim red]{e}[/dim red]")
 
 
 def bootstrap_minimal_agent(store, agent_id) -> None:
@@ -177,14 +265,13 @@ def build_llm() -> OpenAIChatModel:
 
 
 def print_banner(model: str, workspace: Path, agent_id) -> None:
-    print("═" * 70)
-    print(f"  Atman LIVE CHAT — {model} @ {AGENT_BASE_URL}")
-    print("═" * 70)
-    print(f"  Agent UUID:  {agent_id}")
-    print(f"  Workspace:   {workspace}")
-    print(f"  Tools:       {', '.join(t.__name__ for t in TOOLS)}")
-    print("  Команды:     /quit, /exit, /history, /tools, /workspace")
-    print("─" * 70)
+    _rc.rule(f"[bold cyan]Atman LIVE CHAT[/bold cyan]  [dim]{model} @ {AGENT_BASE_URL}[/dim]",
+             style="cyan")
+    _rc.print(f"  [dim]agent   [/dim][cyan]{agent_id}[/cyan]")
+    _rc.print(f"  [dim]workspace[/dim] {workspace}")
+    _rc.print(f"  [dim]tools   [/dim][dim]{', '.join(t.__name__ for t in TOOLS)}[/dim]")
+    _rc.print("  [dim]/quit  /exit  /history  /tools  /workspace[/dim]")
+    _rc.rule(style="cyan dim")
 
 
 async def amain() -> int:
@@ -200,7 +287,7 @@ async def amain() -> int:
     ctx = sm.start_session(agent_id)
     session_id = ctx.session_id
     deps = replace(deps, session_id=session_id)
-    print(f"  Session:     {session_id}\n")
+    _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
 
     agent = Agent(
         llm,
@@ -209,6 +296,7 @@ async def amain() -> int:
         tools=TOOLS,
     )
 
+    con = AtmanConsole()
     history: list[ModelMessage] = []
     close_reason: str | None = None
 
@@ -229,25 +317,26 @@ async def amain() -> int:
                 break
             if low == "/history":
                 for m in history:
-                    parts = getattr(m, "parts", [])
-                    for p in parts:
+                    for p in getattr(m, "parts", []):
                         text = getattr(p, "content", None) or getattr(p, "text", None)
                         if text:
-                            kind = type(p).__name__
-                            print(f"  [{kind}] {str(text)[:200]}")
+                            _rc.print(f"  [dim]{type(p).__name__}[/dim]  {str(text)[:200]}")
                 continue
             if low == "/tools":
                 for t in TOOLS:
-                    doc = (t.__doc__ or "").strip().splitlines()[0] if t.__doc__ else "(no doc)"
-                    print(f"  {t.__name__}: {doc}")
+                    doc = (t.__doc__ or "").strip().splitlines()[0] if t.__doc__ else ""
+                    _rc.print(f"  [cyan]{t.__name__}[/cyan]  [dim]{doc}[/dim]")
                 continue
             if low == "/workspace":
-                print(f"  {workspace}")
+                _rc.print(f"  {workspace}")
                 continue
 
-            # Register entities from user message so ambient RAG has anchors.
-            _register_entities(user_text, deps)
+            # ── Atman pre-turn: entity registration + ambient snapshot ─────────
+            _register_entities(user_text, deps, con)
+            _ambient_snapshot(user_text, deps, con)
+            con.flush("atman ▶ pre")
 
+            # ── Agent run ──────────────────────────────────────────────────────
             try:
                 result = await agent.run(
                     user_text,
@@ -255,41 +344,49 @@ async def amain() -> int:
                     message_history=history if history else None,
                 )
             except UnicodeEncodeError:
-                # Surrogate chars from a previous LLM turn corrupted history.
-                # Clear it and retry — the user loses context but the REPL stays alive.
-                print("  ⚠ Surrogate chars in history — clearing context and retrying")
+                con.warn("Surrogate chars in history — clearing context and retrying")
                 history.clear()
                 try:
                     result = await agent.run(user_text, deps=deps)
                 except Exception as e2:  # noqa: BLE001
-                    print(f"  ✗ agent.run raised {type(e2).__name__}: {e2}")
+                    con.err(f"agent.run {type(e2).__name__}: {e2}")
                     continue
-            except Exception as e:  # noqa: BLE001 — REPL: show error, keep alive
-                print(f"  ✗ agent.run raised {type(e).__name__}: {e}")
+            except Exception as e:  # noqa: BLE001
+                con.err(f"agent.run {type(e).__name__}: {e}")
+                con.flush("atman ✗")
                 continue
 
-            # Sanitize surrogate chars before storing in history so the next
-            # agent.run() doesn't crash during JSON serialization.
             new_messages = _sanitize_history(list(result.all_messages()))
             history.extend(new_messages)
 
-            # Echo tool calls
+            # ── Atman post-turn: tool calls ────────────────────────────────────
             for msg in result.new_messages():
                 for part in getattr(msg, "parts", []):
                     if hasattr(part, "tool_name"):
-                        args = str(getattr(part, "args", ""))[:80]
-                        print(f"  🔧 {part.tool_name}({args})")
+                        raw_args = getattr(part, "args", {})
+                        # Pretty-print first 2 key=value pairs
+                        if isinstance(raw_args, dict):
+                            kv = "  ".join(
+                                f"[dim]{k}[/dim]=[yellow]{str(v)[:40]!r}[/yellow]"
+                                for k, v in list(raw_args.items())[:2]
+                            )
+                            extra = f"[dim] +{len(raw_args)-2} more[/dim]" if len(raw_args) > 2 else ""
+                        else:
+                            kv = f"[yellow]{str(raw_args)[:80]}[/yellow]"
+                            extra = ""
+                        con.add("🔧", part.tool_name, f"{kv}{extra}")
+            con.flush("atman ◀ tools")
 
-            output = str(result.output or "").strip()
-            # Strip <think> blocks for display (gemma4 sometimes emits them).
+            # ── Agent response ─────────────────────────────────────────────────
             import re
-
+            output = str(result.output or "").strip()
             clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
-            # Sanitize surrogate chars that gemma4 occasionally emits; they
-            # crash utf-8 terminals with UnicodeEncodeError otherwise.
             clean = clean.encode("utf-8", "replace").decode("utf-8")
             print(f"agent> {clean}\n")
+
     finally:
+        _rc.rule(style="cyan dim")
+        # finish_session
         try:
             sm.finish_session(
                 session_id,
@@ -298,35 +395,37 @@ async def amain() -> int:
                 alignment_check=True,
                 close_reason=close_reason,
             )
-            print(f"  ✓ finish_session OK (close_reason={close_reason})")
+            con.ok(f"finish_session  close_reason={close_reason}")
         except ValueError as exc:
             if "Cannot finish session without key moments" in str(exc):
                 from atman.adapters.agent.runner import _force_finish
 
                 _force_finish(sm, session_id, close_reason or "completed")
-                print("  [!] force_finish (no key moments recorded)")
+                con.warn("force_finish (no key moments recorded)")
             else:
                 raise
-        # Drain post-write maintenance queue (mREBEL relations, lingvo markers).
+
+        # Drain maintenance queue
         if deps.maintenance_worker is not None:
             try:
                 done = deps.maintenance_worker.run_once(batch_size=50)
                 if done:
-                    print(f"  [maintenance] drained {done} job(s)")
+                    con.add("📋", "maintenance", f"[dim]{done} job(s) drained[/dim]")
             except Exception as e:  # noqa: BLE001
-                print(f"  (maintenance drain errored: {e})")
+                con.add("📋", "maintenance", f"[dim red]{e}[/dim red]")
 
-        # Surface any inline validation findings the guardian captured.
+        # Validation findings
         if deps.memory_guardian is not None:
             try:
                 findings = deps.memory_guardian.get_unresolved(agent_id)
-                if findings:
-                    print(f"\n  validation_findings ({len(findings)}):")
-                    for f in findings:
-                        print(f"    [{f.severity}] {f.finding_type}: {f.description[:120]}")
-            except Exception as e:  # noqa: BLE001
-                print(f"  (guardian get_unresolved errored: {e})")
-        print(f"\nWorkspace preserved: {workspace}")
+                for f in findings:
+                    con.add("⚠", f"finding [{f.severity}]",
+                            f"[dim]{f.finding_type}:[/dim] {f.description[:100]}")
+            except Exception:  # noqa: BLE001
+                pass
+
+        con.flush("atman session end")
+        _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
     return 0
 
 
