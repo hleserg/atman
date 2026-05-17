@@ -8,6 +8,18 @@ guardian's ``inline_check_*`` methods with:
 * automatic ``write_finding`` for every returned finding, again wrapped
 * de-duplication is handled inside the guardian (``_has_unresolved``)
 * logging only — no exceptions propagate to the caller
+
+**Wiring status (Devin Review #599 ANALYSIS):**
+
+* ``check_key_moment`` — wired into ``SessionManager.finish_session`` so
+  freshly-persisted moments are validated immediately after
+  ``create_key_moment``.
+* ``check_fact`` and ``check_entity`` — public API surface, no call
+  sites yet. The fact/entity write paths live on `FactualMemory` /
+  `EntityRegistry` adapters which do not currently hold a reference to
+  the validator. Hooking them is a separate task per backend (Postgres
+  + InMemory) because each adapter owns its own write transaction
+  boundary; that's where the inline call belongs.
 """
 
 from __future__ import annotations
