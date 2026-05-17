@@ -35,6 +35,7 @@ from atman.core.models.reflection import (
     ReflectionEvent,
     ReflectionLevel,
     ReframingNoteOutput,
+    StanceFormulationOutput,
 )
 
 
@@ -440,6 +441,30 @@ class ReflectionModel(ABC):
             Structured score, evidence, and concerns.
         """
         ...
+
+    # R7 — EntityStanceFormulator (REFLECTION_FUTURE.md §4.3, §5.2, §9).
+    # Implementations that have not yet wired up a stance prompt should
+    # return the default empty :class:`StanceFormulationOutput`; the service
+    # will treat that as "decline to commit" and skip persistence.
+    def formulate_entity_stance(
+        self,
+        entity: Entity,
+        moments: list[KeyMoment],
+        structured_markers: dict[str, int] | None = None,
+    ) -> StanceFormulationOutput:
+        """
+        Interpret a sequence of KeyMoments and put words to the agent's
+        current stance toward ``entity``.
+
+        Args:
+            entity: The entity the stance is about.
+            moments: KeyMoments involving the entity (R7 default: ≥ 5).
+            structured_markers: Optional rolled-up marker counts for context.
+
+        Returns:
+            Structured stance; empty ``stance_text`` means decline / skip.
+        """
+        return StanceFormulationOutput()
 
     # R9 — EntityRelationsFormulator (REFLECTION_FUTURE.md §5.3). Non-abstract
     # default so existing subclasses don't break; service treats an empty

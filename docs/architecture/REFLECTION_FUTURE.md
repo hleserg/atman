@@ -11,6 +11,7 @@
 > R5 (`StructuredMarkersAggregator` — daily patterns из `structured_markers`),
 > R12 (agent-driven `request_reflection` тул + drain очереди в Daily/Deep),
 > R6 (`DivergenceAggregator` + `DivergenceEventStore` порт), R8 (`FindingsTriage`),
+> R7 (`EntityStanceFormulator` — Daily формулирует, Deep пересматривает),
 > R9 (`EntityRelationsFormulator` + `EntityRelationStore` порт; Deep).
 >
 > Этот документ — единое место, куда собраны все изменения Reflection Engine,
@@ -332,7 +333,7 @@ Reflection использует отдельную LLM (`gemma3:27b-it-qat` че
 | R-Micro | Переезд `MicroReflectionService` на `SessionRepository` | `core/services/reflection_service.py` | ✅ done |
 | R5 | `StructuredMarkersAggregator` → паттерны из markers | `core/services/structured_markers_aggregator.py` | ✅ done |
 | R6 | `DivergenceAggregator` → паттерны из divergence_events | `core/services/divergence_aggregator.py` + порт `DivergenceEventStore` + in-memory адаптер | ✅ done |
-| R7 | `EntityStanceFormulator` + промт | `core/services/entity_stance_formulator.py`, `adapters/reflection/prompts.py` | TODO |
+| R7 | `EntityStanceFormulator` + промт | `core/services/entity_stance_formulator.py`, `adapters/reflection/prompts.py` (`SYSTEM_PROMPT_STANCE`); подключено в `DailyReflectionService.formulate_for_new_entities` и `DeepReflectionService.revise_stale` | ✅ done |
 | R8 | `FindingsTriage` | `core/services/findings_triage.py` | ✅ done |
 | R9 | `EntityRelationsFormulator` (для deep reflection) | `core/services/entity_relations_formulator.py` + порт `EntityRelationStore` + in-memory адаптер; промт `SYSTEM_PROMPT_ENTITY_RELATION` | ✅ done |
 | R10 | Merge handler (для deep reflection) | новый компонент | TODO |
