@@ -145,7 +145,7 @@ def build_deps(
     from atman.core.ports.linguistic import LinguisticAnalyzer as _LinguisticAnalyzer
     from atman.core.services.divergence_detector import DivergenceDetector
 
-    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true"
+    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true"
     _affect_linguistic: _LinguisticAnalyzer = NoOpLinguisticAnalyzer()
     if _linguistic_enabled:
         try:
@@ -247,7 +247,7 @@ def build_deps(
     # state_store that the session will write to.
     passive_memory_injector = None
     _embedding_adapter = None
-    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true":
+    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true":
         from atman.config import build_embedding_adapter
         from atman.config import build_memory_backend as _build_mem
         from atman.core.services.passive_memory_injector import PassiveMemoryInjector
@@ -341,6 +341,43 @@ def build_deps(
         alert_sink=_overload_sink,
     )
 
+    # Build MaintenanceWorker so mREBEL + lingvo_enrich jobs actually run
+    # in-process (dev REPL, live_chat.py). Must come after _overload_monitor.
+    _maintenance_worker = None
+    try:
+        from atman.adapters.memory.in_memory_entity_relation_store import (
+            InMemoryEntityRelationStore,
+        )
+        from atman.core.services.maintenance_worker import MaintenanceWorker
+
+        _relation_store = InMemoryEntityRelationStore()
+        _mrebel_extractor = None
+        if _linguistic_enabled:
+            try:
+                from atman.adapters.linguistic.mrebel_adapter import MRebelRelationAdapter
+
+                _mrebel_extractor = MRebelRelationAdapter(device="cpu")
+            except Exception:
+                pass  # mrebel unavailable — worker still handles lingvo/decay jobs
+
+        _maintenance_worker = MaintenanceWorker(
+            queue=maintenance_queue,
+            memory_guardian=_memory_guardian,
+            state_store=state_store,
+            entity_relation_extractor=_mrebel_extractor,
+            entity_relation_store=_relation_store,
+            entity_registry=_entity_registry,
+            linguistic_analyzer=_affect_linguistic if _linguistic_enabled else None,
+            reflection_overload_monitor=_overload_monitor,
+        )
+    except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "Failed to build MaintenanceWorker — post-write jobs will not drain in-process",
+            exc_info=True,
+        )
+
     deps = AtmanDeps.from_config(
         config=config,
         session_manager=session_manager,
@@ -360,6 +397,8 @@ def build_deps(
         memory_guardian=_memory_guardian,
         ambient_memory=_ambient_memory,
         entity_registry=_entity_registry,
+        maintenance_worker=_maintenance_worker,
+        maintenance_queue=maintenance_queue,
     )
 
     return deps, session_manager, state_store

@@ -72,6 +72,28 @@ TOOLS = (
 )
 
 
+def _register_entities(text: str, deps) -> None:
+    """Extract entities from user message and register them in the shared registry.
+
+    This is the "user-message ingestion path" that populates EntityRegistry so
+    AmbientMemoryService.compose_injection() can resolve anchors on subsequent
+    queries. Without this call the registry stays empty and ambient RAG returns
+    nothing even when linguistic analysis is enabled.
+    """
+    if deps.ambient_memory is None or deps.entity_registry is None:
+        return
+    try:
+        analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
+        for entity in analysis.entities or []:
+            deps.entity_registry.resolve_or_create(
+                deps.agent_id,
+                entity.text,
+                entity.entity_type,
+            )
+    except Exception:  # noqa: BLE001 — never break the REPL for this
+        pass
+
+
 def bootstrap_minimal_agent(store, agent_id) -> None:
     """Insert minimum identity + narrative so SessionManager.start_session works.
 
@@ -193,6 +215,9 @@ async def amain() -> int:
                 print(f"  {workspace}")
                 continue
 
+            # Register entities from user message so ambient RAG has anchors.
+            _register_entities(user_text, deps)
+
             try:
                 result = await agent.run(
                     user_text,
@@ -217,6 +242,9 @@ async def amain() -> int:
             import re
 
             clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
+            # Sanitize surrogate chars that gemma4 occasionally emits; they
+            # crash utf-8 terminals with UnicodeEncodeError otherwise.
+            clean = clean.encode("utf-8", "replace").decode("utf-8")
             print(f"agent> {clean}\n")
     finally:
         try:
@@ -236,6 +264,15 @@ async def amain() -> int:
                 print("  [!] force_finish (no key moments recorded)")
             else:
                 raise
+        # Drain post-write maintenance queue (mREBEL relations, lingvo markers).
+        if deps.maintenance_worker is not None:
+            try:
+                done = deps.maintenance_worker.run_once(batch_size=50)
+                if done:
+                    print(f"  [maintenance] drained {done} job(s)")
+            except Exception as e:  # noqa: BLE001
+                print(f"  (maintenance drain errored: {e})")
+
         # Surface any inline validation findings the guardian captured.
         if deps.memory_guardian is not None:
             try:
