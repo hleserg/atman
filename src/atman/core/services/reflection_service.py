@@ -55,6 +55,7 @@ from atman.core.reflection_run_keys import (
     reframing_trigger_key,
 )
 from atman.core.services.divergence_aggregator import DivergenceAggregator
+from atman.core.services.entity_relations_formulator import EntityRelationsFormulator
 from atman.core.services.entity_stance_formulator import EntityStanceFormulator
 from atman.core.services.findings_triage import FindingsTriage, TriageOutcome
 from atman.core.services.narrative_revision import NarrativeRevisionService
@@ -691,8 +692,9 @@ class DeepReflectionService:
         clock: ClockPort | None = None,
         reflection_event_observer: ReflectionEventPersistenceObserver | None = None,
         entity_stance_formulator: EntityStanceFormulator | None = None,
-        agent_id: UUID | None = None,
         reflection_request_queue: ReflectionRequestQueue | None = None,
+        entity_relations_formulator: EntityRelationsFormulator | None = None,
+        agent_id: UUID | None = None,
     ):
         """Initialize deep reflection service."""
         self.session_repo = session_repo
@@ -707,8 +709,9 @@ class DeepReflectionService:
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
         )
         self._entity_stance_formulator = entity_stance_formulator
-        self._agent_id = agent_id
         self._reflection_request_queue = reflection_request_queue
+        self._entity_relations_formulator = entity_relations_formulator
+        self._agent_id = agent_id
 
     def reflect(self, since: datetime, until: datetime) -> ReflectionEvent:
         """
@@ -794,6 +797,14 @@ class DeepReflectionService:
             except Exception:  # pragma: no cover - defensive
                 stance_outcome = None
 
+        # R9 Deep — formulate typed relations between co-occurring entities.
+        relation_outcome = None
+        if self._entity_relations_formulator is not None and self._agent_id is not None:
+            try:
+                relation_outcome = self._entity_relations_formulator.run(self._agent_id)
+            except Exception:  # pragma: no cover - defensive
+                relation_outcome = None
+
         notes = "outcome=deep_ok"
         if reframing_nf or reframing_sr:
             notes += (
@@ -809,6 +820,13 @@ class DeepReflectionService:
             )
         if pending_requests:
             notes += f" agent_driven_requests={len(pending_requests)}"
+        if relation_outcome is not None and (
+            relation_outcome.formulated or relation_outcome.pairs_considered
+        ):
+            notes += (
+                f" entity_relations_formulated={relation_outcome.formulated}"
+                f" entity_relations_pairs={relation_outcome.pairs_considered}"
+            )
 
         key_insight = (
             f"Deep reflection: {len(patterns_detected)} patterns, "

@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from atman.adapters.reflection.prompts import (
+    SYSTEM_PROMPT_ENTITY_RELATION,
     SYSTEM_PROMPT_STANCE,
+    build_entity_relation_messages,
     build_health_messages,
     build_narrative_messages,
     build_pattern_messages,
@@ -160,3 +162,29 @@ def test_system_prompt_stance_module_constant_exposed() -> None:
     # The constant exists, has a schema placeholder, and references the entity contract.
     assert "{schema}" in SYSTEM_PROMPT_STANCE
     assert "stance" in SYSTEM_PROMPT_STANCE.lower()
+
+
+# ---------------------------------------------------------------------------
+# R9 — entity relation formulation prompt
+# ---------------------------------------------------------------------------
+
+
+def test_build_entity_relation_messages_includes_both_entities_and_moments() -> None:
+    a = Entity(agent_id=uuid4(), canonical_name="Alice", entity_type=EntityType.person)
+    b = Entity(agent_id=uuid4(), canonical_name="Acme Corp", entity_type=EntityType.organization)
+    moments = [_km(["honesty"]), _km(["care"])]
+    msgs = build_entity_relation_messages(a, b, moments)
+    assert msgs[0]["role"] == "system"
+    # Anti-hallucination guard in the system prompt.
+    assert "thin or contradictory" in msgs[0]["content"]
+    user = msgs[1]["content"]
+    assert "Alice" in user
+    assert "Acme Corp" in user
+    assert "person" in user
+    assert "organization" in user
+    assert "Shared moments (2)" in user
+
+
+def test_system_prompt_entity_relation_constant_exposed() -> None:
+    assert "{schema}" in SYSTEM_PROMPT_ENTITY_RELATION
+    assert "snake_case" in SYSTEM_PROMPT_ENTITY_RELATION
