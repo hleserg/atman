@@ -108,7 +108,24 @@ def build_deps(
             "affect_workspace": workspace,
             "affect_config": _AffectDetectorConfig(),
         }
-    session_manager = SessionManager(state_store, **affect_kwargs, workspace=workspace)
+
+    # Maintenance queue + post-write scheduler (HLE-27): enqueue mREBEL +
+    # lingvo enrichment jobs after every KeyMoment write. The queue is the
+    # in-memory variant by default — sufficient for single-process dev runs;
+    # production Postgres deploys can swap it out via configuration without
+    # touching SessionManager.
+    from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
+    from atman.core.services.post_write_scheduler import PostWriteScheduler
+
+    maintenance_queue = InMemoryMaintenanceQueue()
+    post_write_scheduler = PostWriteScheduler(maintenance_queue)
+
+    session_manager = SessionManager(
+        state_store,
+        **affect_kwargs,
+        workspace=workspace,
+        post_write_scheduler=post_write_scheduler,
+    )
 
     narrative_revision = NarrativeRevisionService(
         narrative_repo=_NarrativeAdapter(state_store),

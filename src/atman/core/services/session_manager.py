@@ -50,6 +50,7 @@ from atman.core.ports.state_store import StateStore
 
 if TYPE_CHECKING:
     from atman.affect.detector import AffectDetector, AffectDetectorConfig
+    from atman.core.services.post_write_scheduler import PostWriteScheduler
 
 # Cap for eigenstate list fields; order is insertion-derived until salience ranking exists.
 MAX_EIGENSTATE_ITEMS = 5
@@ -103,6 +104,7 @@ class SessionManager:
         affect_workspace: Path | None = None,
         affect_config: AffectDetectorConfig | None = None,
         workspace: Path | None = None,
+        post_write_scheduler: PostWriteScheduler | None = None,
     ) -> None:
         """
         Initialize Session Manager.
@@ -114,6 +116,11 @@ class SessionManager:
             affect_workspace: Optional workspace directory for affect baseline JSONL
             affect_config: Optional :class:`AffectDetectorConfig` (requires ``affect_workspace``)
             workspace: Optional workspace directory for session journals
+            post_write_scheduler: Optional :class:`PostWriteScheduler` — when
+                provided, every persisted ``KeyMoment`` enqueues the configured
+                async enrichment jobs (mREBEL relation extraction, deeper
+                linguistic analysis). Failures inside the scheduler are
+                logged but never propagated, so the hot path stays unblocked.
         """
         self._state_store = state_store
         self._max_active_sessions = max_active_sessions
@@ -122,6 +129,7 @@ class SessionManager:
         self._journal_locks: dict[UUID, IO[str]] = {}
         self._lock = threading.Lock()
         self._workspace = workspace
+        self._post_write_scheduler = post_write_scheduler
         self._affect_detector: AffectDetector | None = None
         if affect_workspace is not None and affect_config is not None:
             from atman.affect.detector import AffectDetector
@@ -731,6 +739,7 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in moment.fact_refs],
                 },
             )
+            self._schedule_post_write(moment, agent_id)
 
     def append_key_moment_input(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """
@@ -780,6 +789,22 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
+            self._schedule_post_write(key_moment, agent_id)
+
+    def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
+        """Fire-and-forget enqueue of post-write enrichment jobs.
+
+        Idempotent via the scheduler's deterministic run_key; safe to call
+        repeatedly with the same moment_id. Failures are swallowed and
+        logged so an enrichment-pipeline outage cannot break message
+        ingestion (HLE-27, plan §17 principle 12).
+        """
+        if self._post_write_scheduler is None:
+            return
+        try:
+            self._post_write_scheduler.schedule_for_key_moment(moment, agent_id)
+        except Exception:
+            _LOG.exception("post-write scheduler raised for moment %s — continuing", moment.id)
 
     def record_key_moment(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """
