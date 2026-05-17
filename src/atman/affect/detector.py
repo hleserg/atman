@@ -190,9 +190,8 @@ class AffectDetector:
 
         # Linguistic enrichment: when a LinguisticAnalyzer is wired in, run a
         # full agent-message analysis so downstream code (e.g. DivergenceDetector)
-        # can consume the structured result.  The analysis is stored on the
-        # AffectRecord via demonstrates_thinks if no other value has been set.
-        # TODO(injection-point): merge analysis.divergence_signals into tags /
+        # can consume the structured result.
+        # TODO(injection-point): store analysis.divergence_signals into tags /
         # reasons and pass analysis to _append_key_moment for structured_markers
         # enrichment once KeyMomentBuilder is integrated into the affect pipeline.
         _linguistic_analysis = None
