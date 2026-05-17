@@ -285,7 +285,11 @@ class ScenarioDailyReflectionService(DailyReflectionService):
         }
         if agent_reasons:
             context["agent_requested_focus"] = " | ".join(agent_reasons)
-        detection = self.reflection_model.detect_pattern(experiences=experiences, context=context)
+        detection = self.reflection_model.detect_pattern(
+            experiences=experiences,
+            context=context,
+            key_moments_by_session=key_moments_by_session,
+        )
         pattern_description = detection.description.strip()
         if not pattern_description or len(pattern_description) < 10:
             return []
