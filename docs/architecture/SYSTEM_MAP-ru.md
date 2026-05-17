@@ -59,6 +59,7 @@
 | `core/ports/pending_human_review.py` (R11.7) | Inbox для предложений с низкой уверенностью | `PendingHumanReviewInbox` (Protocol) |
 | `core/ports/reflection_request_queue.py` (R12) | Очередь запросов рефлексии от агента | `ReflectionRequestQueue` (Protocol) |
 | `core/ports/reflection_overload_alert.py` (R13) | Sink для алертов о нездоровом темпе рефлексии (сигнал калибровки, не авто-фикс) | `ReflectionOverloadAlertSink` (Protocol), `OverloadAlert`, `AlertSeverity` |
+| `core/ports/entity_relation_store.py` (R9) | Типизированные бинарные связи между сущностями, выученные Deep-рефлексией; upsert-dedup по `(agent_id, from, to, type, learned_by)` | `EntityRelationStore` (ABC): `add_relation`, `list_for_agent`, `find_between` |
 | `core/ports/skill_manager.py` (WP-08 v2) | Интерфейс слоя навыков; потребляется всем кодом за пределами `atman.skills`; удовлетворяется и `SkillManager`, и `NoopSkillManager` | `SkillManagerPort` (runtime_checkable Protocol): 8 методов — `list_pinned`, `list_available`, `trigger_router`, `invoke`, `mark_result`, `capture`, `get_skill`, `process_session_skills` |
 | `core/ports/embedding.py` | Интерфейс эмбеддингов для семантического поиска | `EmbeddingPort` (ABC) — `embed()`, `embed_batch()`, `dimension()`, `model_name()` |
 | `core/ports/memory_middleware.py` | Точка интеграции middleware памяти для live agent | `MemoryMiddlewarePort` (Protocol), `MemoryContext` |
@@ -83,6 +84,7 @@
 | `core/services/reflection_input_builder.py` | Пресуммаризация KeyMoments перед глубокой рефлексией для предотвращения безграничного роста промпта; сортирует по salience, ограничивает `max_moments`, группирует по `session_id` в `SessionSummary(top_3, marker_counts, total_count)`; лишние моменты — в `remaining_moments` для следующего цикла | `prepare_reflection_input`, `ReflectionInput`, `SessionSummary` |
 | `core/services/key_moment_builder.py` | Построение `KeyMoment` из `KeyMomentInput` + лингвистический анализ + entity links | `KeyMomentBuilder` |
 | `core/services/divergence_detector.py` | Детекция расхождения thinking↔сообщение на основе правил | `DivergenceDetector` |
+| `core/services/entity_relations_formulator.py` (R9) | Deep-рефлексия: строит co-occurrence индекс по key moments сущностей, запрашивает LLM для каждой пары (≥ `min_cooccurrences`), записывает подтверждённые типизированные связи (`confidence ≥ min_confidence`) как `learned_by='reflection'`; один проход строит и co-occurrence индекс, и lookup по моментам, устраняя двойной fetch к БД | `EntityRelationsFormulator`, `RelationFormulationOutcome` |
 | `core/services/salience_decay_service.py` | Экспоненциальное затухание salience с λ по `EmotionalDepth`; `InMemorySalienceDecayService` для unit-тестов | `InMemorySalienceDecayService` |
 | `core/services/maintenance_worker.py` | Забор и диспетчеризация задач обслуживания (salience decay, memory guardian scan) из `MaintenanceQueue` | `MaintenanceWorker` |
 | `core/services/post_write_scheduler.py` | Fire-and-forget постановка задач обогащения (mREBEL, lingvo) с ключом `(job_name, key_moment_id)`; sync + asyncio-task варианты | `PostWriteScheduler` |
@@ -308,6 +310,7 @@
 | `InMemorySkillStore` (`skills/in_memory_store.py`), `PostgresSkillStore` (`skills/postgres_store.py`) | `SkillStore` (WP-08 v2) |
 | `NoopSkillManager` (`skills/noop.py`), `SkillManager` (`skills/manager.py`) | `SkillManagerPort` (WP-08 v2) |
 | `InMemoryDivergenceEventStore` (`adapters/memory/in_memory_divergence_events.py`) | `DivergenceEventStore` (R6) |
+| `InMemoryEntityRelationStore` (`adapters/memory/in_memory_entity_relation_store.py`) | `EntityRelationStore` (R9) |
 
 ### 2.2a. Agent adapter ↔ сервисы
 

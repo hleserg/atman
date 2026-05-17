@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from itertools import combinations
 from uuid import UUID
 
@@ -50,9 +51,14 @@ class RelationFormulationOutcome:
 
 def _index_entities_by_moment(
     state_store: StateStore, entities: list[Entity], moment_limit: int = 200
-) -> dict[UUID, set[UUID]]:
-    """Build a ``moment_id -> set(entity_id)`` index from the state store."""
+) -> tuple[dict[UUID, set[UUID]], dict[UUID, KeyMoment]]:
+    """Build a ``moment_id -> set(entity_id)`` index and a moment lookup in one pass.
+
+    Returns ``(by_moment, moment_lookup)`` so callers can avoid a second round
+    of ``find_moments_by_entity`` queries.
+    """
     by_moment: dict[UUID, set[UUID]] = {}
+    moment_lookup: dict[UUID, KeyMoment] = {}
     for entity in entities:
         try:
             moments = state_store.find_moments_by_entity(entity.id, limit=moment_limit)
@@ -65,7 +71,8 @@ def _index_entities_by_moment(
             continue
         for m in moments:
             by_moment.setdefault(m.id, set()).add(entity.id)
-    return by_moment
+            moment_lookup.setdefault(m.id, m)
+    return by_moment, moment_lookup
 
 
 def _collect_pair_cooccurrences(
@@ -127,26 +134,9 @@ class EntityRelationsFormulator:
             return RelationFormulationOutcome(0, 0, 0)
         entity_by_id = {e.id: e for e in entities}
 
-        by_moment = _index_entities_by_moment(
+        by_moment, moment_lookup = _index_entities_by_moment(
             self.state_store, entities, moment_limit=self.moment_limit
         )
-        # Build a (moment_id -> KeyMoment) lookup from the same fetch so we
-        # can pass full KeyMoment objects to the LLM without re-querying.
-        moment_lookup: dict[UUID, KeyMoment] = {}
-        for entity in entities:
-            try:
-                moments = self.state_store.find_moments_by_entity(
-                    entity.id, limit=self.moment_limit
-                )
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "entity_relations: re-fetch moments(%s) failed: %s",
-                    entity.id,
-                    exc,
-                )
-                moments = []
-            for m in moments:
-                moment_lookup.setdefault(m.id, m)
 
         pairs = _collect_pair_cooccurrences(
             by_moment, moment_lookup, min_cooccurrences=self.min_cooccurrences
@@ -174,6 +164,18 @@ class EntityRelationsFormulator:
                 skipped += 1
                 continue
 
+            since: date | None = None
+            if output.since:
+                try:
+                    since = date.fromisoformat(output.since)
+                except ValueError:
+                    logger.debug(
+                        "entity_relations: invalid since date %r for (%s, %s); ignoring",
+                        output.since,
+                        a_id,
+                        b_id,
+                    )
+
             try:
                 self.relation_store.add_relation(
                     EntityRelation(
@@ -182,6 +184,7 @@ class EntityRelationsFormulator:
                         to_entity_id=b_id,
                         relation_type=relation_type,
                         confidence=output.confidence,
+                        since=since,
                         learned_by=LEARNED_BY_REFLECTION,
                     )
                 )

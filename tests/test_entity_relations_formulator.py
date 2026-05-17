@@ -262,3 +262,80 @@ def test_three_way_cooccurrence_emits_three_pairs():
     outcome = fmt.run(AGENT_ID)
     assert outcome.pairs_considered == 3  # AB, AC, BC
     assert outcome.formulated == 3
+
+
+# ---------------------------------------------------------------------------
+# `since` field propagation (Fix: was silently discarded)
+# ---------------------------------------------------------------------------
+
+
+def test_since_field_is_persisted_when_valid_iso_date():
+    state = _StateStoreStub()
+    relations = InMemoryEntityRelationStore()
+
+    class _RelModelWithSince(MockReflectionModel):
+        def formulate_entity_relation(self, entity_a, entity_b, shared_moments):
+            return EntityRelationFormulationOutput(
+                relation_type="colleague_of", confidence=0.8, since="2024-03-15"
+            )
+
+    a, b = _make_pair_with_cooccurrences(state, DEFAULT_MIN_COOCCURRENCES)
+    fmt = EntityRelationsFormulator(state, _RegistryStub([a, b]), relations, _RelModelWithSince())  # type: ignore[arg-type]
+
+    fmt.run(AGENT_ID)
+
+    rels = relations.list_for_agent(AGENT_ID)
+    assert len(rels) == 1
+    from datetime import date
+
+    assert rels[0].since == date(2024, 3, 15)
+
+
+def test_invalid_since_field_is_ignored_relation_still_persisted():
+    state = _StateStoreStub()
+    relations = InMemoryEntityRelationStore()
+
+    class _RelModelBadSince(MockReflectionModel):
+        def formulate_entity_relation(self, entity_a, entity_b, shared_moments):
+            return EntityRelationFormulationOutput(
+                relation_type="colleague_of", confidence=0.8, since="not-a-date"
+            )
+
+    a, b = _make_pair_with_cooccurrences(state, DEFAULT_MIN_COOCCURRENCES)
+    fmt = EntityRelationsFormulator(state, _RegistryStub([a, b]), relations, _RelModelBadSince())  # type: ignore[arg-type]
+
+    outcome = fmt.run(AGENT_ID)
+
+    assert outcome.formulated == 1
+    rels = relations.list_for_agent(AGENT_ID)
+    assert len(rels) == 1
+    assert rels[0].since is None  # invalid date gracefully dropped
+
+
+# ---------------------------------------------------------------------------
+# Single-pass fetch optimization (Fix: double fetch eliminated)
+# ---------------------------------------------------------------------------
+
+
+def test_single_pass_fetch_calls_find_moments_by_entity_once_per_entity():
+    """_index_entities_by_moment now returns both by_moment and moment_lookup
+    in one pass; run() must not issue a second find_moments_by_entity loop."""
+    call_counts: dict[UUID, int] = {}
+
+    class _CountingStateStore(_StateStoreStub):
+        def find_moments_by_entity(self, entity_id: UUID, *, limit: int = 20) -> list[KeyMoment]:
+            call_counts[entity_id] = call_counts.get(entity_id, 0) + 1
+            return super().find_moments_by_entity(entity_id, limit=limit)
+
+    state = _CountingStateStore()
+    relations = InMemoryEntityRelationStore()
+    model = _RelModel()
+    a, b = _make_pair_with_cooccurrences(state, DEFAULT_MIN_COOCCURRENCES)
+    registry = _RegistryStub([a, b])
+    fmt = EntityRelationsFormulator(state, registry, relations, model)  # type: ignore[arg-type]
+
+    fmt.run(AGENT_ID)
+
+    # Each entity must be queried exactly once (not twice as before).
+    assert call_counts[a.id] == 1
+    assert call_counts[b.id] == 1

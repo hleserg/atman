@@ -59,6 +59,7 @@ All paths are absolute relative to the repository root.
 | `core/ports/pending_human_review.py` (R11.7) | Pending-review inbox for low-confidence reflection proposals | `PendingHumanReviewInbox` (Protocol) |
 | `core/ports/reflection_request_queue.py` (R12) | Queue for agent-driven reflection requests | `ReflectionRequestQueue` (Protocol) |
 | `core/ports/reflection_overload_alert.py` (R13) | Sink for reflection-cadence alerts (recalibration signal, not auto-fix) | `ReflectionOverloadAlertSink` (Protocol), `OverloadAlert`, `AlertSeverity` |
+| `core/ports/entity_relation_store.py` (R9) | Typed binary relations between entities learned by Deep reflection; upsert-dedup on `(agent_id, from, to, type, learned_by)` | `EntityRelationStore` (ABC): `add_relation`, `list_for_agent`, `find_between` |
 | `core/ports/skill_manager.py` (WP-08 v2) | Skill-loop interface consumed by all code outside `atman.skills`; `SkillManagerPort` is satisfied by both real `SkillManager` and `NoopSkillManager` | `SkillManagerPort` (runtime_checkable Protocol): `list_pinned`, `list_available`, `trigger_router`, `invoke`, `mark_result`, `capture`, `get_skill`, `process_session_skills` |
 
 ### 1.3. Services (`src/atman/core/services/`)
@@ -81,6 +82,7 @@ All paths are absolute relative to the repository root.
 | `core/services/reflection_input_builder.py` | Pre-summarize KeyMoments before deep reflection to prevent unbounded prompt growth; sorts by salience desc, caps at `max_moments`, groups by `session_id` into `SessionSummary(top_3, marker_counts, total_count)`; excess moments returned in `remaining_moments` for next cycle | `prepare_reflection_input`, `ReflectionInput`, `SessionSummary` |
 | `core/services/key_moment_builder.py` | Build `KeyMoment` from `KeyMomentInput` + linguistic analysis + entity links | `KeyMomentBuilder` |
 | `core/services/divergence_detector.py` | Rules-based divergence detection between agent thinking and message layers | `DivergenceDetector` |
+| `core/services/entity_relations_formulator.py` (R9) | Deep-reflection service: build a co-occurrence index from entity key moments, query LLM per pair meeting `min_cooccurrences` threshold, persist confirmed typed relations (`confidence ≥ min_confidence`) as `learned_by='reflection'`; one pass halves DB queries by reusing the moment fetch for both the co-occurrence index and the LLM prompt payload | `EntityRelationsFormulator`, `RelationFormulationOutcome` |
 | `core/services/salience_decay_service.py` | Exponential salience decay with λ parameterised by `EmotionalDepth`; `InMemorySalienceDecayService` for unit tests | `InMemorySalienceDecayService` |
 | `core/services/maintenance_worker.py` | Claim and dispatch maintenance jobs (salience decay, memory guardian scan) from `MaintenanceQueue` | `MaintenanceWorker` |
 | `core/services/post_write_scheduler.py` | Fire-and-forget enqueue of enrichment jobs (mREBEL, lingvo) keyed by `(job_name, key_moment_id)`; sync + asyncio-task variants | `PostWriteScheduler` |
@@ -304,6 +306,7 @@ Connections between two or more parts. These are seams that may break independen
 | `InMemorySkillStore` (`skills/in_memory_store.py`), `PostgresSkillStore` (`skills/postgres_store.py`) | `SkillStore` (WP-08 v2) |
 | `NoopSkillManager` (`skills/noop.py`), `SkillManager` (`skills/manager.py`) | `SkillManagerPort` (WP-08 v2) |
 | `InMemoryDivergenceEventStore` (`adapters/memory/in_memory_divergence_events.py`) | `DivergenceEventStore` (R6) |
+| `InMemoryEntityRelationStore` (`adapters/memory/in_memory_entity_relation_store.py`) | `EntityRelationStore` (R9) |
 
 ### 2.2a. Agent adapter ↔ services
 
