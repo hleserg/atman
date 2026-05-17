@@ -14,9 +14,7 @@ from datetime import UTC, datetime, time
 from typing import Literal
 from uuid import UUID
 
-# SystemClock lives in adapters/clock; imported lazily inside __init__ so
-# this Core module avoids a static dependency on a concrete adapter.
-from atman.core.clock_impl import ensure_utc
+from atman.core.clock_impl import SystemClock, ensure_utc
 from atman.core.exceptions import NarrativePersistenceConflictError
 from atman.core.models.experience import (
     KeyMoment,
@@ -286,11 +284,7 @@ class MicroReflectionService:
         self.session_repo = session_repo
         self.narrative_revision = narrative_revision
         self.event_store = event_store
-        if clock is None:
-            from atman.adapters.clock import SystemClock
-
-            clock = SystemClock()
-        self._clock = clock
+        self._clock = clock or SystemClock()
         self._reflection_event_observer = (
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
         )
@@ -452,11 +446,7 @@ class DailyReflectionService:
         self.pattern_store = pattern_store
         self.reflection_model = reflection_model
         self.event_store = event_store
-        if clock is None:
-            from atman.adapters.clock import SystemClock
-
-            clock = SystemClock()
-        self._clock = clock
+        self._clock = clock or SystemClock()
         self._reflection_event_observer = (
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
         )
@@ -809,11 +799,7 @@ class DeepReflectionService:
         self.health_store = health_store
         self.reflection_model = reflection_model
         self.event_store = event_store
-        if clock is None:
-            from atman.adapters.clock import SystemClock
-
-            clock = SystemClock()
-        self._clock = clock
+        self._clock = clock or SystemClock()
         self._reflection_event_observer = (
             reflection_event_observer or NoOpReflectionEventPersistenceObserver()
         )

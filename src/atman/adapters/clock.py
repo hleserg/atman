@@ -1,19 +1,12 @@
-"""Concrete ClockPort implementations.
+"""Test-fixture clock adapter.
 
-The default `SystemClock` and the test-only `FrozenClock` live in the
-adapters layer because they are concrete implementations of the
-`ClockPort` interface defined in `atman.core.ports.clock`. Core code
-should depend on the port, not on these implementations.
+`FrozenClock` lives here because it is a test-only `ClockPort`
+implementation — a fixture, not a real time source. The default
+`SystemClock` (zero-dep stdlib wrapper) lives in
+`atman.core.clock_impl` next to the port contract.
 """
 
 from datetime import UTC, datetime
-
-
-class SystemClock:
-    """Wall-clock implementation (UTC)."""
-
-    def now(self) -> datetime:
-        return datetime.now(UTC)
 
 
 class FrozenClock:
