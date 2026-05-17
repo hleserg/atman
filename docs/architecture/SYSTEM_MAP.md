@@ -90,10 +90,10 @@ All paths are absolute relative to the repository root.
 
 | File | Purpose | Public surface |
 |------|---------|----------------|
-| `affect/models.py` | DTOs for metrics, detector output, agent self-report | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport` (optional `emotional_depth` → `KeyMoment.how_i_felt.depth`), `TriggerReason` (incl. **`STRUCTURAL_MARKER`** for linguistic boundary events) |
+| `affect/models.py` | DTOs for metrics, detector output, agent self-report | `AffectMetrics`, `AffectRecord`, `AgentMemoryReport` (optional `emotional_depth` → `KeyMoment.how_i_felt.depth`), `TriggerReason` (incl. **`STRUCTURAL_MARKER`** for linguistic boundary events, **`LINGUISTIC`** for standalone linguistic divergence signals) |
 | `affect/metrics.py` | Eight behavioural floats + sincerity heuristic over tokens | `nrc_emotion_score`, density helpers, `min_length_gate`, `sincerity_score`, … |
 | `affect/baseline.py` | Rolling z-scores + `{workspace}/affect_baseline.jsonl` persistence | `RollingBaseline` |
-| `affect/detector.py` | Language sniff, trigger logic (anomaly / random sample / divergence / self-report), `KeyMoment` writes via callback; **v2**: optional `LinguisticAnalyzer` DI for structured markers enrichment | `AffectDetector`, `AffectDetectorConfig`; CLI `python -m atman.affect.detector --demo` |
+| `affect/detector.py` | Language sniff, trigger logic (anomaly / random sample / divergence / linguistic / self-report), `KeyMoment` writes via callback; **v2**: optional `LinguisticAnalyzer` DI for structured markers enrichment; **v3**: linguistic divergence signals fold into `reasons` with `TriggerReason.LINGUISTIC` so cold-start sessions with only linguistic signals get accurate `trigger_reason` | `AffectDetector`, `AffectDetectorConfig`; CLI `python -m atman.affect.detector --demo` |
 | `affect/refusal_detector.py` | Text-only value refusal detection (no LLM required) — three layers: (1) morphology via pymorphy3 (refusal verbs + negated modals), (2) NRC emotion semantic context (disgust/anger density for moral framing), (3) capability exclusion (technical inability vs ethical stance); optional LLM fallback for uncertain zone | `is_value_refusal`, `score_refusal`, `RefusalDetectorConfig`, `RefusalScore` |
 | `affect/emolex/` | Vendored NRC Emotion Lexicon (ru/en) + pymorphy3 lemmatisation | `emotion_score`, `tokenize`, JSON lexicons |
 
