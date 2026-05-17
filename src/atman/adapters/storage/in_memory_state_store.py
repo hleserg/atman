@@ -358,3 +358,23 @@ class InMemoryStateStore(StateStore):
         sessions = [s for s in self._sessions.values() if s.agent_id == agent_id]
         sessions.sort(key=lambda s: s.started_at, reverse=True)
         return [s.model_copy(deep=True) for s in sessions[:limit]]
+
+    def list_sessions_in_range(
+        self,
+        agent_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Session]:
+        """HLE-59: native ranged scan over in-memory sessions.
+
+        Avoids the legacy ``list_recent_sessions(limit=N)`` cap that the
+        reflection engine used to fall back to client-side. Inclusive on
+        both bounds to match the prior repository semantics.
+        """
+        sessions = [
+            s
+            for s in self._sessions.values()
+            if s.agent_id == agent_id and start <= s.started_at <= end
+        ]
+        sessions.sort(key=lambda s: s.started_at, reverse=True)
+        return [s.model_copy(deep=True) for s in sessions]

@@ -10,9 +10,12 @@ These services implement the three levels of reflection:
 from __future__ import annotations
 
 import contextlib
+import logging
 from datetime import UTC, datetime, time
 from typing import Literal
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from atman.core.clock_impl import SystemClock, ensure_utc
 from atman.core.exceptions import NarrativePersistenceConflictError
@@ -363,12 +366,10 @@ class MicroReflectionService:
         # Skill-loop hook: process invocations, update stats, auto-pin/downgrade.
         # Runs after narrative update; errors are logged but never surface to caller.
         if self._skill_manager is not None and agent_id is not None:
-            import logging as _logging
-
             try:
                 self._skill_manager.process_session_skills(agent_id, session_id)
             except Exception as _exc:
-                _logging.getLogger(__name__).warning(
+                logger.warning(
                     "Skill-loop processing failed for session %s: %s", session_id, _exc
                 )
 
@@ -559,6 +560,7 @@ class DailyReflectionService:
                     self._agent_id
                 )
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R7 (daily stance formulation) hook failed", exc_info=True)
                 stance_outcome = None
 
         # R6: aggregate divergence_events for the day (optional hook).
@@ -905,6 +907,7 @@ class DeepReflectionService:
             try:
                 stance_outcome = self._entity_stance_formulator.revise_stale(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R7 (deep stance revision) hook failed", exc_info=True)
                 stance_outcome = None
 
         # R9 Deep — formulate typed relations between co-occurring entities.
@@ -913,6 +916,7 @@ class DeepReflectionService:
             try:
                 relation_outcome = self._entity_relations_formulator.run(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R9 (entity relations) hook failed", exc_info=True)
                 relation_outcome = None
 
         # R10 Deep — LLM-resolve similar_entities findings.
@@ -921,6 +925,7 @@ class DeepReflectionService:
             try:
                 merge_outcome = self._merge_candidates_handler.run(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R10 (merge candidates) hook failed", exc_info=True)
                 merge_outcome = None
 
         # R11 — feed all collected R5/R7/R9/R10 signals into the identity-

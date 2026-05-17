@@ -49,8 +49,16 @@ def build_session_experience(
     access_count = sum(m.access_count for m in moments_for_session)
     incomplete = any(m.incomplete_coloring for m in moments_for_session)
 
+    # HLE-58: experience.id must match the deterministic UUID used by
+    # ``finish_session`` when it writes to StateStore — otherwise
+    # ``ReflectionEvent.experiences_analyzed`` collects raw session_ids and
+    # ``state_store.get_experience(exp.id)`` returns None for every audit
+    # lookup. Lazy import keeps this helper free of the session-manager-side
+    # of the dependency graph at import time.
+    from atman.core.services.session_manager import deterministic_session_experience_id
+
     return SessionExperience(
-        id=session.id,
+        id=deterministic_session_experience_id(session.id),
         session_id=session.id,
         timestamp=session.started_at,
         key_moment_ids=moment_ids,
