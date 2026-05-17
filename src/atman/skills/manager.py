@@ -389,7 +389,10 @@ class SkillManager:
                 self._store.set_revision_needed(inv.skill_id)
             # 'unclear' — no stat change, no revision flag
 
-        # Bump sessions_since_use for pinned skills that were NOT used this session
+        # Bump sessions_since_use for every active skill NOT used this
+        # session — including auto-downgraded ones — so deep-reflection
+        # archive thresholds remain reachable. The store implementation
+        # filters to status='active' and excludes ``used_skill_ids``.
         self._store.bump_sessions_since_use(agent_id, exclude_skill_ids=used_skill_ids)
 
         # Recalculate auto-pin / auto-downgrade
