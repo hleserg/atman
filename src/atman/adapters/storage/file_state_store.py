@@ -543,6 +543,37 @@ class FileStateStore(StateStore):
 
         return moment
 
+    def update_moment_structured_markers(
+        self, moment_id: UUID, markers: dict, version: str
+    ) -> None:
+        """Persist linguistic enrichment markers for a stored key moment."""
+        moment = self.get_key_moment(moment_id)
+        if moment is None:
+            return
+        moment.structured_markers = markers
+        moment.structured_markers_version = version
+        self.store_key_moment(moment)
+        self._update_session_moment_bundles(moment)
+
+    def _update_session_moment_bundles(self, moment: KeyMoment) -> None:
+        """Replace matching entries in per-session moment bundle files."""
+        target_id = str(moment.id)
+        for session_file in self.key_moments_dir.glob("*_moments.json"):
+            try:
+                existing = _read_json_file(session_file)
+            except ValueError:
+                continue
+            if not isinstance(existing, list):
+                continue
+            replaced = False
+            for i, entry in enumerate(existing):
+                if isinstance(entry, dict) and entry.get("id") == target_id:
+                    existing[i] = moment.model_dump(mode="json")
+                    replaced = True
+                    break
+            if replaced:
+                self._write_json_atomically(session_file, json.dumps(existing, indent=2))
+
     def list_key_moments(self, session_id: UUID | None = None) -> list[KeyMoment]:
         """List key moments from JSONL file, optionally filtered by session_id."""
         import warnings

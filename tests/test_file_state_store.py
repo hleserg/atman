@@ -568,6 +568,63 @@ def test_get_experience_with_corrupted_json_raises_clear_error():
             store.get_experience(record.experience.id)
 
 
+def test_get_key_moment_backfills_legacy_jsonl_after_corrupted_line() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = FileStateStore(root)
+        moment = KeyMoment(
+            what_happened="legacy JSONL only",
+            how_i_felt=FeltSense(
+                emotional_valence=0.1,
+                emotional_intensity=0.5,
+                depth=EmotionalDepth.MEANINGFUL,
+            ),
+            why_it_matters="backfill coverage",
+        )
+        store.key_moments_path.write_text(
+            "{broken json\n" + moment.model_dump_json() + "\n",
+            encoding="utf-8",
+        )
+
+        loaded = store.get_key_moment(moment.id)
+
+        assert loaded is not None
+        assert loaded.id == moment.id
+        assert (store.key_moments_dir / f"{moment.id}.json").exists()
+
+
+def test_update_moment_structured_markers_handles_missing_and_bad_session_bundles() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = FileStateStore(root)
+        moment = KeyMoment(
+            what_happened="marker update",
+            how_i_felt=FeltSense(
+                emotional_valence=0.1,
+                emotional_intensity=0.5,
+                depth=EmotionalDepth.MEANINGFUL,
+            ),
+            why_it_matters="coverage",
+        )
+        store.store_key_moment(moment)
+        (store.key_moments_dir / f"{uuid4()}_moments.json").write_text(
+            "{broken json",
+            encoding="utf-8",
+        )
+        (store.key_moments_dir / f"{uuid4()}_moments.json").write_text(
+            json.dumps({"not": "a list"}),
+            encoding="utf-8",
+        )
+
+        store.update_moment_structured_markers(uuid4(), {"ignored": True}, "missing")
+        store.update_moment_structured_markers(moment.id, {"marker": "test"}, "v1")
+
+        loaded = store.get_key_moment(moment.id)
+        assert loaded is not None
+        assert loaded.structured_markers == {"marker": "test"}
+        assert loaded.structured_markers_version == "v1"
+
+
 def test_load_identity_with_corrupted_json_raises_clear_error():
     """SYSTEM_MAP §4.3: corrupted ``identity.json`` raises ``ValueError`` with file context."""
     with TemporaryDirectory() as tmp:

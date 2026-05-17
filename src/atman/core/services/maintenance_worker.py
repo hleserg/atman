@@ -224,7 +224,11 @@ class MaintenanceWorker:
         if self._entity_registry is None:
             return None
         try:
-            matches = self._entity_registry.find_by_name(agent_id, entity.text)
+            matches = self._entity_registry.find_by_name(
+                agent_id,
+                entity.text,
+                entity.entity_type,
+            )
         except Exception:
             _LOG.warning("entity lookup failed for %r", entity.text, exc_info=True)
             return None

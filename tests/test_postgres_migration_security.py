@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from atman.core.models.maintenance import JobName
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -73,6 +75,20 @@ def test_agent_schema_matches_bge_m3_embedding_dimension() -> None:
 
     assert "EMBEDDING HALFVEC(1024)" in sql
     assert "HALFVEC(2560)" not in sql
+
+
+def test_maintenance_job_migrations_accept_all_job_names() -> None:
+    migration_dir = ROOT / "migrations" / "versions"
+    sql = "\n".join(
+        path.read_text(encoding="utf-8").lower()
+        for path in sorted(migration_dir.glob("*maintenance*.sql"))
+    )
+
+    for job_name in JobName:
+        assert f"'{job_name.value}'" in sql
+
+    assert "drop constraint if exists maintenance_jobs_job_name_check" in sql
+    assert "add constraint maintenance_jobs_job_name_check" in sql
 
 
 def test_embedding_migration_rebuilds_schema_before_writing_vectors() -> None:
