@@ -72,6 +72,36 @@ TOOLS = (
 )
 
 
+def _sanitize_history(messages: list) -> list:
+    """Strip lone surrogate chars from pydantic-ai message history.
+
+    gemma4 occasionally emits lone surrogates. dump_json / json.dumps both
+    refuse them. We go through dump_python (which keeps Python str objects),
+    recursively replace surrogates in every string, then validate_python
+    back to ModelMessage objects — no JSON encoding involved.
+    """
+    if not messages:
+        return messages
+
+    def _clean(obj):
+        if isinstance(obj, str):
+            return obj.encode("utf-8", "replace").decode("utf-8")
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return obj
+
+    try:
+        from pydantic_ai.messages import ModelMessagesTypeAdapter
+
+        raw = ModelMessagesTypeAdapter.dump_python(messages, mode="json")
+        cleaned = _clean(raw)
+        return ModelMessagesTypeAdapter.validate_python(cleaned)
+    except Exception:  # noqa: BLE001
+        return messages  # best-effort; return original if sanitization fails
+
+
 def _register_entities(text: str, deps) -> None:
     """Extract entities from user message and register them in the shared registry.
 
@@ -224,11 +254,24 @@ async def amain() -> int:
                     deps=deps,
                     message_history=history if history else None,
                 )
+            except UnicodeEncodeError:
+                # Surrogate chars from a previous LLM turn corrupted history.
+                # Clear it and retry — the user loses context but the REPL stays alive.
+                print("  ⚠ Surrogate chars in history — clearing context and retrying")
+                history.clear()
+                try:
+                    result = await agent.run(user_text, deps=deps)
+                except Exception as e2:  # noqa: BLE001
+                    print(f"  ✗ agent.run raised {type(e2).__name__}: {e2}")
+                    continue
             except Exception as e:  # noqa: BLE001 — REPL: show error, keep alive
                 print(f"  ✗ agent.run raised {type(e).__name__}: {e}")
                 continue
 
-            history.extend(result.all_messages())
+            # Sanitize surrogate chars before storing in history so the next
+            # agent.run() doesn't crash during JSON serialization.
+            new_messages = _sanitize_history(list(result.all_messages()))
+            history.extend(new_messages)
 
             # Echo tool calls
             for msg in result.new_messages():
