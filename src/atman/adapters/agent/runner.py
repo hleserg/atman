@@ -1169,8 +1169,13 @@ class AtmanRunner:
                 from atman.core.models.fact import FactRecord
 
                 fact = FactRecord(content=arg.strip(), source="user_command")
-                saved = deps.passive_memory_injector.factual_memory.add_fact(fact)
-                print_info(f"Saved to memory: {saved.id}")
+                try:
+                    saved = deps.passive_memory_injector.factual_memory.add_fact(fact)
+                    print_info(f"Saved to memory: {saved.id}")
+                except Exception:
+                    _LOG.warning("save_to_memory failed; continuing menu", exc_info=True)
+                    print_warn("Failed to save to memory. See logs for details.")
+                    retry_count += 1
                 continue
 
             elif cmd == "free_time":
