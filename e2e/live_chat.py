@@ -93,6 +93,24 @@ TOOLS = (
 
 _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 
+# Fixed-path session log — Claude (or any tail -f consumer) can watch this file
+# to see the full conversation + all Atman internal events in real time.
+_SESSION_LOG = Path("/tmp/atman-live-session.jsonl")
+
+import json as _json
+from datetime import UTC, datetime as _dt
+
+
+def _log(event_type: str, **kwargs) -> None:
+    """Append one JSONL line to the live session log."""
+    try:
+        entry = {"ts": _dt.now(UTC).isoformat(), "type": event_type, **kwargs}
+        with _SESSION_LOG.open("a") as fh:
+            fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 # ── Atman dev console ─────────────────────────────────────────────────────────
 
 
@@ -191,16 +209,19 @@ def _register_entities(text: str, deps, con: AtmanConsole) -> None:
                 for e in entities
             )
             con.add("🔍", "entities", parts)
+            _log("entities", entities=[{"text": e.text, "type": e.entity_type.value} for e in entities])
         else:
             con.add("🔍", "entities", "[dim]none detected[/dim]")
+            _log("entities", entities=[])
         for entity in entities:
             deps.entity_registry.resolve_or_create(
                 deps.agent_id,
                 entity.text,
                 entity.entity_type,
             )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         con.add("🔍", "entities", "[dim red]analysis error[/dim red]")
+        _log("entities_error", error=str(exc))
 
 
 def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
@@ -210,6 +231,9 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
     try:
         result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
         items = result.items
+        _log("ambient_rag", n_items=len(items), tokens_used=result.tokens_used,
+             items=[{"kind": it.kind, "anchor": it.anchor_text, "score": round(it.score, 3)}
+                    for it in items])
         if not items:
             con.add("🧭", "ambient RAG", f"[dim]0 items  tokens={result.tokens_used}[/dim]")
         else:
@@ -222,6 +246,7 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
             con.add("🧭", "ambient RAG", f"{summary}{tail}  [dim]tokens={result.tokens_used}[/dim]")
     except Exception as e:  # noqa: BLE001
         con.add("🧭", "ambient RAG", f"[dim red]{e}[/dim red]")
+        _log("ambient_rag_error", error=str(e))
 
 
 def bootstrap_minimal_agent(store, agent_id) -> None:
@@ -293,12 +318,17 @@ async def amain() -> int:
     deps, sm, store = build_deps(workspace, agent_id, config)
     bootstrap_minimal_agent(store, agent_id)
 
+    # Truncate the live log at session start so previous sessions don't confuse tail -f.
+    _SESSION_LOG.write_text("")
+    _log("session_start", agent_id=str(agent_id), model=AGENT_MODEL, base_url=AGENT_BASE_URL)
+
     print_banner(AGENT_MODEL, workspace, agent_id)
 
     llm = build_llm()
     ctx = sm.start_session(agent_id)
     session_id = ctx.session_id
     deps = replace(deps, session_id=session_id)
+    _log("session_id", session_id=str(session_id), workspace=str(workspace))
     _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
 
     agent = Agent(
@@ -343,6 +373,8 @@ async def amain() -> int:
                 _rc.print(f"  {workspace}")
                 continue
 
+            _log("user_msg", text=user_text)
+
             # ── Atman pre-turn: entity registration + ambient snapshot ─────────
             _register_entities(user_text, deps, con)
             _ambient_snapshot(user_text, deps, con)
@@ -376,7 +408,8 @@ async def amain() -> int:
                 for part in getattr(msg, "parts", []):
                     if hasattr(part, "tool_name"):
                         raw_args = getattr(part, "args", {})
-                        # Pretty-print first 2 key=value pairs
+                        _log("tool_call", tool=part.tool_name,
+                             args=raw_args if isinstance(raw_args, dict) else str(raw_args)[:200])
                         if isinstance(raw_args, dict):
                             kv = "  ".join(
                                 f"[dim]{k}[/dim]=[yellow]{str(v)[:40]!r}[/yellow]"
@@ -394,6 +427,7 @@ async def amain() -> int:
             output = str(result.output or "").strip()
             clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
             clean = clean.encode("utf-8", "replace").decode("utf-8")
+            _log("agent_response", text=clean)
             print(f"agent> {clean}\n")
 
     finally:
@@ -421,20 +455,26 @@ async def amain() -> int:
         if deps.maintenance_worker is not None:
             try:
                 done = deps.maintenance_worker.run_once(batch_size=50)
+                _log("maintenance", jobs_drained=done)
                 if done:
                     con.add("📋", "maintenance", f"[dim]{done} job(s) drained[/dim]")
             except Exception as e:  # noqa: BLE001
                 con.add("📋", "maintenance", f"[dim red]{e}[/dim red]")
+                _log("maintenance_error", error=str(e))
 
         # Validation findings
         if deps.memory_guardian is not None:
             try:
                 findings = deps.memory_guardian.get_unresolved(agent_id)
                 for f in findings:
+                    _log("validation_finding", severity=f.severity,
+                         finding_type=f.finding_type, description=f.description)
                     con.add("⚠", f"finding [{f.severity}]",
                             f"[dim]{f.finding_type}:[/dim] {f.description[:100]}")
             except Exception:  # noqa: BLE001
                 pass
+
+        _log("session_end", close_reason=close_reason)
 
         con.flush("atman session end")
         _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
