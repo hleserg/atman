@@ -633,6 +633,4 @@ class FileStateStore(StateStore):
         ``limit`` cap, so historical reflections over agents with very
         large session counts no longer drop the oldest rows.
         """
-        return [
-            s for s in self._iter_sessions_for_agent(agent_id) if start <= s.started_at <= end
-        ]
+        return [s for s in self._iter_sessions_for_agent(agent_id) if start <= s.started_at <= end]

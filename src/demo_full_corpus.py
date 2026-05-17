@@ -147,13 +147,13 @@ def _reflection_bundle(
         event_store=event_store,
         clock=clock,
         entity_relations_formulator=EntityRelationsFormulator(
-            state_store=session_repo._store,  # noqa: SLF001 — demo wiring
+            state_store=session_repo._store,  # demo wiring
             entity_registry=_entity_registry,
             relation_store=_relation_store,
             reflection_model=reflection_model,
         ),
         merge_candidates_handler=MergeCandidatesHandler(
-            state_store=session_repo._store,  # noqa: SLF001 — demo wiring
+            state_store=session_repo._store,  # demo wiring
             entity_registry=_entity_registry,
             guardian=_memory_guardian,
             reflection_model=reflection_model,

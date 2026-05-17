@@ -18,6 +18,7 @@ Critical design principle:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import threading
@@ -762,10 +763,8 @@ class SessionManager:
                     bucket = self._pending_affect_tasks.get(session_id)
                     if bucket is None:
                         return
-                    try:
+                    with contextlib.suppress(ValueError):
                         bucket.remove(t)
-                    except ValueError:
-                        pass
                     if not bucket:
                         self._pending_affect_tasks.pop(session_id, None)
 

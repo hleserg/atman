@@ -15,8 +15,6 @@ from datetime import UTC, datetime, time
 from typing import Literal
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
-
 from atman.core.clock_impl import SystemClock, ensure_utc
 from atman.core.exceptions import NarrativePersistenceConflictError
 from atman.core.models.experience import (
@@ -70,6 +68,8 @@ from atman.core.services.merge_candidates_handler import MergeCandidatesHandler
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.session_experience_view import build_session_experience
 from atman.core.services.structured_markers_aggregator import StructuredMarkersAggregator
+
+logger = logging.getLogger(__name__)
 
 
 # PLAYBOOK-START
@@ -369,9 +369,7 @@ class MicroReflectionService:
             try:
                 self._skill_manager.process_session_skills(agent_id, session_id)
             except Exception as _exc:
-                logger.warning(
-                    "Skill-loop processing failed for session %s: %s", session_id, _exc
-                )
+                logger.warning("Skill-loop processing failed for session %s: %s", session_id, _exc)
 
         return event
 
