@@ -172,4 +172,10 @@ class FindingsTriage:
             )
         # Stale moments, embedding gaps, quality_metric — explicit no-op
         # at this layer (handled by maintenance worker policies).
+        # HLE-31 Level-C psychological signals (`divergence_pattern`,
+        # `stance_formation_too_fast`) also fall through here intentionally:
+        # they are diagnostic, not actionable from Daily triage — R6 consumes
+        # them, and Deep does not yet have a dedicated handler. Findings
+        # accumulate as unresolved until operator review or a future
+        # automated resolver is wired in.
         return None
