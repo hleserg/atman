@@ -307,6 +307,7 @@
 | `StateStoreSessionRepository` (`adapters/reflection/`) | `SessionRepository` (R1 — преемник ExperienceRepository) |
 | `InMemorySkillStore` (`skills/in_memory_store.py`), `PostgresSkillStore` (`skills/postgres_store.py`) | `SkillStore` (WP-08 v2) |
 | `NoopSkillManager` (`skills/noop.py`), `SkillManager` (`skills/manager.py`) | `SkillManagerPort` (WP-08 v2) |
+| `InMemoryDivergenceEventStore` (`adapters/memory/in_memory_divergence_events.py`) | `DivergenceEventStore` (R6) |
 
 ### 2.2a. Agent adapter ↔ сервисы
 

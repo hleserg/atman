@@ -56,7 +56,7 @@ from atman.core.reflection_run_keys import (
 )
 from atman.core.services.divergence_aggregator import DivergenceAggregator
 from atman.core.services.entity_stance_formulator import EntityStanceFormulator
-from atman.core.services.findings_triage import FindingsTriage
+from atman.core.services.findings_triage import FindingsTriage, TriageOutcome
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.session_experience_view import build_session_experience
 from atman.core.services.structured_markers_aggregator import StructuredMarkersAggregator
@@ -525,7 +525,7 @@ class DailyReflectionService:
             agent_id=self._agent_id, start=start, end=end, run_key=run_key
         )
 
-    def _triage_findings(self):
+    def _triage_findings(self) -> TriageOutcome | None:
         """R8 hook. Returns TriageOutcome or None when no triage is wired."""
         if self._findings_triage is None or self._agent_id is None:
             return None
