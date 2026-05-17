@@ -56,9 +56,7 @@ def test_install_local_directory_writes_skill_row(tmp_path: Path) -> None:
     agent_id = uuid4()
     agents_root = tmp_path / "agents"
 
-    result = install_external(
-        str(src), agent_id, store=store, agents_root=agents_root
-    )
+    result = install_external(str(src), agent_id, store=store, agents_root=agents_root)
 
     assert result.dry_run is False
     assert result.skill_id is not None
@@ -95,7 +93,7 @@ def test_install_rejects_missing_manifest(tmp_path: Path) -> None:
     src.mkdir()
     store = InMemorySkillStore()
 
-    with pytest.raises(SkillInstallError, match="No SKILL.md"):
+    with pytest.raises(SkillInstallError, match=r"No SKILL\.md"):
         install_external(str(src), uuid4(), store=store, agents_root=tmp_path / "agents")
 
 
@@ -156,9 +154,7 @@ def test_install_rejects_duplicate_name_in_store(tmp_path: Path) -> None:
         )
     )
     with pytest.raises(SkillInstallError, match="already registered"):
-        install_external(
-            str(src), agent_id, store=store, agents_root=tmp_path / "agents"
-        )
+        install_external(str(src), agent_id, store=store, agents_root=tmp_path / "agents")
 
 
 def test_name_override_applied(tmp_path: Path) -> None:
@@ -281,9 +277,7 @@ def test_install_zip_rejects_invalid_archive(tmp_path: Path) -> None:
 def test_install_https_uses_injected_http_get(tmp_path: Path) -> None:
     src_dir = tmp_path / "src"
     _write_manifest(src_dir, name="remote")
-    archive_bytes = _make_zip(
-        {"SKILL.md": (src_dir / "SKILL.md").read_text()}
-    )
+    archive_bytes = _make_zip({"SKILL.md": (src_dir / "SKILL.md").read_text()})
 
     calls: list[str] = []
 
@@ -352,9 +346,7 @@ def test_install_overrides_in_session_origin_to_external(tmp_path: Path) -> None
     )
     store = InMemorySkillStore()
     agent_id = uuid4()
-    result = install_external(
-        str(src), agent_id, store=store, agents_root=tmp_path / "agents"
-    )
+    result = install_external(str(src), agent_id, store=store, agents_root=tmp_path / "agents")
     assert result.manifest.origin == SkillOrigin.external
     stored = store.get_skill_by_name(agent_id, "claims-in-session")
     assert stored is not None

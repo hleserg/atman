@@ -121,9 +121,7 @@ class SkillRevisionService:
             try:
                 outcomes.append(self._revise_one(skill, dry_run=dry_run))
             except Exception as exc:
-                _log.warning(
-                    "revise_pending: skill '%s' revision raised: %s", skill.name, exc
-                )
+                _log.warning("revise_pending: skill '%s' revision raised: %s", skill.name, exc)
                 outcomes.append(
                     RevisionOutcome(
                         skill_name=skill.name,

@@ -8,8 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
-import pytest
-
 from atman.config import SkillsSettings
 from atman.skills.in_memory_store import InMemorySkillStore
 from atman.skills.manager import SkillManager
@@ -165,23 +163,15 @@ class TestProcessDeepSkills:
         manager = _make_manager(tmp_path, deep_archive_sessions=50)
         agent_id = uuid4()
 
-        manager._store.save_skill(
-            _make_skill(agent_id, "long-idle", sessions_since_use=60)
-        )
-        manager._store.save_skill(
-            _make_skill(agent_id, "recent", sessions_since_use=10)
-        )
+        manager._store.save_skill(_make_skill(agent_id, "long-idle", sessions_since_use=60))
+        manager._store.save_skill(_make_skill(agent_id, "recent", sessions_since_use=10))
         # User-pinned must NEVER appear in archive candidates
         manager._store.save_skill(
-            _make_skill(
-                agent_id, "pinned-idle", sessions_since_use=99, user_pinned=True
-            )
+            _make_skill(agent_id, "pinned-idle", sessions_since_use=99, user_pinned=True)
         )
         # Disabled skill: list_by_status(active) skips this one anyway
         manager._store.save_skill(
-            _make_skill(
-                agent_id, "disabled", sessions_since_use=99, status=SkillStatus.disabled
-            )
+            _make_skill(agent_id, "disabled", sessions_since_use=99, status=SkillStatus.disabled)
         )
 
         summary = manager.process_deep_skills(agent_id)
@@ -348,9 +338,7 @@ def test_list_by_revision_needed_orders_by_priority() -> None:
     store.save_skill(_make_skill(agent_id, "lo", revision_needed=True, revision_priority=1))
     store.save_skill(_make_skill(agent_id, "hi", revision_needed=True, revision_priority=5))
     store.save_skill(_make_skill(agent_id, "mid", revision_needed=True, revision_priority=3))
-    store.save_skill(
-        _make_skill(agent_id, "none", revision_needed=False, revision_priority=99)
-    )
+    store.save_skill(_make_skill(agent_id, "none", revision_needed=False, revision_priority=99))
 
     result = store.list_by_revision_needed(agent_id)
     assert [s.name for s in result] == ["hi", "mid", "lo"]

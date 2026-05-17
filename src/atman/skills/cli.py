@@ -487,8 +487,7 @@ def cmd_install_external(args: list[str]) -> None:
         sys.exit(1)
 
     print_ok(
-        f"Installed '{result.manifest.name}' "
-        f"(skill_id={result.skill_id}) at {result.target_path}"
+        f"Installed '{result.manifest.name}' (skill_id={result.skill_id}) at {result.target_path}"
     )
 
 

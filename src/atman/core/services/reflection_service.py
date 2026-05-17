@@ -604,9 +604,7 @@ class DailyReflectionService:
             if skill_summary.revision_needed_count:
                 notes += f" skill_revision_pending={skill_summary.revision_needed_count}"
             if skill_summary.revision_priority_bumped:
-                notes += (
-                    f" skill_revision_priority_bumped={skill_summary.revision_priority_bumped}"
-                )
+                notes += f" skill_revision_priority_bumped={skill_summary.revision_priority_bumped}"
             if skill_summary.high_priority_revisions:
                 notes += (
                     f" skill_revision_high_priority={len(skill_summary.high_priority_revisions)}"

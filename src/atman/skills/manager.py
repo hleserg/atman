@@ -351,9 +351,7 @@ class SkillManager:
                 encoding="utf-8",
             )
         except OSError as exc:
-            _log.warning(
-                "write_session_skills_marker: failed to write %s: %s", marker_path, exc
-            )
+            _log.warning("write_session_skills_marker: failed to write %s: %s", marker_path, exc)
             return None
 
         _log.debug(

@@ -12,12 +12,12 @@ from atman.skills.in_memory_store import InMemorySkillStore
 from atman.skills.models import Skill, SkillKind, SkillOrigin, SkillStatus
 from atman.skills.text_parser import (
     DEFAULT_MIN_CONFIDENCE,
-    InferredInvocation,
-    InvocationTextParser,
     SCORE_EXACT_NAME,
     SCORE_KEYWORD_MULTI,
     SCORE_KEYWORD_SINGLE,
     SCORE_NAME_VARIANT,
+    InferredInvocation,
+    InvocationTextParser,
 )
 
 
@@ -133,9 +133,7 @@ class TestParse:
 
     def test_single_keyword_match(self, tmp_path, agent_id, session_id):
         store = InMemorySkillStore()
-        skill = _make_skill_with_manifest(
-            tmp_path, agent_id, "weather-fetcher", ["forecast"]
-        )
+        skill = _make_skill_with_manifest(tmp_path, agent_id, "weather-fetcher", ["forecast"])
         store.save_skill(skill)
         parser = InvocationTextParser(store=store)
 
@@ -173,9 +171,7 @@ class TestParse:
 
     def test_below_threshold_filtered_out(self, tmp_path, agent_id, session_id):
         store = InMemorySkillStore()
-        skill = _make_skill_with_manifest(
-            tmp_path, agent_id, "weather-fetcher", ["forecast"]
-        )
+        skill = _make_skill_with_manifest(tmp_path, agent_id, "weather-fetcher", ["forecast"])
         store.save_skill(skill)
         parser = InvocationTextParser(store=store, min_confidence=0.9)
 
@@ -207,9 +203,7 @@ class TestParse:
     def test_dedup_per_skill_keeps_highest_confidence(self, tmp_path, agent_id, session_id):
         """If both name match (1.0) and keyword (0.9) hit, keep the name match."""
         store = InMemorySkillStore()
-        skill = _make_skill_with_manifest(
-            tmp_path, agent_id, "outlet-control", ["outlet"]
-        )
+        skill = _make_skill_with_manifest(tmp_path, agent_id, "outlet-control", ["outlet"])
         store.save_skill(skill)
         parser = InvocationTextParser(store=store)
 
@@ -254,9 +248,7 @@ class TestParse:
 
 
 class TestParseAndRecord:
-    def test_creates_invocation_with_unclear_marker(
-        self, tmp_path, agent_id, session_id
-    ):
+    def test_creates_invocation_with_unclear_marker(self, tmp_path, agent_id, session_id):
         store = InMemorySkillStore()
         skill = _make_skill_with_manifest(tmp_path, agent_id, "outlet-control", [])
         store.save_skill(skill)
@@ -285,9 +277,7 @@ class TestParseAndRecord:
         invocations = store.get_unprocessed_invocations(agent_id, session_id)
         assert invocations == []
 
-    def test_store_failure_logged_but_does_not_abort_batch(
-        self, tmp_path, agent_id, session_id
-    ):
+    def test_store_failure_logged_but_does_not_abort_batch(self, tmp_path, agent_id, session_id):
         """One bad create_invocation must not stop the rest of the batch."""
         from atman.skills.manifest import SkillManifest, write_skill_md
 

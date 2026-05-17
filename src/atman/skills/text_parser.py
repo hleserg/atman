@@ -84,7 +84,7 @@ class InvocationTextParser:
         self,
         response_text: str,
         agent_id: UUID,
-        session_id: UUID,  # noqa: ARG002 — kept for API symmetry with manager.invoke
+        session_id: UUID,
     ) -> list[InferredInvocation]:
         """Return inferred invocations above the configured threshold.
 
@@ -143,9 +143,7 @@ class InvocationTextParser:
                     skill_id=item.skill_id,
                     agent_id=agent_id,
                     session_id=session_id,
-                    input_context_summary=(
-                        f"inferred_from_text: {item.matched_text[:120]}"
-                    ),
+                    input_context_summary=(f"inferred_from_text: {item.matched_text[:120]}"),
                 )
                 self._store.write_agent_marker(
                     invocation_id,
@@ -158,8 +156,7 @@ class InvocationTextParser:
                 invocation_ids.append(invocation_id)
             except Exception as exc:
                 _log.warning(
-                    "InvocationTextParser: failed to record inferred invocation "
-                    "for skill '%s': %s",
+                    "InvocationTextParser: failed to record inferred invocation for skill '%s': %s",
                     item.skill_name,
                     exc,
                 )

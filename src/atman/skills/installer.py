@@ -29,7 +29,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from atman.skills.manifest import SkillManifest, parse_skill_md
-from atman.skills.models import Skill, SkillKind, SkillOrigin, SkillStatus
+from atman.skills.models import Skill, SkillOrigin, SkillStatus
 from atman.skills.store import SkillStore
 
 _log = logging.getLogger(__name__)
@@ -208,9 +208,7 @@ def _materialise_source(source: str, staging: Path, *, http_get) -> Path:
 
     # Reject unsupported HTTP scheme (security: do not silently downgrade).
     if s.startswith("http://"):
-        raise SkillInstallError(
-            "HTTP is not supported — use HTTPS so the archive is verified."
-        )
+        raise SkillInstallError("HTTP is not supported — use HTTPS so the archive is verified.")
 
     # Block bare GitHub repo URLs with a useful hint.
     if s.startswith("https://github.com/") and not s.endswith(".zip"):
@@ -234,9 +232,7 @@ def _materialise_source(source: str, staging: Path, *, http_get) -> Path:
         return _locate_manifest_root(copy_root)
     if path.suffix.lower() == ".zip":
         return _extract_zip(path, staging)
-    raise SkillInstallError(
-        f"Unsupported source: {path} (expected directory or .zip file)"
-    )
+    raise SkillInstallError(f"Unsupported source: {path} (expected directory or .zip file)")
 
 
 def _fetch_zip_url(url: str, staging: Path, *, http_get) -> Path:
@@ -271,9 +267,7 @@ def _extract_zip(archive: Path, staging: Path) -> Path:
             for member in zf.namelist():
                 norm = Path(member)
                 if norm.is_absolute() or ".." in norm.parts:
-                    raise SkillInstallError(
-                        f"Refusing unsafe zip member: {member}"
-                    )
+                    raise SkillInstallError(f"Refusing unsafe zip member: {member}")
             zf.extractall(extracted)
     except zipfile.BadZipFile as exc:
         raise SkillInstallError(f"Invalid zip archive: {exc}") from exc
@@ -298,9 +292,7 @@ def _locate_manifest_root(root: Path) -> Path:
 # ── manifest helpers ──────────────────────────────────────────────────────
 
 
-def _rename_manifest(
-    manifest: SkillManifest, new_name: str, manifest_path: Path
-) -> SkillManifest:
+def _rename_manifest(manifest: SkillManifest, new_name: str, manifest_path: Path) -> SkillManifest:
     """Apply ``--name`` override; the new name must be kebab-case alphanumeric."""
     if not _valid_skill_name(new_name):
         raise SkillInstallError(

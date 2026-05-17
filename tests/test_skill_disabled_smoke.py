@@ -20,7 +20,6 @@ Covered:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -32,9 +31,7 @@ def _no_postgres(monkeypatch):
     from atman.skills import postgres_store as _ps
 
     def _explode(*_a, **_kw):
-        raise AssertionError(
-            "skills disabled path must not open a PostgreSQL connection"
-        )
+        raise AssertionError("skills disabled path must not open a PostgreSQL connection")
 
     monkeypatch.setattr(_ps, "PostgresSkillStore", _explode)
     return _explode
@@ -84,9 +81,7 @@ def test_env_var_unset_falls_back_to_settings(monkeypatch) -> None:
 # ── settings override ─────────────────────────────────────────────────────
 
 
-def test_settings_override_disables_skill_loop(
-    tmp_path: Path, monkeypatch, _no_postgres
-) -> None:
+def test_settings_override_disables_skill_loop(tmp_path: Path, monkeypatch, _no_postgres) -> None:
     """Setting ``settings.skills.enabled = False`` produces a None skill_manager."""
     from atman.adapters.agent.config import AgentConfig
     from atman.adapters.agent.factory import build_deps
