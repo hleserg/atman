@@ -446,3 +446,37 @@ class StateStore(ABC):
     def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
         """List most recent sessions for an agent, newest first."""
         return []
+
+    def list_sessions_in_range(
+        self,
+        agent_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Session]:
+        """List sessions whose ``started_at`` falls in ``[start, end]``.
+
+        HLE-59: introduced so the Reflection Engine no longer has to fetch a
+        capped window via :meth:`list_recent_sessions` and filter client-side.
+        Adapters that have a native ranged index (PostgresStateStore) should
+        override this with a single SQL query; the default implementation
+        delegates to :meth:`list_recent_sessions` with a very large limit and
+        filters in Python — correct for small/medium datasets but degrades
+        for agents with >>100k sessions, which is exactly the case
+        ``list_recent_sessions`` could no longer serve.
+
+        Inclusive bounds match the prior
+        ``StateStoreSessionRepository.get_sessions_in_range`` semantics.
+        ``s.started_at`` is normalised via :func:`ensure_utc` before the
+        comparison so legacy rows persisted without a timezone suffix don't
+        raise ``TypeError`` against UTC-aware ``start`` / ``end`` bounds.
+        """
+        # Lazy import keeps the port free of a static dependency on
+        # ``core.clock_impl`` (which itself only imports stdlib).
+        from atman.core.clock_impl import ensure_utc
+
+        # Default fallback for adapters that don't override: pull a generous
+        # window and filter. We intentionally use a very large limit here —
+        # adapters with O(N) ``list_recent_sessions`` cost should provide a
+        # native override to avoid the materialisation.
+        candidates = self.list_recent_sessions(agent_id, limit=10_000_000)
+        return [s for s in candidates if start <= ensure_utc(s.started_at) <= end]

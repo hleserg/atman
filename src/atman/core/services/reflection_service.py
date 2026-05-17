@@ -10,6 +10,7 @@ These services implement the three levels of reflection:
 from __future__ import annotations
 
 import contextlib
+import logging
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
@@ -71,6 +72,8 @@ from atman.core.services.merge_candidates_handler import MergeCandidatesHandler
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.session_experience_view import build_session_experience
 from atman.core.services.structured_markers_aggregator import StructuredMarkersAggregator
+
+logger = logging.getLogger(__name__)
 
 
 # PLAYBOOK-START
@@ -139,12 +142,21 @@ def _apply_reframing_notes(
         if not (reframing_text and len(reframing_text) > 10):
             continue
 
+        # Devin #594 wave 3: ``StateStoreSessionRepository.add_reframing_note``
+        # treats its first arg as a session_id and applies
+        # ``deterministic_session_experience_id`` internally. After HLE-58
+        # ``exp.id`` is already that uuid5, so passing it would double-hash
+        # and miss the primary lookup, falling through to a fallback that
+        # was documented as a test-only compat shim. Pass ``exp.session_id``
+        # so the documented repository contract holds. ``triggered_by`` is
+        # likewise keyed off ``session_id`` so dedup keys stay stable
+        # regardless of how ``exp.id`` is derived in the future.
         note = ReframingNote(
             reflection=reframing_text,
             reflection_type=reframing_out.reflection_type,
-            triggered_by=reframing_trigger_key(run_key, exp.id),
+            triggered_by=reframing_trigger_key(run_key, exp.session_id),
         )
-        outcome = session_repo.add_reframing_note(exp.id, note)
+        outcome = session_repo.add_reframing_note(exp.session_id, note)
         if outcome == ReframingNoteAppendResult.STORED:
             stored += 1
         elif outcome == ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND:
@@ -367,14 +379,10 @@ class MicroReflectionService:
         # Skill-loop hook: process invocations, update stats, auto-pin/downgrade.
         # Runs after narrative update; errors are logged but never surface to caller.
         if self._skill_manager is not None and agent_id is not None:
-            import logging as _logging
-
             try:
                 self._skill_manager.process_session_skills(agent_id, session_id)
             except Exception as _exc:
-                _logging.getLogger(__name__).warning(
-                    "Skill-loop processing failed for session %s: %s", session_id, _exc
-                )
+                logger.warning("Skill-loop processing failed for session %s: %s", session_id, _exc)
 
         return event
 
@@ -569,6 +577,7 @@ class DailyReflectionService:
                     self._agent_id
                 )
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R7 (daily stance formulation) hook failed", exc_info=True)
                 stance_outcome = None
 
         # R6: aggregate divergence_events for the day (optional hook).
@@ -954,6 +963,7 @@ class DeepReflectionService:
             try:
                 stance_outcome = self._entity_stance_formulator.revise_stale(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R7 (deep stance revision) hook failed", exc_info=True)
                 stance_outcome = None
 
         # R9 Deep — formulate typed relations between co-occurring entities.
@@ -962,6 +972,7 @@ class DeepReflectionService:
             try:
                 relation_outcome = self._entity_relations_formulator.run(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R9 (entity relations) hook failed", exc_info=True)
                 relation_outcome = None
 
         # R10 Deep — LLM-resolve similar_entities findings.
@@ -970,6 +981,7 @@ class DeepReflectionService:
             try:
                 merge_outcome = self._merge_candidates_handler.run(self._agent_id)
             except Exception:  # pragma: no cover - defensive
+                logger.warning("R10 (merge candidates) hook failed", exc_info=True)
                 merge_outcome = None
 
         # HLE-36 — skill loop deep classification (archive / problematic).

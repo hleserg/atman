@@ -629,8 +629,7 @@ class FileStateStore(StateStore):
         self._write_json_atomically(path, session.model_dump_json(indent=2))
         return session
 
-    def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
-        """List most recent sessions for an agent, newest first."""
+    def _iter_sessions_for_agent(self, agent_id: UUID) -> list[Session]:
         sessions: list[Session] = []
         for session_file in self.sessions_dir.glob("*.json"):
             try:
@@ -646,5 +645,35 @@ class FileStateStore(StateStore):
                 continue
             if s.agent_id == agent_id:
                 sessions.append(s)
+        # Normalise legacy naive timestamps so the sort doesn't raise
+        # ``TypeError`` (mirrors the comparison normalisation in
+        # ``list_sessions_in_range``).
         sessions.sort(key=lambda s: ensure_utc(s.started_at), reverse=True)
-        return sessions[:limit]
+        return sessions
+
+    def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
+        """List most recent sessions for an agent, newest first."""
+        return self._iter_sessions_for_agent(agent_id)[:limit]
+
+    def list_sessions_in_range(
+        self,
+        agent_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Session]:
+        """HLE-59: native ranged scan over on-disk session journals.
+
+        Reads every session JSON once and filters in Python — this is the
+        same I/O profile as ``list_recent_sessions`` with no artificial
+        ``limit`` cap, so historical reflections over agents with very
+        large session counts no longer drop the oldest rows. Legacy session
+        JSONs persisted without a timezone suffix yield naive
+        ``started_at`` values via :meth:`Session.model_validate`; normalise
+        via :func:`ensure_utc` so the inclusive range check doesn't raise
+        ``TypeError`` against UTC-aware bounds.
+        """
+        return [
+            s
+            for s in self._iter_sessions_for_agent(agent_id)
+            if start <= ensure_utc(s.started_at) <= end
+        ]

@@ -120,6 +120,23 @@ def _reflection_bundle(
         event_store=event_store,
         clock=clock,
     )
+    # HLE-60: wire R9 (EntityRelationsFormulator) + R10 (MergeCandidatesHandler)
+    # into DeepReflectionService so the demo exercises the same hooks
+    # production scheduling must use. With ``DeterministicReflectionModel``
+    # both hooks no-op (the port's defaults return empty outputs), but the
+    # construction path is covered so a missing override surfaces in CI
+    # instead of silently skipping R9/R10.
+    from atman.adapters.memory.in_memory_entity_registry import InMemoryEntityRegistry
+    from atman.adapters.memory.in_memory_entity_relation_store import (
+        InMemoryEntityRelationStore,
+    )
+    from atman.adapters.memory.in_memory_memory_guardian import InMemoryMemoryGuardian
+    from atman.core.services.entity_relations_formulator import EntityRelationsFormulator
+    from atman.core.services.merge_candidates_handler import MergeCandidatesHandler
+
+    _entity_registry = InMemoryEntityRegistry()
+    _relation_store = InMemoryEntityRelationStore()
+    _memory_guardian = InMemoryMemoryGuardian(entity_registry=_entity_registry)
     deep = DeepReflectionService(
         session_repo=session_repo,
         identity_repo=identity_repo,
@@ -129,6 +146,18 @@ def _reflection_bundle(
         reflection_model=reflection_model,
         event_store=event_store,
         clock=clock,
+        entity_relations_formulator=EntityRelationsFormulator(
+            state_store=session_repo._store,  # demo wiring
+            entity_registry=_entity_registry,
+            relation_store=_relation_store,
+            reflection_model=reflection_model,
+        ),
+        merge_candidates_handler=MergeCandidatesHandler(
+            state_store=session_repo._store,  # demo wiring
+            entity_registry=_entity_registry,
+            guardian=_memory_guardian,
+            reflection_model=reflection_model,
+        ),
     )
     return micro, daily, deep
 

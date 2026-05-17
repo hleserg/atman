@@ -16,7 +16,6 @@ needing to invent an ``ExperienceRecord`` shell.
 
 from __future__ import annotations
 
-import warnings
 from datetime import datetime
 from uuid import UUID
 
@@ -25,14 +24,6 @@ from atman.core.models.experience import KeyMoment, ReframingNote, ReframingNote
 from atman.core.models.session import Session
 from atman.core.ports.state_store import StateStore
 from atman.core.services.session_manager import deterministic_session_experience_id
-
-# Upper bound on candidates pulled from StateStore for client-side range
-# filtering. The underlying ``list_recent_sessions`` port has no native
-# range/cursor query yet, so we have to fetch a window and filter. Raising
-# this above 10k lets larger deployments work; when the result saturates
-# the cap we emit a warning so the silent truncation in HLE-51 doesn't
-# repeat.
-_SESSION_RANGE_FETCH_CAP = 100_000
 
 
 class StateStoreSessionRepository:
@@ -109,26 +100,18 @@ class StateStoreSessionRepository:
         start = range_start
         end_val = range_end
 
-        # Pull a generous window via list_recent_sessions; filter by range.
-        # For deployments where sessions/day is high this should become a
-        # native ranged query on the StateStore — but the port has no
-        # cursor/range API yet, so we filter client-side. The cap was
-        # 10_000 (HLE-51) which silently dropped older sessions for
-        # high-volume agents; raise it and warn on saturation.
-        candidates = self._store.list_recent_sessions(agent_id, limit=_SESSION_RANGE_FETCH_CAP)
-        if len(candidates) >= _SESSION_RANGE_FETCH_CAP:
-            warnings.warn(
-                "StateStoreSessionRepository.get_sessions_in_range hit the "
-                f"client-side fetch cap of {_SESSION_RANGE_FETCH_CAP} sessions "
-                f"for agent {agent_id}. Sessions older than the most recent "
-                f"{_SESSION_RANGE_FETCH_CAP} are excluded from the range "
-                "filter. Add a native ranged query to the StateStore port.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
         start_utc = ensure_utc(start)
         end_utc = ensure_utc(end_val)
-        return [s for s in candidates if start_utc <= ensure_utc(s.started_at) <= end_utc]
+        # HLE-59: prefer the native ranged query when the underlying
+        # StateStore exposes one. The port grew ``list_sessions_in_range``
+        # specifically so high-volume agents don't lose history to the old
+        # client-side fetch cap. Adapters without an override inherit the
+        # default fallback (large window + Python filter) on the port
+        # itself, so callers don't need a per-adapter branch here.
+        sessions = self._store.list_sessions_in_range(agent_id, start_utc, end_utc)
+        # ``list_sessions_in_range`` may return naive timestamps from
+        # legacy rows; re-normalise before the inclusive range check.
+        return [s for s in sessions if start_utc <= ensure_utc(s.started_at) <= end_utc]
 
     def get_key_moments_for_session(self, session_id: UUID) -> list[KeyMoment]:
         return self._store.get_key_moments_for_session(session_id)

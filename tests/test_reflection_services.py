@@ -134,16 +134,29 @@ class MockExperienceRepo:
     ) -> ReframingNoteAppendResult:
         """Add reframing note; return explicit append outcome.
 
-        Accept the lookup key as either an experience id (legacy
-        ExperienceRepository contract) or a session id (new
-        SessionRepository contract — synthetic experiences built by
-        ``build_session_experience`` set ``id == session_id``).
+        Accept the lookup key as any of:
+        - the experience id stored in this repo (legacy fixtures keyed by
+          ``exp.id == session_id``);
+        - the raw session id (older SessionRepository semantics);
+        - HLE-58: the deterministic uuid5 produced by
+          ``build_session_experience`` / ``finish_session``, which is what
+          the reflection engine now emits.
         """
+        from atman.core.services.session_manager import deterministic_session_experience_id
+
         exp = self.experiences.get(experience_id)
         if exp is None:
-            # Fall back to looking up by session_id.
             exp = next(
                 (e for e in self.experiences.values() if e.session_id == experience_id),
+                None,
+            )
+        if exp is None:
+            exp = next(
+                (
+                    e
+                    for e in self.experiences.values()
+                    if deterministic_session_experience_id(e.session_id) == experience_id
+                ),
                 None,
             )
         if exp is None:
@@ -344,7 +357,28 @@ class RejectingReframeMockRepo(MockExperienceRepo):
     def add_reframing_note(
         self, experience_id: UUID, note: ReframingNote
     ) -> ReframingNoteAppendResult:
-        if experience_id not in self.experiences:
+        # Mirror MockExperienceRepo.add_reframing_note resolution: accept
+        # the stored exp.id (legacy fixtures), the raw session id, or the
+        # HLE-58 deterministic uuid5. Reflection now passes
+        # ``exp.session_id`` per Devin #594 wave 3, so only the
+        # by-session-id branch matters in practice — but keep all three to
+        # match the parent behaviour exactly.
+        from atman.core.services.session_manager import deterministic_session_experience_id
+
+        exp = self.experiences.get(experience_id) or next(
+            (e for e in self.experiences.values() if e.session_id == experience_id),
+            None,
+        )
+        if exp is None:
+            exp = next(
+                (
+                    e
+                    for e in self.experiences.values()
+                    if deterministic_session_experience_id(e.session_id) == experience_id
+                ),
+                None,
+            )
+        if exp is None:
             return ReframingNoteAppendResult.EXPERIENCE_NOT_FOUND
         return ReframingNoteAppendResult.STORAGE_REJECTED
 
@@ -422,10 +456,15 @@ class StructuredOutputReflectionModel(MockReflectionModel):
 def create_test_experience(session_id: UUID | None = None) -> SessionExperience:
     """Create a test experience.
 
-    In v3 memory architecture ``experience.id == session.id`` — one virtual
-    experience per session — so the fixture mirrors that to keep the
-    ``SessionRepository``-backed reflection paths consistent.
+    HLE-58: ``experience.id`` is the deterministic uuid5 of ``session_id``
+    (the same id ``finish_session`` writes to StateStore and
+    ``build_session_experience`` produces in the reflection engine).
+    Using a different id would orphan
+    ``ReflectionEvent.experiences_analyzed`` references at audit time —
+    the very regression HLE-58 set out to prevent.
     """
+    from atman.core.services.session_manager import deterministic_session_experience_id
+
     if session_id is None:
         session_id = uuid4()
 
@@ -441,7 +480,7 @@ def create_test_experience(session_id: UUID | None = None) -> SessionExperience:
     )
 
     return SessionExperience(
-        id=session_id,
+        id=deterministic_session_experience_id(session_id),
         session_id=session_id,
         key_moment_ids=[km.id],
         avg_emotional_intensity=km.how_i_felt.emotional_intensity,

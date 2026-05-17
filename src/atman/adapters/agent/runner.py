@@ -1039,6 +1039,15 @@ class AtmanRunner:
                     if la is not None and hasattr(la, "clear_session_cache"):
                         la.clear_session_cache()
             if session_id is not None:
+                # HLE-56 (Devin #594): drain pending AffectDetector tasks
+                # while we're still on the event loop — the synchronous
+                # drain inside ``finish_session`` short-circuits when
+                # called on the loop thread (otherwise it deadlocks the
+                # very loop the affect tasks need to make progress). This
+                # is the path that actually catches late-firing affect
+                # hooks scheduled by the final ``record_event``.
+                with contextlib.suppress(Exception):
+                    await session_manager.drain_pending_affect_tasks(session_id)
                 # Defer any unhandled finish_session exception until after the
                 # session-end skills marker has been attempted. The invocation
                 # data the marker summarises is already durable in the store

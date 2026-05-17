@@ -359,3 +359,29 @@ class InMemoryStateStore(StateStore):
         sessions = [s for s in self._sessions.values() if s.agent_id == agent_id]
         sessions.sort(key=lambda s: ensure_utc(s.started_at), reverse=True)
         return [s.model_copy(deep=True) for s in sessions[:limit]]
+
+    def list_sessions_in_range(
+        self,
+        agent_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Session]:
+        """HLE-59: native ranged scan over in-memory sessions.
+
+        Avoids the legacy ``list_recent_sessions(limit=N)`` cap that the
+        reflection engine used to fall back to client-side. Inclusive on
+        both bounds to match the prior repository semantics. Normalises
+        ``s.started_at`` via :func:`ensure_utc` so direct-API or test code
+        that inserts a Session with a naive ``started_at`` doesn't trip a
+        ``TypeError`` against UTC-aware bounds.
+        """
+        sessions = [
+            s
+            for s in self._sessions.values()
+            if s.agent_id == agent_id and start <= ensure_utc(s.started_at) <= end
+        ]
+        # Same normalisation in the sort key — mixing naive and aware
+        # timestamps here would raise ``TypeError`` even if the filter
+        # succeeded.
+        sessions.sort(key=lambda s: ensure_utc(s.started_at), reverse=True)
+        return [s.model_copy(deep=True) for s in sessions]

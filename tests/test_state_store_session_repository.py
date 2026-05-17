@@ -118,6 +118,15 @@ def test_get_sessions_in_range_three_arg_explicit_agent_id() -> None:
 
 
 def test_get_sessions_in_range_normalizes_legacy_naive_session_timestamps() -> None:
+    """HLE-59 regression (Devin #594): legacy rows with naive ``started_at``
+    must coexist with current UTC-aware rows in the range filter — without
+    ``ensure_utc`` normalisation the comparison raises ``TypeError``.
+
+    Note: the saturation-warning regression test that lived on main was
+    removed when ``list_sessions_in_range`` graduated from a client-side
+    capped filter to a native port method (HLE-59) — the cap and its
+    warning no longer exist on the read path.
+    """
     store = InMemoryStateStore()
     agent = uuid4()
     start = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
@@ -136,28 +145,6 @@ def test_get_sessions_in_range_normalizes_legacy_naive_session_timestamps() -> N
     result = repo.get_sessions_in_range(start, end)
 
     assert {s.id for s in result} == {legacy_naive.id, current_aware.id}
-
-
-def test_get_sessions_in_range_warns_when_fetch_cap_saturates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = InMemoryStateStore()
-    agent = uuid4()
-    session = Session(agent_id=agent, started_at=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC))
-    store.create_session(session)
-    monkeypatch.setattr(
-        "atman.adapters.reflection.state_store_session_repository._SESSION_RANGE_FETCH_CAP",
-        1,
-    )
-
-    repo = StateStoreSessionRepository(store, agent_id=agent)
-    with pytest.warns(RuntimeWarning, match="client-side fetch cap"):
-        result = repo.get_sessions_in_range(
-            datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
-            datetime(2026, 5, 2, 0, 0, 0, tzinfo=UTC),
-        )
-
-    assert [s.id for s in result] == [session.id]
 
 
 def test_get_key_moments_for_session() -> None:

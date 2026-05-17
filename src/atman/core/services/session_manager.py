@@ -18,6 +18,7 @@ Critical design principle:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import threading
@@ -148,6 +149,11 @@ class SessionManager:
         self._lock = threading.Lock()
         self._workspace = workspace
         self._post_write_scheduler = post_write_scheduler
+        # HLE-56: pending fire-and-forget AffectDetector tasks per session.
+        # ``finish_session`` drains these before flipping ``is_finished`` so
+        # that key moments produced by the affect hook are not silently
+        # dropped by ``append_key_moment``'s SessionAlreadyFinishedError.
+        self._pending_affect_tasks: dict[UUID, list[asyncio.Task[None]]] = {}
 
         self._affect: AffectPort | None = affect
         if self._affect is None and affect_workspace is not None and affect_config is not None:
@@ -565,6 +571,23 @@ class SessionManager:
                         restart_reason="",
                     )
                     experience_record = ExperienceRecord(experience=experience)
+                    # HLE-57: persist the session→moments mapping so
+                    # ``get_key_moments_for_session`` returns these moments to
+                    # downstream Daily/Deep reflection. Without this call the
+                    # recovered session is silently skipped by the reflection
+                    # engine and the agent loses that history forever.
+                    #
+                    # Order matters (Devin #594 follow-up): call
+                    # ``store_key_moments`` BEFORE ``create_experience``. If
+                    # the moment-mapping write fails, no experience exists and
+                    # the next recovery pass will retry the whole branch.
+                    # Doing it the other way around would leave an orphan
+                    # experience that ``_recover_orphaned_sessions`` would
+                    # short-circuit on (line ~511, "existing_exp is not None"),
+                    # so the moments mapping would never be written. The
+                    # ``store_key_moments`` adapter contract is idempotent —
+                    # repeating it on retry is safe.
+                    self._state_store.store_key_moments(session_id, loaded_moments)
                     self._state_store.create_experience(experience_record)
                     _LOG.info(
                         "Recovered orphaned session %s with %d key moments (%d loaded from storage)",
@@ -726,10 +749,16 @@ class SessionManager:
     def _schedule_affect_processing(self, session_id: UUID, event: SessionEvent) -> None:
         """Schedule :class:`AffectDetector` after ``record_event``.
 
-        With a running asyncio loop this is fire-and-forget via ``create_task``.
-        Without a loop, ``asyncio.run`` executes the detector synchronously on this
-        thread (blocking until scoring finishes) — avoid configuring affect for
-        latency-sensitive synchronous ``record_event`` callers without an event loop.
+        With a running asyncio loop the task is created and tracked per session
+        so that :meth:`finish_session` can drain it before flipping
+        ``is_finished`` (HLE-56) — without the drain, late-firing affect tasks
+        race ``finish_session`` and their key moments are dropped by
+        ``append_key_moment``'s ``SessionAlreadyFinishedError``.
+
+        Without a loop, ``asyncio.run`` executes the detector synchronously on
+        this thread (blocking until scoring finishes) — avoid configuring
+        affect for latency-sensitive synchronous ``record_event`` callers
+        without an event loop.
         """
         det = self._affect
         if det is None:
@@ -745,7 +774,21 @@ class SessionManager:
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_run())  # noqa: RUF006 — fire-and-forget affect hook
+            task = loop.create_task(_run())
+            with self._lock:
+                self._pending_affect_tasks.setdefault(session_id, []).append(task)
+
+            def _discard(t: asyncio.Task[None]) -> None:
+                with self._lock:
+                    bucket = self._pending_affect_tasks.get(session_id)
+                    if bucket is None:
+                        return
+                    with contextlib.suppress(ValueError):
+                        bucket.remove(t)
+                    if not bucket:
+                        self._pending_affect_tasks.pop(session_id, None)
+
+            task.add_done_callback(_discard)
         except RuntimeError:
             try:
                 asyncio.run(_run())
@@ -754,6 +797,100 @@ class SessionManager:
                     "AffectDetector could not be scheduled (no usable event loop); session_id=%s",
                     session_id,
                 )
+
+    _AFFECT_DRAIN_TIMEOUT_S = 5.0
+
+    async def drain_pending_affect_tasks(self, session_id: UUID) -> None:
+        """Async drain — call from :func:`async def` runners BEFORE ``finish_session``.
+
+        HLE-56 (Devin #594): the synchronous drain that runs from inside
+        ``finish_session`` cannot ``await`` and therefore busy-polls. When
+        ``finish_session`` is invoked on the same event-loop thread that
+        owns the affect tasks (the realistic case in
+        ``runner.py::async def chat``), the busy-poll deadlocks the loop —
+        the very tasks it is waiting on can never run because their loop is
+        blocked. The sync path detects this and short-circuits with a
+        warning; runners get an effective drain by ``await``-ing this
+        coroutine before calling ``finish_session``.
+
+        Times out after ``_AFFECT_DRAIN_TIMEOUT_S`` seconds — affect is a
+        best-effort observer, never a blocker for session finalization.
+        """
+        with self._lock:
+            tasks = list(self._pending_affect_tasks.get(session_id, ()))
+        if not tasks:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=self._AFFECT_DRAIN_TIMEOUT_S,
+            )
+        except TimeoutError:
+            pending = sum(1 for t in tasks if not t.done())
+            _LOG.warning(
+                "AffectDetector async drain timed out for session %s; %d task(s) "
+                "still pending — affect-derived key moments from those tasks "
+                "may be dropped.",
+                session_id,
+                pending,
+            )
+
+    def _drain_pending_affect_tasks(self, session_id: UUID) -> None:
+        """Synchronous drain invoked from :meth:`finish_session`.
+
+        Only effective when ``finish_session`` is called from a thread that
+        does **not** own the loop the affect tasks were scheduled on — in
+        that case ``task.done()`` flips as the loop on the other thread runs
+        the coroutines, and a brief poll suffices.
+
+        When the caller is on the same thread as the running loop (HLE-56
+        / Devin #594: the realistic async runner case), busy-polling here
+        would deadlock the loop. Detect that situation and short-circuit
+        with a debug log — async callers that need an effective drain must
+        ``await drain_pending_affect_tasks`` before calling
+        ``finish_session``.
+
+        When ``_schedule_affect_processing`` ran via ``asyncio.run`` (no
+        loop on the caller's thread, sync execution) there are no tracked
+        tasks and this method is a no-op.
+        """
+        import time as _time
+
+        with self._lock:
+            tasks = list(self._pending_affect_tasks.get(session_id, ()))
+        if not tasks:
+            return
+
+        # If we're on a thread that already owns a running loop, blocking
+        # synchronously would deadlock the very loop those tasks need to
+        # progress. Skip; async callers can use ``drain_pending_affect_tasks``.
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is not None:
+            _LOG.debug(
+                "Skipping synchronous affect drain for session %s — caller is "
+                "on the event loop thread (use ``await "
+                "drain_pending_affect_tasks(...)`` before finish_session for "
+                "an effective drain).",
+                session_id,
+            )
+            return
+
+        deadline = _time.monotonic() + self._AFFECT_DRAIN_TIMEOUT_S
+        while not all(t.done() for t in tasks):
+            if _time.monotonic() >= deadline:
+                pending = sum(1 for t in tasks if not t.done())
+                _LOG.warning(
+                    "AffectDetector drain timed out for session %s; %d task(s) "
+                    "still pending — affect-derived key moments from those "
+                    "tasks may be dropped.",
+                    session_id,
+                    pending,
+                )
+                return
+            _time.sleep(0.01)
 
     def append_key_moment(self, session_id: UUID, moment: KeyMoment) -> None:
         """
@@ -959,6 +1096,13 @@ class SessionManager:
             SessionAlreadyFinishedError: If session was already finished
             ValueError: If session has no key moments, tone out of range, or alignment contract
         """
+        # HLE-56: drain pending AffectDetector tasks BEFORE acquiring the
+        # session lock so late-firing affect hooks can still call
+        # ``append_key_moment`` (which itself takes the same lock). Without
+        # the drain, affect tasks racing ``finish_session`` would see
+        # ``is_finished=True`` and raise ``SessionAlreadyFinishedError`` that
+        # the fire-and-forget wrapper swallows — silently losing key moments.
+        self._drain_pending_affect_tasks(session_id)
         with self._lock:
             session_result = self._active_sessions.get(session_id)
             if session_result is None:
@@ -1142,6 +1286,7 @@ class SessionManager:
         with self._lock:
             self._active_sessions.pop(session_id, None)
             journal_lock = self._journal_locks.pop(session_id, None)
+            self._pending_affect_tasks.pop(session_id, None)
 
         # Delete journal after successful persistence
         if session_result.identity_id is not None:
