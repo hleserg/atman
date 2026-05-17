@@ -127,6 +127,27 @@ async def test_detector_swallows_store_write_errors(tmp_path: Path) -> None:
     )
 
 
+def test_factory_falls_back_to_noop_when_gliner_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ATMAN_LINGUISTIC_ENABLED=true but no gliner / transformers installed →
+    factory must fall back to NoOpLinguisticAnalyzer rather than crash."""
+    from atman.adapters.agent.factory import build_deps
+    from atman.adapters.linguistic.noop_adapter import NoOpLinguisticAnalyzer
+
+    monkeypatch.setenv("ATMAN_LINGUISTIC_ENABLED", "true")
+    # Force the GLiNER constructor path to throw — exercises the except branch.
+    import atman.adapters.linguistic.gliner_minilm_adapter as gliner_mod
+
+    monkeypatch.setattr(gliner_mod, "_GLINER_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(gliner_mod, "_TRANSFORMERS_AVAILABLE", False, raising=False)
+
+    _deps, session_manager, _store = build_deps(tmp_path, uuid4())
+    affect = session_manager.affect_detector
+    assert affect is not None
+    assert isinstance(affect._linguistic_analyzer, NoOpLinguisticAnalyzer)  # type: ignore[attr-defined]
+
+
 def test_factory_wires_divergence_pipeline_through_session_manager(tmp_path: Path) -> None:
     """build_deps should hand a DivergenceDetector + event store to AffectDetector
     via SessionManager so factory consumers don't need to construct the chain."""
