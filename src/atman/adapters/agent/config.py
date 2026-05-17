@@ -85,7 +85,7 @@ class AgentConfig(BaseModel):
     context_tail_messages: int = Field(
         default=10,
         gt=0,
-        description="Number of recent messages to retain in context window",
+        description="Number of recent conversation exchanges to retain in context window on restart (one exchange = one user message + one assistant reply; total messages = value × 2)",
     )
     session_timeout_minutes: int = Field(
         default=7,

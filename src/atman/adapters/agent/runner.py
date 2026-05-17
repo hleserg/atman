@@ -1085,7 +1085,7 @@ class AtmanRunner:
             print_plain("  reflect - Run micro reflection on this session")
         print_plain("  wait <minutes> - Reset timer and continue")
         print_plain("  sleep - Close session and exit")
-        print_plain("  save_to_memory <content> - Save to factual memory")
+        print_plain("  save_to_memory <content> - Save to factual memory (not yet implemented)")
         if self._config.enable_free_time:
             print_plain("  free_time - Enter free time mode")
         print_plain("")
