@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from atman.affect.models import AgentMemoryReport
     from atman.core.models.experience import KeyMoment
 
 
@@ -39,6 +40,20 @@ class AffectPort(Protocol):
         session_id: UUID | None = None,
     ) -> Any:
         """Analyse one message; optionally side-effect a KeyMoment append."""
+        ...
+
+    async def submit_self_report(
+        self,
+        report: AgentMemoryReport,
+        *,
+        session_id: UUID | None = None,
+    ) -> Any:
+        """Record an agent-originated memory; optionally append a KeyMoment.
+
+        Used by tools that let the lower agent declare a notable moment
+        from its own perspective (rather than waiting for the detector to
+        surface one from the message stream).
+        """
         ...
 
 
