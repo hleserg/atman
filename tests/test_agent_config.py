@@ -48,7 +48,7 @@ class TestAtmanDeps:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore
                 narrative_revision=narrative_revision,
@@ -79,7 +79,7 @@ class TestAtmanDeps:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore
                 narrative_revision=narrative_revision,
@@ -106,7 +106,7 @@ class TestAtmanDeps:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore
                 narrative_revision=narrative_revision,
@@ -143,7 +143,7 @@ class TestAtmanDeps:
             config=config,
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,

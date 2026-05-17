@@ -1,5 +1,5 @@
 """
-Tests for agent tools (record_key_moment, log_experience).
+Tests for agent tools (record_key_moment, restart_session, wait_session).
 
 Covers:
 - Recording key moments during active session
@@ -17,7 +17,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RunUsage
 
-from atman.adapters.agent import log_experience, record_key_moment, restart_session, wait_session
+from atman.adapters.agent import record_key_moment, restart_session, wait_session
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
 from atman.adapters.storage import InMemoryExperienceStore, InMemoryStateStore
@@ -93,7 +93,6 @@ def _create_deps_with_session(agent_id: UUID) -> tuple[AtmanDeps, UUID]:
     deps = AtmanDeps(
         session_manager=session_manager,
         identity_service=identity_service,
-        experience_service=experience_service,
         micro_reflection=MicroReflectionService(
             session_repo=experience_service,  # type: ignore[arg-type]
             narrative_revision=narrative_revision,
@@ -163,7 +162,7 @@ class TestRecordKeyMoment:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,
@@ -266,26 +265,6 @@ class TestRecordKeyMoment:
         assert "invalid depth" in result
 
 
-class TestLogExperience:
-    """Tests for log_experience tool."""
-
-    def test_log_experience_redirects_to_record(self):
-        """Test that log_experience suggests using record_key_moment."""
-        agent_id = uuid4()
-        deps, _ = _create_deps_with_session(agent_id)
-
-        ctx = _make_run_context(deps)
-
-        result = log_experience(
-            ctx,
-            description="An experience happened",
-            key_insight="Learned something",
-        )
-
-        assert "automatically at session end" in result
-        assert "record_key_moment" in result
-
-
 class TestRestartSession:
     """Tests for restart_session tool."""
 
@@ -331,7 +310,7 @@ class TestRestartSession:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,
@@ -409,7 +388,7 @@ class TestWaitSession:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-            experience_service=experience_service,
+
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,

@@ -4,7 +4,6 @@ AtmanDeps - typed dependency container for Atman agent.
 This module provides the dependency injection container that holds:
 - SessionManager for session lifecycle
 - IdentityService for identity management
-- ExperienceService for experience storage
 - MicroReflectionService for after-session reflection
 - StateStore for all persistence
 
@@ -31,7 +30,6 @@ if TYPE_CHECKING:
     from atman.core.ports.reflection_request_queue import ReflectionRequestQueue
     from atman.core.ports.state_store import StateStore
     from atman.core.services.ambient_memory_service import AmbientMemoryService
-    from atman.core.services.experience_service import ExperienceService
     from atman.core.services.identity_service import IdentityService
     from atman.core.services.maintenance_worker import MaintenanceWorker
     from atman.core.services.passive_memory_injector import PassiveMemoryInjector
@@ -49,7 +47,6 @@ class AtmanDeps:
     This container holds all services and state needed by the agent:
     - SessionManager for session lifecycle
     - IdentityService for identity operations
-    - ExperienceService for experience storage
     - MicroReflectionService for after-session reflection
     - StateStore for direct state access when needed
 
@@ -60,7 +57,6 @@ class AtmanDeps:
 
     session_manager: SessionManager
     identity_service: IdentityService
-    experience_service: ExperienceService
     micro_reflection: MicroReflectionService
     state_store: StateStore
 
@@ -165,7 +161,6 @@ class AtmanDeps:
         config: AgentConfig,
         session_manager: SessionManager,
         identity_service: IdentityService,
-        experience_service: ExperienceService,
         micro_reflection: MicroReflectionService,
         state_store: StateStore,
         agent_id: UUID,
@@ -195,7 +190,6 @@ class AtmanDeps:
         return cls(
             session_manager=session_manager,
             identity_service=identity_service,
-            experience_service=experience_service,
             micro_reflection=micro_reflection,
             state_store=state_store,
             agent_id=agent_id,

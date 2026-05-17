@@ -2,7 +2,7 @@
 Factory for assembling AtmanDeps from a workspace path.
 
 Wires together FileStateStore, SessionManager+AffectDetector,
-IdentityService, ExperienceService, MicroReflectionService.
+IdentityService, MicroReflectionService.
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ from atman.core.models.reflection import (
 )
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.ports.reflection import NarrativeRepository, ReflectionModel
-from atman.core.services.experience_service import ExperienceService
 from atman.core.services.identity_service import IdentityService
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.narrative_service import NarrativeService
@@ -382,7 +381,6 @@ def build_deps(
         config=config,
         session_manager=session_manager,
         identity_service=identity_service,
-        experience_service=ExperienceService(state_store),
         micro_reflection=micro_reflection,
         state_store=state_store,
         agent_id=agent_id,

@@ -687,7 +687,6 @@ class AtmanRunner:
         from atman.adapters.agent.instructions import build_instructions
         from atman.adapters.agent.pending_reviews_context import format_pending_reviews_block
         from atman.adapters.agent.tools import (
-            log_experience,
             record_key_moment,
             request_reflection,
             resolve_pending_review,
@@ -732,9 +731,9 @@ class AtmanRunner:
             deps = replace(deps, session_id=session_id)
 
             if self._config.enable_key_moments:
-                tool_funcs = (record_key_moment, log_experience, restart_session, wait_session)
+                tool_funcs = (record_key_moment, restart_session, wait_session)
             else:
-                tool_funcs = (log_experience, restart_session, wait_session)
+                tool_funcs = (restart_session, wait_session)
 
             if deps.pending_review_inbox is not None:
                 tool_funcs = (*tool_funcs, resolve_pending_review)
@@ -1255,13 +1254,13 @@ class AtmanRunner:
             "continue" to return to menu/main loop, "exit" to close session
         """
         from atman.adapters.agent.instructions import build_instructions
-        from atman.adapters.agent.tools import log_experience, record_key_moment
+        from atman.adapters.agent.tools import record_key_moment
         from atman.term import print_err, print_info, print_plain, print_prompt
 
         if self._config.enable_key_moments:
-            tool_funcs = (record_key_moment, log_experience)
+            tool_funcs = (record_key_moment,)
         else:
-            tool_funcs = (log_experience,)
+            tool_funcs = ()
 
         agent = Agent(
             self._config.model.model,

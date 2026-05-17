@@ -148,35 +148,6 @@ async def record_key_moment(
         return f"Error recording key moment: {e!s}"
 
 
-def log_experience(
-    ctx: RunContext[AtmanDeps],
-    description: str,
-    key_insight: str = "",
-) -> str:
-    """
-    Log an experience directly to the experience store.
-
-    Args:
-        ctx: Run context with AtmanDeps
-        description: Description of the experience
-        key_insight: Main insight from this experience
-
-    Returns:
-        Confirmation message
-
-    This is typically called automatically at session end,
-    but can be used manually for out-of-band experiences.
-    """
-    # This is a simplified version - normally SessionManager handles this
-    # via finish_session which creates a complete SessionExperience
-    _ = ctx, key_insight  # currently unused; reserved for future direct-log path
-    summary = description if len(description) <= 30 else f"{description[:30]}..."
-    return (
-        "Experience logging is handled automatically at session end. "
-        f"Use record_key_moment (AffectDetector-backed) to capture significant moments: {summary}"
-    )
-
-
 def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:
     """
     Request immediate session restart.
