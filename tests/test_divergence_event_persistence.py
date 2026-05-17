@@ -117,7 +117,7 @@ async def test_detector_swallows_store_write_errors(tmp_path: Path) -> None:
         append_moment=lambda _sid, _km: None,
         linguistic_analyzer=_StubAnalyzer(divergence_signals=["entity_gap_observed"]),
         divergence_detector=DivergenceDetector(uuid4()),
-        divergence_event_store=_Boom(),
+        divergence_event_store=_Boom(),  # type: ignore[arg-type]
     )
     # If the wiring crashed callers, this would raise.
     await det.process(
