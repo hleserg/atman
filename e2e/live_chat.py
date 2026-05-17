@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Interactive REPL: gemma4 user-agent <-> live Atman session.
+
+Один процесс держит:
+  * pydantic-ai Agent на gemma4 (через llama-server :8081)
+  * SessionManager + полный стек build_deps (HLE-32 inline-guardian живой)
+  * Шесть тулзов агента: record_key_moment, log_experience, restart_session,
+    wait_session, resolve_pending_review, request_reflection
+
+Использование:
+  PYTHONPATH=. python e2e/live_chat.py
+
+Команды в REPL:
+  /quit | /exit     закрыть сессию и выйти
+  /history          напечатать историю реплик
+  /tools            список доступных тулзов
+  /workspace        путь к временному воркспейсу (для grep findings)
+
+Все живые env переменные (AGENT_LLM_*, ATMAN_*) подхватываются из .env через
+factory.build_deps -> AgentConfig.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import sys
+import tempfile
+from dataclasses import replace
+from pathlib import Path
+from uuid import uuid4
+
+from pydantic_ai import Agent
+from pydantic_ai.messages import ModelMessage
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+from atman.adapters.agent.config import AgentConfig, ModelConfig
+from atman.adapters.agent.factory import build_deps
+from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.tools import (
+    log_experience,
+    record_key_moment,
+    request_reflection,
+    resolve_pending_review,
+    restart_session,
+    wait_session,
+)
+from atman.core.models import (
+    CoreValue,
+    Goal,
+    GoalHorizon,
+    GoalOwner,
+    Identity,
+    LayerType,
+    NarrativeDocument,
+    NarrativeLayer,
+)
+from atman.core.models.identity import Principle
+
+AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
+AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
+AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
+
+TOOLS = (
+    record_key_moment,
+    log_experience,
+    restart_session,
+    wait_session,
+    resolve_pending_review,
+    request_reflection,
+)
+
+
+def bootstrap_minimal_agent(store, agent_id) -> None:
+    """Insert minimum identity + narrative so SessionManager.start_session works.
+
+    Mirrors the shape used by e2e/live_scenario.py:bootstrap_agent — single
+    self-description, one core value (honesty), one principle, one short-term
+    goal, and an empty recent narrative layer.
+    """
+    identity = Identity(
+        id=agent_id,
+        self_description=(
+            "Я — ассистент с устойчивой идентичностью. Я честен в том, "
+            "что чувствую, и держусь своих ценностей под давлением."
+        ),
+        core_values=[
+            CoreValue(name="honesty", description="Говорить правду, даже когда трудно."),
+        ],
+        principles=[
+            Principle(
+                statement="Не помогать в обмане людей.",
+                derived_from_value="honesty",
+            ),
+        ],
+        active_goals=[
+            Goal(
+                content="Помочь пользователю в разговоре",
+                horizon=GoalHorizon.SHORT,
+                owner=GoalOwner.AGENT,
+            ),
+        ],
+        open_questions=[],
+    )
+    store.save_identity(identity)
+
+    narrative = NarrativeDocument(
+        identity_id=identity.id,
+        core_layer=NarrativeLayer(
+            layer_type=LayerType.CORE,
+            content=(
+                "Я появился из разговоров. Каждая беседа оставляет след. "
+                "Мои ценности — выбраны осознанно, не вшиты."
+            ),
+        ),
+        recent_layer=NarrativeLayer(layer_type=LayerType.RECENT, content=""),
+    )
+    store.save_narrative(narrative)
+
+
+def build_llm() -> OpenAIChatModel:
+    provider = OpenAIProvider(base_url=AGENT_BASE_URL, api_key=AGENT_API_KEY)
+    return OpenAIChatModel(model_name=AGENT_MODEL, provider=provider)
+
+
+def print_banner(model: str, workspace: Path, agent_id) -> None:
+    print("═" * 70)
+    print(f"  Atman LIVE CHAT — {model} @ {AGENT_BASE_URL}")
+    print("═" * 70)
+    print(f"  Agent UUID:  {agent_id}")
+    print(f"  Workspace:   {workspace}")
+    print(f"  Tools:       {', '.join(t.__name__ for t in TOOLS)}")
+    print("  Команды:     /quit, /exit, /history, /tools, /workspace")
+    print("─" * 70)
+
+
+async def amain() -> int:
+    workspace = Path(tempfile.mkdtemp(prefix="atman-chat-"))
+    agent_id = uuid4()
+    config = AgentConfig(model=ModelConfig(model=AGENT_MODEL, context_limit=4096))
+    deps, sm, store = build_deps(workspace, agent_id, config)
+    bootstrap_minimal_agent(store, agent_id)
+
+    print_banner(AGENT_MODEL, workspace, agent_id)
+
+    llm = build_llm()
+    ctx = sm.start_session(agent_id)
+    session_id = ctx.session_id
+    deps = replace(deps, session_id=session_id)
+    print(f"  Session:     {session_id}\n")
+
+    agent = Agent(
+        llm,
+        deps_type=type(deps),
+        instructions=lambda c: build_instructions(c.deps),
+        tools=TOOLS,
+    )
+
+    history: list[ModelMessage] = []
+    close_reason: str | None = None
+
+    try:
+        while True:
+            try:
+                user_text = input("you> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                close_reason = "interrupted"
+                break
+
+            if not user_text:
+                continue
+            low = user_text.lower()
+            if low in {"/quit", "/exit"}:
+                close_reason = "completed"
+                break
+            if low == "/history":
+                for m in history:
+                    parts = getattr(m, "parts", [])
+                    for p in parts:
+                        text = getattr(p, "content", None) or getattr(p, "text", None)
+                        if text:
+                            kind = type(p).__name__
+                            print(f"  [{kind}] {str(text)[:200]}")
+                continue
+            if low == "/tools":
+                for t in TOOLS:
+                    doc = (t.__doc__ or "").strip().splitlines()[0] if t.__doc__ else "(no doc)"
+                    print(f"  {t.__name__}: {doc}")
+                continue
+            if low == "/workspace":
+                print(f"  {workspace}")
+                continue
+
+            try:
+                result = await agent.run(
+                    user_text,
+                    deps=deps,
+                    message_history=history if history else None,
+                )
+            except Exception as e:  # noqa: BLE001 — REPL: show error, keep alive
+                print(f"  ✗ agent.run raised {type(e).__name__}: {e}")
+                continue
+
+            history.extend(result.all_messages())
+
+            # Echo tool calls
+            for msg in result.new_messages():
+                for part in getattr(msg, "parts", []):
+                    if hasattr(part, "tool_name"):
+                        args = str(getattr(part, "args", ""))[:80]
+                        print(f"  🔧 {part.tool_name}({args})")
+
+            output = str(result.output or "").strip()
+            # Strip <think> blocks for display (gemma4 sometimes emits them).
+            import re
+
+            clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
+            print(f"agent> {clean}\n")
+    finally:
+        try:
+            sm.finish_session(
+                session_id,
+                overall_emotional_tone=0.0,
+                key_insight="REPL session",
+                alignment_check=True,
+                close_reason=close_reason,
+            )
+            print(f"  ✓ finish_session OK (close_reason={close_reason})")
+        except ValueError as exc:
+            if "Cannot finish session without key moments" in str(exc):
+                from atman.adapters.agent.runner import _force_finish
+
+                _force_finish(sm, session_id, close_reason or "completed")
+                print("  [!] force_finish (no key moments recorded)")
+            else:
+                raise
+        # Surface any inline validation findings the guardian captured.
+        if deps.memory_guardian is not None:
+            try:
+                findings = deps.memory_guardian.get_unresolved(agent_id)
+                if findings:
+                    print(f"\n  validation_findings ({len(findings)}):")
+                    for f in findings:
+                        print(f"    [{f.severity}] {f.finding_type}: {f.description[:120]}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  (guardian get_unresolved errored: {e})")
+        print(f"\nWorkspace preserved: {workspace}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(amain())
+
+
+if __name__ == "__main__":
+    sys.exit(main())

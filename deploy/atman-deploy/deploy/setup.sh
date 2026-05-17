@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Atman — полный деплой
+# Atman — полный деплой (УСТАРЕВШАЯ ВЕРСИЯ, см. ./deploy/atman-setup.sh)
 #
-# Использование:
+# ВНИМАНИЕ (2026-05-17): этот скрипт упакован в atman-deploy.zip и НЕ
+# синхронизирован с актуальным контрактом Atman:
+#   * Ставит Ollama, которая больше не используется (Atman ходит в
+#     OpenAI-compat endpoint, по умолчанию llama-server :8081 с gemma4).
+#   * Применяет inline schema.sql вместо scripts/run_migrations.py.
+#   * Создаёт public.agents без serial_id/description (миграции упадут).
+# Для свежего деплоя используйте `deploy/atman-setup.sh` из корня репо,
+# либо актуализируйте этот файл отдельным PR.
+#
+# Использование (если всё-таки запускаете):
 #   bash setup.sh                  # авто-определение всего
 #   bash setup.sh --data-path /mnt/nvme/atman   # указать путь для данных
 #   bash setup.sh --skip-models    # не скачивать модели (позже вручную)
