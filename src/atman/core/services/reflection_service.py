@@ -802,7 +802,8 @@ class DeepReflectionService:
         if self._entity_relations_formulator is not None and self._agent_id is not None:
             try:
                 relation_outcome = self._entity_relations_formulator.run(self._agent_id)
-            except Exception:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("entity_relations_formulator failed (skipped): %s", exc)
                 relation_outcome = None
 
         notes = "outcome=deep_ok"
