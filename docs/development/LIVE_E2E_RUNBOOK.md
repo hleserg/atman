@@ -34,10 +34,16 @@
 ## Phase 2.1 — Smoke + cold-start для 5 native CPU моделей  ⏳
 
 - [x] `scripts/measure_native_models_cold_start.py` — per-model try/except, `--only` повторяемый, force CPU через `CUDA_VISIBLE_DEVICES=""`.
-- [x] **bge-m3**: `PASS setup=0.14s first=224.47s second=0.064s ΔRSS=2498 MB`.
-      Из ~224 с — ~220 с **download** 30 файлов с HF (модель ~2.3 GB). Warm-inference 64 мс — превосходно.
-- [ ] bge-reranker, gliner, minilm, mrebel — запущены в фоне; результаты заполнятся ниже после завершения.
-- [x] **Решение по warmup**: cold с downloads ~3–4 мин — для UX это много (первый ход REPL заблокирует на минуты). Pre-warm рекомендуется.
+
+| Модель | Статус | setup | first (cold+infer) | second (warm) | ΔRSS | Комментарий |
+|---|---|---|---|---|---|---|
+| `bge-m3` | PASS | 0.14 s | **224.47 s** | 0.064 s | 2498 MB | ~220 s — download 2.3 GB с HF |
+| `bge-reranker` | PASS (после фикса signature) | 2.54 s | 2.74 s | 0.003 s | 1212 MB | HF кэш частично уже тёплый после bge-m3 (общие токенайзеры). Warm — 3 мс. |
+| `gliner` | PASS | 0.11 s | 164.51 s | 0.046 s | 1584 MB | ~1 GB download |
+| `minilm` | PASS | 0.00 s | 21.75 s | 0.008 s | 117 MB | HF кэш был тёплый (модель уже скачана gliner-ом) — это load+infer без download |
+| `mrebel` | PASS (после фикса DetectedEntity) | 2.34 s | 1.06 s | 0.249 s | 805 MB | Cache warm (download был на предыдущем FAIL'е). Warm — 249 мс. |
+
+- [x] **Решение по warmup**: warm inference 8–64 мс — идеально. Cold-with-download ~3–4 мин блокирует первый ход REPL. Pre-warm рекомендуется.
       **TODO** (отдельный PR): `scripts/warmup_native_models.py` (тот же код без замеров) + Make-target `make warmup-models`. Опциональный шаг в `deploy/atman-setup.sh` step 5.
 
 ## Phase 2.2 — Postgres миграции 0001..0018  ✅

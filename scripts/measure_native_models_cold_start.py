@@ -105,7 +105,19 @@ def run_bge_reranker() -> Result:
         )
 
     def infer(a):  # type: ignore[no-untyped-def]
-        return a.rerank("test query", ["candidate one", "candidate two"])
+        from uuid import uuid4
+
+        from atman.core.ports.memory_reranker import SurfacedMemory
+
+        candidates = [
+            SurfacedMemory(
+                key_moment_id=uuid4(), text="candidate one", score=0.5, source="dense"
+            ),
+            SurfacedMemory(
+                key_moment_id=uuid4(), text="candidate two", score=0.4, source="dense"
+            ),
+        ]
+        return a.rerank("test query", candidates)
 
     return _bench("bge-reranker", build, infer)
 
@@ -156,11 +168,16 @@ def run_mrebel() -> Result:
         return MRebelRelationAdapter(model_name="Babelscape/mrebel-large", device="cpu")
 
     def infer(a):  # type: ignore[no-untyped-def]
-        from atman.core.models.linguistic import DetectedEntity
+        from atman.core.models.entity import EntityType
+        from atman.core.ports.linguistic import DetectedEntity
 
         ents = [
-            DetectedEntity(text="Alice", label="Person", start=0, end=5, confidence=0.99),
-            DetectedEntity(text="Bob", label="Person", start=10, end=13, confidence=0.99),
+            DetectedEntity(
+                text="Alice", entity_type=EntityType.person, confidence=0.99, span=(0, 5)
+            ),
+            DetectedEntity(
+                text="Bob", entity_type=EntityType.person, confidence=0.99, span=(10, 13)
+            ),
         ]
         return a.extract_relations("Alice met Bob in Paris.", ents)
 
