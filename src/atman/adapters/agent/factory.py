@@ -189,6 +189,33 @@ def build_deps(
     )
     _inline_validator = InlineValidator(_memory_guardian)
 
+    # HLE-33: AmbientMemoryService — entity-anchor parallel RAG. The
+    # ``EntityRegistry`` is constructed once at the composition root and
+    # exposed on ``AtmanDeps.entity_registry`` so write paths (live
+    # session, mREBEL post-write enrichment, future fact-ingest hooks)
+    # share the same instance with ``AmbientMemoryService.compose_injection``.
+    # Without that sharing the ambient pipeline reads from a brand-new
+    # empty registry and silently returns nothing — see Devin Review #600
+    # ANALYSIS for the trace.
+    #
+    # In the in-memory default build the registry starts empty. Real
+    # entity population requires either the Postgres adapters (which
+    # back it via ``agent_N.entities``) or an explicit ``resolve_or_create``
+    # call from the live user-message path. The service itself is
+    # already wired through ``AtmanDeps.ambient_memory`` and will pick
+    # up entities the moment they land in the shared registry.
+    from atman.adapters.memory.in_memory_entity_registry import (
+        InMemoryEntityRegistry as _AmbientRegistry,
+    )
+    from atman.core.services.ambient_memory_service import AmbientMemoryService as _Ambient
+
+    _entity_registry = _AmbientRegistry()
+    _ambient_memory = _Ambient(
+        linguistic_analyzer=_affect_linguistic,
+        entity_registry=_entity_registry,
+        state_store=state_store,
+    )
+
     # HLE-52: build the affect adapter here (composition root) and inject via
     # AffectPort so SessionManager never imports the concrete implementation.
     session_manager = SessionManager(
@@ -331,6 +358,8 @@ def build_deps(
         reflection_overload_monitor=_overload_monitor,
         overload_alert_inspect=_overload_sink_inmem,
         memory_guardian=_memory_guardian,
+        ambient_memory=_ambient_memory,
+        entity_registry=_entity_registry,
     )
 
     return deps, session_manager, state_store
