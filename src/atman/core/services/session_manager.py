@@ -739,7 +739,13 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in moment.fact_refs],
                 },
             )
-            self._schedule_post_write(moment, agent_id)
+            # NB: post-write enrichment is intentionally NOT scheduled here.
+            # Moments live only in `session_result.key_moments` until
+            # `finish_session` persists them to `state_store`. Scheduling now
+            # would race with the worker, which calls `state_store.get_key_moment`
+            # and would mark the job permanently `skipped` when the lookup
+            # returns None. See HLE-27 follow-up — the scheduler now fires
+            # from `finish_session` once the moments are durable.
 
     def append_key_moment_input(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """
@@ -789,7 +795,8 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
-            self._schedule_post_write(key_moment, agent_id)
+            # NB: post-write enrichment scheduling deferred to finish_session;
+            # see comment in append_key_moment for the race-condition rationale.
 
     def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
         """Fire-and-forget enqueue of post-write enrichment jobs.
@@ -992,6 +999,18 @@ class SessionManager:
 
                 # Also store session association for backward compatibility
                 self._state_store.store_key_moments(session_id, session_result.key_moments)
+
+                # HLE-27 follow-up (Devin Review #590): defer post-write
+                # enrichment scheduling until the moments actually exist in
+                # state_store. Scheduling from append_key_moment races against
+                # finish_session: the worker's get_key_moment(moment_id) call
+                # returned None and the deterministic run_key prevented retry.
+                # By scheduling here — right after create_key_moment +
+                # store_key_moments persisted everything — the worker's
+                # lookup is guaranteed to succeed.
+                if self._post_write_scheduler is not None and session_result.identity_id is not None:
+                    for moment in session_result.key_moments:
+                        self._schedule_post_write(moment, session_result.identity_id)
 
                 # Compute avg_emotional_intensity and has_profound_moment
                 avg_emotional_intensity = 0.5  # default

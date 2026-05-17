@@ -110,10 +110,15 @@ def build_deps(
         }
 
     # Maintenance queue + post-write scheduler (HLE-27): enqueue mREBEL +
-    # lingvo enrichment jobs after every KeyMoment write. The queue is the
-    # in-memory variant by default — sufficient for single-process dev runs;
-    # production Postgres deploys can swap it out via configuration without
-    # touching SessionManager.
+    # lingvo enrichment jobs after every KeyMoment write.
+    #
+    # The queue is the in-memory variant by default — sufficient for
+    # single-process dev runs. **Important:** nothing in build_deps spawns a
+    # MaintenanceWorker drain; the queue accumulates until an out-of-process
+    # consumer runs `python -m atman.cli_maintenance run --loop`. Production
+    # Postgres deploys swap the queue for `PostgresMaintenanceQueue` and run
+    # a long-lived worker pod against it. In CI / unit tests the queue is
+    # introspected directly — there's no orphan-worker requirement.
     from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
     from atman.core.services.post_write_scheduler import PostWriteScheduler
 

@@ -52,10 +52,25 @@ def _moment(text: str = "agent did the thing", why: str = "matters") -> KeyMomen
     )
 
 
-# ---------- HLE-27: SessionManager fires the scheduler on each write ----------
+# ---------- HLE-27: SessionManager fires the scheduler on finish_session ----------
+#
+# Enrichment scheduling intentionally deferred until finish_session: jobs need
+# the moments to be visible in state_store before the worker runs them, and
+# state_store.create_key_moment only happens at finish time. Scheduling earlier
+# would race the worker — see _schedule_post_write call sites for details.
 
 
-def test_session_manager_schedules_on_append_key_moment(tmp_path) -> None:
+def _finish(mgr: SessionManager, session_id: UUID) -> None:
+    mgr.finish_session(
+        session_id,
+        overall_emotional_tone=0.0,
+        key_insight="t",
+        alignment_check=True,
+        alignment_notes="",
+    )
+
+
+def test_session_manager_schedules_on_finish_after_persist(tmp_path) -> None:
     store = InMemoryStateStore()
     queue = InMemoryMaintenanceQueue()
     scheduler = PostWriteScheduler(queue)
@@ -66,16 +81,23 @@ def test_session_manager_schedules_on_append_key_moment(tmp_path) -> None:
     moment = _moment()
     mgr.append_key_moment(ctx.session_id, moment)
 
+    # No jobs yet — scheduling waits until the moment is durable in state_store.
+    assert queue.list_jobs(agent_id=agent_id) == []
+
+    _finish(mgr, ctx.session_id)
+
     jobs = queue.list_jobs(agent_id=agent_id)
     names = {j.job_name for j in jobs}
     assert JobName.mrebel_extract in names
     assert JobName.lingvo_enrich in names
     for j in jobs:
         assert j.payload["key_moment_id"] == str(moment.id)
+    # And the moment is actually retrievable for the worker now.
+    assert store.get_key_moment(moment.id) is not None
 
 
 def test_session_manager_swallow_scheduler_errors(tmp_path) -> None:
-    """A broken scheduler must not bring the message-write hot path down."""
+    """A broken scheduler must not bring the finish path down."""
 
     class _Boom:
         def schedule_for_key_moment(self, *_a, **_kw):
@@ -89,8 +111,11 @@ def test_session_manager_swallow_scheduler_errors(tmp_path) -> None:
     )
     agent_id = _bootstrap(store)
     ctx = mgr.start_session(agent_id)
-    mgr.append_key_moment(ctx.session_id, _moment())  # must not raise
-    assert mgr.get_active_session(ctx.session_id) is not None
+    mgr.append_key_moment(ctx.session_id, _moment())
+    # finish_session must complete despite the scheduler raising for every
+    # moment — the exception is swallowed inside _schedule_post_write.
+    _finish(mgr, ctx.session_id)
+    assert mgr.get_active_session(ctx.session_id) is None
 
 
 def test_session_manager_no_scheduler_is_noop(tmp_path) -> None:
@@ -99,7 +124,8 @@ def test_session_manager_no_scheduler_is_noop(tmp_path) -> None:
     mgr = SessionManager(store, workspace=tmp_path)
     agent_id = _bootstrap(store)
     ctx = mgr.start_session(agent_id)
-    mgr.append_key_moment(ctx.session_id, _moment())  # must not raise
+    mgr.append_key_moment(ctx.session_id, _moment())
+    _finish(mgr, ctx.session_id)
 
 
 # ---------- HLE-28: MaintenanceWorker dispatch handlers ----------
