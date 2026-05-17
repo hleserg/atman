@@ -1008,7 +1008,10 @@ class SessionManager:
                 # By scheduling here — right after create_key_moment +
                 # store_key_moments persisted everything — the worker's
                 # lookup is guaranteed to succeed.
-                if self._post_write_scheduler is not None and session_result.identity_id is not None:
+                if (
+                    self._post_write_scheduler is not None
+                    and session_result.identity_id is not None
+                ):
                     for moment in session_result.key_moments:
                         self._schedule_post_write(moment, session_result.identity_id)
 
