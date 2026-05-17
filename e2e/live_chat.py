@@ -23,9 +23,11 @@ factory.build_deps -> AgentConfig.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
+import warnings
 from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
@@ -34,6 +36,19 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+# Suppress noisy HF / transformers download warnings that clutter Rich panels.
+warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("FlagEmbedding").setLevel(logging.ERROR)
+logging.getLogger("gliner").setLevel(logging.ERROR)
+# Suppress XLMRoberta LOAD REPORT printed by gliner's model loader.
+logging.getLogger("spacy").setLevel(logging.ERROR)
+for _noisy in ("filelock", "urllib3", "requests", "tqdm"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
@@ -101,14 +116,11 @@ class AtmanConsole:
     def flush(self, title: str = "atman") -> None:
         if not self._events:
             return
-        lines = Text()
-        for i, (icon, label, value) in enumerate(self._events):
-            if i:
-                lines.append("\n")
-            lines.append(f"  {icon} ", style="")
-            lines.append(f"{label:<18}", style="cyan dim")
-            if value:
-                lines.append(value, style="white")
+        # Build markup string so Rich renders [dim], [cyan], etc. in values.
+        lines = "\n".join(
+            f"  {icon} [cyan dim]{label:<18}[/cyan dim]{value}"
+            for icon, label, value in self._events
+        )
         _rc.print(
             Panel(lines, title=f"[dim cyan]{title}[/dim cyan]",
                   border_style="steel_blue1 dim", padding=(0, 0)),
