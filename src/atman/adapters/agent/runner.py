@@ -1171,7 +1171,6 @@ class AtmanRunner:
                 fact = FactRecord(content=arg.strip(), source="user_command")
                 saved = deps.passive_memory_injector.factual_memory.add_fact(fact)
                 print_info(f"Saved to memory: {saved.id}")
-                retry_count += 1
                 continue
 
             elif cmd == "free_time":

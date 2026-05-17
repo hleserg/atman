@@ -207,6 +207,8 @@ class AffectDetector:
                 tag = f"linguistic:{sig}"
                 if tag not in tags:
                     tags.append(tag)
+            if TriggerReason.LINGUISTIC not in reasons:
+                reasons.append(TriggerReason.LINGUISTIC)
 
         if not cold:
             strong = sum(1 for k in METRIC_KEYS if abs(z.get(k, 0.0)) > self.config.sigma_threshold)
@@ -224,6 +226,8 @@ class AffectDetector:
             primary = TriggerReason.DIVERGENCE
         elif TriggerReason.ANOMALY in reasons:
             primary = TriggerReason.ANOMALY
+        elif TriggerReason.LINGUISTIC in reasons:
+            primary = TriggerReason.LINGUISTIC
         else:
             primary = TriggerReason.RANDOM_SAMPLE
         excerpt = clean_text.strip()[:500]
