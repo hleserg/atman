@@ -14,7 +14,7 @@ import pytest
 
 from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_state_store import InMemoryStateStore
-from atman.core.clock_impl import FrozenClock
+from atman.adapters.clock import FrozenClock
 from atman.core.models import (
     ActiveSessionSummary,
     CoreValue,

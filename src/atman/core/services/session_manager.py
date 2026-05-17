@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid5
 
-from atman.core.clock_impl import SystemClock
+# SystemClock lives in adapters/clock; imported lazily where the default is needed
+# so this Core module does not statically depend on a concrete implementation.
 from atman.core.exceptions import (
     SessionAlreadyFinishedError,
     SessionNotFoundError,
@@ -117,7 +118,11 @@ class SessionManager:
         """
         self._state_store = state_store
         self._max_active_sessions = max_active_sessions
-        self._clock = clock or SystemClock()
+        if clock is None:
+            from atman.adapters.clock import SystemClock
+
+            clock = SystemClock()
+        self._clock = clock
         self._active_sessions: dict[UUID, SessionResult] = {}
         self._journal_locks: dict[UUID, IO[str]] = {}
         self._lock = threading.Lock()

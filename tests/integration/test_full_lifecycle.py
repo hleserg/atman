@@ -31,7 +31,7 @@ from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryPatternStore,
     InMemoryReflectionEventStore,
 )
-from atman.core.clock_impl import FrozenClock
+from atman.adapters.clock import FrozenClock
 from atman.core.models import (
     EmotionalDepth,
     KeyMomentInput,

@@ -1,23 +1,15 @@
-"""Default and test clock implementations."""
+"""Core-level clock utilities (timezone normalisation).
+
+Concrete `ClockPort` implementations (`SystemClock`, `FrozenClock`) live in
+`atman.adapters.clock`. Core code depends on the `ClockPort` interface
+defined in `atman.core.ports.clock`; only this small `ensure_utc` helper
+remains here because it is a pure-function utility with no dependency on
+any clock source.
+"""
 
 from datetime import UTC, datetime
 
-
-class SystemClock:
-    """Wall-clock implementation (UTC)."""
-
-    def now(self) -> datetime:
-        return datetime.now(UTC)
-
-
-class FrozenClock:
-    """Fixed instant for deterministic tests."""
-
-    def __init__(self, frozen: datetime) -> None:
-        self._frozen = frozen if frozen.tzinfo is not None else frozen.replace(tzinfo=UTC)
-
-    def now(self) -> datetime:
-        return self._frozen
+__all__ = ["ensure_utc"]
 
 
 def ensure_utc(dt: datetime) -> datetime:

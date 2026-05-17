@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 from typing import ClassVar
 from uuid import UUID
 
-from atman.core.clock_impl import SystemClock
+# SystemClock lives in adapters/clock; imported lazily inside __init__ so
+# this Core module avoids a static dependency on a concrete adapter.
 from atman.core.exceptions import GovernanceRejectedError
 from atman.core.models.experience import KeyMoment, SessionExperience
 from atman.core.models.governance import GovernanceDecision
@@ -63,7 +64,11 @@ class NarrativeRevisionService:
         self.narrative_repo = narrative_repo
         self.reflection_model = reflection_model
         self._narrative_audit = narrative_audit
-        self._clock = clock or SystemClock()
+        if clock is None:
+            from atman.adapters.clock import SystemClock
+
+            clock = SystemClock()
+        self._clock = clock
         self._self_applied_change_store = self_applied_change_store
 
     def _commit_narrative(

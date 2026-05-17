@@ -21,7 +21,8 @@ from __future__ import annotations
 import contextlib
 from datetime import date, datetime, timedelta
 
-from atman.core.clock_impl import SystemClock
+# SystemClock lives in adapters/clock; imported lazily inside __init__ so
+# this Core module avoids a static dependency on a concrete adapter.
 from atman.core.models.reflection import ReflectionEvent, ReflectionLevel
 from atman.core.ports.clock import ClockPort
 from atman.core.ports.reflection import ReflectionEventStore
@@ -71,7 +72,11 @@ class ReflectionOverloadMonitor:
     ) -> None:
         self._store = event_store
         self._sink = alert_sink
-        self._clock = clock or SystemClock()
+        if clock is None:
+            from atman.adapters.clock import SystemClock
+
+            clock = SystemClock()
+        self._clock = clock
         self._daily_window_days = daily_window_days
         self._deep_window_days = deep_window_days
         self._daily_per_day_threshold = daily_per_day_threshold

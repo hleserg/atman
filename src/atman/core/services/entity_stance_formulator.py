@@ -40,7 +40,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
 
-from atman.core.clock_impl import SystemClock
+# SystemClock lives in adapters/clock; imported lazily inside __init__ so
+# this Core module avoids a static dependency on a concrete adapter.
 from atman.core.models.entity import Entity, EntityStance
 from atman.core.models.experience import KeyMoment
 from atman.core.ports.clock import ClockPort
@@ -117,7 +118,11 @@ class EntityStanceFormulator:
         self.entity_registry = entity_registry
         self.stance_store = stance_store
         self.reflection_model = reflection_model
-        self._clock = clock or SystemClock()
+        if clock is None:
+            from atman.adapters.clock import SystemClock
+
+            clock = SystemClock()
+        self._clock = clock
         self.min_moments = min_moments
         self.staleness_days = staleness_days
 

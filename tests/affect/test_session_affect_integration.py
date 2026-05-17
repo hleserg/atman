@@ -12,7 +12,7 @@ import pytest
 
 from atman.adapters.storage.in_memory_state_store import InMemoryStateStore
 from atman.affect.detector import AffectDetectorConfig
-from atman.core.clock_impl import FrozenClock
+from atman.adapters.clock import FrozenClock
 from atman.core.models import (
     CoreValue,
     EmotionalDepth,

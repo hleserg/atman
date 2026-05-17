@@ -37,7 +37,7 @@ from atman.adapters.storage.in_memory_reflection_store import (
     InMemoryPatternStore,
     InMemoryReflectionEventStore,
 )
-from atman.core.clock_impl import FrozenClock
+from atman.adapters.clock import FrozenClock
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.services import SessionManager
 from atman.core.services.narrative_revision import NarrativeRevisionService
