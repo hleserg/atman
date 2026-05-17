@@ -128,6 +128,45 @@ def build_deps(
     maintenance_queue = InMemoryMaintenanceQueue()
     post_write_scheduler = PostWriteScheduler(maintenance_queue)
 
+    # HLE-29: divergence pipeline. The detector turns LinguisticAnalysis into
+    # DivergenceEvent rows; the store persists them so R6 DivergenceAggregator
+    # (Daily reflection) can read populated history later.
+    #
+    # Analyzer selection (Devin Review ANALYSIS_0002, PR #592):
+    # * When the `linguistic` extra is installed AND ATMAN_LINGUISTIC_ENABLED=true,
+    #   instantiate the real GLiNER+MiniLM analyzer. It lazy-loads models on
+    #   first call so import is cheap.
+    # * Otherwise the NoOp analyzer keeps the pipeline alive but emits no
+    #   divergence signals — that is the correct dev-mode behaviour.
+    from atman.adapters.linguistic.noop_adapter import NoOpLinguisticAnalyzer
+    from atman.adapters.memory.in_memory_divergence_events import (
+        InMemoryDivergenceEventStore,
+    )
+    from atman.core.ports.linguistic import LinguisticAnalyzer as _LinguisticAnalyzer
+    from atman.core.services.divergence_detector import DivergenceDetector
+
+    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true"
+    _affect_linguistic: _LinguisticAnalyzer = NoOpLinguisticAnalyzer()
+    if _linguistic_enabled:
+        try:
+            from atman.adapters.linguistic.gliner_minilm_adapter import (  # type: ignore[import-not-found]
+                _GLINER_AVAILABLE,
+                _TRANSFORMERS_AVAILABLE,
+                GLiNERPlusMiniLMAdapter,
+            )
+
+            if _GLINER_AVAILABLE and _TRANSFORMERS_AVAILABLE:
+                _affect_linguistic = GLiNERPlusMiniLMAdapter()
+        except Exception:
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "Falling back to NoOpLinguisticAnalyzer — GLiNER+MiniLM adapter unavailable",
+                exc_info=True,
+            )
+    _divergence_detector = DivergenceDetector(agent_id)
+    _divergence_event_store = InMemoryDivergenceEventStore()
+
     # HLE-52: build the affect adapter here (composition root) and inject via
     # AffectPort so SessionManager never imports the concrete implementation.
     session_manager = SessionManager(
@@ -142,6 +181,9 @@ def build_deps(
                 _AffectDetectorConfig(),
                 workspace=workspace,
                 append_moment=session_manager.append_key_moment,
+                linguistic_analyzer=_affect_linguistic,
+                divergence_detector=_divergence_detector,
+                divergence_event_store=_divergence_event_store,
             )
         )
 
@@ -211,11 +253,42 @@ def build_deps(
         embedding_adapter=_embedding_adapter,
     )
 
+    # HLE-30: in-memory ReflectionEventStore shared with the overload monitor
+    # below. The factory only constructs MicroReflectionService — Daily and
+    # Deep services live in cli_reflection / cron and would need to point at
+    # the same event store for the monitor to actually see DAILY / DEEP rows
+    # (its only triggers). Production deploys use a single PostgreSQL-backed
+    # store shared by every reflection level; the in-memory store in
+    # build_deps is correct for unit tests and the Micro-only dev loop but
+    # will not fire DAILY / DEEP overload alerts on its own.
+    #
+    # The monitor is still exposed on AtmanDeps so cli_maintenance / cron
+    # entry points can swap the event store and reuse the same monitor /
+    # sinks / dispatch.
+    _reflection_event_store = InMemoryReflectionEventStore()
     micro_reflection = MicroReflectionService(
         session_repo=StateStoreSessionRepository(state_store, agent_id=agent_id),
         narrative_revision=narrative_revision,
-        event_store=InMemoryReflectionEventStore(),
+        event_store=_reflection_event_store,
         skill_manager=skill_manager,
+    )
+
+    from atman.adapters.observability.composite_overload_alert_sink import (
+        CompositeOverloadAlertSink,
+    )
+    from atman.adapters.observability.in_memory_overload_alert_sink import (
+        InMemoryOverloadAlertSink,
+    )
+    from atman.adapters.observability.logging_overload_alert_sink import (
+        LoggingOverloadAlertSink,
+    )
+    from atman.core.services.reflection_overload_monitor import ReflectionOverloadMonitor
+
+    _overload_sink_inmem = InMemoryOverloadAlertSink()
+    _overload_sink = CompositeOverloadAlertSink([_overload_sink_inmem, LoggingOverloadAlertSink()])
+    _overload_monitor = ReflectionOverloadMonitor(
+        event_store=_reflection_event_store,
+        alert_sink=_overload_sink,
     )
 
     deps = AtmanDeps.from_config(
@@ -231,6 +304,9 @@ def build_deps(
         reflection_request_queue=InMemoryReflectionRequestQueue(),
         passive_memory_injector=passive_memory_injector,
         skill_manager=skill_manager,
+        divergence_event_store=_divergence_event_store,
+        reflection_overload_monitor=_overload_monitor,
+        overload_alert_inspect=_overload_sink_inmem,
     )
 
     return deps, session_manager, state_store
