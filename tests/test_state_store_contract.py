@@ -695,12 +695,16 @@ def test_mark_moment_accessed_does_not_raise(store: StateStore) -> None:
 
 
 def test_update_moment_structured_markers_does_not_raise(store: StateStore) -> None:
-    """update_moment_structured_markers is a default no-op; must not raise."""
+    """Concrete KeyMoment stores must persist structured marker enrichment."""
     if isinstance(store, InMemoryExperienceStore | JsonlExperienceStore):
         pytest.skip("Store doesn't support KeyMoment operations")
     km = _make_moment()
     store.create_key_moment(km)
     store.update_moment_structured_markers(km.id, {"marker": "test"}, "v1")
+    refreshed = store.get_key_moment(km.id)
+    assert refreshed is not None
+    assert refreshed.structured_markers == {"marker": "test"}
+    assert refreshed.structured_markers_version == "v1"
 
 
 def test_find_moments_by_entity_default_returns_empty(store: StateStore) -> None:

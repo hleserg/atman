@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.maintenance_jobs (
                          'memory_guardian_scan',
                          'mrebel_extract',
                          'lingvo_enrich',
+                         'reflection_overload_check',
                          'entity_merge',
                          'other'
                      )),

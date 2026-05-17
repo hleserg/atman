@@ -3,12 +3,14 @@ and MaintenanceWorker dispatch for ``mrebel_extract`` / ``lingvo_enrich``."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
 from atman.adapters.memory.in_memory_entity_registry import InMemoryEntityRegistry
 from atman.adapters.memory.in_memory_entity_relation_store import InMemoryEntityRelationStore
+from atman.adapters.storage import FileStateStore
 from atman.adapters.storage.in_memory_state_store import InMemoryStateStore
 from atman.core.models.entity import Entity, EntityType
 from atman.core.models.experience import EmotionalDepth, FeltSense, KeyMoment
@@ -217,6 +219,59 @@ def test_worker_mrebel_writes_relations() -> None:
     assert any(j.job_name == JobName.mrebel_extract for j in jobs)
 
 
+def test_worker_mrebel_resolves_entities_by_detected_type() -> None:
+    agent = uuid4()
+    store = InMemoryStateStore()
+    moment = _moment("Apple announced Siri improvements")
+    store.store_key_moments(uuid4(), [moment])
+
+    registry = InMemoryEntityRegistry()
+    relation_store = InMemoryEntityRelationStore()
+    wrong_apple, _method = registry.resolve_or_create(agent, "Apple", EntityType.topic)
+    right_apple, _method = registry.resolve_or_create(agent, "Apple", EntityType.organization)
+    siri, _method = registry.resolve_or_create(agent, "Siri", EntityType.topic)
+
+    class _TypedExtractor(EntityRelationExtractor):
+        def extract_relations(
+            self, text: str, entities: list[DetectedEntity]
+        ) -> list[ExtractedRelation]:
+            return [
+                ExtractedRelation(
+                    subject=DetectedEntity(
+                        text="Apple",
+                        entity_type=EntityType.organization,
+                        confidence=0.9,
+                    ),
+                    object=DetectedEntity(
+                        text="Siri",
+                        entity_type=EntityType.topic,
+                        confidence=0.9,
+                    ),
+                    relation_type="announced",
+                    confidence=0.9,
+                    learned_by="mrebel",
+                )
+            ]
+
+    queue = InMemoryMaintenanceQueue()
+    worker = MaintenanceWorker(
+        queue,
+        state_store=store,
+        entity_relation_extractor=_TypedExtractor(),
+        entity_relation_store=relation_store,
+        entity_registry=registry,
+    )
+    _enqueue_moment_job(queue, JobName.mrebel_extract, agent, moment.id)
+
+    worker.run_once()
+
+    relations = relation_store.list_for_agent(agent)
+    assert len(relations) == 1
+    assert relations[0].from_entity_id == right_apple.id
+    assert relations[0].from_entity_id != wrong_apple.id
+    assert relations[0].to_entity_id == siri.id
+
+
 def test_worker_mrebel_skips_when_unconfigured() -> None:
     queue = InMemoryMaintenanceQueue()
     agent = uuid4()
@@ -245,6 +300,28 @@ def test_worker_lingvo_updates_structured_markers() -> None:
     assert refreshed is not None
     assert refreshed.structured_markers
     assert refreshed.structured_markers_version == "1.0"
+
+
+def test_worker_lingvo_persists_structured_markers_in_file_store(tmp_path: Path) -> None:
+    agent = uuid4()
+    session_id = uuid4()
+    store = FileStateStore(tmp_path)
+    moment = _moment("agent acted on a principle", "why it matters")
+    store.store_key_moments(session_id, [moment])
+
+    queue = InMemoryMaintenanceQueue()
+    worker = MaintenanceWorker(queue, state_store=store, linguistic_analyzer=_StubAnalyzer())
+    _enqueue_moment_job(queue, JobName.lingvo_enrich, agent, moment.id)
+
+    worker.run_once()
+
+    reopened = FileStateStore(tmp_path)
+    refreshed = reopened.get_key_moment(moment.id)
+    assert refreshed is not None
+    assert refreshed.structured_markers
+    assert refreshed.structured_markers_version == "1.0"
+    session_moment = reopened.get_key_moments_for_session(session_id)[0]
+    assert session_moment.structured_markers == refreshed.structured_markers
 
 
 def test_worker_lingvo_idempotent_when_markers_present() -> None:
