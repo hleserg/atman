@@ -457,10 +457,17 @@ class SkillManager:
         bumped = 0
         high_priority: list[str] = []
         for skill in pending:
+            # Track the priority value AFTER any bump this run so a skill that
+            # crosses the threshold this cycle is surfaced immediately rather
+            # than waiting for the next daily run (the local `skill` object is
+            # a stale snapshot — ``set_revision_needed`` only writes to the
+            # store).
+            effective_priority = skill.revision_priority
             if skill.sessions_since_use >= idle_threshold:
                 try:
                     self._store.set_revision_needed(skill.id, priority_bump=1)
                     bumped += 1
+                    effective_priority += 1
                 except Exception as exc:
                     _log.warning(
                         "process_daily_skills: priority bump failed for %s: %s",
@@ -470,7 +477,7 @@ class SkillManager:
             # Threshold for "operator must look at this" is intentionally
             # equal to a sustained-failure signal: priority defaults to 0,
             # a single failed cycle adds 1, repeated failures bring it to 3+.
-            if skill.revision_priority >= 3:
+            if effective_priority >= 3:
                 high_priority.append(skill.name)
 
         return DailySkillSummary(

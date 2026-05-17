@@ -272,6 +272,28 @@ def test_install_zip_rejects_invalid_archive(tmp_path: Path) -> None:
         )
 
 
+def test_install_zip_rejects_symlink_member(tmp_path: Path) -> None:
+    """Devin Review _0004: refuse symlink members so a malicious archive
+    cannot point shutil.copytree at a file outside the staging dir.
+    """
+    archive_path = tmp_path / "evil-symlink.zip"
+    # Hand-construct a zip with a symlink member. ZipInfo.external_attr
+    # encodes the unix file type in the upper 16 bits; 0xA000 is S_IFLNK.
+    with zipfile.ZipFile(archive_path, "w") as zf:
+        info = zipfile.ZipInfo("evil-link")
+        info.external_attr = (0xA1FF & 0xFFFF) << 16  # S_IFLNK | 0o777
+        zf.writestr(info, "/etc/passwd")
+        zf.writestr("SKILL.md", "name: ok\ndescription: ok\n")
+
+    with pytest.raises(SkillInstallError, match="non-regular zip member"):
+        install_external(
+            str(archive_path),
+            uuid4(),
+            store=InMemorySkillStore(),
+            agents_root=tmp_path / "agents",
+        )
+
+
 # ── HTTPS source ──────────────────────────────────────────────────────────
 
 

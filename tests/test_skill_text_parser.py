@@ -329,3 +329,67 @@ def test_inferred_invocation_is_frozen():
     )
     with pytest.raises(Exception):
         inv.confidence = 0.0  # type: ignore[misc]
+
+
+def test_keywords_cache_avoids_repeat_disk_reads(tmp_path, monkeypatch, agent_id, session_id):
+    """Devin Review _0003: per-parser mtime-keyed cache amortises SKILL.md reads."""
+    from atman.skills import text_parser as _tp
+
+    store = InMemorySkillStore()
+    skill = _make_skill_with_manifest(tmp_path, agent_id, "kw-skill", ["forecast"])
+    store.save_skill(skill)
+    parser = InvocationTextParser(store=store)
+
+    call_count = {"n": 0}
+    original = _tp._keywords_from_skill
+
+    def counting(s):
+        call_count["n"] += 1
+        return original(s)
+
+    monkeypatch.setattr(_tp, "_keywords_from_skill", counting)
+
+    # 3 successive parse() calls — manifest file is unchanged, so the
+    # cache should serve calls 2 and 3 without touching the YAML reader.
+    for _ in range(3):
+        parser.parse("Let me grab the forecast for tomorrow.", agent_id, session_id)
+    assert call_count["n"] == 1
+
+
+def test_keywords_cache_invalidates_on_manifest_mtime_change(
+    tmp_path, monkeypatch, agent_id, session_id
+):
+    """Cache invalidates when SKILL.md is rewritten (e.g. after a revise)."""
+    import os
+    import time as _time
+
+    from atman.skills import text_parser as _tp
+
+    store = InMemorySkillStore()
+    skill = _make_skill_with_manifest(tmp_path, agent_id, "kw-skill", ["forecast"])
+    store.save_skill(skill)
+    parser = InvocationTextParser(store=store)
+
+    call_count = {"n": 0}
+    original = _tp._keywords_from_skill
+
+    def counting(s):
+        call_count["n"] += 1
+        return original(s)
+
+    monkeypatch.setattr(_tp, "_keywords_from_skill", counting)
+
+    parser.parse("forecast please", agent_id, session_id)
+    assert call_count["n"] == 1
+
+    # Bump mtime forward — even if the body is identical the parser should
+    # re-read because the cache key changed.
+    stat = skill.manifest_path.stat()
+    new_mtime = stat.st_mtime + 5.0
+    os.utime(skill.manifest_path, (new_mtime, new_mtime))
+    # Give filesystems with coarse mtime granularity a chance to register
+    # the bump (no-op on most Linux filesystems but harmless).
+    _time.sleep(0.001)
+
+    parser.parse("forecast please", agent_id, session_id)
+    assert call_count["n"] == 2

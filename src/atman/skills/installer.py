@@ -263,11 +263,24 @@ def _extract_zip(archive: Path, staging: Path) -> Path:
     extracted.mkdir(exist_ok=True)
     try:
         with zipfile.ZipFile(archive) as zf:
-            # Defend against zip-slip: refuse absolute / parent-escape members.
-            for member in zf.namelist():
-                norm = Path(member)
+            # Defend against zip-slip + symlink escape. ``zipfile`` does not
+            # restrict the targets of zip-stored symlinks, so a malicious
+            # archive could plant a symlink that ``shutil.copytree`` (which
+            # follows symlinks by default) then dereferences during the
+            # copy into the agent's skill directory.
+            for info in zf.infolist():
+                norm = Path(info.filename)
                 if norm.is_absolute() or ".." in norm.parts:
-                    raise SkillInstallError(f"Refusing unsafe zip member: {member}")
+                    raise SkillInstallError(f"Refusing unsafe zip member: {info.filename}")
+                # Symlink/hardlink/device members carry a non-zero file type
+                # in the external attr's upper 16 bits. 0xA000 is S_IFLNK
+                # (symlink). Refuse everything that isn't a regular file or
+                # directory.
+                file_type = (info.external_attr >> 16) & 0xF000
+                if file_type and file_type not in (0x8000, 0x4000):  # regular | directory
+                    raise SkillInstallError(
+                        f"Refusing non-regular zip member: {info.filename} (type={file_type:#x})"
+                    )
             zf.extractall(extracted)
     except zipfile.BadZipFile as exc:
         raise SkillInstallError(f"Invalid zip archive: {exc}") from exc

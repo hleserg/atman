@@ -9,8 +9,10 @@ invocation rows so micro reflection still sees the skill-loop activity and
 
 Design notes:
 
-* The parser is pure for ``parse`` — no I/O, no DB writes — so it is cheap
-  to call after every agent turn.
+* ``parse`` performs no DB writes. It does read ``SKILL.md`` from disk to
+  look up trigger keywords — this is amortised by a per-parser mtime-keyed
+  manifest cache so steady-state calls touch the filesystem only when an
+  on-disk manifest actually changes.
 * ``parse_and_record`` is the side-effecting wrapper. It uses
   :meth:`SkillStore.create_invocation` and :meth:`SkillStore.write_agent_marker`
   with ``agent_marker='unclear'`` because we are not sure the model actually
@@ -77,6 +79,12 @@ class InvocationTextParser:
         self._store = store
         self._min_confidence = min_confidence
         self._max_per_call = max_per_call
+        # Manifest cache keyed by skill_id → (manifest_mtime_ns, keywords).
+        # Each parse() call hits this cache instead of re-reading SKILL.md +
+        # re-parsing YAML for every candidate. Entries invalidate when the
+        # on-disk manifest's mtime changes (e.g. after a revise / install
+        # rewrites the file).
+        self._keyword_cache: dict[UUID, tuple[int, list[str]]] = {}
 
     # ── pure parsing ──────────────────────────────────────────────────────
 
@@ -171,6 +179,28 @@ class InvocationTextParser:
         # SkillStore supports it (InMemorySkillStore + PostgresSkillStore).
         return self._store.list_by_status(agent_id, SkillStatus.active)
 
+    def _keywords_for(self, skill: Skill) -> list[str]:
+        """Return trigger keywords for ``skill`` using the mtime-keyed cache.
+
+        Falls back to reading SKILL.md directly when the file does not exist
+        (e.g. in-memory tests that never wrote a manifest) — the result is
+        cached with ``mtime = 0`` and any subsequent file appearance will
+        invalidate the entry through the mtime mismatch.
+        """
+        try:
+            mtime_ns = skill.manifest_path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+
+        cached = self._keyword_cache.get(skill.id)
+        if cached is not None and cached[0] == mtime_ns:
+            return cached[1]
+
+        raw = _keywords_from_skill(skill) if mtime_ns else []
+        keywords = [k for k in raw if k and k.strip()]
+        self._keyword_cache[skill.id] = (mtime_ns, keywords)
+        return keywords
+
     def _score_skill(
         self,
         skill: Skill,
@@ -205,7 +235,7 @@ class InvocationTextParser:
                 )
 
         # 3) trigger-keyword overlap (manifest-driven)
-        keywords = [k for k in _keywords_from_skill(skill) if k and k.strip()]
+        keywords = self._keywords_for(skill)
         matched_keywords = [k for k in keywords if k.lower() in text_lower]
         if not matched_keywords:
             return None

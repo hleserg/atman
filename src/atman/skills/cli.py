@@ -46,12 +46,21 @@ def _get_store(agent_id: UUID | None = None):
 
 
 def _require_enabled() -> None:
-    from atman.config import settings
+    """Refuse to run write commands when the skill loop is disabled.
 
-    if not settings.skills.enabled:
+    Honors both ``ATMAN_SKILLS_ENABLED`` (env-level kill switch) and
+    ``settings.skills.enabled`` (config-level) so operators can flip the
+    loop off in a single place without the CLI bypassing it.
+    """
+    # Single source of truth for "is the loop on" — factory has the same
+    # helper; we route through it so env + config precedence stay aligned.
+    from atman.adapters.agent.factory import _skills_enabled
+
+    if not _skills_enabled():
         print_err(
-            "skill-loop is disabled (atman.skills.enabled = false). "
-            "Enable it in your config to make changes."
+            "skill-loop is disabled "
+            "(ATMAN_SKILLS_ENABLED or atman.skills.enabled = false). "
+            "Enable it in your env or config to make changes."
         )
         sys.exit(1)
 

@@ -148,6 +148,53 @@ class TestProcessDailySkills:
         summary = manager.process_daily_skills(uuid4())
         assert summary == DailySkillSummary()
 
+    def test_priority_bump_lifts_skill_into_high_priority_same_run(self, tmp_path: Path) -> None:
+        """Devin Review BUG_..._0001: skill bumped from priority=2 to 3 must
+        appear in ``high_priority_revisions`` of the SAME daily run, not the
+        next one. Uses the effective (post-bump) priority for the threshold
+        check.
+        """
+        manager = _make_manager(tmp_path, daily_revision_idle_bump_sessions=5)
+        agent_id = uuid4()
+
+        # priority=2, idle=10 → bump fires → effective_priority=3 → must
+        # appear in high_priority_revisions THIS run.
+        crossing = _make_skill(
+            agent_id,
+            "crossing",
+            revision_needed=True,
+            sessions_since_use=10,
+            revision_priority=2,
+        )
+        manager._store.save_skill(crossing)
+
+        summary = manager.process_daily_skills(agent_id)
+        assert summary.revision_priority_bumped == 1
+        assert "crossing" in summary.high_priority_revisions
+
+    def test_bump_failure_does_not_lift_priority_locally(self, tmp_path: Path) -> None:
+        """If the store rejects the bump, effective_priority must NOT advance
+        — we cannot claim the skill is high-priority when the durable record
+        still reads priority=2.
+        """
+        manager = _make_manager(tmp_path, daily_revision_idle_bump_sessions=5)
+        agent_id = uuid4()
+        skill = _make_skill(
+            agent_id,
+            "flaky",
+            revision_needed=True,
+            sessions_since_use=10,
+            revision_priority=2,
+        )
+        manager._store.save_skill(skill)
+        manager._store.set_revision_needed = MagicMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("write rejected")
+        )
+
+        summary = manager.process_daily_skills(agent_id)
+        assert summary.revision_priority_bumped == 0
+        assert "flaky" not in summary.high_priority_revisions
+
 
 # ── process_deep_skills ───────────────────────────────────────────────────
 
