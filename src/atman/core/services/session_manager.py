@@ -571,13 +571,24 @@ class SessionManager:
                         restart_reason="",
                     )
                     experience_record = ExperienceRecord(experience=experience)
-                    self._state_store.create_experience(experience_record)
                     # HLE-57: persist the session→moments mapping so
                     # ``get_key_moments_for_session`` returns these moments to
                     # downstream Daily/Deep reflection. Without this call the
                     # recovered session is silently skipped by the reflection
                     # engine and the agent loses that history forever.
+                    #
+                    # Order matters (Devin #594 follow-up): call
+                    # ``store_key_moments`` BEFORE ``create_experience``. If
+                    # the moment-mapping write fails, no experience exists and
+                    # the next recovery pass will retry the whole branch.
+                    # Doing it the other way around would leave an orphan
+                    # experience that ``_recover_orphaned_sessions`` would
+                    # short-circuit on (line ~511, "existing_exp is not None"),
+                    # so the moments mapping would never be written. The
+                    # ``store_key_moments`` adapter contract is idempotent —
+                    # repeating it on retry is safe.
                     self._state_store.store_key_moments(session_id, loaded_moments)
+                    self._state_store.create_experience(experience_record)
                     _LOG.info(
                         "Recovered orphaned session %s with %d key moments (%d loaded from storage)",
                         session_id,
@@ -789,22 +800,59 @@ class SessionManager:
 
     _AFFECT_DRAIN_TIMEOUT_S = 5.0
 
-    def _drain_pending_affect_tasks(self, session_id: UUID) -> None:
-        """Wait for in-flight AffectDetector tasks scheduled for ``session_id``.
+    async def drain_pending_affect_tasks(self, session_id: UUID) -> None:
+        """Async drain — call from :func:`async def` runners BEFORE ``finish_session``.
 
-        Called from :meth:`finish_session` before marking the session as
-        finished so that late-firing affect-derived key moments still land via
-        :meth:`append_key_moment`. Safe to call from outside an event loop —
-        the synchronous ``asyncio.run`` branch in
-        :meth:`_schedule_affect_processing` blocks until completion and
-        registers no task, so there is nothing to drain in that case.
+        HLE-56 (Devin #594): the synchronous drain that runs from inside
+        ``finish_session`` cannot ``await`` and therefore busy-polls. When
+        ``finish_session`` is invoked on the same event-loop thread that
+        owns the affect tasks (the realistic case in
+        ``runner.py::async def chat``), the busy-poll deadlocks the loop —
+        the very tasks it is waiting on can never run because their loop is
+        blocked. The sync path detects this and short-circuits with a
+        warning; runners get an effective drain by ``await``-ing this
+        coroutine before calling ``finish_session``.
 
-        When a task was scheduled against a running loop (typical in async
-        runners that call ``finish_session`` from a worker thread) we cannot
-        ``await`` from this synchronous method, so we poll ``task.done()``
-        until either all tasks complete or the drain timeout fires. The
-        timeout protects callers from a wedged detector — affect is a
+        Times out after ``_AFFECT_DRAIN_TIMEOUT_S`` seconds — affect is a
         best-effort observer, never a blocker for session finalization.
+        """
+        with self._lock:
+            tasks = list(self._pending_affect_tasks.get(session_id, ()))
+        if not tasks:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=self._AFFECT_DRAIN_TIMEOUT_S,
+            )
+        except TimeoutError:
+            pending = sum(1 for t in tasks if not t.done())
+            _LOG.warning(
+                "AffectDetector async drain timed out for session %s; %d task(s) "
+                "still pending — affect-derived key moments from those tasks "
+                "may be dropped.",
+                session_id,
+                pending,
+            )
+
+    def _drain_pending_affect_tasks(self, session_id: UUID) -> None:
+        """Synchronous drain invoked from :meth:`finish_session`.
+
+        Only effective when ``finish_session`` is called from a thread that
+        does **not** own the loop the affect tasks were scheduled on — in
+        that case ``task.done()`` flips as the loop on the other thread runs
+        the coroutines, and a brief poll suffices.
+
+        When the caller is on the same thread as the running loop (HLE-56
+        / Devin #594: the realistic async runner case), busy-polling here
+        would deadlock the loop. Detect that situation and short-circuit
+        with a debug log — async callers that need an effective drain must
+        ``await drain_pending_affect_tasks`` before calling
+        ``finish_session``.
+
+        When ``_schedule_affect_processing`` ran via ``asyncio.run`` (no
+        loop on the caller's thread, sync execution) there are no tracked
+        tasks and this method is a no-op.
         """
         import time as _time
 
@@ -812,6 +860,24 @@ class SessionManager:
             tasks = list(self._pending_affect_tasks.get(session_id, ()))
         if not tasks:
             return
+
+        # If we're on a thread that already owns a running loop, blocking
+        # synchronously would deadlock the very loop those tasks need to
+        # progress. Skip; async callers can use ``drain_pending_affect_tasks``.
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is not None:
+            _LOG.debug(
+                "Skipping synchronous affect drain for session %s — caller is "
+                "on the event loop thread (use ``await "
+                "drain_pending_affect_tasks(...)`` before finish_session for "
+                "an effective drain).",
+                session_id,
+            )
+            return
+
         deadline = _time.monotonic() + self._AFFECT_DRAIN_TIMEOUT_S
         while not all(t.done() for t in tasks):
             if _time.monotonic() >= deadline:

@@ -2443,3 +2443,66 @@ def test_unexamined_facts_aggregated_fact_refs_includes_all_facts(session_manage
     exp_record = temp_storage.get_experience(exp_id)
     assert exp_record is not None
     assert set(exp_record.experience.fact_refs) == {fact_id_colored, fact_id_unexamined}
+
+
+# ----------------------------------------------------------------------
+# HLE-56 / Devin #594: async-aware drain for fire-and-forget AffectDetector
+# tasks. Verifies that calling ``drain_pending_affect_tasks`` from the same
+# event loop the tasks live on actually waits for them (the previous sync
+# busy-poll would have deadlocked the loop).
+# ----------------------------------------------------------------------
+def test_drain_pending_affect_tasks_on_running_loop_completes_pending_work() -> None:
+    """Async drain awaits in-flight affect tasks instead of busy-polling."""
+    import asyncio
+
+    state_store = InMemoryStateStore()
+    manager = SessionManager(state_store)
+
+    session_id = uuid4()
+    completed = asyncio.Event()
+
+    async def _scenario() -> bool:
+        async def _fake_affect_work() -> None:
+            await asyncio.sleep(0.05)
+            completed.set()
+
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(_fake_affect_work())
+        manager._pending_affect_tasks[session_id] = [task]
+
+        await manager.drain_pending_affect_tasks(session_id)
+        return completed.is_set()
+
+    assert asyncio.run(_scenario()) is True
+
+
+def test_drain_pending_affect_tasks_sync_short_circuits_on_running_loop() -> None:
+    """Sync drain must not deadlock when called from the event-loop thread."""
+    import asyncio
+
+    state_store = InMemoryStateStore()
+    manager = SessionManager(state_store)
+    session_id = uuid4()
+
+    async def _scenario() -> None:
+        async def _never_completes() -> None:
+            await asyncio.sleep(60)
+
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(_never_completes())
+        manager._pending_affect_tasks[session_id] = [task]
+
+        # Without the running-loop short-circuit this call would deadlock for
+        # _AFFECT_DRAIN_TIMEOUT_S seconds (5s). It must return immediately.
+        start = asyncio.get_event_loop().time()
+        manager._drain_pending_affect_tasks(session_id)
+        elapsed = asyncio.get_event_loop().time() - start
+        assert elapsed < 0.5
+
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    import contextlib
+
+    asyncio.run(_scenario())
