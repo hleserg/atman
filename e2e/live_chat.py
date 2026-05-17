@@ -4,7 +4,7 @@
 Один процесс держит:
   * pydantic-ai Agent на gemma4 (через llama-server :8081)
   * SessionManager + полный стек build_deps (HLE-32 inline-guardian живой)
-  * Шесть тулзов агента: record_key_moment, log_experience, restart_session,
+  * Пять тулзов агента: record_key_moment, restart_session,
     wait_session, resolve_pending_review, request_reflection
 
 Использование:
@@ -26,11 +26,10 @@ import asyncio
 import logging
 import os
 import sys
-import tempfile
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
@@ -58,7 +57,6 @@ from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.tools import (
-    log_experience,
     record_key_moment,
     request_reflection,
     resolve_pending_review,
@@ -81,9 +79,13 @@ AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
 AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
 AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
 
+# Persistent workspace — survives across sessions. Override with ATMAN_AGENT_WORKSPACE.
+AGENT_WORKSPACE = Path(
+    os.getenv("ATMAN_AGENT_WORKSPACE", Path.home() / ".atman" / "dev-agent")
+)
+
 TOOLS = (
     record_key_moment,
-    log_experience,
     restart_session,
     wait_session,
     resolve_pending_review,
@@ -109,6 +111,159 @@ def _log(event_type: str, **kwargs) -> None:
             fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+
+def _S(s: str) -> str:
+    """Replace lone surrogates so the string is safe for UTF-8 encoding."""
+    return s.encode("utf-8", "replace").decode("utf-8")
+
+
+def _get_or_create_agent_id() -> UUID:
+    """Load persisted agent_id or mint and save a new one."""
+    AGENT_WORKSPACE.mkdir(parents=True, exist_ok=True)
+    id_file = AGENT_WORKSPACE / "agent_id.txt"
+    if id_file.exists():
+        try:
+            return UUID(id_file.read_text().strip())
+        except Exception:
+            pass
+    new_id = uuid4()
+    id_file.write_text(str(new_id))
+    return new_id
+
+
+def _surface_passive_context(user_text: str, deps, con: AtmanConsole) -> object:
+    """Call PassiveMemoryInjector and return updated deps with injected_context set."""
+    if deps.passive_memory_injector is None:
+        return deps
+    try:
+        from atman.core.services.passive_memory_injector import build_rag_context
+        items = deps.passive_memory_injector.surface_for_context(user_text)
+        if not items:
+            return deps
+        rag = build_rag_context(items, budget=1500)
+        if not rag.items:
+            return deps
+        lines = []
+        for item in rag.items:
+            payload = item.payload
+            text = (
+                getattr(payload, "content", None)
+                or getattr(payload, "what_happened", None)
+                or str(payload)[:120]
+            )
+            lines.append(f"- [{item.kind}] {_S(str(text))[:150]}")
+        ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
+        con.add("💾", "passive RAG", f"[dim]{len(rag.items)} items  {rag.tokens_used}tok[/dim]")
+        _log("passive_rag", n_items=len(rag.items), tokens_used=rag.tokens_used)
+        return replace(deps, injected_context=ctx_str)
+    except Exception as e:  # noqa: BLE001
+        con.add("💾", "passive RAG", f"[dim red]{e}[/dim red]")
+        return deps
+
+
+async def _analyze_agent_response(
+    text: str,
+    deps,
+    sm,
+    session_id,
+    con: AtmanConsole,
+) -> None:
+    """Post-turn pipeline: analyze agent response (point A), register entities, auto-record moments."""
+    if deps.ambient_memory is None:
+        return
+    try:
+        analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
+    except Exception as e:  # noqa: BLE001
+        _log("agent_analysis_error", error=str(e))
+        return
+
+    # 1. Register entities from agent response (background — LLM call already done)
+    async def _bg_register_agent_entities() -> None:
+        for ent in analysis.message_entities:
+            if len(ent.text) < 2:
+                continue
+            try:
+                await asyncio.to_thread(
+                    deps.entity_registry.resolve_or_create,
+                    deps.agent_id, _S(ent.text), ent.entity_type,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    asyncio.ensure_future(_bg_register_agent_entities())
+
+    # 2. Log + display point A classification results
+    _log(
+        "agent_analysis",
+        boundary_markers=analysis.boundary_markers,
+        divergence=analysis.divergence_signals,
+        entities=[_S(e.text) for e in analysis.message_entities],
+        stance=analysis.stance,
+        cognitive_mode=analysis.cognitive_mode,
+        primary_emotion=analysis.primary_emotion,
+        cognitive_load_label=analysis.cognitive_load_label,
+        spans=[{"text": _S(s.text), "label": s.label} for s in analysis.message_spans[:5]],
+    )
+    a_cls = " ".join(filter(None, [
+        f"[cyan]{analysis.stance}[/cyan]" if analysis.stance else "",
+        f"[dim]{analysis.primary_emotion}[/dim]" if analysis.primary_emotion else "",
+        f"[dim]{analysis.cognitive_mode}[/dim]" if analysis.cognitive_mode else "",
+    ]))
+    con.add(
+        "🧠", "agent analysis",
+        f"boundary={'[green]yes[/green]' if analysis.boundary_markers else '[dim]no[/dim]'}"
+        f"  div={len(analysis.divergence_signals)}"
+        f"  ent={len(analysis.message_entities)}"
+        + (f"  {a_cls}" if a_cls else ""),
+    )
+    if analysis.message_spans:
+        spans_str = "  ".join(
+            f"[dim]{_S(s.text)[:20]}[/dim]·[yellow]{s.label}[/yellow]"
+            for s in analysis.message_spans[:4]
+        )
+        con.add("📎", "point-A NER", spans_str)
+
+    # 3. Auto-record key moment on boundary event, with point-A structured_markers
+    if analysis.boundary_markers and session_id is not None:
+        try:
+            from atman.core.models.session import KeyMomentInput
+            markers_str = ", ".join(analysis.boundary_markers[:3])
+            kmi = KeyMomentInput(
+                what_happened=_S(text[:300]),
+                why_it_matters=f"Boundary event detected: {markers_str}",
+                emotional_valence=0.0,
+                emotional_intensity=0.0,
+                incomplete_coloring=True,
+            )
+            moment = kmi.to_key_moment()
+
+            # Enrich with point-A structured_markers (namespace "a")
+            a_markers: dict = {
+                "a": {
+                    "stance": analysis.stance,
+                    "cognitive_mode": analysis.cognitive_mode,
+                    "self_orientation": analysis.self_orientation,
+                    "primary_emotion": analysis.primary_emotion,
+                    "cognitive_load_label": analysis.cognitive_load_label,
+                    "boundary_markers": analysis.boundary_markers,
+                    "divergence_signals": analysis.divergence_signals,
+                    "spans": [{"text": _S(s.text), "label": s.label} for s in analysis.message_spans],
+                }
+            }
+            moment.structured_markers = a_markers
+            moment.structured_markers_version = "2.0"
+
+            sm.append_key_moment(session_id, moment)
+            con.add("📌", "auto key moment", f"[green]written+A[/green]  [{markers_str[:60]}]")
+            _log("auto_key_moment", markers=analysis.boundary_markers,
+                 a_markers=a_markers["a"], text_preview=_S(text[:100]))
+        except Exception as e:  # noqa: BLE001
+            con.add("📌", "auto key moment", f"[dim red]{e}[/dim red]")
+
+    # 4. Write identity facts (name/gender from agent self-description)
+    if analysis.boundary_markers and deps.passive_memory_injector is not None:
+        _write_identity_facts(text, analysis, deps, con)
 
 
 # ── Atman dev console ─────────────────────────────────────────────────────────
@@ -197,7 +352,7 @@ def _sanitize_history(messages: list) -> list:
 
 
 def _register_entities(text: str, deps, con: AtmanConsole) -> None:
-    """Extract entities from user message and register them in the shared registry."""
+    """Extract entities from user message, display them, and enqueue DB registration."""
     if deps.ambient_memory is None or deps.entity_registry is None:
         return
     try:
@@ -205,20 +360,29 @@ def _register_entities(text: str, deps, con: AtmanConsole) -> None:
         entities = analysis.entities or []
         if entities:
             parts = "  ".join(
-                f"[bold]{e.text}[/bold][dim]·{e.entity_type.value}[/dim]"
+                f"[bold]{_S(e.text)}[/bold][dim]·{e.entity_type.value}[/dim]"
                 for e in entities
             )
             con.add("🔍", "entities", parts)
-            _log("entities", entities=[{"text": e.text, "type": e.entity_type.value} for e in entities])
+            _log("entities", entities=[{"text": _S(e.text), "type": e.entity_type.value} for e in entities])
         else:
             con.add("🔍", "entities", "[dim]none detected[/dim]")
             _log("entities", entities=[])
-        for entity in entities:
-            deps.entity_registry.resolve_or_create(
-                deps.agent_id,
-                entity.text,
-                entity.entity_type,
-            )
+
+        # DB writes are background — GLiNER analysis done, LLM call can start now.
+        async def _bg_register() -> None:
+            for entity in entities:
+                try:
+                    await asyncio.to_thread(
+                        deps.entity_registry.resolve_or_create,
+                        deps.agent_id,
+                        _S(entity.text),
+                        entity.entity_type,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        asyncio.ensure_future(_bg_register())
     except Exception as exc:  # noqa: BLE001
         con.add("🔍", "entities", "[dim red]analysis error[/dim red]")
         _log("entities_error", error=str(exc))
@@ -247,6 +411,63 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
     except Exception as e:  # noqa: BLE001
         con.add("🧭", "ambient RAG", f"[dim red]{e}[/dim red]")
         _log("ambient_rag_error", error=str(e))
+
+
+def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
+    """Write facts for agent self-description (name, gender) to FactualMemory."""
+    try:
+        factual_memory = deps.passive_memory_injector.factual_memory
+    except AttributeError:
+        return
+    if factual_memory is None:
+        return
+
+    from atman.core.models.fact import FactRecord
+
+    identity_markers = {
+        "я принимаю", "я выбираю", "моё имя", "меня зовут", "я решила", "я решил",
+    }
+    marker_text = " ".join(analysis.boundary_markers).lower()
+    if not any(m in marker_text for m in identity_markers):
+        return
+
+    # Extract person entities as potential self-name
+    person_entities = [
+        _S(e.text) for e in analysis.message_entities
+        if e.entity_type.value == "person" and len(e.text) >= 2
+    ]
+
+    facts_written = 0
+    for name in person_entities[:2]:
+        try:
+            record = FactRecord(
+                agent_id=deps.agent_id,
+                content=f"Агент называет себя: {name}",
+                source="agent_boundary_event",
+                tags=["identity", "agent_name", "self_description"],
+            )
+            factual_memory.add_fact(record)
+            facts_written += 1
+            _log("identity_fact", content=record.content)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Also write the full statement as a fact
+    try:
+        record = FactRecord(
+            agent_id=deps.agent_id,
+            content=_S(f"Агент о себе: {text[:200]}"),
+            source="agent_boundary_event",
+            tags=["identity", "self_description"],
+        )
+        factual_memory.add_fact(record)
+        facts_written += 1
+        _log("identity_fact", content=record.content[:100])
+    except Exception:  # noqa: BLE001
+        pass
+
+    if facts_written:
+        con.add("💡", "identity facts", f"[green]{facts_written} written[/green]")
 
 
 def bootstrap_minimal_agent(store, agent_id) -> None:
@@ -312,11 +533,25 @@ def print_banner(model: str, workspace: Path, agent_id) -> None:
 
 
 async def amain() -> int:
-    workspace = Path(tempfile.mkdtemp(prefix="atman-chat-"))
-    agent_id = uuid4()
+    workspace = AGENT_WORKSPACE
+    workspace.mkdir(parents=True, exist_ok=True)
+    agent_id = _get_or_create_agent_id()
     config = AgentConfig(model=ModelConfig(model=AGENT_MODEL, context_limit=4096))
     deps, sm, store = build_deps(workspace, agent_id, config)
-    bootstrap_minimal_agent(store, agent_id)
+
+    # Wire PostgresEntityRegistry for cross-session entity persistence
+    if os.getenv("DATABASE_URL") and deps.entity_registry is not None:
+        try:
+            from atman.adapters.memory.postgres_entity_registry import PostgresEntityRegistry
+            pg_registry = PostgresEntityRegistry(os.environ["DATABASE_URL"])
+            deps = replace(deps, entity_registry=pg_registry)
+            _rc.print("  [dim]entity registry → postgres[/dim]")
+        except Exception as e:  # noqa: BLE001
+            _rc.print(f"  [dim yellow]postgres entity registry unavailable: {e}[/dim yellow]")
+
+    # Bootstrap only on first run (no identity stored yet)
+    if not (workspace / "identity.json").exists():
+        bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
     _SESSION_LOG.write_text("")
@@ -334,13 +569,16 @@ async def amain() -> int:
     agent = Agent(
         llm,
         deps_type=type(deps),
-        instructions=lambda c: build_instructions(c.deps),
+        instructions=lambda c: _S(build_instructions(c.deps)),
         tools=TOOLS,
     )
 
     con = AtmanConsole()
     history: list[ModelMessage] = []
     close_reason: str | None = None
+    # Keep ~4 recent turns to stay under model context limit.
+    # Gemma4 via llama-server defaults to n_ctx=8192; system prompt alone is ~1.5k tokens.
+    _MAX_HISTORY = 8
 
     try:
         while True:
@@ -373,27 +611,38 @@ async def amain() -> int:
                 _rc.print(f"  {workspace}")
                 continue
 
+            user_text = _S(user_text)
             _log("user_msg", text=user_text)
 
             # ── Atman pre-turn: entity registration + ambient snapshot ─────────
             _register_entities(user_text, deps, con)
             _ambient_snapshot(user_text, deps, con)
+            deps = _surface_passive_context(user_text, deps, con)
             con.flush("atman ▶ pre")
 
             # ── Agent run ──────────────────────────────────────────────────────
+            trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
+            if len(history) > _MAX_HISTORY:
+                con.warn(f"History trimmed {len(history)} → {len(trimmed)} messages")
             try:
                 result = await agent.run(
                     user_text,
                     deps=deps,
-                    message_history=history if history else None,
+                    message_history=trimmed if trimmed else None,
                 )
             except UnicodeEncodeError:
-                con.warn("Surrogate chars in history — clearing context and retrying")
-                history.clear()
+                con.warn("Surrogate chars in history — sanitizing and retrying")
+                history = _sanitize_history(history)
+                trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
                 try:
-                    result = await agent.run(user_text, deps=deps)
+                    result = await agent.run(
+                        user_text,
+                        deps=deps,
+                        message_history=trimmed if trimmed else None,
+                    )
                 except Exception as e2:  # noqa: BLE001
                     con.err(f"agent.run {type(e2).__name__}: {e2}")
+                    history.clear()
                     continue
             except Exception as e:  # noqa: BLE001
                 con.err(f"agent.run {type(e).__name__}: {e}")
@@ -429,6 +678,10 @@ async def amain() -> int:
             clean = clean.encode("utf-8", "replace").decode("utf-8")
             _log("agent_response", text=clean)
             print(f"agent> {clean}\n")
+
+            # ── Atman post-turn: analyze agent response ────────────────────────
+            await _analyze_agent_response(clean, deps, sm, session_id, con)
+            con.flush("atman ◀ agent")
 
     finally:
         _rc.rule(style="cyan dim")

@@ -131,7 +131,7 @@ demo-e2e-scenario:
 # Downloads to HF cache on first run (~6 GB total); subsequent runs complete in seconds.
 # Run before live_chat.py to avoid a 4-min cold-start on first embedding call.
 warmup-models:
-	CUDA_VISIBLE_DEVICES= PYTHONPATH=. python3 scripts/warmup_native_models.py
+	CUDA_VISIBLE_DEVICES= PYTHONPATH=. .venv/bin/python scripts/warmup_native_models.py
 
 # PLAYBOOK marker extraction and validation.
 # See docs/development/PLAYBOOK_MARKERS.md for syntax and setup.

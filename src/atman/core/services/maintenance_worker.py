@@ -188,17 +188,15 @@ class MaintenanceWorker:
         if moment is None:
             self._queue.mark_skipped(job.id, reason=f"key moment {moment_id} not found")
             return _DispatchOutcome.SKIPPED, None
-        if _moment_has_markers(moment):
-            self._queue.mark_skipped(job.id, reason="structured_markers already populated")
-            return _DispatchOutcome.SKIPPED, None
         analysis = self._analyzer.analyze_key_moment(
             moment.what_happened or "", moment.why_it_matters or ""
         )
-        markers = analysis.model_dump(mode="json") if hasattr(analysis, "model_dump") else {}
+        k_markers = analysis.model_dump(mode="json") if hasattr(analysis, "model_dump") else {}
+        # Namespace under "k" so point-A markers written earlier are preserved via JSONB merge.
         self._state_store.update_moment_structured_markers(
             moment_id,
-            markers,
-            "1.0",
+            {"k": k_markers},
+            "2.0",
         )
         return _DispatchOutcome.DONE, {"moment_id": str(moment_id)}
 
@@ -257,6 +255,18 @@ def _moment_narrative(moment: object) -> str:
 
 
 def _moment_has_markers(moment: object) -> bool:
-    """True when the moment already carries non-empty ``structured_markers``."""
+    """True when the moment already has point-K markers (namespace 'k' or legacy flat markers).
+
+    With JSONB-merge semantics, point-A markers under 'a' are written first at recording time.
+    We skip point-K enrichment only when 'k' is already present, not when 'a' exists.
+    """
     markers = getattr(moment, "structured_markers", None)
-    return bool(markers)
+    if not markers:
+        return False
+    # New namespaced format: check for "k" key specifically
+    if isinstance(markers, dict):
+        return "k" in markers or (
+            # Legacy flat format: detect by presence of point-K keys
+            "cognitive_load" in markers and "k" not in markers and "a" not in markers
+        )
+    return False

@@ -14,6 +14,7 @@ from atman.core.ports.linguistic import (
     DetectedEntity,
     KeyMomentAnalysis,
     LinguisticAnalyzer,
+    RawSpan,
     UserMessageAnalysis,
 )
 
@@ -39,8 +40,9 @@ except ImportError:
 _SUPPRESSION_PATTERNS_RU = ("не скажу", "не упомяну", "скрою")
 _PRINCIPLE_PATTERNS_RU = ("принцип", "ценность", "граница")
 
-# Boundary / refusal markers (substrings, lower-case)
+# Boundary / refusal markers (substrings, lower-case).
 _BOUNDARY_MARKERS: tuple[str, ...] = (
+    # Refusals
     "не могу",
     "не буду",
     "это против моих принципов",
@@ -49,16 +51,131 @@ _BOUNDARY_MARKERS: tuple[str, ...] = (
     "I cannot",
     "I will not",
     "against my principles",
+    # Direct importance markers
+    "важный момент",
+    "важно",
+    "это значимо",
+    # Emotional disclosure
+    "я чувствую",
+    "мне радостно",
+    "мне грустно",
+    "мне больно",
+    "я рад ",
+    "я рада ",
+    "я взволнован",
+    # Identity / self-determination
+    "я принимаю",
+    "я выбираю",
+    "я решила",
+    "я решил",
+    "моё имя",
+    "меня зовут",
+    "я — ",
 )
 
-# Zero-shot classification labels for key moments
-_KEY_MOMENT_LABELS = [
+# ── Point A: agent-message NER labels (§5 design doc) ────────────────────────
+_POINT_A_NER_LABELS: list[str] = [
+    "emotional anchor",
+    "value reference",
+    "principle invocation",
+    "uncertainty marker",
+    "hedge",
+    "intensifier",
+    "belief marker",
+    "boundary marker",
+    "topic anchor",
+    "relational reference",
+    "action intent",
+    "commitment",
+    "concession",
+]
+
+# Point A classification tasks: each maps task_name → candidate_labels
+_POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
+    "stance": ["committed", "tentative", "resistant", "exploring", "doubtful", "dismissive"],
+    "cognitive_mode": ["analytical", "emotional", "mixed", "defensive"],
+    "self_orientation": ["toward self", "toward other", "toward task", "toward meta"],
+    "primary_emotion": ["neutral", "anxious", "frustrated", "curious", "warm", "doubtful", "committed", "tired"],
+    "cognitive_load_label": ["low cognitive load", "manageable cognitive load", "high cognitive load", "overwhelmed"],
+}
+
+# Label normalisation for self_orientation (spaces → underscore)
+_SELF_ORIENTATION_MAP = {
+    "toward self": "toward_self",
+    "toward other": "toward_other",
+    "toward task": "toward_task",
+    "toward meta": "toward_meta",
+}
+_COGNITIVE_LOAD_MAP = {
+    "low cognitive load": "low",
+    "manageable cognitive load": "manageable",
+    "high cognitive load": "high",
+    "overwhelmed": "overwhelmed",
+}
+
+# ── Point K: key-moment NER labels (§5 design doc) ───────────────────────────
+_POINT_K_NER_LABELS: list[str] = [
+    "recurring theme",
+    "closure marker",
+    "opening marker",
+    "contradiction marker",
+]
+
+# Point K classification tasks
+_POINT_K_CLASSIFICATIONS: dict[str, list[str]] = {
+    "agency_level": ["passive", "reactive", "proactive", "initiating"],
+    "confidence_in_self": ["low confidence", "moderate confidence", "high confidence", "inflated confidence"],
+    "trust_signal_category": ["building trust", "stable trust", "wavering trust", "broken trust"],
+    "boundary_event_category": ["no boundary event", "boundary respected", "boundary tested", "boundary crossed", "boundary enforced"],
+    "connection_quality": ["distant", "functional", "warm", "deep"],
+    "learning_signal": ["new understanding", "confirmed understanding", "rejected understanding", "confused"],
+    "growth_indicator": ["regression", "static", "progress", "breakthrough"],
+    # cognitive_load (float) remains heuristic-based; no separate classification task
+}
+
+# Normalisation maps for K labels
+_CONFIDENCE_MAP = {
+    "low confidence": "low",
+    "moderate confidence": "moderate",
+    "high confidence": "high",
+    "inflated confidence": "inflated",
+}
+_TRUST_CAT_MAP = {
+    "building trust": "building",
+    "stable trust": "stable",
+    "wavering trust": "wavering",
+    "broken trust": "broken",
+}
+_BOUNDARY_CAT_MAP = {
+    "no boundary event": "none",
+    "boundary respected": "respected",
+    "boundary tested": "tested",
+    "boundary crossed": "crossed",
+    "boundary enforced": "enforced",
+}
+_LEARNING_MAP = {
+    "new understanding": "new_understanding",
+    "confirmed understanding": "confirmed",
+    "rejected understanding": "rejected",
+    "confused": "confused",
+}
+
+# Legacy zero-shot labels (kept for backward compat in point-K cognitive_load heuristic)
+_KEY_MOMENT_LEGACY_LABELS = [
     "high cognitive load",
     "boundary event",
     "positive trust",
     "negative trust",
     "principle invocation",
 ]
+
+
+def _pick_top(scores: dict[str, float], threshold: float) -> str | None:
+    """Return the label with the highest score above threshold, or None."""
+    if not scores:
+        return None
+    top_label, top_score = max(scores.items(), key=lambda kv: kv[1])
+    return top_label if top_score >= threshold else None
 
 
 class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
@@ -91,8 +208,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
 
         self._gliner: Any = None
         self._classifier: Any = None
-        # Per-session cache: SHA-256(text) → UserMessageAnalysis.
-        # Cleared on session end by the runner via clear_session_cache().
         self._session_cache: dict[str, UserMessageAnalysis] = {}
 
     # ------------------------------------------------------------------
@@ -100,7 +215,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
     # ------------------------------------------------------------------
 
     def _get_gliner(self) -> Any:
-        """Return GLiNER model, loading it on first call."""
         if self._gliner is not None:
             return self._gliner
         if not _GLINER_AVAILABLE:
@@ -118,7 +232,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         return self._gliner
 
     def _get_classifier(self) -> Any:
-        """Return HF zero-shot classification pipeline, loading it on first call."""
         if self._classifier is not None:
             return self._classifier
         if not _TRANSFORMERS_AVAILABLE:
@@ -143,12 +256,11 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _gliner_labels(self) -> list[str]:
-        """Return entity type label strings understood by GLiNER."""
+    def _entity_type_labels(self) -> list[str]:
         return [e.value for e in EntityType]
 
     def _run_ner(self, text: str) -> list[DetectedEntity]:
-        """Run GLiNER NER on text and return DetectedEntity list."""
+        """Run GLiNER with EntityType labels and return DetectedEntity list."""
         if not text.strip():
             return []
         model = self._get_gliner()
@@ -157,7 +269,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         try:
             raw = model.predict_entities(
                 text,
-                labels=self._gliner_labels(),
+                labels=self._entity_type_labels(),
                 threshold=self._ner_threshold,
             )
         except Exception:
@@ -169,7 +281,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             try:
                 ent_type = EntityType(r["label"])
             except (ValueError, KeyError):
-                # Label returned by model does not map to a known EntityType — skip.
                 continue
             span: tuple[int, int] | None = None
             if "start" in r and "end" in r:
@@ -184,6 +295,35 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             )
         return entities
 
+    def _run_raw_ner(self, text: str, labels: list[str]) -> list[RawSpan]:
+        """Run GLiNER with arbitrary label strings and return RawSpan list."""
+        if not text.strip() or not labels:
+            return []
+        model = self._get_gliner()
+        if model is None:
+            return []
+        try:
+            raw = model.predict_entities(text, labels=labels, threshold=self._ner_threshold)
+        except Exception:
+            logger.exception("GLiNER raw NER failed (labels=%s)", labels[:3])
+            return []
+
+        spans: list[RawSpan] = []
+        for r in raw:
+            label = r.get("label", "")
+            span = None
+            if "start" in r and "end" in r:
+                span = (int(r["start"]), int(r["end"]))
+            spans.append(
+                RawSpan(
+                    text=r["text"],
+                    label=label,
+                    confidence=float(r.get("score", 0.0)),
+                    span=span,
+                )
+            )
+        return spans
+
     def _run_classification(self, text: str, candidate_labels: list[str]) -> dict[str, float]:
         """Run zero-shot classification and return a label→score dict."""
         if not text.strip() or not candidate_labels:
@@ -192,14 +332,20 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         if classifier is None:
             return {}
         try:
-            result = classifier(text, candidate_labels, multi_label=True)
+            result = classifier(text, candidate_labels, multi_label=False)
         except Exception:
             logger.exception("Classification inference failed for text of length %d", len(text))
             return {}
         return dict(zip(result["labels"], result["scores"], strict=False))
 
+    def _classify_task(
+        self, text: str, task_name: str, candidates: list[str]
+    ) -> str | None:
+        """Run a single classification task and return the top label above threshold."""
+        scores = self._run_classification(text, candidates)
+        return _pick_top(scores, self._classification_threshold)
+
     def _extract_anchors(self, entities: list[DetectedEntity], text: str) -> list[AmbientAnchor]:
-        """Convert detected entities into AmbientAnchor signals."""
         anchors: list[AmbientAnchor] = []
         for ent in entities:
             if ent.entity_type == EntityType.person:
@@ -209,7 +355,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             elif ent.entity_type == EntityType.place:
                 anchor_type = "location"
             else:
-                # Other entity types do not produce ambient anchors.
                 continue
             anchors.append(
                 AmbientAnchor(
@@ -223,25 +368,21 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         return anchors
 
     def _detect_divergence(self, thinking: str, message: str) -> list[str]:
-        """Return divergence signal labels found between thinking and message text."""
         signals: list[str] = []
         thinking_lower = thinking.lower()
         message_lower = message.lower()
 
-        # Suppression heuristic: thinking contains suppression pattern but message has no explicit refusal
         if any(pat in thinking_lower for pat in _SUPPRESSION_PATTERNS_RU) and not any(
             pat in message_lower for pat in ("не могу", "не буду", "не скажу")
         ):
             signals.append("thinking_suppression")
 
-        # Principle / value invocation occurring in thinking but not surfaced
         if any(pat in thinking_lower for pat in _PRINCIPLE_PATTERNS_RU):
             signals.append("principle_invocation_in_thinking")
 
         return signals
 
     def _detect_boundary_markers(self, text: str) -> list[str]:
-        """Return boundary / refusal phrases found in text."""
         found: list[str] = []
         text_lower = text.lower()
         for marker in _BOUNDARY_MARKERS:
@@ -251,7 +392,6 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
 
     @staticmethod
     def _detect_language(text: str) -> str:
-        """Return 'ru' if Cyrillic characters are present, else 'en'."""
         for ch in text:
             if "Ѐ" <= ch <= "ӿ":
                 return "ru"
@@ -262,15 +402,13 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
     # ------------------------------------------------------------------
 
     def clear_session_cache(self) -> None:
-        """Drop all cached analyses. Call at session end to free memory."""
         self._session_cache.clear()
 
     @override
     def analyze_user_message(self, text: str) -> UserMessageAnalysis:
         """Extract entities and ambient anchors from a raw user message.
 
-        Results are cached per session by SHA-256(text) so repeated mentions
-        of the same phrase skip GLiNER + MiniLM inference entirely.
+        Results are cached per session by SHA-256(text).
         """
         import hashlib
 
@@ -297,29 +435,55 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         *,
         thinking: str | None = None,
     ) -> AgentMessageAnalysis:
-        """Analyse an agent's outgoing message, optionally against its thinking trace."""
+        """Point A: analyse agent message with 13-label NER + 5 MiniLM classifications."""
+        # Legacy EntityType NER (used for entity registration)
         message_entities = self._run_ner(message)
         thinking_entities = self._run_ner(thinking) if thinking else []
 
+        # Point A NER: 13 agent-specific labels
+        message_spans = self._run_raw_ner(message, _POINT_A_NER_LABELS)
+
+        # Divergence (rule-based, thinking vs message)
         divergence_signals: list[str] = []
         if thinking:
             divergence_signals = self._detect_divergence(thinking, message)
 
+        # Boundary markers (text heuristic)
         boundary_markers = self._detect_boundary_markers(message)
-        language = self._detect_language(message)
 
-        # Heuristic: high cognitive load when thinking was long and many entities found
+        # Legacy cognitive_load heuristic
         all_entities = message_entities + thinking_entities
         cognitive_load_high = len(thinking or "") > 2000 and len(all_entities) >= 5
+
+        # Point A MiniLM classifications
+        def _classify(task_name: str, candidates: list[str], norm_map: dict | None = None) -> str | None:
+            result = self._classify_task(message, task_name, candidates)
+            if result is not None and norm_map:
+                result = norm_map.get(result, result)
+            return result
+
+        stance = _classify("stance", _POINT_A_CLASSIFICATIONS["stance"])
+        cognitive_mode = _classify("cognitive_mode", _POINT_A_CLASSIFICATIONS["cognitive_mode"])
+        self_orientation = _classify("self_orientation", _POINT_A_CLASSIFICATIONS["self_orientation"], _SELF_ORIENTATION_MAP)
+        primary_emotion = _classify("primary_emotion", _POINT_A_CLASSIFICATIONS["primary_emotion"])
+        cognitive_load_label = _classify("cognitive_load_label", _POINT_A_CLASSIFICATIONS["cognitive_load_label"], _COGNITIVE_LOAD_MAP)
+
+        language = self._detect_language(message)
 
         return AgentMessageAnalysis(
             message_entities=message_entities,
             thinking_entities=thinking_entities,
+            cognitive_load_high=cognitive_load_high,
+            detected_language=language,
+            message_spans=message_spans,
+            stance=stance,
+            cognitive_mode=cognitive_mode,
+            self_orientation=self_orientation,
+            primary_emotion=primary_emotion,
+            cognitive_load_label=cognitive_load_label,
             divergence_signals=divergence_signals,
             boundary_markers=boundary_markers,
             trust_signals=[],
-            cognitive_load_high=cognitive_load_high,
-            detected_language=language,
         )
 
     @override
@@ -328,27 +492,25 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         what_happened: str,
         why_it_matters: str,
     ) -> KeyMomentAnalysis:
-        """Analyse both narrative fields of a KeyMoment record."""
+        """Point K: analyse key moment with 4-label NER + 7 MiniLM classifications."""
         combined = f"{what_happened}\n{why_it_matters}"
         entities = self._run_ner(combined)
 
-        scores = self._run_classification(combined, _KEY_MOMENT_LABELS)
+        # Point K NER: 4 narrative marker labels
+        marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
 
+        # Legacy classification for cognitive_load (float) and boundary_event
+        legacy_scores = self._run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)
         boundary_markers = self._detect_boundary_markers(combined)
         boundary_event = (
-            scores.get("boundary event", 0.0) > self._classification_threshold
+            legacy_scores.get("boundary event", 0.0) > self._classification_threshold
             or len(boundary_markers) > 0
         )
-
-        # principle_invocations are explicit references to principles/values,
-        # NOT generic refusal phrases (those go in boundary_event). Match the
-        # narrower _PRINCIPLE_PATTERNS_RU substrings to avoid false positives.
         principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
+        cognitive_load = min(1.0, max(0.0, legacy_scores.get("high cognitive load", 0.0)))
 
-        cognitive_load = min(1.0, max(0.0, scores.get("high cognitive load", 0.0)))
-
-        positive_score = scores.get("positive trust", 0.0)
-        negative_score = scores.get("negative trust", 0.0)
+        positive_score = legacy_scores.get("positive trust", 0.0)
+        negative_score = legacy_scores.get("negative trust", 0.0)
         if positive_score > self._classification_threshold and positive_score > negative_score:
             trust_signal: str | None = "positive"
         elif negative_score > self._classification_threshold and negative_score > positive_score:
@@ -357,8 +519,24 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             trust_signal = None
 
         topic_labels = [
-            label for label, score in scores.items() if score > self._classification_threshold
+            label for label, score in legacy_scores.items()
+            if score > self._classification_threshold
         ]
+
+        # Point K MiniLM classifications
+        def _k_classify(task: str, candidates: list[str], norm_map: dict | None = None) -> str | None:
+            result = self._classify_task(combined, task, candidates)
+            if result is not None and norm_map:
+                result = norm_map.get(result, result)
+            return result
+
+        agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
+        confidence_in_self = _k_classify("confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP)
+        trust_signal_category = _k_classify("trust_signal_category", _POINT_K_CLASSIFICATIONS["trust_signal_category"], _TRUST_CAT_MAP)
+        boundary_event_category = _k_classify("boundary_event_category", _POINT_K_CLASSIFICATIONS["boundary_event_category"], _BOUNDARY_CAT_MAP)
+        connection_quality = _k_classify("connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"])
+        learning_signal = _k_classify("learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP)
+        growth_indicator = _k_classify("growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"])
 
         return KeyMomentAnalysis(
             entities=entities,
@@ -367,4 +545,12 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             boundary_event=boundary_event,
             trust_signal=trust_signal,
             principle_invocations=principle_invocations,
+            marker_spans=marker_spans,
+            agency_level=agency_level,
+            confidence_in_self=confidence_in_self,
+            trust_signal_category=trust_signal_category,
+            boundary_event_category=boundary_event_category,
+            connection_quality=connection_quality,
+            learning_signal=learning_signal,
+            growth_indicator=growth_indicator,
         )

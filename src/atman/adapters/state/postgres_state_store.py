@@ -616,10 +616,11 @@ class PostgresStateStore(StateStore):
             return
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
+            # JSONB merge: preserves keys written by other analysis points (A, K).
             q = sql.SQL(
                 """
                 UPDATE {s}.key_moments
-                SET structured_markers = %(markers)s,
+                SET structured_markers = COALESCE(structured_markers, '{{}}'::jsonb) || %(markers)s::jsonb,
                     structured_markers_version = %(version)s
                 WHERE id = %(mid)s
                 """
