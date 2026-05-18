@@ -1,11 +1,10 @@
 """Streamlit live-chat page with Atman debug panel.
 
-Layout: left col (60%) = conversation, right col (40%) = debug tabs.
-Debug tabs: Events | Key Moments | Facts | RAG.
+Layout: left col (60%) = chat in fixed-height scrollable container + input
+        right col (40%) = debug tabs: Events | Key Moments | Facts | RAG
 
-Run via:
-    make chat-ui
-    # then open http://localhost:8502
+Run:  make chat-ui
+Open: http://localhost:8502  (WSL→Windows: http://<windows-lan-ip>:8502)
 """
 
 from __future__ import annotations
@@ -26,18 +25,25 @@ import streamlit as st
 warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-for _noisy in ("huggingface_hub", "transformers", "FlagEmbedding", "gliner", "spacy",
-               "filelock", "urllib3", "httpx"):
-    logging.getLogger(_noisy).setLevel(logging.ERROR)
+for _n in ("huggingface_hub", "transformers", "FlagEmbedding", "gliner", "spacy",
+           "filelock", "urllib3", "httpx"):
+    logging.getLogger(_n).setLevel(logging.ERROR)
 
-# ── Load .env before any Atman imports ──────────────────────────────────────
-_env_file = Path(__file__).parents[4] / ".env"
-if _env_file.exists():
-    for _line in _env_file.read_text().splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _k, _, _v = _line.partition("=")
-            os.environ.setdefault(_k.strip(), _v.strip())
+# ── Find and load .env (walk up from this file's location) ──────────────────
+def _load_env() -> None:
+    p = Path(__file__).resolve()
+    for _ in range(10):
+        p = p.parent
+        candidate = p / ".env"
+        if candidate.exists():
+            for line in candidate.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    os.environ.setdefault(k.strip(), v.strip())
+            return
+
+_load_env()
 
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -56,30 +62,37 @@ from atman.adapters.agent.tools import (
 from atman.core.services.passive_memory_injector import build_rag_context
 from atman.web_dashboard.utils.chat_deps import get_chat_deps, install_slog_hook
 
-# ── Env ──────────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 _AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
-_AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
-_AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
-_POSTGRES_URL = (
-    os.getenv("POSTGRES_USER") and
-    f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD', '')}"
-    f"@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}"
-    f"/{os.getenv('POSTGRES_DB', 'atman')}"
-) or os.getenv("DATABASE_URL", "")
-_MAX_HISTORY = 8
-_AGENT_TIMEOUT = 120  # seconds
+_AGENT_MODEL    = os.getenv("AGENT_LLM_MODEL", "gemma4")
+_AGENT_API_KEY  = os.getenv("AGENT_LLM_API_KEY", "dummy")
+_MAX_HISTORY    = 8
+_AGENT_TIMEOUT  = 120  # seconds
+
+
+def _pg_url() -> str:
+    """Build postgres URL from POSTGRES_* vars (superuser — bypasses RLS)."""
+    u = os.getenv("POSTGRES_USER", "")
+    if not u:
+        return os.getenv("DATABASE_URL", "")
+    return (
+        f"postgresql://{u}:{os.getenv('POSTGRES_PASSWORD', '')}"
+        f"@{os.getenv('POSTGRES_HOST', 'localhost')}"
+        f":{os.getenv('POSTGRES_PORT', '5432')}"
+        f"/{os.getenv('POSTGRES_DB', 'atman')}"
+    )
+
 
 st.set_page_config(layout="wide", page_title="Atman Chat")
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
 def _surface_passive_context(user_text: str, deps):
-    """Return updated deps with injected_context + summary string."""
     if deps.passive_memory_injector is None:
         return deps, None
     try:
@@ -89,46 +102,42 @@ def _surface_passive_context(user_text: str, deps):
         rag = build_rag_context(items, budget=1500)
         if not rag.items:
             return deps, None
-        lines = []
-        for item in rag.items:
-            payload = item.payload
-            text = (
-                getattr(payload, "content", None)
-                or getattr(payload, "what_happened", None)
-                or str(payload)[:120]
-            )
-            lines.append(f"- [{item.kind}] {_S(str(text))[:150]}")
-        ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
-        summary = f"{len(rag.items)} items, {rag.tokens_used} tok"
-        return replace(deps, injected_context=ctx_str), summary
+        lines = [
+            f"- [{it.kind}] {_S(str(getattr(it.payload, 'content', None) or getattr(it.payload, 'what_happened', '') or '')[:150])}"
+            for it in rag.items
+        ]
+        ctx = "## Из памяти (релевантное)\n" + "\n".join(lines)
+        return replace(deps, injected_context=ctx), f"{len(rag.items)} items, {rag.tokens_used} tok"
     except Exception as exc:
         return deps, f"error: {exc}"
 
 
-def _fmt_ambient(result) -> str:
-    if not result or not result.items:
-        return ""
-    lines = []
-    for item in result.items:
-        payload = item.payload
-        if item.kind == "stance":
-            text = getattr(payload, "stance_text", "") or ""
-        elif item.kind == "moment":
-            text = getattr(payload, "what_happened", "") or ""
-        else:
-            text = getattr(payload, "content", "") or ""
-        lines.append(f"[{item.kind}] {item.anchor_text or ''}: {_S(str(text))[:120]}")
-    return "\n".join(lines)
+def _get_ambient_injection(text: str, deps):
+    if deps.ambient_memory is None:
+        return None, ""
+    try:
+        result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
+        if not result.items:
+            return result, ""
+        lines = []
+        for it in result.items:
+            p = it.payload
+            if it.kind == "stance":
+                txt = getattr(p, "stance_text", "") or ""
+            elif it.kind == "moment":
+                txt = getattr(p, "what_happened", "") or ""
+            else:
+                txt = getattr(p, "content", "") or ""
+            lines.append(f"[{it.kind}] {it.anchor_text or ''}: {_S(str(txt))[:100]}")
+        return result, "\n".join(lines)
+    except Exception:
+        return None, ""
 
 
 def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
-    """Bridge async agent.run_stream() to a synchronous generator for st.write_stream().
-
-    Returns a (generator, result_holder) pair. After the generator is exhausted,
-    result_holder["result"] contains the StreamedRunResult.
-    """
-    token_q: queue.Queue[str | None] = queue.Queue()
-    result_holder: dict = {"result": None, "error": None}
+    """Wrap async run_stream() in a sync generator via queue+thread."""
+    tok_q: queue.Queue[str | None] = queue.Queue()
+    holder: dict = {"result": None, "error": None}
 
     async def _producer() -> None:
         try:
@@ -139,41 +148,38 @@ def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
                 model_settings=model_settings,
             ) as streamed:
                 async for token in streamed.stream_text(delta=True):
-                    token_q.put(token)
-                result_holder["result"] = streamed
+                    tok_q.put(token)
+                holder["result"] = streamed
         except Exception as exc:
-            result_holder["error"] = exc
+            holder["error"] = exc
         finally:
-            token_q.put(None)
+            tok_q.put(None)
 
-    t = threading.Thread(target=lambda: asyncio.run(_producer()), daemon=True)
-    t.start()
+    threading.Thread(target=lambda: asyncio.run(_producer()), daemon=True).start()
 
     def _gen():
         while True:
-            tok = token_q.get(timeout=_AGENT_TIMEOUT)
+            tok = tok_q.get(timeout=_AGENT_TIMEOUT)
             if tok is None:
                 break
             yield tok
-        t.join()
-        if result_holder["error"] is not None:
-            raise result_holder["error"]
+        if holder["error"] is not None:
+            raise holder["error"]
 
-    return _gen(), result_holder
+    return _gen(), holder
 
 
 def _register_entities_sync(text: str, deps) -> None:
-    """Sync entity registration (runs GLiNER analysis; DB writes are fire-and-forget)."""
     if deps.ambient_memory is None or deps.entity_registry is None:
         return
     try:
         analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
-        for entity in (analysis.entities or []):
-            if len(entity.text) < 2:
+        for ent in (analysis.entities or []):
+            if len(ent.text) < 2:
                 continue
             try:
                 deps.entity_registry.resolve_or_create(
-                    deps.agent_id, _S(entity.text), entity.entity_type
+                    deps.agent_id, _S(ent.text), ent.entity_type
                 )
             except Exception:
                 pass
@@ -181,47 +187,28 @@ def _register_entities_sync(text: str, deps) -> None:
         pass
 
 
-def _get_ambient_injection(text: str, deps) -> tuple[object | None, str]:
-    """Run ambient injection and return (result, injected_text)."""
-    if deps.ambient_memory is None:
-        return None, ""
-    try:
-        result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
-        injected = _fmt_ambient(result)
-        return result, injected
-    except Exception:
-        return None, ""
-
-
 def _analyze_response_sync(text: str, deps, sm, session_id) -> None:
-    """Post-turn: register entities from agent response + auto key moment on boundary."""
     if deps.ambient_memory is None:
         return
     try:
         analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
     except Exception:
         return
-
-    # Register entities from agent text
     for ent in (analysis.message_entities or []):
-        if len(ent.text) < 2:
-            continue
-        try:
-            deps.entity_registry.resolve_or_create(
-                deps.agent_id, _S(ent.text), ent.entity_type
-            )
-        except Exception:
-            pass
-
-    # Auto key moment on boundary
+        if len(ent.text) >= 2:
+            try:
+                deps.entity_registry.resolve_or_create(
+                    deps.agent_id, _S(ent.text), ent.entity_type
+                )
+            except Exception:
+                pass
     if analysis.boundary_markers and session_id is not None:
         try:
             from atman.core.models.experience import EmotionalDepth
             from atman.core.models.session import KeyMomentInput
-            markers_str = ", ".join(analysis.boundary_markers[:3])
             kmi = KeyMomentInput(
                 what_happened=_S(text[:300]),
-                why_it_matters=f"Boundary event detected: {markers_str}",
+                why_it_matters=f"Boundary: {', '.join(analysis.boundary_markers[:3])}",
                 emotional_valence=0.0,
                 emotional_intensity=0.0,
                 incomplete_coloring=True,
@@ -253,33 +240,95 @@ def _sanitize_history(messages: list) -> list:
     try:
         from pydantic_ai.messages import ModelMessagesTypeAdapter
         raw = ModelMessagesTypeAdapter.dump_python(messages, mode="json")
-        cleaned = _clean(raw)
-        return ModelMessagesTypeAdapter.validate_python(cleaned)
+        return ModelMessagesTypeAdapter.validate_python(_clean(raw))
     except Exception:
         return messages
 
 
-# ── DB helpers for debug panel ────────────────────────────────────────────────
+# ── Session close ─────────────────────────────────────────────────────────────
 
-def _db_conn():
-    import psycopg
-    return psycopg.connect(_POSTGRES_URL, autocommit=True)
+def _close_session(status_container) -> None:
+    """Run full session-close pipeline, writing status lines into status_container."""
+    sm       = st.session_state.sm
+    deps     = st.session_state.deps
+    session_id = st.session_state.session_id
+    agent_id   = deps.agent_id
 
+    lines: list[str] = []
+
+    def _log(msg: str) -> None:
+        lines.append(msg)
+        status_container.markdown("\n\n".join(lines))
+
+    # 1. finish_session
+    try:
+        sm.finish_session(
+            session_id,
+            overall_emotional_tone=0.0,
+            key_insight="UI session",
+            alignment_check=True,
+            close_reason="completed",
+        )
+        _log("✅ finish_session — ok")
+    except ValueError as exc:
+        if "Cannot finish session without key moments" in str(exc):
+            from atman.adapters.agent.runner import _force_finish
+            _force_finish(sm, session_id, "completed")
+            _log("⚠️ finish_session — force_finish (no key moments)")
+        else:
+            _log(f"❌ finish_session — {exc}")
+    except Exception as exc:
+        _log(f"❌ finish_session — {exc}")
+
+    # 2. Micro-reflection
+    try:
+        event = deps.micro_reflection.reflect(session_id, agent_id=agent_id)
+        insight = (event.key_insight or "")[:100]
+        _log(f"🪞 micro-reflection — {insight or 'done'}")
+    except Exception as exc:
+        _log(f"❌ micro-reflection — {exc}")
+
+    # 3. Maintenance drain
+    if getattr(deps, "maintenance_worker", None) is not None:
+        try:
+            done = deps.maintenance_worker.run_once(batch_size=50)
+            _log(f"📋 maintenance — {done} job(s) drained")
+        except Exception as exc:
+            _log(f"❌ maintenance — {exc}")
+
+    # 4. Validation findings
+    if getattr(deps, "memory_guardian", None) is not None:
+        try:
+            findings = deps.memory_guardian.get_unresolved(agent_id)
+            if findings:
+                for f in findings[:5]:
+                    _log(f"⚠️ finding [{f.severity}] {f.finding_type}: {f.description[:80]}")
+            else:
+                _log("🔍 validation — no findings")
+        except Exception:
+            pass
+
+    st.session_state.session_closed = True
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=5)
-def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10) -> list[dict]:
-    if not _POSTGRES_URL:
+def _fetch_key_moments(agent_id_str: str, schema: str) -> list[dict]:
+    url = _pg_url()
+    if not url:
         return []
     try:
-        with _db_conn() as conn:
+        import psycopg
+        with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 f"""
                 SELECT id, what_happened, why_it_matters, salience, recorded_at
                 FROM {schema}.key_moments
                 WHERE agent_id = %s
-                ORDER BY recorded_at DESC LIMIT %s
+                ORDER BY recorded_at DESC LIMIT 10
                 """,
-                [agent_id_str, limit],
+                [agent_id_str],
             ).fetchall()
         return [
             {"id": str(r[0])[:8], "what": (r[1] or "")[:80],
@@ -287,32 +336,34 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10) -> list[
              "ts": str(r[4])[:19]}
             for r in rows
         ]
-    except Exception:
-        return []
+    except Exception as exc:
+        return [{"error": str(exc)}]
 
 
 @st.cache_data(ttl=5)
-def _fetch_facts(agent_id_str: str, limit: int = 10) -> list[dict]:
-    if not _POSTGRES_URL:
+def _fetch_facts(agent_id_str: str) -> list[dict]:
+    url = _pg_url()
+    if not url:
         return []
     try:
-        with _db_conn() as conn:
+        import psycopg
+        with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 """
                 SELECT id, content, confidence, created_at
                 FROM public.facts
                 WHERE agent_id = %s
-                ORDER BY created_at DESC LIMIT %s
+                ORDER BY created_at DESC LIMIT 10
                 """,
-                [agent_id_str, limit],
+                [agent_id_str],
             ).fetchall()
         return [
             {"id": str(r[0])[:8], "content": (r[1] or "")[:100],
              "conf": f"{float(r[2] or 0):.2f}", "ts": str(r[3])[:19]}
             for r in rows
         ]
-    except Exception:
-        return []
+    except Exception as exc:
+        return [{"error": str(exc)}]
 
 
 # ── Event formatting ──────────────────────────────────────────────────────────
@@ -331,7 +382,7 @@ def _fmt_event(ev: dict) -> str:
     event = ev["event"]
     d = ev.get("data", {})
     icon = _EVENT_ICONS.get(event, "·")
-    ts = ev.get("ts", "")[-8:]  # HH:MM:SS
+    ts = ev.get("ts", "")[-8:]
 
     def _s(k, n=60):
         return str(d.get(k, ""))[:n]
@@ -339,13 +390,13 @@ def _fmt_event(ev: dict) -> str:
     if event == "key_moment_appended":
         detail = f'"{_s("what_happened", 60)}"'
     elif event == "entity_resolved":
-        detail = f'"{_s("text", 30)}" → {_s("method")} id={_s("entity_id", 8)}'
+        detail = f'"{_s("text", 30)}" → {_s("method")}  id={_s("entity_id", 8)}'
     elif event == "fact_added":
         detail = f'"{_s("content", 60)}"'
     elif event in ("fact_entity_links_saved", "km_entity_links_saved"):
         detail = f'{_s("count")} links  {_s("entities", 40)}'
     elif event == "ambient_injection":
-        detail = f'{_s("items_total")} items  {_s("tokens_used")}tok  {_s("by_kind", 40)}'
+        detail = f'{_s("items_total")} items  {_s("tokens_used")}tok'
     elif event == "job_done":
         result = d.get("result") or {}
         summ = "  ".join(f"{k}={v}" for k, v in list(result.items())[:2]) if result else ""
@@ -356,16 +407,17 @@ def _fmt_event(ev: dict) -> str:
         parts = [f"{k}={str(v)[:30]}" for k, v in list(d.items())[:3]]
         detail = "  ".join(parts)
 
-    return f"`{ts}` {icon} **{event}** {detail}"
+    return f"`{ts}` {icon} **{event}**  {detail}"
 
 
-# ── Session initialization ────────────────────────────────────────────────────
+# ── Initialization ────────────────────────────────────────────────────────────
 
 def _initialize() -> None:
     if st.session_state.get("initialized"):
         return
 
-    deps, sm, _store = get_chat_deps()
+    with st.spinner("Инициализация Atman…"):
+        deps, sm, _store = get_chat_deps()
 
     events_log: list[dict] = []
     install_slog_hook(events_log)
@@ -394,14 +446,16 @@ def _initialize() -> None:
         tools=tool_funcs,
     )
 
-    # Resolve agent schema for DB queries
+    # Resolve agent DB schema
     agent_serial = None
-    if _POSTGRES_URL:
+    url = _pg_url()
+    if url:
         try:
             import psycopg
-            with psycopg.connect(_POSTGRES_URL, autocommit=True) as conn:
+            with psycopg.connect(url, autocommit=True) as conn:
                 row = conn.execute(
-                    "SELECT serial_id FROM public.agents WHERE id = %s", [str(deps.agent_id)]
+                    "SELECT serial_id FROM public.agents WHERE id = %s",
+                    [str(deps.agent_id)],
                 ).fetchone()
                 if row:
                     agent_serial = int(row[0])
@@ -410,40 +464,35 @@ def _initialize() -> None:
 
     st.session_state.update({
         "initialized": True,
+        "session_closed": False,
         "deps": deps,
         "sm": sm,
         "session_id": ctx.session_id,
         "agent": agent,
         "model_settings": model_settings,
         "events_log": events_log,
-        "messages": [],             # display messages: [{"role": ..., "content": ...}]
-        "pydantic_history": [],     # pydantic-ai ModelMessage list
-        "last_rag": {},             # {"passive": str, "ambient": str, "injected": str}
+        "messages": [],
+        "pydantic_history": [],
+        "last_rag": {},
         "agent_serial": agent_serial,
         "agent_id_str": str(deps.agent_id),
     })
 
 
-# ── Handle one chat turn ──────────────────────────────────────────────────────
+# ── Chat turn ─────────────────────────────────────────────────────────────────
 
-def _handle_turn(prompt: str) -> None:
-    deps: object = st.session_state.deps
-    sm = st.session_state.sm
-    session_id = st.session_state.session_id
-    agent = st.session_state.agent
+def _handle_turn(prompt: str, msg_container) -> None:
+    deps          = st.session_state.deps
+    sm            = st.session_state.sm
+    session_id    = st.session_state.session_id
+    agent         = st.session_state.agent
     model_settings = st.session_state.model_settings
-    history: list = st.session_state.pydantic_history
-    events_log: list = st.session_state.events_log
+    history       = st.session_state.pydantic_history
 
-    # Clear per-turn events from previous turn
-    events_snapshot_start = len(events_log)
-
-    # 1. Pre-turn: entity registration + passive + ambient RAG
+    # Pre-turn
     _register_entities_sync(prompt, deps)
-
     deps, passive_summary = _surface_passive_context(prompt, deps)
-    ambient_result, ambient_text = _get_ambient_injection(prompt, deps)
-
+    _, ambient_text = _get_ambient_injection(prompt, deps)
     if ambient_text:
         merged = ((deps.injected_context or "") + "\n" + ambient_text).strip()
         deps = replace(deps, injected_context=merged)
@@ -454,145 +503,124 @@ def _handle_turn(prompt: str) -> None:
         "injected": deps.injected_context or "",
     }
 
-    # 2. Append user message to display
+    # Append + show user message
     st.session_state.messages.append({"role": "user", "content": prompt})
+    with msg_container:
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-    # 3. Trim history
+    # Stream assistant response
     trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
-
-    # 4. Stream agent response
-    col_chat = st.session_state.get("_col_chat_ref")
     response_text = ""
-    error_msg = None
 
-    try:
-        gen, result_holder = _stream_agent(prompt, deps, trimmed, agent, model_settings)
-
+    with msg_container:
         with st.chat_message("assistant"):
+            placeholder = st.empty()
             try:
+                gen, holder = _stream_agent(prompt, deps, trimmed, agent, model_settings)
                 response_text = st.write_stream(gen)
+                response_text = re.sub(
+                    r"<think>.*?</think>", "", str(response_text), flags=re.DOTALL
+                ).strip()
             except queue.Empty:
-                error_msg = "⏱ Timeout — агент не ответил за 120 секунд"
+                placeholder.error("⏱ Timeout — агент не ответил за 120 секунд")
+                return
             except Exception as exc:
-                error_msg = f"💥 {type(exc).__name__}: {exc}"
+                placeholder.error(f"💥 {type(exc).__name__}: {exc}")
+                return
 
-        if error_msg:
-            st.error(error_msg)
-            return
+    # Update pydantic history
+    streamed = holder.get("result")
+    if streamed is not None:
+        try:
+            new_msgs = _sanitize_history(list(streamed.new_messages()))
+            history.extend(new_msgs)
+        except Exception:
+            pass
 
-        # Strip <think>…</think> tags from final display if not stripped by stream
-        response_text = re.sub(r"<think>.*?</think>", "", str(response_text), flags=re.DOTALL).strip()
-
-        # 5. Update pydantic history from result
-        streamed = result_holder.get("result")
-        if streamed is not None:
-            try:
-                new_msgs = _sanitize_history(list(streamed.new_messages()))
-                history.extend(new_msgs)
-            except Exception:
-                pass
-
-    except Exception as exc:
-        st.error(f"💥 {type(exc).__name__}: {exc}")
-        return
-
-    # 6. Append assistant message to display
     st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-    # 7. Post-turn analysis
+    # Post-turn
     if response_text:
         _analyze_response_sync(response_text, deps, sm, session_id)
 
-    # 8. Per-turn maintenance drain (small batch, non-blocking)
     if getattr(deps, "maintenance_worker", None) is not None:
         try:
             deps.maintenance_worker.run_once(batch_size=10)
         except Exception:
             pass
 
-    # 9. Persist updated deps + history back to session state
     st.session_state.deps = deps
     st.session_state.pydantic_history = history
-
-    # Invalidate DB caches so debug tables refresh
     _fetch_key_moments.clear()
     _fetch_facts.clear()
 
 
 # ── Debug panel ───────────────────────────────────────────────────────────────
 
-def _render_events_tab(events_log: list[dict]) -> None:
-    recent = list(reversed(events_log[-60:]))
-    if not recent:
-        st.caption("Нет событий этой сессии")
-        return
-    for ev in recent:
-        st.markdown(_fmt_event(ev))
-
-
-def _render_km_tab(agent_id_str: str, agent_serial: int | None) -> None:
-    if st.button("🔄 Refresh", key="km_refresh"):
-        _fetch_key_moments.clear()
-    if agent_serial is None:
-        st.caption("DB not available")
-        return
-    schema = f"agent_{agent_serial}"
-    rows = _fetch_key_moments(agent_id_str, schema)
-    if not rows:
-        st.caption("— no key moments —")
-        return
-    import pandas as pd
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-def _render_facts_tab(agent_id_str: str) -> None:
-    if st.button("🔄 Refresh", key="facts_refresh"):
-        _fetch_facts.clear()
-    rows = _fetch_facts(agent_id_str)
-    if not rows:
-        st.caption("— no facts —")
-        return
-    import pandas as pd
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-def _render_rag_tab(last_rag: dict) -> None:
-    if not last_rag:
-        st.caption("Пока не было ходов")
-        return
-    st.markdown(f"**Passive RAG:** `{last_rag.get('passive', 'none')}`")
-    amb = last_rag.get("ambient", "")
-    if amb and amb != "none":
-        with st.expander("Ambient context", expanded=False):
-            st.text(amb[:2000])
-    injected = last_rag.get("injected", "")
-    if injected:
-        with st.expander("Injected context (full)", expanded=False):
-            st.text(injected[:3000])
-    else:
-        st.caption("injected_context: пусто")
-
-
 def _render_debug_panel() -> None:
-    events_log = st.session_state.get("events_log", [])
+    events_log   = st.session_state.get("events_log", [])
     agent_id_str = st.session_state.get("agent_id_str", "")
     agent_serial = st.session_state.get("agent_serial")
-    last_rag = st.session_state.get("last_rag", {})
+    last_rag     = st.session_state.get("last_rag", {})
 
     tab_ev, tab_km, tab_facts, tab_rag = st.tabs(["Events", "Key Moments", "Facts", "RAG"])
+
     with tab_ev:
-        _render_events_tab(events_log)
+        recent = list(reversed(events_log[-60:]))
+        if not recent:
+            st.caption("Нет событий")
+        for ev in recent:
+            st.markdown(_fmt_event(ev))
+
     with tab_km:
-        _render_km_tab(agent_id_str, agent_serial)
+        c1, c2 = st.columns([1, 3])
+        if c1.button("🔄", key="km_refresh"):
+            _fetch_key_moments.clear()
+        if agent_serial is None:
+            st.warning("DB not available — POSTGRES_* env vars not set")
+        else:
+            schema = f"agent_{agent_serial}"
+            rows = _fetch_key_moments(agent_id_str, schema)
+            if rows and "error" in rows[0]:
+                st.error(rows[0]["error"])
+            elif not rows:
+                st.caption("— no key moments —")
+            else:
+                import pandas as pd
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
     with tab_facts:
-        _render_facts_tab(agent_id_str)
+        c1, _ = st.columns([1, 3])
+        if c1.button("🔄", key="facts_refresh"):
+            _fetch_facts.clear()
+        rows = _fetch_facts(agent_id_str)
+        if rows and "error" in rows[0]:
+            st.error(rows[0]["error"])
+        elif not rows:
+            st.caption("— no facts —")
+        else:
+            import pandas as pd
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
     with tab_rag:
-        _render_rag_tab(last_rag)
+        if not last_rag:
+            st.caption("Пока не было ходов")
+        else:
+            st.markdown(f"**Passive RAG:** `{last_rag.get('passive', 'none')}`")
+            amb = last_rag.get("ambient", "")
+            if amb and amb != "none":
+                with st.expander("Ambient context"):
+                    st.text(amb[:2000])
+            inj = last_rag.get("injected", "")
+            if inj:
+                with st.expander("Injected context (full)"):
+                    st.text(inj[:3000])
+            else:
+                st.caption("injected_context: пусто")
 
 
-# ── Main layout ───────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 _initialize()
 
@@ -600,25 +628,37 @@ col_chat, col_debug = st.columns([3, 2])
 
 with col_chat:
     agent_id_str = st.session_state.get("agent_id_str", "?")
-    session_id = st.session_state.get("session_id")
+    session_id   = st.session_state.get("session_id")
+    serial       = st.session_state.get("agent_serial")
+
     st.caption(
-        f"agent `{agent_id_str[:8]}…`  session `{str(session_id)[:8] if session_id else '?'}…`"
-        f"  model `{_AGENT_MODEL}` @ `{_AGENT_BASE_URL}`"
+        f"agent `{agent_id_str[:8]}…`  "
+        f"session `{str(session_id)[:8] if session_id else '?'}…`  "
+        f"model `{_AGENT_MODEL}`  "
+        f"db schema `{'agent_' + str(serial) if serial else '—'}`"
     )
 
-    # Render history
-    for msg in st.session_state.get("messages", []):
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    # ── Session-close button ─────────────────────────────────────────────────
+    if not st.session_state.get("session_closed"):
+        if st.button("🔚 Завершить сессию", type="secondary"):
+            with st.status("Завершение сессии…", expanded=True) as status_widget:
+                body = st.empty()
+                _close_session(body)
+                status_widget.update(label="Сессия завершена", state="complete", expanded=True)
+    else:
+        st.info("Сессия завершена. Обновите страницу чтобы начать новую.")
 
-    # Chat input
-    if prompt := st.chat_input("Напиши что-нибудь…"):
-        with col_chat:
-            with st.chat_message("user"):
-                st.markdown(prompt)
-        with col_chat:
-            _handle_turn(prompt)
-        st.rerun()
+    # ── Chat messages (scrollable fixed-height container) ────────────────────
+    msg_container = st.container(height=520, border=False)
+    with msg_container:
+        for msg in st.session_state.get("messages", []):
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+    # ── Input ────────────────────────────────────────────────────────────────
+    if not st.session_state.get("session_closed"):
+        if prompt := st.chat_input("Напиши что-нибудь…"):
+            _handle_turn(prompt, msg_container)
 
 with col_debug:
     _render_debug_panel()

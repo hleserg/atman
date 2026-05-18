@@ -136,7 +136,7 @@ live-chat:
 # Streamlit chat UI — full debug panel, event log, DB tables, RAG viewer.
 # Opens at http://localhost:8502 (WSL2: also accessible via Windows localhost).
 chat-ui:
-	PYTHONPATH=. python3 -m streamlit run src/atman/web_dashboard/pages/3_Chat.py \
+	PYTHONPATH=$(PWD)/src:. python3 -m streamlit run src/atman/web_dashboard/pages/3_Chat.py \
 		--server.port 8502 --server.headless true --server.address 0.0.0.0
 
 # Quick Rich-table view of agent's last 10 key moments, facts, top entities.
