@@ -85,6 +85,23 @@ def _pg_url() -> str:
 
 st.set_page_config(layout="wide", page_title="Atman Chat")
 
+# Adaptive chat container: fills available viewport height minus fixed UI chrome.
+# st.container(height=) only takes pixels; we override via CSS calc().
+# 260px covers: header ~58 + caption ~28 + button ~42 + input ~70 + padding ~62.
+st.markdown("""
+<style>
+[data-testid="stVerticalBlockBorderWrapper"] {
+    height: calc(100vh - 260px) !important;
+    min-height: 200px !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+    height: 100% !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -350,7 +367,7 @@ def _fetch_facts(agent_id_str: str) -> list[dict]:
         with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 """
-                SELECT id, content, confidence, created_at
+                SELECT id, content, salience, source, created_at
                 FROM public.facts
                 WHERE agent_id = %s
                 ORDER BY created_at DESC LIMIT 10
@@ -359,7 +376,8 @@ def _fetch_facts(agent_id_str: str) -> list[dict]:
             ).fetchall()
         return [
             {"id": str(r[0])[:8], "content": (r[1] or "")[:100],
-             "conf": f"{float(r[2] or 0):.2f}", "ts": str(r[3])[:19]}
+             "sal": f"{float(r[2] or 0):.2f}", "source": (r[3] or "")[:20],
+             "ts": str(r[4])[:19]}
             for r in rows
         ]
     except Exception as exc:
@@ -649,7 +667,7 @@ with col_chat:
         st.info("Сессия завершена. Обновите страницу чтобы начать новую.")
 
     # ── Chat messages (scrollable fixed-height container) ────────────────────
-    msg_container = st.container(height=520, border=False)
+    msg_container = st.container(height=300, border=False)  # CSS overrides to calc(100vh-260px)
     with msg_container:
         for msg in st.session_state.get("messages", []):
             with st.chat_message(msg["role"]):
