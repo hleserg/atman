@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -132,6 +132,16 @@ demo-e2e-scenario:
 # Run before live_chat.py to avoid a 4-min cold-start on first embedding call.
 live-chat:
 	PYTHONPATH=. python3 -m e2e.live_chat
+
+# Streamlit chat UI — full debug panel, event log, DB tables, RAG viewer.
+# Opens at http://localhost:8502 (WSL2: also accessible via Windows localhost).
+chat-ui:
+	PYTHONPATH=. python3 -m streamlit run src/atman/web_dashboard/pages/3_Chat.py \
+		--server.port 8502 --server.headless true --server.address 0.0.0.0
+
+# Quick Rich-table view of agent's last 10 key moments, facts, top entities.
+show-agent:
+	PYTHONPATH=. python3 scripts/show_agent_data.py
 
 warmup-models:
 	CUDA_VISIBLE_DEVICES= PYTHONPATH=. .venv/bin/python scripts/warmup_native_models.py
