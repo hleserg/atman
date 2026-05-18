@@ -95,11 +95,6 @@ st.markdown("""
     padding-top: 3.5rem !important;
     padding-bottom: 1.5rem !important;
 }
-/* Taller chat input — fits ~2 lines */
-[data-testid="stChatInput"] textarea {
-    min-height: 3.2rem !important;
-    max-height: 6rem !important;
-}
 /* Adaptive chat container height */
 [data-testid="stVerticalBlockBorderWrapper"] {
     height: calc(100vh - 240px) !important;
@@ -111,6 +106,27 @@ st.markdown("""
     overflow-y: auto !important;
 }
 </style>
+<script>
+(function() {
+    function install() {
+        const ta = document.querySelector('[data-testid="stChatInput"] textarea');
+        if (!ta) { setTimeout(install, 300); return; }
+        if (ta.dataset.ctrlEnterInstalled) return;
+        ta.dataset.ctrlEnterInstalled = "1";
+        ta.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                const s = ta.selectionStart, end = ta.selectionEnd;
+                ta.value = ta.value.slice(0, s) + '\n' + ta.value.slice(end);
+                ta.selectionStart = ta.selectionEnd = s + 1;
+                ta.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        }, true);
+    }
+    install();
+})();
+</script>
 """, unsafe_allow_html=True)
 
 
