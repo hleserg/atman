@@ -358,6 +358,10 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                 anchor_type = "topic"
             elif ent.entity_type == EntityType.place:
                 anchor_type = "location"
+            elif ent.entity_type == EntityType.organization:
+                anchor_type = "organization_ref"
+            elif ent.entity_type == EntityType.tool:
+                anchor_type = "tool_ref"
             else:
                 continue
             anchors.append(

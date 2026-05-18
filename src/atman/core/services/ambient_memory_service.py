@@ -59,7 +59,10 @@ from atman.core.session_log import slog as _slog  # noqa: E402
 # Anchor types from `AmbientAnchor.anchor_type` that resolve to a stored
 # entity in the registry (and therefore can drive a per-entity backend
 # query). Action / emotion / time refs are handled by the dense pipeline.
-_BIOGRAPHICAL_ANCHOR_TYPES = frozenset({"person_ref", "topic", "location", "object_ref"})
+_BIOGRAPHICAL_ANCHOR_TYPES = frozenset({
+    "person_ref", "topic", "location", "object_ref",
+    "organization_ref", "tool_ref",
+})
 
 
 # PLAYBOOK-START
