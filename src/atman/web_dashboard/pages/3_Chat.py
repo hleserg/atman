@@ -92,16 +92,12 @@ st.markdown("""
 <style>
 /* Reduce Streamlit's default top/bottom page padding */
 .stMainBlockContainer {
-    padding-top: 1rem !important;
-    padding-bottom: 1rem !important;
-}
-/* Shrink the top header bar */
-header[data-testid="stHeader"] {
-    height: 2.5rem !important;
+    padding-top: 2.5rem !important;
+    padding-bottom: 1.5rem !important;
 }
 /* Adaptive chat container height */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    height: calc(100vh - 220px) !important;
+    height: calc(100vh - 240px) !important;
     min-height: 200px !important;
 }
 [data-testid="stVerticalBlockBorderWrapper"] > div {
