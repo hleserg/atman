@@ -1,8 +1,12 @@
 """
 Factory for assembling AtmanDeps from a workspace path.
 
-Wires together FileStateStore, SessionManager+AffectDetector,
-IdentityService, MicroReflectionService.
+Wires together PostgresStateStore (or FileStateStore fallback),
+SessionManager+AffectDetector, IdentityService, MicroReflectionService.
+
+Postgres mode is activated when DATABASE_URL (or ATMAN_DB_URL) is set and
+the agent_id is registered in public.agents. Falls back to FileStateStore
+so lean dev/test runs without a DB still work.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.reflection.state_store_session_repository import (
     StateStoreSessionRepository,
 )
+from atman.adapters.state.postgres_state_store import PostgresStateStore
 from atman.adapters.storage.file_state_store import FileStateStore
 from atman.adapters.storage.in_memory_pending_human_review import InMemoryPendingHumanReviewInbox
 from atman.adapters.storage.in_memory_reflection_request_queue import InMemoryReflectionRequestQueue
@@ -91,17 +96,50 @@ class _NarrativeAdapter(NarrativeRepository):
         return self._s.save_narrative(narrative)
 
 
+def _build_state_store(
+    workspace: Path,
+    agent_id: UUID,
+) -> FileStateStore | PostgresStateStore:
+    """Return PostgresStateStore when DATABASE_URL is set and agent is registered.
+
+    Falls back to FileStateStore so zero-config / CI runs still work.
+    """
+    db_url = os.environ.get("ATMAN_DB_URL") or os.environ.get("DATABASE_URL")
+    if not db_url:
+        return FileStateStore(workspace=workspace)
+    try:
+        import psycopg as _pg
+        with _pg.connect(db_url) as _conn:
+            row = _conn.execute(
+                "SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]
+            ).fetchone()
+        if row is None:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "agent %s not in public.agents — falling back to FileStateStore", agent_id
+            )
+            return FileStateStore(workspace=workspace)
+        serial_id = int(row[0])
+        return PostgresStateStore(db_url=db_url, serial_id=serial_id)
+    except Exception:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "PostgresStateStore unavailable — falling back to FileStateStore", exc_info=True
+        )
+        return FileStateStore(workspace=workspace)
+
+
 def build_deps(
     workspace: Path,
     agent_id: UUID,
     config: AgentConfig | None = None,
-) -> tuple[AtmanDeps, SessionManager, FileStateStore]:
+) -> tuple[AtmanDeps, SessionManager, FileStateStore | PostgresStateStore]:
     """Assemble all services and return AtmanDeps ready for a session."""
     if config is None:
         config = AgentConfig()
 
     workspace.mkdir(parents=True, exist_ok=True)
-    state_store = FileStateStore(workspace=workspace)
+    state_store = _build_state_store(workspace, agent_id)
     identity_service = IdentityService(state_store)
     narrative_service = NarrativeService(state_store)
 
@@ -208,11 +246,27 @@ def build_deps(
     )
     from atman.core.services.ambient_memory_service import AmbientMemoryService as _Ambient
 
-    _entity_registry = _AmbientRegistry()
+    _entity_registry: object = _AmbientRegistry()
+    _entity_stance_store = None
+    _pg_url = os.environ.get("ATMAN_DB_URL") or os.environ.get("DATABASE_URL")
+    if _pg_url and isinstance(state_store, PostgresStateStore):
+        try:
+            from atman.adapters.memory.postgres_entity_registry import PostgresEntityRegistry
+            from atman.adapters.memory.postgres_entity_stance import PostgresEntityStanceStore
+
+            _entity_registry = PostgresEntityRegistry(db_url=_pg_url)
+            _entity_stance_store = PostgresEntityStanceStore(db_url=_pg_url)
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "PostgresEntityRegistry/Stance unavailable — using in-memory", exc_info=True
+            )
+
     _ambient_memory = _Ambient(
         linguistic_analyzer=_affect_linguistic,
-        entity_registry=_entity_registry,
+        entity_registry=_entity_registry,  # type: ignore[arg-type]
         state_store=state_store,
+        entity_stance_store=_entity_stance_store,
     )
 
     # HLE-52: build the affect adapter here (composition root) and inject via
