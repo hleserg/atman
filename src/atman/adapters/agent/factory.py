@@ -11,7 +11,6 @@ so lean dev/test runs without a DB still work.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from uuid import UUID
@@ -36,7 +35,6 @@ except ImportError:
     _AffectDetector = None  # type: ignore[assignment,misc]
     _AffectDetectorConfig = None  # type: ignore[assignment,misc]
     _AFFECT_AVAILABLE = False
-from atman.core.models import NarrativeDocument
 from atman.core.models.reflection import (
     HealthCriterionOutput,
     NarrativeUpdateOutput,
@@ -45,6 +43,7 @@ from atman.core.models.reflection import (
 )
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.ports.reflection import NarrativeRepository, ReflectionModel
+from atman.core.ports.state_store import StateStore
 from atman.core.services.identity_service import IdentityService
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.narrative_service import NarrativeService
@@ -76,15 +75,12 @@ class _MockReflectionModel(ReflectionModel):
 
 
 class _NarrativeAdapter(NarrativeRepository):
-    def __init__(self, store: FileStateStore):
+    def __init__(self, store: StateStore, agent_id: UUID):
         self._s = store
+        self._agent_id = agent_id
 
     def get_current(self):
-        p = self._s.narrative_path
-        if not p.exists():
-            return None
-        with open(p, encoding="utf-8") as f:
-            return NarrativeDocument.model_validate(json.load(f))
+        return self._s.load_narrative(self._agent_id)
 
     def get_history(self):
         return []
@@ -109,12 +105,14 @@ def _build_state_store(
         return FileStateStore(workspace=workspace)
     try:
         import psycopg as _pg
+
         with _pg.connect(db_url) as _conn:
             row = _conn.execute(
                 "SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]
             ).fetchone()
         if row is None:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "agent %s not in public.agents — falling back to FileStateStore", agent_id
             )
@@ -123,6 +121,7 @@ def _build_state_store(
         return PostgresStateStore(db_url=db_url, serial_id=serial_id)
     except Exception:
         import logging as _log
+
         _log.getLogger(__name__).warning(
             "PostgresStateStore unavailable — falling back to FileStateStore", exc_info=True
         )
@@ -258,6 +257,7 @@ def build_deps(
             _entity_stance_store = PostgresEntityStanceStore(db_url=_pg_url)
         except Exception:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "PostgresEntityRegistry/Stance unavailable — using in-memory", exc_info=True
             )
@@ -268,14 +268,17 @@ def build_deps(
     if isinstance(state_store, PostgresStateStore):
         try:
             from atman.adapters.state.postgres_salience_decay import PostgresSalienceDecayService
+
             _salience_decay = PostgresSalienceDecayService(state_store)
         except Exception:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "PostgresSalienceDecayService unavailable — using in-memory", exc_info=True
             )
     if _salience_decay is None:
         from atman.core.services.salience_decay_service import InMemorySalienceDecayService
+
         _salience_decay = InMemorySalienceDecayService(state_store)
 
     # factual_memory and ambient_memory are built after the linguistic block
@@ -328,6 +331,7 @@ def build_deps(
             )
         except Exception:
             import logging as _logging
+
             _logging.getLogger(__name__).warning(
                 "OpenAIReflectionModel unavailable — using mock (no narrative updates)",
                 exc_info=True,
@@ -337,7 +341,7 @@ def build_deps(
         _narrative_reflection_model = _MockReflectionModel()
 
     narrative_revision = NarrativeRevisionService(
-        narrative_repo=_NarrativeAdapter(state_store),
+        narrative_repo=_NarrativeAdapter(state_store, agent_id),
         reflection_model=_narrative_reflection_model,
         narrative_audit=NoOpNarrativeWriteAudit(),
     )
@@ -362,7 +366,7 @@ def build_deps(
             _factual_memory = _build_mem()
             # Wire the post_write_scheduler so add_fact triggers async entity-link enrichment.
             if hasattr(_factual_memory, "_post_write_scheduler"):
-                _factual_memory._post_write_scheduler = post_write_scheduler
+                _factual_memory._post_write_scheduler = post_write_scheduler  # pyright: ignore[reportAttributeAccessIssue]
             # BM25 is zero-dependency and provides a second retrieval signal
             # fused with the dense embedding via Reciprocal Rank Fusion. It
             # rescues exact lexical matches that dense encoders can rank low.
@@ -472,7 +476,12 @@ def build_deps(
 
                 _mrebel_extractor = MRebelRelationAdapter(device="cpu")
             except Exception:
-                pass  # mrebel unavailable — worker still handles lingvo/decay jobs
+                import logging as _log
+
+                _log.getLogger(__name__).debug(
+                    "mrebel unavailable — worker still handles lingvo/decay jobs",
+                    exc_info=True,
+                )
 
         _maintenance_worker = MaintenanceWorker(
             queue=maintenance_queue,

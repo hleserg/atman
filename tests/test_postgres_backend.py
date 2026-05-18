@@ -188,7 +188,7 @@ def test_search_falls_back_to_text_when_embedding_fails(monkeypatch: pytest.Monk
 
     assert [fact.content for fact in results] == ["needle fact"]
     assert conn.commits == 1
-    assert conn.executed[0][0] == "SELECT set_config('atman.current_agent', %s, true)"
+    assert conn.executed[0][0] == "SELECT set_config('atman.current_agent', %s, false)"
     query, params = cursor.executed[0]
     assert "f.status = 'active'" in query
     assert "f.tags @> %s::text[]" in query
@@ -233,7 +233,7 @@ def test_add_fact_persists_embedding_relations_and_agent_context(
     assert stored.agent_id == agent_id
     assert conn.commits == 1
     assert conn.executed == [
-        ("SELECT set_config('atman.current_agent', %s, true)", [str(agent_id)])
+        ("SELECT set_config('atman.current_agent', %s, false)", [str(agent_id)])
     ]
     assert len(cursor.executed) == 2
     insert_query, insert_params = cursor.executed[0]

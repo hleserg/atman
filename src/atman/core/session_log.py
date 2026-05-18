@@ -20,9 +20,11 @@ To remove this instrumentation entirely:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -33,10 +35,10 @@ _LOG_PATH: Path | None = None
 
 # Optional display hook: set_display_hook(fn) to receive every slog event in real-time.
 # fn(event: str, data: dict) — must not raise.
-_DISPLAY_HOOK: "Callable[[str, dict[str, Any]], None] | None" = None
+_DISPLAY_HOOK: Callable[[str, dict[str, Any]], None] | None = None
 
 
-def set_display_hook(fn: "Callable[[str, dict[str, Any]], None] | None") -> None:
+def set_display_hook(fn: Callable[[str, dict[str, Any]], None] | None) -> None:
     """Register (or clear) a callable that is invoked on every slog() call.
 
     Pass None to unregister. The hook is called with the full record dict
@@ -71,15 +73,12 @@ def slog(event: str, **data: Any) -> None:
         record: dict[str, Any] = {"ts": datetime.now(UTC).isoformat(), "event": event}
         record.update(data)
         if _DISPLAY_HOOK is not None:
-            try:
+            with contextlib.suppress(Exception):
                 _DISPLAY_HOOK(event, record)
-            except Exception:  # noqa: BLE001
-                pass
         if not _init():
             return
         line = json.dumps(record, default=str, ensure_ascii=False) + "\n"
-        with _LOCK:
-            with _LOG_PATH.open("a", encoding="utf-8") as f:  # type: ignore[union-attr]
-                f.write(line)
-    except Exception:  # noqa: BLE001
-        pass
+        with _LOCK, _LOG_PATH.open("a", encoding="utf-8") as f:  # type: ignore[union-attr]
+            f.write(line)
+    except Exception:  # nosec B110 — slog must never raise
+        return

@@ -33,7 +33,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
-from atman.adapters.agent.tools import log_experience, record_key_moment
+from atman.adapters.agent.tools import record_key_moment
 from atman.core.models import (
     CoreValue,
     Goal,
@@ -299,7 +299,7 @@ async def run_session(
     session_id = ctx.session_id
     deps = replace(deps, session_id=session_id)
 
-    tool_funcs = (record_key_moment, log_experience)
+    tool_funcs = (record_key_moment,)
     agent = Agent(
         LLM,
         deps_type=type(deps),

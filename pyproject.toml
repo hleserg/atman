@@ -151,6 +151,8 @@ omit = [
     "src/atman/adapters/linguistic/gliner_minilm_adapter.py",
     "src/atman/adapters/linguistic/mrebel_adapter.py",
     "src/atman/adapters/state/postgres_state_store.py",
+    "src/atman/adapters/storage/postgres_self_applied_changes.py",
+    "src/atman/adapters/storage/postgres_pending_human_review.py",
     "src/atman/agents_registry.py",
     "src/atman/core/services/passive_memory_injector.py",
     "src/atman/core/services/session_working_memory.py",
@@ -265,6 +267,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]  # pytest.raises(Exception) is acceptable in tests
+"e2e/live_chat.py" = ["E402", "SIM105", "RUF006", "RUF012"]  # logging before imports; e2e UI patterns
+"src/atman/core/session_log.py" = ["SIM105"]  # slog must never raise; broad suppress is intentional
 "src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
