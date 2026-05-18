@@ -78,3 +78,4 @@ eval/external/
 .issues_state.json
 requirements-prod.txt
 requirements-eval.txt
+coverage.json
