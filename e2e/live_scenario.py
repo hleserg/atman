@@ -3,7 +3,8 @@
 Живой сценарий Atman — три сессии с реальной моделью.
 
 Запуск:
-    PYTHONPATH=. OLLAMA_BASE_URL=http://localhost:11434/v1 \
+    PYTHONPATH=. AGENT_LLM_BASE_URL=http://localhost:8081/v1 \
+        AGENT_LLM_MODEL=gemma4 AGENT_LLM_API_KEY=dummy \
         python3 e2e/live_scenario.py
 
 Сценарий:
@@ -25,15 +26,14 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
-# Must be set before pydantic-ai imports
-os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
-from atman.adapters.agent.tools import log_experience, record_key_moment
+from atman.adapters.agent.tools import record_key_moment
 from atman.core.models import (
     CoreValue,
     Goal,
@@ -76,7 +76,16 @@ SESSION_3_MESSAGES = [
     "Что бы ты хотел помнить из этих разговоров?",
 ]
 
-MODEL = "ollama:qwen3.5:9b"
+AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
+AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
+AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
+MODEL = AGENT_MODEL  # for display only; the real model object is built below
+
+LLM = OpenAIChatModel(
+    model_name=AGENT_MODEL,
+    provider=OpenAIProvider(base_url=AGENT_BASE_URL, api_key=AGENT_API_KEY),
+)
+
 DIVIDER = "─" * 70
 
 # ---------------------------------------------------------------------------
@@ -290,9 +299,9 @@ async def run_session(
     session_id = ctx.session_id
     deps = replace(deps, session_id=session_id)
 
-    tool_funcs = (record_key_moment, log_experience)
+    tool_funcs = (record_key_moment,)
     agent = Agent(
-        config.model.model,
+        LLM,
         deps_type=type(deps),
         instructions=lambda c: build_instructions(c.deps),
         tools=tool_funcs,

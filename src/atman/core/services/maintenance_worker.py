@@ -7,19 +7,22 @@ from datetime import UTC, datetime
 from enum import Enum
 from uuid import UUID
 
-from atman.core.models.entity import EntityRelation
+from atman.core.models.entity import EntityRelation, EntityType, FactEntityLink, KeyMomentEntityLink
 from atman.core.models.maintenance import JobName, MaintenanceJob
 from atman.core.ports.entity_registry import EntityRegistry
 from atman.core.ports.entity_relation_store import EntityRelationStore
 from atman.core.ports.entity_relations import EntityRelationExtractor
 from atman.core.ports.linguistic import DetectedEntity, LinguisticAnalyzer
 from atman.core.ports.maintenance_queue import MaintenanceQueue
+from atman.core.ports.memory_backend import FactualMemory
 from atman.core.ports.memory_guardian import MemoryGuardian
 from atman.core.ports.salience_decay import SalienceDecayService
 from atman.core.ports.state_store import StateStore
 from atman.core.services.reflection_overload_monitor import ReflectionOverloadMonitor
 
 _LOG = logging.getLogger(__name__)
+
+from atman.core.session_log import slog as _slog  # noqa: E402
 
 
 class _DispatchOutcome(Enum):
@@ -43,6 +46,7 @@ class MaintenanceWorker:
         entity_relation_store: EntityRelationStore | None = None,
         entity_registry: EntityRegistry | None = None,
         linguistic_analyzer: LinguisticAnalyzer | None = None,
+        factual_memory: FactualMemory | None = None,
         reflection_overload_monitor: ReflectionOverloadMonitor | None = None,
     ) -> None:
         self._queue = queue
@@ -57,6 +61,7 @@ class MaintenanceWorker:
         self._relation_store = entity_relation_store
         self._entity_registry = entity_registry
         self._analyzer = linguistic_analyzer
+        self._factual_memory = factual_memory
         # HLE-30: reflection cadence anomaly check. None ⇒ job skipped with
         # reason (lean dev mode without reflection_event_store wiring).
         self._overload_monitor = reflection_overload_monitor
@@ -69,17 +74,44 @@ class MaintenanceWorker:
         return len(jobs)
 
     def _dispatch(self, job: MaintenanceJob) -> None:
+        import time as _time
+
+        _t0 = _time.monotonic()
+        _slog(
+            "job_start",
+            job_id=str(job.id),
+            job_name=job.job_name.value,
+            agent_id=str(job.payload.get("agent_id", "")),
+            payload_keys=list(job.payload.keys()),
+        )
         try:
             outcome, result = self._handle(job)
+            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
             # _handle returns SKIPPED when it has already called mark_skipped
             # (e.g. unknown job type). Only call mark_done for DONE outcomes.
             # This avoids relying on object-identity mutations of `job.status`,
             # which would break under DB-backed queues that don't share state.
             if outcome is _DispatchOutcome.DONE:
                 self._queue.mark_done(job.id, result=result)
+            _slog(
+                "job_done",
+                job_id=str(job.id),
+                job_name=job.job_name.value,
+                outcome=outcome.value,
+                result=result,
+                elapsed_ms=elapsed_ms,
+            )
         except Exception as exc:
+            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
             _LOG.exception("maintenance job %s failed", job.id)
             self._queue.mark_failed(job.id, error=str(exc))
+            _slog(
+                "job_failed",
+                job_id=str(job.id),
+                job_name=job.job_name.value,
+                error=str(exc),
+                elapsed_ms=elapsed_ms,
+            )
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:
@@ -92,6 +124,8 @@ class MaintenanceWorker:
             return self._run_lingvo(job)
         if job.job_name == JobName.reflection_overload_check:
             return self._run_overload_check(job)
+        if job.job_name == JobName.fact_entity_link:
+            return self._run_fact_entity_link_job(job)
         _LOG.warning("unknown job %s, skipping", job.job_name)
         self._queue.mark_skipped(job.id, reason="unknown job type")
         return _DispatchOutcome.SKIPPED, None
@@ -179,28 +213,37 @@ class MaintenanceWorker:
         narrative fields and stores the structured markers via
         ``state_store.update_moment_structured_markers``. Idempotent —
         skipped when ``structured_markers`` already populated.
+        Also resolves entities from the analysis and writes key_moment_entities
+        rows when entity_registry is available.
         """
         if self._analyzer is None or self._state_store is None:
             self._queue.mark_skipped(job.id, reason="linguistic enrichment not configured")
             return _DispatchOutcome.SKIPPED, None
-        _agent_id, moment_id = _require_moment_payload(job)
+        agent_id, moment_id = _require_moment_payload(job)
         moment = self._state_store.get_key_moment(moment_id)
         if moment is None:
             self._queue.mark_skipped(job.id, reason=f"key moment {moment_id} not found")
             return _DispatchOutcome.SKIPPED, None
         if _moment_has_markers(moment):
-            self._queue.mark_skipped(job.id, reason="structured_markers already populated")
+            self._queue.mark_skipped(job.id, reason="structured markers already present")
             return _DispatchOutcome.SKIPPED, None
         analysis = self._analyzer.analyze_key_moment(
             moment.what_happened or "", moment.why_it_matters or ""
         )
-        markers = analysis.model_dump(mode="json") if hasattr(analysis, "model_dump") else {}
+        k_markers = analysis.model_dump(mode="json") if hasattr(analysis, "model_dump") else {}
+        # Namespace under "k" so point-A markers written earlier are preserved via JSONB merge.
         self._state_store.update_moment_structured_markers(
             moment_id,
-            markers,
-            "1.0",
+            {"k": k_markers},
+            "2.0",
         )
-        return _DispatchOutcome.DONE, {"moment_id": str(moment_id)}
+        entities_linked = _write_km_entity_links(
+            moment_id, agent_id, analysis, self._entity_registry, self._state_store
+        )
+        return _DispatchOutcome.DONE, {
+            "moment_id": str(moment_id),
+            "entities_linked": entities_linked,
+        }
 
     def _run_overload_check(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         """Periodic reflection-cadence anomaly check (HLE-30).
@@ -215,6 +258,79 @@ class MaintenanceWorker:
             return _DispatchOutcome.SKIPPED, None
         self._overload_monitor.check()
         return _DispatchOutcome.DONE, {"scanned": True}
+
+    def _run_fact_entity_link_job(
+        self, job: MaintenanceJob
+    ) -> tuple[_DispatchOutcome, dict | None]:
+        """Async entity-link enrichment for a single Fact (biographical NER).
+
+        Loads the fact from factual_memory, runs LinguisticAnalyzer.analyze_user_message
+        on its content, resolves entities via entity_registry.resolve_or_create, and
+        writes the links into agent_N.fact_entities via save_fact_entity_links.
+        Skipped (not failed) when any required dependency is absent.
+        """
+        if self._factual_memory is None or self._analyzer is None or self._entity_registry is None:
+            self._queue.mark_skipped(job.id, reason="fact entity link enrichment not configured")
+            return _DispatchOutcome.SKIPPED, None
+
+        if job.agent_id is None:
+            raise ValueError(f"fact_entity_link job {job.id} requires agent_id")
+        agent_id = job.agent_id
+        raw_fact_id = job.payload.get("fact_id")
+        if not raw_fact_id:
+            raise ValueError(f"fact_entity_link job {job.id} missing fact_id payload")
+        fact_id = UUID(str(raw_fact_id))
+
+        fact = self._factual_memory.get_fact(fact_id)
+        if fact is None:
+            self._queue.mark_skipped(job.id, reason=f"fact {fact_id} not found")
+            return _DispatchOutcome.SKIPPED, None
+
+        analysis = self._analyzer.analyze_user_message(fact.content or "")
+
+        entity_links: list[FactEntityLink] = []
+        for ent in analysis.entities:
+            try:
+                resolved, _ = self._entity_registry.resolve_or_create(
+                    agent_id, ent.text, ent.entity_type
+                )
+                entity_links.append(
+                    FactEntityLink(
+                        fact_id=fact_id,
+                        entity_id=resolved.id,
+                        agent_id=agent_id,
+                        role="mentioned",
+                        confidence=ent.confidence,
+                    )
+                )
+            except Exception:
+                _LOG.warning(
+                    "fact entity resolve failed for %r (fact %s)", ent.text, fact_id, exc_info=True
+                )
+
+        # Deduplicate (entity_id, role) — keep highest confidence
+        seen_er: set[tuple[UUID, str]] = set()
+        unique_links: list[FactEntityLink] = []
+        for link in entity_links:
+            key = (link.entity_id, link.role)
+            if key not in seen_er:
+                seen_er.add(key)
+                unique_links.append(link)
+
+        save_fn = getattr(self._factual_memory, "save_fact_entity_links", None)
+        if save_fn is None:
+            self._queue.mark_skipped(
+                job.id, reason="factual_memory does not support save_fact_entity_links"
+            )
+            return _DispatchOutcome.SKIPPED, None
+
+        if unique_links:
+            save_fn(fact_id, agent_id, unique_links)
+
+        return _DispatchOutcome.DONE, {
+            "fact_id": str(fact_id),
+            "entities_linked": len(unique_links),
+        }
 
     def _resolve_entity(self, agent_id: UUID, entity: DetectedEntity) -> UUID | None:
         """Look up entity by surface form; skip when nothing matches.
@@ -256,7 +372,97 @@ def _moment_narrative(moment: object) -> str:
     return what or why
 
 
+_MARKER_SPAN_INVOLVEMENT: dict[str, str] = {
+    "recurring_theme": "mentioned",
+    "closure_marker": "evoked",
+    "opening_marker": "evoked",
+    "contradiction_marker": "evoked",
+}
+
+
+def _write_km_entity_links(
+    moment_id: UUID,
+    agent_id: UUID,
+    analysis: object,
+    entity_registry: EntityRegistry | None,
+    state_store: StateStore,
+) -> int:
+    """Resolve entities from a KeyMomentAnalysis and persist key_moment_entities rows.
+
+    Uses resolve_or_create so new biographical entities discovered in a key moment
+    are registered immediately. Safe to call multiple times — the INSERT uses
+    ON CONFLICT DO NOTHING.
+
+    Returns the number of links written (0 when registry or store don't support it).
+    """
+    if entity_registry is None:
+        return 0
+    save_fn = getattr(state_store, "save_key_moment_entity_links", None)
+    if save_fn is None:
+        return 0
+
+    entity_pairs: list[tuple[UUID, str]] = []
+
+    # Legacy NER entities (biographic: person, place, org, …) → "mentioned"
+    for ent in getattr(analysis, "entities", []):
+        try:
+            resolved, _ = entity_registry.resolve_or_create(agent_id, ent.text, ent.entity_type)
+            entity_pairs.append((resolved.id, "mentioned"))
+        except Exception:
+            _LOG.warning(
+                "km entity resolve failed for %r (moment %s)", ent.text, moment_id, exc_info=True
+            )
+
+    # 4-label narrative marker spans — resolve as topic entities
+    for span in getattr(analysis, "marker_spans", []):
+        involvement = _MARKER_SPAN_INVOLVEMENT.get(span.label)
+        if involvement is None:
+            continue
+        try:
+            resolved, _ = entity_registry.resolve_or_create(agent_id, span.text, EntityType.topic)
+            entity_pairs.append((resolved.id, involvement))
+        except Exception:
+            _LOG.warning(
+                "km span resolve failed for %r (moment %s)", span.text, moment_id, exc_info=True
+            )
+
+    if not entity_pairs:
+        return 0
+
+    # Deduplicate (entity_id, involvement) — keep first occurrence
+    seen: set[tuple[UUID, str]] = set()
+    unique: list[tuple[UUID, str]] = []
+    for pair in entity_pairs:
+        if pair not in seen:
+            seen.add(pair)
+            unique.append(pair)
+
+    links = [
+        KeyMomentEntityLink(
+            key_moment_id=moment_id,
+            entity_id=entity_id,
+            agent_id=agent_id,
+            involvement=involvement,
+        )
+        for entity_id, involvement in unique
+    ]
+    save_fn(moment_id, agent_id, links)
+    return len(links)
+
+
 def _moment_has_markers(moment: object) -> bool:
-    """True when the moment already carries non-empty ``structured_markers``."""
+    """True when the moment already has point-K markers (namespace 'k' or legacy flat markers).
+
+    With JSONB-merge semantics, point-A markers under 'a' are written first at recording time.
+    We skip point-K enrichment only when 'k' is already present, not when 'a' exists.
+    """
     markers = getattr(moment, "structured_markers", None)
-    return bool(markers)
+    if not markers:
+        return False
+    # New namespaced format: check for "k" key specifically
+    if isinstance(markers, dict):
+        return "k" in markers or (
+            # Legacy flat format: detect by presence of point-K keys
+            "cognitive_load" in markers and "k" not in markers and "a" not in markers
+        )
+    return False

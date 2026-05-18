@@ -33,6 +33,36 @@ Rough outline (adapt to how you invoke **llama.cpp** / forks):
 
 Tune `--timeout-sec` for cold model loads.
 
+### Concrete example — gemma4 on :8081 (used by live E2E and pydantic-ai user-agent)
+
+Atman 2026 expects one OpenAI-compat endpoint that serves both the user-agent
+(via `agent/atman_agent.py`) and internal reflection. Default contract:
+`http://localhost:8081/v1` with model id `gemma4`.
+
+Example llama.cpp invocation (paths and quantization vary by host):
+
+```bash
+# Build/обнови llama.cpp один раз:
+# git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp && make -j
+
+llama-server \
+    -m /path/to/gemma4.gguf \
+    --host 127.0.0.1 --port 8081 \
+    --api-key dummy \
+    --jinja \
+    -c 8192
+```
+
+Smoke check from host:
+
+```bash
+curl -s http://localhost:8081/v1/models | python3 -m json.tool
+# Should list "gemma4" (or whatever id your server advertises — align AGENT_LLM_MODEL accordingly).
+```
+
+Live-E2E runbook ([`docs/development/LIVE_E2E_RUNBOOK.md`](../docs/development/LIVE_E2E_RUNBOOK.md))
+fixes its progress against this contract.
+
 ---
 
 ## Day‑0 checklist

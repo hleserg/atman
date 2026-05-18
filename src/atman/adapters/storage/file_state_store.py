@@ -546,11 +546,17 @@ class FileStateStore(StateStore):
     def update_moment_structured_markers(
         self, moment_id: UUID, markers: dict, version: str
     ) -> None:
-        """Persist linguistic enrichment markers for a stored key moment."""
+        """Persist linguistic enrichment markers for a stored key moment.
+
+        Merges incoming markers into existing ones (shallow dict merge),
+        matching the JSONB-|| behaviour of the PostgreSQL store so that
+        point-A markers written at recording time survive point-K enrichment.
+        """
         moment = self.get_key_moment(moment_id)
         if moment is None:
             return
-        moment.structured_markers = markers
+        existing = moment.structured_markers or {}
+        moment.structured_markers = {**existing, **markers}
         moment.structured_markers_version = version
         self.store_key_moment(moment)
         self._update_session_moment_bundles(moment)

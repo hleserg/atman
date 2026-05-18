@@ -1,17 +1,12 @@
 """PostgreSQL adapter for StateStore — v2 (per-agent schemas).
 
-Implements the v2 storage surface introduced by migration 0008:
-    - ``agent_N.sessions`` — canonical session rows
-    - ``agent_N.key_moments`` — standalone key moments with ``session_id`` FK
-    - Session API: create_session / get_session / update_session / list_recent_sessions
-    - v2 KeyMoment API: store_key_moment (idempotent upsert), mark_moment_accessed,
-      update_moment_structured_markers, find_moments_by_entity
+Implements the full StateStore surface:
+    - Sessions, KeyMoments (v2 per-agent schema)
+    - Identity, IdentitySnapshot, NarrativeDocument, Eigenstate (migration 0019)
 
-Pre-v2 ``public.key_moments`` is GONE (migration 0008 DROPs it), so the old
-adapter that targeted it is replaced wholesale. Identity / Narrative /
-Eigenstate operations remain :meth:`NotImplementedError` — those still live
-on ``FileStateStore`` for the file deployment path, and Reflection's
-identity-snapshot writes still go through that adapter.
+Identity and Narrative are stored via ``full_state JSONB`` (migration 0019)
+so the complete Pydantic model survives round-trips without column-mapping
+every nested field. Individual columns are also updated for searchability.
 
 Schema is per-agent: each agent owns ``agent_<serial_id>.*`` tables; the
 adapter resolves ``serial_id`` once per ``agent_id`` from ``public.agents``
@@ -58,8 +53,10 @@ from atman.core.models import (
     NarrativeDocument,
     ReframingNote,
 )
+from atman.core.models.entity import KeyMomentEntityLink
 from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
+from atman.core.session_log import slog as _slog
 
 
 def _row_to_session(row: Any) -> Session:
@@ -141,9 +138,7 @@ class PostgresStateStore(StateStore):
 
     NOT implemented (raise ``NotImplementedError``):
       - Experience operations (the v1 ``ExperienceRecord`` model — use
-        :class:`ExperienceViewRepository` or follow Этап 18 migration)
-      - Identity / Narrative / Eigenstate (still served by FileStateStore
-        in the file-deployment path; deferred for this adapter)
+        Session + KeyMoment or legacy FileStateStore for ExperienceRecord flows)
     """
 
     def __init__(
@@ -171,7 +166,11 @@ class PostgresStateStore(StateStore):
 
     def _get_conn(self) -> psycopg.Connection[Any]:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url, row_factory=dict_row)  # type: ignore[arg-type]
+            # autocommit=True: each conn.transaction() block is a proper BEGIN/COMMIT.
+            # Without this, a bare SELECT (e.g. in _schema_ident/_resolve_serial_id) starts
+            # an implicit transaction, causing subsequent conn.transaction() calls to create
+            # savepoints instead of full transactions — inserts would never be committed.
+            self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)  # type: ignore[arg-type]
         return self._conn
 
     def close(self) -> None:
@@ -616,10 +615,11 @@ class PostgresStateStore(StateStore):
             return
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
+            # JSONB merge: preserves keys written by other analysis points (A, K).
             q = sql.SQL(
                 """
                 UPDATE {s}.key_moments
-                SET structured_markers = %(markers)s,
+                SET structured_markers = COALESCE(structured_markers, '{{}}'::jsonb) || %(markers)s::jsonb,
                     structured_markers_version = %(version)s
                 WHERE id = %(mid)s
                 """
@@ -653,50 +653,206 @@ class PostgresStateStore(StateStore):
             rows = cur.fetchall()
         return [_row_to_key_moment(r) for r in rows]
 
+    def save_key_moment_entity_links(
+        self,
+        moment_id: UUID,
+        agent_id: UUID,
+        links: list[KeyMomentEntityLink],
+    ) -> None:
+        """Write entity links for a key moment into agent_N.key_moment_entities.
+
+        Idempotent — uses ON CONFLICT DO NOTHING so safe to call multiple times.
+        """
+        if not links:
+            return
+        schema = self._resolve_schema_for_moment(moment_id)
+        if schema is None:
+            return
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.key_moment_entities
+                    (key_moment_id, entity_id, agent_id, involvement,
+                     valence_toward_entity, intensity_toward_entity)
+                VALUES (%(km_id)s, %(eid)s, %(agent_id)s, %(involvement)s,
+                        %(valence)s, %(intensity)s)
+                ON CONFLICT DO NOTHING
+                """
+            ).format(s=schema)
+            for link in links:
+                cur.execute(
+                    q,
+                    {
+                        "km_id": link.key_moment_id,
+                        "eid": link.entity_id,
+                        "agent_id": agent_id,
+                        "involvement": link.involvement,
+                        "valence": link.valence_toward_entity,
+                        "intensity": link.intensity_toward_entity,
+                    },
+                )
+        _slog(
+            "km_entity_links_saved",
+            agent_id=str(agent_id),
+            moment_id=str(moment_id),
+            count=len(links),
+            entities=[(str(link.entity_id)[:8], link.involvement) for link in links],
+        )
+
     # ------------------------------------------------------------------
-    # Not implemented — served by FileStateStore today (Identity/Narrative/Eigenstate)
+    # Experience operations — removed in v2 (KeyMoments are standalone)
     # ------------------------------------------------------------------
 
     def create_experience(self, record: ExperienceRecord) -> ExperienceRecord:
         raise NotImplementedError(
             "Experience operations are not implemented in PostgresStateStore v2. "
-            "Use SessionRepository (Этап 18) or the legacy FileStateStore for "
-            "ExperienceRecord-based flows."
+            "Use SessionRepository or the legacy FileStateStore for ExperienceRecord flows."
         )
 
     def get_experience(self, experience_id: UUID) -> ExperienceRecord | None:
-        raise NotImplementedError("Experience operations not implemented in PostgresStateStore")
+        raise NotImplementedError("Experience operations not implemented in PostgresStateStore v2")
 
     def add_reframing_note(
         self, experience_id: UUID, note: ReframingNote
     ) -> ExperienceRecord | None:
-        raise NotImplementedError("Experience operations not implemented in PostgresStateStore")
+        raise NotImplementedError("Experience operations not implemented in PostgresStateStore v2")
 
     def mark_accessed(self, experience_id: UUID) -> ExperienceRecord | None:
-        raise NotImplementedError("Experience operations not implemented in PostgresStateStore")
+        raise NotImplementedError("Experience operations not implemented in PostgresStateStore v2")
 
     def search_experiences(
         self, query: ExperienceQuery | None = None, limit: int = 10
     ) -> list[ExperienceRecord]:
-        raise NotImplementedError("Experience operations not implemented in PostgresStateStore")
+        raise NotImplementedError("Experience operations not implemented in PostgresStateStore v2")
 
     def list_recent_experiences(self, limit: int = 10) -> list[ExperienceRecord]:
-        raise NotImplementedError("Experience operations not implemented in PostgresStateStore")
+        raise NotImplementedError("Experience operations not implemented in PostgresStateStore v2")
+
+    # ------------------------------------------------------------------
+    # Identity operations (migration 0019 — full_state JSONB)
+    # ------------------------------------------------------------------
 
     def load_identity(self, agent_id: UUID) -> Identity | None:
-        raise NotImplementedError("Identity operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(agent_id)
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL("SELECT full_state FROM {s}.identity WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
+            cur.execute(q, {"aid": agent_id})
+            row = cur.fetchone()
+        if row is None or not row["full_state"]:
+            return None
+        return Identity.model_validate(row["full_state"])
 
     def save_identity(self, identity: Identity, expected_version: str | None = None) -> Identity:
-        raise NotImplementedError("Identity operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(identity.id)
+        existing = self.load_identity(identity.id)
+        if (
+            expected_version is not None
+            and existing is not None
+            and existing.schema_version != expected_version
+        ):
+            raise ValueError(
+                f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+            )
+        conn = self._get_conn()
+        state = Jsonb(identity.model_dump(mode="json"))
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.identity
+                    (id, agent_id, self_description, core_values, habits, principles,
+                     goals, open_questions, emotional_baseline, updated_at, full_state)
+                VALUES
+                    (%(id)s, %(aid)s, %(sd)s, %(cv)s, %(h)s, %(pr)s,
+                     %(g)s, %(oq)s, %(eb)s, %(ua)s, %(st)s)
+                ON CONFLICT (agent_id) DO UPDATE SET
+                    self_description   = EXCLUDED.self_description,
+                    core_values        = EXCLUDED.core_values,
+                    habits             = EXCLUDED.habits,
+                    principles         = EXCLUDED.principles,
+                    goals              = EXCLUDED.goals,
+                    open_questions     = EXCLUDED.open_questions,
+                    emotional_baseline = EXCLUDED.emotional_baseline,
+                    updated_at         = EXCLUDED.updated_at,
+                    full_state         = EXCLUDED.full_state
+                """
+            ).format(s=schema)
+            cur.execute(
+                q,
+                {
+                    "id": identity.id,
+                    "aid": identity.id,
+                    "sd": identity.self_description,
+                    "cv": Jsonb([v.model_dump(mode="json") for v in identity.core_values]),
+                    "h": Jsonb([v.model_dump(mode="json") for v in identity.habits]),
+                    "pr": Jsonb([v.model_dump(mode="json") for v in identity.principles]),
+                    "g": Jsonb([v.model_dump(mode="json") for v in identity.goals]),
+                    "oq": Jsonb([v.model_dump(mode="json") for v in identity.open_questions]),
+                    "eb": identity.emotional_baseline,
+                    "ua": identity.updated_at,
+                    "st": state,
+                },
+            )
+        return identity
 
     def create_identity_snapshot(self, snapshot: IdentitySnapshot) -> IdentitySnapshot:
-        raise NotImplementedError("Identity operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(snapshot.identity_id)
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.identity_snapshots (id, agent_id, snapshot_at, description, state)
+                VALUES (%(id)s, %(aid)s, %(at)s, %(desc)s, %(st)s)
+                ON CONFLICT (id) DO NOTHING
+                """
+            ).format(s=schema)
+            cur.execute(
+                q,
+                {
+                    "id": snapshot.id,
+                    "aid": snapshot.identity_id,
+                    "at": snapshot.timestamp,
+                    "desc": snapshot.description,
+                    "st": Jsonb(snapshot.model_dump(mode="json")),
+                },
+            )
+        return snapshot
 
     def list_identity_snapshots(self, identity_id: UUID, limit: int = 10) -> list[IdentitySnapshot]:
-        raise NotImplementedError("Identity operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(identity_id)
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                SELECT state FROM {s}.identity_snapshots
+                WHERE agent_id = %(aid)s
+                ORDER BY snapshot_at DESC
+                LIMIT %(lim)s
+                """
+            ).format(s=schema)
+            cur.execute(q, {"aid": identity_id, "lim": limit})
+            rows = cur.fetchall()
+        return [IdentitySnapshot.model_validate(r["state"]) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Narrative operations (migration 0019 — full_state JSONB)
+    # ------------------------------------------------------------------
 
     def load_narrative(self, identity_id: UUID) -> NarrativeDocument | None:
-        raise NotImplementedError("Narrative operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(identity_id)
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL("SELECT full_state FROM {s}.narrative WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
+            cur.execute(q, {"aid": identity_id})
+            row = cur.fetchone()
+        if row is None or not row["full_state"]:
+            return None
+        return NarrativeDocument.model_validate(row["full_state"])
 
     def save_narrative(
         self,
@@ -704,22 +860,114 @@ class PostgresStateStore(StateStore):
         expected_version: str | None = None,
         expected_updated_at: datetime | None = None,
     ) -> NarrativeDocument:
-        raise NotImplementedError("Narrative operations not implemented in PostgresStateStore")
+        schema = self._schema_ident(narrative.identity_id)
+        existing = self.load_narrative(narrative.identity_id)
+        if (
+            expected_version is not None
+            and existing is not None
+            and existing.schema_version != expected_version
+        ):
+            raise ValueError(
+                f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+            )
+        if (
+            expected_updated_at is not None
+            and existing is not None
+            and existing.updated_at != expected_updated_at
+        ):
+            raise ValueError("Concurrent update detected (updated_at mismatch)")
+        conn = self._get_conn()
+        state = Jsonb(narrative.model_dump(mode="json"))
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.narrative
+                    (id, agent_id, identity_id, core_layer, recent_layer, threads,
+                     updated_at, full_state, finished_session_ids)
+                VALUES
+                    (%(id)s, %(aid)s, %(iid)s, %(cl)s, %(rl)s, %(th)s,
+                     %(ua)s, %(st)s, %(fs)s)
+                ON CONFLICT (agent_id) DO UPDATE SET
+                    identity_id          = EXCLUDED.identity_id,
+                    core_layer           = EXCLUDED.core_layer,
+                    recent_layer         = EXCLUDED.recent_layer,
+                    threads              = EXCLUDED.threads,
+                    updated_at           = EXCLUDED.updated_at,
+                    full_state           = EXCLUDED.full_state,
+                    finished_session_ids = EXCLUDED.finished_session_ids
+                """
+            ).format(s=schema)
+            cur.execute(
+                q,
+                {
+                    "id": narrative.id,
+                    "aid": narrative.identity_id,
+                    "iid": narrative.identity_id,
+                    "cl": narrative.core_layer.content,
+                    "rl": narrative.recent_layer.content,
+                    "th": Jsonb([t.model_dump(mode="json") for t in narrative.threads]),
+                    "ua": narrative.updated_at,
+                    "st": state,
+                    "fs": list(narrative.finished_session_ids),
+                },
+            )
+        return narrative
 
     def archive_narrative(self, narrative_id: UUID, reason: str) -> None:
-        raise NotImplementedError("Narrative operations not implemented in PostgresStateStore")
+        pass  # Postgres deploy: narratives are versioned via full_state; archival is a no-op
 
     def list_archived_narratives(
         self, identity_id: UUID, limit: int = 10
     ) -> list[tuple[NarrativeDocument, str, datetime]]:
-        raise NotImplementedError("Narrative operations not implemented in PostgresStateStore")
+        return []  # Not implemented in Postgres deploy — only FileStateStore archived
+
+    # ------------------------------------------------------------------
+    # Eigenstate operations (stored as JSONB blob in agent_N.identity)
+    # ------------------------------------------------------------------
 
     def save_eigenstate(self, eigenstate: Eigenstate) -> Eigenstate:
-        raise NotImplementedError("Eigenstate operations not implemented in PostgresStateStore")
+        agent_id = eigenstate.identity_id
+        if agent_id is None:
+            # session_id is not a public.agents row — cannot resolve agent_N schema.
+            return eigenstate
+        schema = self._schema_ident(agent_id)
+        conn = self._get_conn()
+        blob = Jsonb(eigenstate.model_dump(mode="json"))
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                "UPDATE {s}.identity SET eigenstate = %(blob)s WHERE agent_id = %(aid)s"
+            ).format(s=schema)
+            cur.execute(q, {"blob": blob, "aid": agent_id})
+        return eigenstate
 
     def load_latest_eigenstate(
         self,
         session_id: UUID | None = None,
         identity_id: UUID | None = None,
     ) -> Eigenstate | None:
-        raise NotImplementedError("Eigenstate operations not implemented in PostgresStateStore")
+        if identity_id is None:
+            # Callers must pass identity_id (agent UUID); session_id alone cannot
+            # resolve the per-agent schema in Postgres.
+            return None
+        schema = self._schema_ident(identity_id)
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL("SELECT eigenstate FROM {s}.identity WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
+            cur.execute(q, {"aid": identity_id})
+            row = cur.fetchone()
+        if row is None or not row["eigenstate"]:
+            return None
+        blob = row["eigenstate"]
+        if not blob:
+            return None
+        try:
+            es = Eigenstate.model_validate(blob)
+        except Exception:
+            return None
+        if session_id is not None and es.session_id != session_id:
+            return None
+        if identity_id is not None and es.identity_id != identity_id:
+            return None
+        return es

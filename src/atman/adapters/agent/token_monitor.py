@@ -22,7 +22,7 @@ from pydantic_ai import Agent
 
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.instructions import build_instructions
-from atman.adapters.agent.tools import log_experience, record_key_moment
+from atman.adapters.agent.tools import record_key_moment
 
 if TYPE_CHECKING:
     from pydantic_ai.run import AgentRunResult
@@ -60,7 +60,7 @@ class TokenMonitor:
             model=model,
             deps_type=AtmanDeps,
             instructions=lambda ctx: build_instructions(ctx.deps),
-            tools=[record_key_moment, log_experience],
+            tools=[record_key_moment],
         )
 
     async def run(self, user_message: str) -> AgentRunResult[str]:

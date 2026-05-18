@@ -4,7 +4,6 @@ AtmanDeps - typed dependency container for Atman agent.
 This module provides the dependency injection container that holds:
 - SessionManager for session lifecycle
 - IdentityService for identity management
-- ExperienceService for experience storage
 - MicroReflectionService for after-session reflection
 - StateStore for all persistence
 
@@ -25,13 +24,14 @@ if TYPE_CHECKING:
     )
     from atman.core.ports.divergence_events import DivergenceEventStore
     from atman.core.ports.entity_registry import EntityRegistry
+    from atman.core.ports.maintenance_queue import MaintenanceQueue
     from atman.core.ports.memory_guardian import MemoryGuardian
     from atman.core.ports.pending_human_review import PendingHumanReviewInbox
     from atman.core.ports.reflection_request_queue import ReflectionRequestQueue
     from atman.core.ports.state_store import StateStore
     from atman.core.services.ambient_memory_service import AmbientMemoryService
-    from atman.core.services.experience_service import ExperienceService
     from atman.core.services.identity_service import IdentityService
+    from atman.core.services.maintenance_worker import MaintenanceWorker
     from atman.core.services.passive_memory_injector import PassiveMemoryInjector
     from atman.core.services.reflection_overload_monitor import ReflectionOverloadMonitor
     from atman.core.services.reflection_service import MicroReflectionService
@@ -47,7 +47,6 @@ class AtmanDeps:
     This container holds all services and state needed by the agent:
     - SessionManager for session lifecycle
     - IdentityService for identity operations
-    - ExperienceService for experience storage
     - MicroReflectionService for after-session reflection
     - StateStore for direct state access when needed
 
@@ -58,7 +57,6 @@ class AtmanDeps:
 
     session_manager: SessionManager
     identity_service: IdentityService
-    experience_service: ExperienceService
     micro_reflection: MicroReflectionService
     state_store: StateStore
 
@@ -144,6 +142,18 @@ class AtmanDeps:
     #600 caught the previous wiring where ambient memory got an isolated
     empty registry and never saw anything."""
 
+    maintenance_worker: MaintenanceWorker | None = None
+    """In-process :class:`MaintenanceWorker` drain (mREBEL, lingvo_enrich,
+    salience decay). When present, callers should invoke ``run_once()`` after
+    ``finish_session`` to flush the post-write queue synchronously. Without
+    this no relation extraction or structured markers are ever written in
+    single-process dev runs."""
+
+    maintenance_queue: MaintenanceQueue | None = None
+    """The :class:`MaintenanceQueue` fed by :class:`PostWriteScheduler`.
+    Exposed for introspection (pending job counts, dry-run checks) and so
+    out-of-process workers can share the same queue reference in tests."""
+
     @classmethod
     def from_config(
         cls,
@@ -151,7 +161,6 @@ class AtmanDeps:
         config: AgentConfig,
         session_manager: SessionManager,
         identity_service: IdentityService,
-        experience_service: ExperienceService,
         micro_reflection: MicroReflectionService,
         state_store: StateStore,
         agent_id: UUID,
@@ -166,6 +175,8 @@ class AtmanDeps:
         memory_guardian: MemoryGuardian | None = None,
         ambient_memory: AmbientMemoryService | None = None,
         entity_registry: EntityRegistry | None = None,
+        maintenance_worker: MaintenanceWorker | None = None,
+        maintenance_queue: MaintenanceQueue | None = None,
     ) -> AtmanDeps:
         """
         Build :class:`AtmanDeps` from a validated :class:`AgentConfig`.
@@ -179,7 +190,6 @@ class AtmanDeps:
         return cls(
             session_manager=session_manager,
             identity_service=identity_service,
-            experience_service=experience_service,
             micro_reflection=micro_reflection,
             state_store=state_store,
             agent_id=agent_id,
@@ -198,4 +208,6 @@ class AtmanDeps:
             memory_guardian=memory_guardian,
             ambient_memory=ambient_memory,
             entity_registry=entity_registry,
+            maintenance_worker=maintenance_worker,
+            maintenance_queue=maintenance_queue,
         )

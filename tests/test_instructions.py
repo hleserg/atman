@@ -51,7 +51,6 @@ def _create_deps(agent_id: UUID) -> AtmanDeps:
     return AtmanDeps(
         session_manager=SessionManager(state_store),
         identity_service=IdentityService(state_store),
-        experience_service=experience_service,
         micro_reflection=MicroReflectionService(
             session_repo=experience_service,  # type: ignore[arg-type]
             narrative_revision=narrative_revision,

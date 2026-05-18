@@ -65,12 +65,14 @@ if TYPE_CHECKING:
 # Cap for eigenstate list fields; order is insertion-derived until salience ranking exists.
 MAX_EIGENSTATE_ITEMS = 5
 
-# Stable SessionExperience.id per session so ``finish_session`` retries do not duplicate records.
+# Namespace for deterministic session-derived IDs used by external callers.
 _SESSION_EXPERIENCE_ID_NS = UUID("018e5a2b-7c3d-7b2a-9f01-2a3b4c5d6e7f")
 
 _NARRATIVE_SAVE_RETRIES = 5
 
 _LOG = logging.getLogger(__name__)
+
+from atman.core.session_log import slog as _slog  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,8 +93,17 @@ def _session_finish_marker(session_id: UUID) -> str:
 
 
 def deterministic_session_experience_id(session_id: UUID) -> UUID:
-    """Return the canonical ExperienceRecord id for a finished session."""
+    """Return a deterministic UUID derived from session_id (used by external callers)."""
     return uuid5(_SESSION_EXPERIENCE_ID_NS, str(session_id))
+
+
+def _experience_store_available(state_store: StateStore) -> bool:
+    """True when the store implements legacy ExperienceRecord persistence."""
+    try:
+        state_store.get_experience(deterministic_session_experience_id(UUID(int=0)))
+    except NotImplementedError:
+        return False
+    return True
 
 
 class SessionManager:
@@ -103,7 +114,7 @@ class SessionManager:
     - start_session: loads personality context
     - record_event: tracks raw events and schedules AffectDetector (when configured)
     - append_key_moment / append_key_moment_input: programmatic key moments
-    - finish_session: creates SessionExperience + Eigenstate
+    - finish_session: persists KeyMoments + Eigenstate + updates Narrative
     """
 
     def __init__(
@@ -401,76 +412,12 @@ class SessionManager:
         # only to recognise pre-migration data.
         return _session_finish_marker(session_id) in narrative.recent_layer.content
 
-    def _recover_finish_artifacts_from_existing_experience(
-        self,
-        agent_id: UUID,
-        existing_exp: ExperienceRecord,
-        journaled_moments: dict[UUID, KeyMoment],
-        finish_metadata: _FinishJournalMetadata | None,
-    ) -> bool:
-        """Complete eigenstate/narrative writes after a crash post-experience persistence."""
-        session_id = existing_exp.experience.session_id
-        loaded_moments = self._load_recovery_key_moments(
-            session_id,
-            existing_exp.experience.key_moment_ids,
-            journaled_moments,
-        )
-        if loaded_moments is None:
-            return False
-
-        if self._finish_artifacts_complete(agent_id, session_id):
-            return True
-
-        key_insight = existing_exp.experience.agent_recap or ""
-        finished_at = existing_exp.experience.timestamp
-        overall_emotional_tone = 0.0
-        alignment_check = True
-        alignment_notes = ""
-        incomplete_coloring = existing_exp.experience.incomplete_coloring
-        if finish_metadata is not None:
-            key_insight = finish_metadata.key_insight or key_insight
-            finished_at = finish_metadata.finished_at or finished_at
-            overall_emotional_tone = finish_metadata.overall_emotional_tone
-            alignment_check = finish_metadata.alignment_check
-            alignment_notes = finish_metadata.alignment_notes
-            if finish_metadata.incomplete_coloring is not None:
-                incomplete_coloring = finish_metadata.incomplete_coloring
-
-        recovered_result = SessionResult(
-            session_id=session_id,
-            started_at=existing_exp.experience.timestamp,
-            finished_at=finished_at,
-            events=[],
-            key_moments=loaded_moments,
-            overall_emotional_tone=overall_emotional_tone,
-            key_insight=key_insight,
-            alignment_check=alignment_check,
-            alignment_notes=alignment_notes,
-            incomplete_coloring=incomplete_coloring,
-            is_finished=True,
-            identity_snapshot_id=existing_exp.experience.identity_snapshot_id,
-            identity_id=agent_id,
-        )
-
-        if (
-            self._state_store.load_latest_eigenstate(
-                session_id=session_id,
-                identity_id=agent_id,
-            )
-            is None
-        ):
-            recovered_result.eigenstate = self._create_eigenstate(recovered_result)
-            self._state_store.save_eigenstate(recovered_result.eigenstate)
-
-        self._save_session_narrative_update(recovered_result)
-        return self._finish_artifacts_complete(agent_id, session_id)
-
     def _recover_orphaned_sessions(self, agent_id: UUID) -> None:
-        """
-        Scan for orphaned session journals and convert to SessionExperience.
+        """Scan for orphaned session journals and persist their key moments.
 
-        Orphaned journals are from interrupted sessions that didn't complete finish_session.
-        Each orphan is converted to a SessionExperience with close_reason="interrupted".
+        Orphaned journals arise from interrupted sessions that never completed
+        finish_session. Each orphan's key moments are stored and the session→moments
+        mapping is written so downstream reflection sees the recovered history.
         """
         if self._workspace is None:
             return
@@ -480,17 +427,12 @@ class SessionManager:
 
         for journal_file in sessions_dir.glob("active_*.jsonl"):
             try:
-                # Extract session_id from filename: active_{session_id}.jsonl
                 session_id_str = journal_file.stem.replace("active_", "")
                 session_id = UUID(session_id_str)
 
-                # Skip journals for currently active sessions (not orphans)
                 with self._lock:
                     if session_id in self._active_sessions:
                         continue
-                    # In-process crash simulation: session removed from _active_sessions
-                    # but lock file still held by this process. Release it so recovery
-                    # can proceed (a real crash would release all locks automatically).
                     stale_lock = self._journal_locks.pop(session_id, None)
                     if stale_lock is not None:
                         self._release_journal_file(stale_lock, unlink=False)
@@ -498,44 +440,14 @@ class SessionManager:
                     _LOG.debug("Skipping live journal locked by another process: %s", session_id)
                     continue
 
-                # Parse journal to extract key moments and facts
                 (
                     key_moment_ids,
                     journaled_moments,
-                    fact_refs_set,
-                    finish_metadata,
+                    _fact_refs_set,
+                    _finish_metadata,
                 ) = self._load_journal_payload(journal_file)
 
-                # Compute deterministic experience_id
-                experience_id = deterministic_session_experience_id(session_id)
-
-                # Check if experience already exists in StateStore
-                existing_exp = self._state_store.get_experience(experience_id)
-                if existing_exp is not None:
-                    if existing_exp.experience.session_id != session_id:
-                        raise ValueError(
-                            f"Stored experience {experience_id} belongs to another session "
-                            f"({existing_exp.experience.session_id}); refusing recovery."
-                        )
-                    if self._recover_finish_artifacts_from_existing_experience(
-                        agent_id,
-                        existing_exp,
-                        journaled_moments,
-                        finish_metadata,
-                    ):
-                        journal_file.unlink()
-                        _LOG.info("Deleted stale journal for completed session %s", session_id)
-                    else:
-                        _LOG.warning(
-                            "Existing experience for session %s is missing finish artifacts; "
-                            "leaving journal for retry/manual recovery",
-                            session_id,
-                        )
-                    continue
-
-                # If we have key moments, create SessionExperience
                 if key_moment_ids:
-                    # Try to load actual KeyMoment objects from storage for better metadata
                     loaded_moments = self._load_recovery_key_moments(
                         session_id,
                         key_moment_ids,
@@ -544,70 +456,18 @@ class SessionManager:
                     if loaded_moments is None:
                         continue
 
-                    # Compute better metadata if we have loaded moments
-                    avg_emotional_intensity = 0.5
-                    has_profound_moment = False
-                    if loaded_moments:
-                        from atman.core.models.experience import EmotionalDepth
-
-                        avg_emotional_intensity = sum(
-                            m.how_i_felt.emotional_intensity for m in loaded_moments
-                        ) / len(loaded_moments)
-                        has_profound_moment = any(
-                            m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in loaded_moments
-                        )
-
-                    experience = SessionExperience(
-                        id=experience_id,
-                        session_id=session_id,
-                        timestamp=self._clock.now(),
-                        key_moment_ids=key_moment_ids,
-                        recorded_by="session_manager_recovery",
-                        identity_snapshot_id=None,  # Unknown for orphaned sessions
-                        importance=0.5,
-                        salience=0.5,
-                        avg_emotional_intensity=avg_emotional_intensity,
-                        has_profound_moment=has_profound_moment,
-                        incomplete_coloring=True,  # Orphaned sessions didn't complete proper coloring
-                        fact_refs=list(fact_refs_set),
-                        close_reason="interrupted",
-                        restart_reason="",
-                    )
-                    experience_record = ExperienceRecord(experience=experience)
-                    # HLE-57: persist the session→moments mapping so
-                    # ``get_key_moments_for_session`` returns these moments to
-                    # downstream Daily/Deep reflection. Without this call the
-                    # recovered session is silently skipped by the reflection
-                    # engine and the agent loses that history forever.
-                    #
-                    # Order matters (Devin #594 follow-up): call
-                    # ``store_key_moments`` BEFORE ``create_experience``. If
-                    # the moment-mapping write fails, no experience exists and
-                    # the next recovery pass will retry the whole branch.
-                    # Doing it the other way around would leave an orphan
-                    # experience that ``_recover_orphaned_sessions`` would
-                    # short-circuit on (line ~511, "existing_exp is not None"),
-                    # so the moments mapping would never be written. The
-                    # ``store_key_moments`` adapter contract is idempotent —
-                    # repeating it on retry is safe.
+                    # HLE-57: persist session→moments mapping for reflection engine
                     self._state_store.store_key_moments(session_id, loaded_moments)
-                    self._state_store.create_experience(experience_record)
                     _LOG.info(
-                        "Recovered orphaned session %s with %d key moments (%d loaded from storage)",
+                        "Recovered orphaned session %s with %d key moments",
                         session_id,
-                        len(key_moment_ids),
                         len(loaded_moments),
                     )
 
-                    # HLE-27: orphan-recovered moments are now durable in
-                    # state_store too — schedule the same post-write enrichment
-                    # that finish_session would have fired, so recovered
-                    # sessions get the mREBEL / lingvo passes instead of
-                    # silently skipping them.
+                    # HLE-27: schedule post-write enrichment for recovered moments
                     for moment in loaded_moments:
                         self._schedule_post_write(moment, agent_id)
 
-                # Delete journal after successful recovery (or if no key moments)
                 journal_file.unlink()
 
             except Exception as exc:
@@ -723,6 +583,13 @@ class SessionManager:
             with self._lock:
                 self._journal_locks[context.session_id] = journal_lock
 
+        _slog(
+            "session_started",
+            agent_id=str(agent_id),
+            session_id=str(context.session_id),
+            identity_id=str(identity.id),
+            snapshot_id=str(context.identity_snapshot_id),
+        )
         return context
 
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
@@ -961,6 +828,9 @@ class SessionManager:
 
             moment_with_time = moment.model_copy(update={"recorded_at": self._clock.now()})
             key_moment = moment_with_time.to_key_moment()
+            # Set session_id here so both the journal and any immediate DB write
+            # have the correct FK — to_key_moment() leaves it None.
+            key_moment.session_id = session_id
 
             if moment.incomplete_coloring:
                 session_result.incomplete_coloring = True
@@ -984,8 +854,27 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
-            # NB: post-write enrichment scheduling deferred to finish_session;
-            # see comment in append_key_moment for the race-condition rationale.
+            # Write to DB immediately so moments survive a crash before finish_session.
+            # store_key_moment is an idempotent upsert — finish_session calling it
+            # again is safe. If the DB write fails we log and continue; the journal
+            # above is the crash-recovery fallback.
+            try:
+                self._state_store.store_key_moment(key_moment)
+                # Moment is now durable — safe to schedule post-write enrichment.
+                self._schedule_post_write(key_moment, agent_id)
+            except Exception:
+                _LOG.warning(
+                    "store_key_moment failed for %s — moment in journal, enrichment deferred",
+                    key_moment.id,
+                    exc_info=True,
+                )
+            _slog(
+                "key_moment_appended",
+                session_id=str(session_id),
+                agent_id=str(agent_id),
+                moment_id=str(key_moment.id),
+                what_happened=key_moment.what_happened[:120],
+            )
 
     def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
         """Fire-and-forget enqueue of post-write enrichment jobs.
@@ -1066,16 +955,15 @@ class SessionManager:
         user_language: str = "ru",
     ) -> SessionResult:
         """
-        Finish session and create SessionExperience + Eigenstate + update Narrative.
+        Finish session: persist KeyMoments + Eigenstate + update Narrative.
 
         This method:
         1. Validates session can be finished (has key moments)
-        2. Creates SessionExperience from key moments
-        3. Stores experience in Experience Store
-        4. Creates and stores Eigenstate
-        5. Updates recent narrative layer with session summary
-        6. Removes session from active tracking
-        7. Returns SessionResult
+        2. Persists KeyMoments and session→moments mapping
+        3. Creates and stores Eigenstate
+        4. Updates recent narrative layer with session summary
+        5. Removes session from active tracking
+        6. Returns SessionResult
 
         The narrative update ensures the next start_session() loads updated context,
         fulfilling the minimal runtime path requirement: session result → narrative update
@@ -1132,16 +1020,9 @@ class SessionManager:
         session_result.alignment_notes = alignment_notes
         self._write_finish_journal_entry(session_result)
 
-        experience_id = deterministic_session_experience_id(session_id)
-
-        # Persist experience, eigenstate, and update narrative
+        # Persist key moments, eigenstate, and update narrative
         # If this fails, rollback is_finished flag to allow retry
 
-        # Compute close_reason cast and unexamined fact refs UNCONDITIONALLY
-        # so the post-persist update_session block (which runs on BOTH the
-        # new-experience and recovery paths) sees the caller-supplied values.
-        # Otherwise a retry after a crash would silently rewrite the Session
-        # row with status='completed' and close_reason=NULL.
         _allowed_close_reasons = (
             "timeout_sleep",
             "menu_timeout",
@@ -1166,106 +1047,45 @@ class SessionManager:
             else None
         )
         # Compute unexamined facts (read but not colored by any key moment).
-        # Identical to the inner-branch computation; precomputed here so the
-        # recovery path also gets correct unexamined_fact_refs.
         _colored_fact_ids: set[UUID] = set()
         for _moment in session_result.key_moments:
             _colored_fact_ids.update(_moment.fact_refs)
         unexamined_fact_refs: list[UUID] = list(session_result._facts_read - _colored_fact_ids)
 
         try:
-            existing_record = self._state_store.get_experience(experience_id)
-            if existing_record is None:
-                # Reuse the pre-computed values from above so the new-experience
-                # path stays consistent with the recovery path's update_session.
-                colored_fact_ids = _colored_fact_ids
+            # Upsert each KeyMoment — idempotent; moments written in append_key_moment_input
+            # are already in DB, this is a no-op for them.  Moments from crashed/recovered
+            # sessions that arrived via journal replay may arrive here without prior DB write.
+            for moment in session_result.key_moments:
+                if moment.session_id is None:
+                    moment.session_id = session_id
+                self._state_store.store_key_moment(moment)
 
-                # Aggregate all fact_refs (union of colored and unexamined)
-                fact_refs_set: set[UUID] = set()
-                fact_refs_set.update(colored_fact_ids)
-                fact_refs_set.update(session_result._facts_read)
+            # Store session→moments mapping
+            self._state_store.store_key_moments(session_id, session_result.key_moments)
 
-                # Save each KeyMoment via create_key_moment and collect IDs
-                # Idempotent: skip if moment already exists (for retry scenarios)
-                key_moment_ids: list[UUID] = []
+            # HLE-27 follow-up: schedule post-write enrichment after moments are persisted
+            if self._post_write_scheduler is not None and session_result.identity_id is not None:
                 for moment in session_result.key_moments:
-                    if self._state_store.get_key_moment(moment.id) is None:
-                        self._state_store.create_key_moment(moment)
-                    key_moment_ids.append(moment.id)
+                    self._schedule_post_write(moment, session_result.identity_id)
 
-                # Also store session association for backward compatibility
-                self._state_store.store_key_moments(session_id, session_result.key_moments)
-
-                # HLE-27 follow-up (Devin Review #590): defer post-write
-                # enrichment scheduling until the moments actually exist in
-                # state_store. Scheduling from append_key_moment races against
-                # finish_session: the worker's get_key_moment(moment_id) call
-                # returned None and the deterministic run_key prevented retry.
-                # By scheduling here — right after create_key_moment +
-                # store_key_moments persisted everything — the worker's
-                # lookup is guaranteed to succeed.
-                if (
-                    self._post_write_scheduler is not None
-                    and session_result.identity_id is not None
-                ):
-                    for moment in session_result.key_moments:
-                        self._schedule_post_write(moment, session_result.identity_id)
-
-                # HLE-32: inline post-write validation. Runs the lightweight
-                # row-level checks (e.g. incomplete_coloring on a fresh
-                # moment) immediately after persistence so the resulting
-                # findings surface in `validation_findings` within
-                # milliseconds rather than waiting for the next scheduled
-                # guardian scan. Errors inside the validator are logged but
-                # never propagated — the hot path must not block on
-                # validation per plan §17 principle 12.
-                if self._inline_validator is not None and session_result.identity_id is not None:
-                    for moment in session_result.key_moments:
-                        self._inline_validator.check_key_moment(
-                            moment, agent_id=session_result.identity_id
-                        )
-
-                # Compute avg_emotional_intensity and has_profound_moment
-                avg_emotional_intensity = 0.5  # default
-                has_profound_moment = False
-                if session_result.key_moments:
-                    from atman.core.models.experience import EmotionalDepth
-
-                    avg_emotional_intensity = sum(
-                        m.how_i_felt.emotional_intensity for m in session_result.key_moments
-                    ) / len(session_result.key_moments)
-                    has_profound_moment = any(
-                        m.how_i_felt.depth == EmotionalDepth.PROFOUND
-                        for m in session_result.key_moments
+            # HLE-32: inline validation — lightweight row-level checks, never blocks hot path
+            if self._inline_validator is not None and session_result.identity_id is not None:
+                for moment in session_result.key_moments:
+                    self._inline_validator.check_key_moment(
+                        moment, agent_id=session_result.identity_id
                     )
 
-                experience = SessionExperience(
-                    id=experience_id,
-                    session_id=session_id,
-                    timestamp=session_result.finished_at,
-                    key_moment_ids=key_moment_ids,
-                    unexamined_fact_refs=unexamined_fact_refs,
-                    recorded_by="session_manager",
-                    identity_snapshot_id=session_result.identity_snapshot_id,
-                    importance=0.5,
-                    salience=0.5,
-                    avg_emotional_intensity=avg_emotional_intensity,
-                    has_profound_moment=has_profound_moment,
-                    incomplete_coloring=session_result.incomplete_coloring,
-                    fact_refs=list(fact_refs_set),
-                    close_reason=safe_close_reason,
-                    agent_recap=key_insight or None,
-                    restart_reason=restart_reason or "",
-                    user_language=user_language,
-                )
-                experience_record = ExperienceRecord(experience=experience)
-                self._state_store.create_experience(experience_record)
-            else:
-                if existing_record.experience.session_id != session_id:
-                    raise ValueError(
-                        f"Stored experience {experience_id} belongs to another session "
-                        f"({existing_record.experience.session_id}); refusing to proceed."
-                    )
+            self._persist_legacy_session_experience(
+                session_id,
+                session_result,
+                safe_close_reason=safe_close_reason,
+                unexamined_fact_refs=unexamined_fact_refs,
+                key_insight=key_insight,
+                restart_reason=restart_reason,
+                user_language=user_language,
+                colored_fact_ids=_colored_fact_ids,
+            )
 
             eigenstate = self._create_eigenstate(session_result)
             session_result.eigenstate = eigenstate
@@ -1318,7 +1138,87 @@ class SessionManager:
         if journal_lock is not None:
             self._release_journal_file(journal_lock, unlink=True)
 
-        return session_result.model_copy(deep=True)
+        final = session_result.model_copy(deep=True)
+        _slog(
+            "session_finished",
+            session_id=str(session_id),
+            agent_id=str(final.identity_id),
+            close_reason=safe_close_reason,
+            key_moments=len(final.key_moments),
+            finished_at=str(final.finished_at),
+        )
+        return final
+
+    def _persist_legacy_session_experience(
+        self,
+        session_id: UUID,
+        session_result: SessionResult,
+        *,
+        safe_close_reason: (
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+        ),
+        unexamined_fact_refs: list[UUID],
+        key_insight: str,
+        restart_reason: str | None,
+        user_language: str,
+        colored_fact_ids: set[UUID],
+    ) -> None:
+        """Write SessionExperience for FileStateStore / in-memory adapters.
+
+        PostgresStateStore v2 stores sessions and key moments only; experience
+        operations raise NotImplementedError and are skipped here. Reflection on
+        Postgres uses Session + KeyMoment via StateStoreSessionRepository, not
+        ExperienceRecord rows.
+        """
+        if not _experience_store_available(self._state_store):
+            return
+
+        experience_id = deterministic_session_experience_id(session_id)
+        existing_record = self._state_store.get_experience(experience_id)
+        if existing_record is not None:
+            if existing_record.experience.session_id != session_id:
+                raise ValueError(
+                    f"Stored experience {experience_id} belongs to another session "
+                    f"({existing_record.experience.session_id}); refusing to proceed."
+                )
+            return
+
+        fact_refs_set: set[UUID] = set(colored_fact_ids)
+        fact_refs_set.update(session_result._facts_read)
+        key_moment_ids = [m.id for m in session_result.key_moments]
+
+        avg_emotional_intensity = 0.5
+        has_profound_moment = False
+        if session_result.key_moments:
+            from atman.core.models.experience import EmotionalDepth
+
+            avg_emotional_intensity = sum(
+                m.how_i_felt.emotional_intensity for m in session_result.key_moments
+            ) / len(session_result.key_moments)
+            has_profound_moment = any(
+                m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in session_result.key_moments
+            )
+
+        experience = SessionExperience(
+            id=experience_id,
+            session_id=session_id,
+            timestamp=session_result.finished_at or self._clock.now(),
+            key_moment_ids=key_moment_ids,
+            unexamined_fact_refs=unexamined_fact_refs,
+            recorded_by="session_manager",
+            identity_snapshot_id=session_result.identity_snapshot_id,
+            importance=0.5,
+            salience=0.5,
+            avg_emotional_intensity=avg_emotional_intensity,
+            has_profound_moment=has_profound_moment,
+            incomplete_coloring=session_result.incomplete_coloring,
+            fact_refs=list(fact_refs_set),
+            close_reason=safe_close_reason,
+            agent_recap=key_insight or None,
+            restart_reason=restart_reason or "",
+            user_language=user_language,
+        )
+        self._state_store.create_experience(ExperienceRecord(experience=experience))
 
     def _write_finish_journal_entry(self, session_result: SessionResult) -> None:
         """Persist finish-time metadata before downstream artifacts can partially fail."""

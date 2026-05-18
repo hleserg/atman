@@ -337,22 +337,20 @@ def test_unimplemented_narrative_operations(store: Any) -> None:
         store.list_archived_narratives(uuid4())
 
 
-def test_unimplemented_eigenstate_operations(store: Any) -> None:
-    """Test that eigenstate operations raise NotImplementedError."""
+def test_eigenstate_requires_identity_id_for_schema_resolution(store: Any) -> None:
+    """session_id must not be mistaken for agent_id when resolving agent_N schema."""
     from atman.core.models import Eigenstate
 
-    with pytest.raises(NotImplementedError):
-        store.save_eigenstate(
-            Eigenstate(
-                id=uuid4(),
-                session_id=uuid4(),
-                identity_id=uuid4(),
-                timestamp=datetime.now(UTC),
-            )
-        )
-
-    with pytest.raises(NotImplementedError):
-        store.load_latest_eigenstate()
+    session_id = uuid4()
+    es = Eigenstate(
+        id=uuid4(),
+        session_id=session_id,
+        identity_id=None,
+        timestamp=datetime.now(UTC),
+    )
+    assert store.save_eigenstate(es) is es
+    assert store.load_latest_eigenstate(session_id=session_id) is None
+    assert store.load_latest_eigenstate(session_id=session_id, identity_id=None) is None
 
 
 def test_context_manager(db_url: str, sample_key_moment: KeyMoment) -> None:
