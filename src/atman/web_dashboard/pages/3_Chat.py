@@ -95,16 +95,6 @@ st.markdown("""
     padding-top: 3.5rem !important;
     padding-bottom: 1.5rem !important;
 }
-/* Adaptive chat container height */
-[data-testid="stVerticalBlockBorderWrapper"] {
-    height: calc(100vh - 160px) !important;
-    min-height: 200px !important;
-}
-[data-testid="stVerticalBlockBorderWrapper"] > div {
-    height: 100% !important;
-    max-height: none !important;
-    overflow-y: auto !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -115,12 +105,33 @@ import streamlit.components.v1 as _components
 _components.html("""
 <script>
 (function() {
+    var doc = window.parent;
+
+    // ── Resize chat container via marker traversal ────────────────────────
+    function resizeChat() {
+        var marker = doc.document.getElementById('atman-chat-marker');
+        if (!marker) { setTimeout(resizeChat, 300); return; }
+        // Walk up to find the scrollable div Streamlit creates for st.container(height=)
+        var el = marker.parentElement;
+        while (el) {
+            var cs = doc.getComputedStyle(el);
+            if (cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+                var offset = 160;  // px reserved for chrome above/below the container
+                el.style.setProperty('height', (doc.innerHeight - offset) + 'px', 'important');
+                el.style.setProperty('max-height', 'none', 'important');
+                break;
+            }
+            el = el.parentElement;
+        }
+    }
+    resizeChat();
+    doc.addEventListener('resize', resizeChat);
+
+    // ── Chat input: auto-focus + Ctrl+Enter → newline ─────────────────────
     function install() {
-        var ta = window.parent.document.querySelector('[data-testid="stChatInput"] textarea');
+        var ta = doc.document.querySelector('[data-testid="stChatInput"] textarea');
         if (!ta) { setTimeout(install, 300); return; }
-        // Auto-focus
         ta.focus();
-        // Ctrl+Enter → newline
         if (ta.dataset.ctrlEnterInstalled) return;
         ta.dataset.ctrlEnterInstalled = "1";
         ta.addEventListener('keydown', function(e) {
@@ -932,8 +943,10 @@ with col_chat:
     )
 
     # ── Chat messages (scrollable fixed-height container) ────────────────────
-    msg_container = st.container(height=300, border=False)  # CSS overrides to calc(100vh-260px)
+    msg_container = st.container(height=300, border=False)
     with msg_container:
+        # Marker lets JS find and resize the scrollable container dynamically.
+        st.markdown('<div id="atman-chat-marker"></div>', unsafe_allow_html=True)
         for msg in st.session_state.get("messages", []):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
