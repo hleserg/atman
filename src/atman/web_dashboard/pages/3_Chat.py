@@ -330,8 +330,12 @@ def _close_session(status_container) -> None:
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
+_KM_PAGE_SIZE = 50   # rows per page in the UI table
+
+
 @st.cache_data(ttl=5)
-def _fetch_key_moments(agent_id_str: str, schema: str) -> list[dict]:
+def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> list[dict]:
+    """Fetch up to `limit` key moments. Returns full UUID in '_id' for DELETE."""
     url = _pg_url()
     if not url:
         return []
@@ -343,18 +347,33 @@ def _fetch_key_moments(agent_id_str: str, schema: str) -> list[dict]:
                 SELECT id, what_happened, why_it_matters, salience, recorded_at
                 FROM {schema}.key_moments
                 WHERE agent_id = %s
-                ORDER BY recorded_at DESC LIMIT 10
+                ORDER BY recorded_at DESC LIMIT %s
                 """,
-                [agent_id_str],
+                [agent_id_str, limit],
             ).fetchall()
         return [
-            {"id": str(r[0])[:8], "what": (r[1] or "")[:80],
-             "why": (r[2] or "")[:50], "sal": f"{float(r[3] or 0):.2f}",
-             "ts": str(r[4])[:19]}
+            {
+                "_id": str(r[0]),
+                "id": str(r[0])[:8],
+                "what": (r[1] or "")[:120],
+                "why": (r[2] or "")[:80],
+                "sal": f"{float(r[3] or 0):.2f}",
+                "ts": str(r[4])[:19],
+            }
             for r in rows
         ]
     except Exception as exc:
         return [{"error": str(exc)}]
+
+
+def _delete_key_moments(schema: str, ids: list[str]) -> None:
+    from uuid import UUID
+    import psycopg
+    with psycopg.connect(_pg_url(), autocommit=True) as conn:
+        conn.execute(
+            f"DELETE FROM {schema}.key_moments WHERE id = ANY(%s)",
+            [[UUID(i) for i in ids]],
+        )
 
 
 @st.cache_data(ttl=5)
@@ -574,6 +593,80 @@ def _handle_turn(prompt: str, msg_container) -> None:
     _fetch_facts.clear()
 
 
+# ── Key Moments table with pagination + delete ────────────────────────────────
+
+def _render_km_table(agent_id_str: str, schema: str) -> None:
+    import pandas as pd
+
+    # Controls row
+    c_refresh, c_info = st.columns([1, 5])
+    if c_refresh.button("🔄", key="km_refresh"):
+        _fetch_key_moments.clear()
+        st.session_state.pop("km_page", None)
+
+    all_rows = _fetch_key_moments(agent_id_str, schema)
+    if all_rows and "error" in all_rows[0]:
+        st.error(all_rows[0]["error"])
+        return
+    if not all_rows:
+        st.caption("— no key moments —")
+        return
+
+    total = len(all_rows)
+    n_pages = max(1, (total + _KM_PAGE_SIZE - 1) // _KM_PAGE_SIZE)
+    page = st.session_state.get("km_page", 0)
+    page = max(0, min(page, n_pages - 1))
+
+    # Pagination controls (only shown when >1 page)
+    if n_pages > 1:
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        if pc1.button("◀", key="km_prev", disabled=(page == 0)):
+            st.session_state["km_page"] = page - 1
+            st.rerun()
+        pc2.caption(f"стр. {page + 1} / {n_pages}  ({total} записей)")
+        if pc3.button("▶", key="km_next", disabled=(page == n_pages - 1)):
+            st.session_state["km_page"] = page + 1
+            st.rerun()
+    else:
+        c_info.caption(f"{total} записей")
+
+    page_rows = all_rows[page * _KM_PAGE_SIZE : (page + 1) * _KM_PAGE_SIZE]
+    display_cols = ["id", "what", "why", "sal", "ts"]
+    df = pd.DataFrame([{k: r[k] for k in display_cols} for r in page_rows])
+
+    # Multi-row selectable table
+    sel = st.dataframe(
+        df,
+        on_select="rerun",
+        selection_mode="multi-row",
+        use_container_width=True,
+        hide_index=True,
+        key="km_table",
+        column_config={
+            "id":  st.column_config.TextColumn("ID",  width="small"),
+            "what": st.column_config.TextColumn("Что произошло", width="large"),
+            "why":  st.column_config.TextColumn("Почему важно",  width="medium"),
+            "sal":  st.column_config.TextColumn("Sal",           width="small"),
+            "ts":   st.column_config.TextColumn("Записано",      width="medium"),
+        },
+    )
+
+    selected_indices = (sel.selection.rows if hasattr(sel, "selection") else [])
+    if selected_indices:
+        selected_ids = [page_rows[i]["_id"] for i in selected_indices]
+        if st.button(
+            f"🗑 Удалить выбранные ({len(selected_ids)})",
+            type="primary",
+            key="km_delete",
+        ):
+            try:
+                _delete_key_moments(schema, selected_ids)
+                _fetch_key_moments.clear()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Ошибка удаления: {exc}")
+
+
 # ── Debug panel ───────────────────────────────────────────────────────────────
 
 def _render_debug_panel() -> None:
@@ -592,21 +685,11 @@ def _render_debug_panel() -> None:
             st.markdown(_fmt_event(ev))
 
     with tab_km:
-        c1, c2 = st.columns([1, 3])
-        if c1.button("🔄", key="km_refresh"):
-            _fetch_key_moments.clear()
         if agent_serial is None:
             st.warning("DB not available — POSTGRES_* env vars not set")
         else:
             schema = f"agent_{agent_serial}"
-            rows = _fetch_key_moments(agent_id_str, schema)
-            if rows and "error" in rows[0]:
-                st.error(rows[0]["error"])
-            elif not rows:
-                st.caption("— no key moments —")
-            else:
-                import pandas as pd
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            _render_km_table(agent_id_str, schema)
 
     with tab_facts:
         c1, _ = st.columns([1, 3])
