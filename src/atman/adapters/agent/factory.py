@@ -236,9 +236,42 @@ def build_deps(
             )
         )
 
+    # Use a real LLM for narrative revision when ATMAN_LLM_BASE_URL is set.
+    # Falls back to _MockReflectionModel so lean dev/test runs without a
+    # running LLM still work (narrative won't be updated but nothing crashes).
+    _narrative_reflection_model: ReflectionModel
+    _atman_llm_url = os.getenv("ATMAN_LLM_BASE_URL", "")
+    if _atman_llm_url:
+        try:
+            from atman.adapters.reflection.openai_reflection_model import OpenAIReflectionModel
+            from atman.config import OpenAILLMConfig
+
+            _llm_model_name = (
+                os.getenv("ATMAN_LLM_MODEL")
+                or os.getenv("LLM_MODEL")
+                or os.getenv("AGENT_LLM_MODEL")
+                or "gemma4"
+            )
+            _narrative_reflection_model = OpenAIReflectionModel(
+                OpenAILLMConfig(
+                    base_url=_atman_llm_url,
+                    api_key=os.getenv("ATMAN_LLM_API_KEY", "dummy"),
+                    model=_llm_model_name,
+                )
+            )
+        except Exception:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "OpenAIReflectionModel unavailable — using mock (no narrative updates)",
+                exc_info=True,
+            )
+            _narrative_reflection_model = _MockReflectionModel()
+    else:
+        _narrative_reflection_model = _MockReflectionModel()
+
     narrative_revision = NarrativeRevisionService(
         narrative_repo=_NarrativeAdapter(state_store),
-        reflection_model=_MockReflectionModel(),
+        reflection_model=_narrative_reflection_model,
         narrative_audit=NoOpNarrativeWriteAudit(),
     )
     # Build optional RAG pipeline when ATMAN_LINGUISTIC_ENABLED=true.

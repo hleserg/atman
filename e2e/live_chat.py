@@ -704,6 +704,18 @@ async def amain() -> int:
             else:
                 raise
 
+        # Micro-reflection: update narrative with session key moments.
+        # This is the primary cross-session memory mechanism — without it
+        # the agent has no recall of names, events, or choices made in
+        # earlier sessions.
+        try:
+            event = deps.micro_reflection.reflect(session_id, agent_id=agent_id)
+            _log("micro_reflection", outcome=event.key_insight[:80] if event.key_insight else "")
+            con.add("🪞", "micro-reflection", f"[dim]{(event.key_insight or '')[:80]}[/dim]")
+        except Exception as e:  # noqa: BLE001
+            con.add("🪞", "micro-reflection", f"[dim red]failed: {e}[/dim red]")
+            _log("micro_reflection_error", error=str(e))
+
         # Drain maintenance queue
         if deps.maintenance_worker is not None:
             try:
