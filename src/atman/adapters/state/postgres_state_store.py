@@ -53,6 +53,7 @@ from atman.core.models import (
     NarrativeDocument,
     ReframingNote,
 )
+from atman.core.models.entity import KeyMomentEntityLink
 from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
 
@@ -648,6 +649,43 @@ class PostgresStateStore(StateStore):
             cur.execute(q, {"eid": entity_id, "lim": limit})
             rows = cur.fetchall()
         return [_row_to_key_moment(r) for r in rows]
+
+    def save_key_moment_entity_links(
+        self,
+        moment_id: UUID,
+        agent_id: UUID,
+        links: list[KeyMomentEntityLink],
+    ) -> None:
+        """Write entity links for a key moment into agent_N.key_moment_entities.
+
+        Idempotent — uses ON CONFLICT DO NOTHING so safe to call multiple times.
+        """
+        if not links:
+            return
+        schema = self._resolve_schema_for_moment(moment_id)
+        if schema is None:
+            return
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.key_moment_entities
+                    (key_moment_id, entity_id, agent_id, involvement,
+                     valence_toward_entity, intensity_toward_entity)
+                VALUES (%(km_id)s, %(eid)s, %(agent_id)s, %(involvement)s,
+                        %(valence)s, %(intensity)s)
+                ON CONFLICT DO NOTHING
+                """
+            ).format(s=schema)
+            for link in links:
+                cur.execute(q, {
+                    "km_id": link.key_moment_id,
+                    "eid": link.entity_id,
+                    "agent_id": agent_id,
+                    "involvement": link.involvement,
+                    "valence": link.valence_toward_entity,
+                    "intensity": link.intensity_toward_entity,
+                })
 
     # ------------------------------------------------------------------
     # Experience operations — removed in v2 (KeyMoments are standalone)

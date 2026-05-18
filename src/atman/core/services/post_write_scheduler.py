@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from atman.core.models.experience import KeyMoment
+from atman.core.models.fact import FactRecord
 from atman.core.models.maintenance import JobName
 from atman.core.ports.maintenance_queue import MaintenanceQueue
 
@@ -48,6 +49,11 @@ _LOG = logging.getLogger(__name__)
 def _moment_run_key(job_name: JobName, moment_id: UUID) -> str:
     """Deterministic idempotency key for moment-scoped enrichment jobs."""
     return f"{job_name.value}:moment:{moment_id}"
+
+
+def _fact_run_key(fact_id: UUID) -> str:
+    """Deterministic idempotency key for fact entity-link enrichment jobs."""
+    return f"{JobName.fact_entity_link.value}:fact:{fact_id}"
 
 
 # PLAYBOOK-END
@@ -102,6 +108,28 @@ class PostWriteScheduler:
                 _LOG.exception(
                     "Failed to enqueue %s for moment %s — continuing", job_name.value, moment.id
                 )
+
+    def schedule_for_fact(
+        self,
+        fact: FactRecord,
+        agent_id: UUID,
+        *,
+        scheduled_at: datetime | None = None,
+    ) -> None:
+        """Enqueue a fact_entity_link job for async entity resolution after a fact write."""
+        when = scheduled_at or datetime.now(UTC)
+        try:
+            self._queue.enqueue(
+                JobName.fact_entity_link,
+                agent_id=agent_id,
+                payload={"fact_id": str(fact.id)},
+                run_key=_fact_run_key(fact.id),
+                scheduled_at=when,
+            )
+        except Exception:
+            _LOG.exception(
+                "Failed to enqueue fact_entity_link for fact %s — continuing", fact.id
+            )
 
     # PLAYBOOK-START
     # id: fire-and-forget-asyncio-task-strong-refs

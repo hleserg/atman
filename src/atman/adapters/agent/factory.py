@@ -262,12 +262,25 @@ def build_deps(
                 "PostgresEntityRegistry/Stance unavailable — using in-memory", exc_info=True
             )
 
-    _ambient_memory = _Ambient(
-        linguistic_analyzer=_affect_linguistic,
-        entity_registry=_entity_registry,  # type: ignore[arg-type]
-        state_store=state_store,
-        entity_stance_store=_entity_stance_store,
-    )
+    # SalienceDecay — single-pass SQL batch UPDATE when Postgres is available,
+    # else Python-loop InMemory fallback.
+    _salience_decay = None
+    if isinstance(state_store, PostgresStateStore):
+        try:
+            from atman.adapters.state.postgres_salience_decay import PostgresSalienceDecayService
+            _salience_decay = PostgresSalienceDecayService(state_store)
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "PostgresSalienceDecayService unavailable — using in-memory", exc_info=True
+            )
+    if _salience_decay is None:
+        from atman.core.services.salience_decay_service import InMemorySalienceDecayService
+        _salience_decay = InMemorySalienceDecayService(state_store)
+
+    # factual_memory and ambient_memory are built after the linguistic block
+    # so that _factual_memory is available when constructing AmbientMemoryService.
+    _factual_memory = None
 
     # HLE-52: build the affect adapter here (composition root) and inject via
     # AffectPort so SessionManager never imports the concrete implementation.
@@ -331,6 +344,8 @@ def build_deps(
     # Build optional RAG pipeline when ATMAN_LINGUISTIC_ENABLED=true.
     # Uses the configured embedding backend (ollama/flag) and the same
     # state_store that the session will write to.
+    # Note: _factual_memory is set inside the try block below; AmbientMemoryService
+    # is constructed after this block so it receives the populated reference.
     passive_memory_injector = None
     _embedding_adapter = None
     if os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true":
@@ -345,6 +360,9 @@ def build_deps(
 
             _embedding_adapter = build_embedding_adapter()
             _factual_memory = _build_mem()
+            # Wire the post_write_scheduler so add_fact triggers async entity-link enrichment.
+            if hasattr(_factual_memory, "_post_write_scheduler"):
+                _factual_memory._post_write_scheduler = post_write_scheduler
             # BM25 is zero-dependency and provides a second retrieval signal
             # fused with the dense embedding via Reciprocal Rank Fusion. It
             # rescues exact lexical matches that dense encoders can rank low.
@@ -377,6 +395,16 @@ def build_deps(
             _logging.getLogger(__name__).warning(
                 "Failed to build PassiveMemoryInjector — RAG disabled", exc_info=True
             )
+
+    # AmbientMemoryService — built here so _factual_memory (set above) is available.
+    _ambient_memory = _Ambient(
+        linguistic_analyzer=_affect_linguistic,
+        entity_registry=_entity_registry,  # type: ignore[arg-type]
+        state_store=state_store,
+        entity_stance_store=_entity_stance_store,
+        salience_decay=_salience_decay,
+        factual_memory=_factual_memory,
+    )
 
     # Build optional skill-loop when skills.enabled=true (default).
     #
@@ -448,12 +476,14 @@ def build_deps(
 
         _maintenance_worker = MaintenanceWorker(
             queue=maintenance_queue,
+            salience_decay=_salience_decay,
             memory_guardian=_memory_guardian,
             state_store=state_store,
             entity_relation_extractor=_mrebel_extractor,
             entity_relation_store=_relation_store,
             entity_registry=_entity_registry,
             linguistic_analyzer=_affect_linguistic if _linguistic_enabled else None,
+            factual_memory=_factual_memory,
             reflection_overload_monitor=_overload_monitor,
         )
     except Exception:

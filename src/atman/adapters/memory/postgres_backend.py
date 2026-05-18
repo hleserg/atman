@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
+    from atman.core.services.post_write_scheduler import PostWriteScheduler
 else:
     try:
         import psycopg
@@ -145,6 +146,7 @@ class PostgresFactualMemory(FactualMemory):
         db_url: str | None = None,
         *,
         embedding: EmbeddingPort | None = None,
+        post_write_scheduler: "PostWriteScheduler | None" = None,
     ) -> None:
         if psycopg is None:
             raise ImportError(
@@ -158,6 +160,7 @@ class PostgresFactualMemory(FactualMemory):
             or "postgresql://atman@localhost:5432/atman"
         )
         self._embedding = embedding
+        self._post_write_scheduler = post_write_scheduler
         self._conn: psycopg.Connection[Any] | None = None
         self._closed = False
 
@@ -327,6 +330,16 @@ class PostgresFactualMemory(FactualMemory):
         conn.commit()
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
+
+        if self._post_write_scheduler is not None:
+            try:
+                self._post_write_scheduler.schedule_for_fact(stored, agent_id)
+            except Exception:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "schedule_for_fact failed for fact %s — continuing", stored.id, exc_info=True
+                )
+
         return stored
 
     def get_fact(self, fact_id: UUID) -> FactRecord | None:
@@ -604,6 +617,38 @@ class PostgresFactualMemory(FactualMemory):
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
         return stored
+
+    def save_fact_entity_links(
+        self,
+        fact_id: UUID,
+        agent_id: UUID,
+        links: "list[FactEntityLink]",
+    ) -> None:
+        """Persist fact→entity links into agent_N.fact_entities.
+
+        Idempotent — ON CONFLICT DO NOTHING so safe to call multiple times for
+        the same fact (e.g. maintenance job retries).
+        """
+        from atman.core.models.entity import FactEntityLink  # local import — avoid circular dep
+
+        if not links:
+            return
+        schema = self._agent_schema(agent_id)
+        if schema is None:
+            return
+        conn = self._require_conn()
+        self._set_agent_context(conn)
+        with conn.cursor() as cur:
+            for link in links:
+                cur.execute(
+                    f"INSERT INTO {schema}.fact_entities "  # nosec B608
+                    "(fact_id, entity_id, agent_id, role, confidence) "
+                    "VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (fact_id, entity_id, role) DO NOTHING",
+                    [str(link.fact_id), str(link.entity_id), str(link.agent_id),
+                     link.role, link.confidence],
+                )
+        conn.commit()
 
     def find_facts_by_entity(
         self,
