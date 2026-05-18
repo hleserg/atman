@@ -656,7 +656,7 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
     # Selecting "🗑 удалить" triggers a rerun; the code below detects it
     # and deletes immediately, no external button needed.
     df = pd.DataFrame([
-        {"": "—", "_id": r["_id"], "id": r["id"],
+        {"🗑": False, "_id": r["_id"], "id": r["id"],
          "what": r["what"], "why": r["why"], "changed": r["changed"],
          "depth": r["depth"], "sal": r["sal"], "imp": r["imp"],
          "val/int": f'{r["val"]}/{r["int"]}',
@@ -670,16 +670,13 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
         hide_index=True,
         key="km_editor",
         column_config={
-            "":        st.column_config.SelectboxColumn(
-                           "", options=["—", "🗑 удалить"],
-                           default="—", width="small",
-                       ),
+            "🗑":      st.column_config.CheckboxColumn("🗑", default=False, width="small"),
             "_id":     None,
-            "id":      st.column_config.TextColumn("ID",            disabled=True, width="small"),
-            "what":    st.column_config.TextColumn("Что произошло", disabled=True),
-            "why":     st.column_config.TextColumn("Почему важно",  disabled=True),
+            "id":      st.column_config.TextColumn("ID",             disabled=True, width="small"),
+            "what":    st.column_config.TextColumn("Что произошло",  disabled=True),
+            "why":     st.column_config.TextColumn("Почему важно",   disabled=True),
             "changed": st.column_config.TextColumn("Что изменилось", disabled=True),
-            "depth":   st.column_config.TextColumn("Глубина",       disabled=True, width="small"),
+            "depth":   st.column_config.TextColumn("Глубина",        disabled=True, width="small"),
             "sal":     st.column_config.NumberColumn("Sal",  disabled=True, width="small", format="%.3f"),
             "imp":     st.column_config.NumberColumn("Imp",  disabled=True, width="small", format="%.3f"),
             "val/int": st.column_config.TextColumn("Val/Int", disabled=True, width="small"),
@@ -689,15 +686,16 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
         },
     )
 
-    to_delete_ids = edited.loc[edited[""] == "🗑 удалить", "_id"].tolist()
+    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
     if to_delete_ids:
-        try:
-            _delete_key_moments(schema, to_delete_ids)
-        except Exception as exc:
-            st.error(f"Ошибка удаления: {exc}")
-        _fetch_key_moments.clear()
-        st.session_state.pop("km_editor", None)
-        st.rerun()
+        if st.button(f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="km_delete"):
+            try:
+                _delete_key_moments(schema, to_delete_ids)
+                _fetch_key_moments.clear()
+                st.session_state.pop("km_editor", None)
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Ошибка удаления: {exc}")
 
 
 # ── Debug panel ───────────────────────────────────────────────────────────────
