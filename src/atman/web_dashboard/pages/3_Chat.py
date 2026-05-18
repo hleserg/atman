@@ -344,7 +344,11 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
         with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, what_happened, why_it_matters, salience, recorded_at
+                SELECT id, what_happened, why_it_matters, what_changed,
+                       depth, salience, importance,
+                       emotional_valence, emotional_intensity,
+                       values_touched, incomplete_coloring, recorded_by,
+                       recorded_at
                 FROM {schema}.key_moments
                 WHERE agent_id = %s
                 ORDER BY recorded_at DESC LIMIT %s
@@ -353,12 +357,20 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
             ).fetchall()
         return [
             {
-                "_id": str(r[0]),
-                "id": str(r[0])[:8],
-                "what": (r[1] or "")[:120],
-                "why": (r[2] or "")[:80],
-                "sal": f"{float(r[3] or 0):.2f}",
-                "ts": str(r[4])[:19],
+                "_id":      str(r[0]),
+                "id":       str(r[0])[:8],
+                "what":     r[1] or "",
+                "why":      r[2] or "",
+                "changed":  r[3] or "",
+                "depth":    r[4] or "",
+                "sal":      round(float(r[5] or 0), 3),
+                "imp":      round(float(r[6] or 0), 3),
+                "val":      round(float(r[7] or 0), 2),
+                "int":      round(float(r[8] or 0), 2),
+                "values":   ", ".join(r[9] or []),
+                "coloring": r[10],
+                "by":       r[11] or "",
+                "ts":       str(r[12])[:19],
             }
             for r in rows
         ]
@@ -645,7 +657,10 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
     # and deletes immediately, no external button needed.
     df = pd.DataFrame([
         {"": "—", "_id": r["_id"], "id": r["id"],
-         "what": r["what"], "why": r["why"], "sal": r["sal"], "ts": r["ts"]}
+         "what": r["what"], "why": r["why"], "changed": r["changed"],
+         "depth": r["depth"], "sal": r["sal"], "imp": r["imp"],
+         "val/int": f'{r["val"]}/{r["int"]}',
+         "values": r["values"], "by": r["by"], "ts": r["ts"]}
         for r in page_rows
     ])
 
@@ -655,16 +670,22 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
         hide_index=True,
         key="km_editor",
         column_config={
-            "":     st.column_config.SelectboxColumn(
-                        "", options=["—", "🗑 удалить"],
-                        default="—", width="small",
-                    ),
-            "_id":  None,
-            "id":   st.column_config.TextColumn("ID",            disabled=True, width="small"),
-            "what": st.column_config.TextColumn("Что произошло", disabled=True, width="large"),
-            "why":  st.column_config.TextColumn("Почему важно",  disabled=True, width="medium"),
-            "sal":  st.column_config.TextColumn("Sal",           disabled=True, width="small"),
-            "ts":   st.column_config.TextColumn("Записано",      disabled=True, width="medium"),
+            "":        st.column_config.SelectboxColumn(
+                           "", options=["—", "🗑 удалить"],
+                           default="—", width="small",
+                       ),
+            "_id":     None,
+            "id":      st.column_config.TextColumn("ID",            disabled=True, width="small"),
+            "what":    st.column_config.TextColumn("Что произошло", disabled=True),
+            "why":     st.column_config.TextColumn("Почему важно",  disabled=True),
+            "changed": st.column_config.TextColumn("Что изменилось", disabled=True),
+            "depth":   st.column_config.TextColumn("Глубина",       disabled=True, width="small"),
+            "sal":     st.column_config.NumberColumn("Sal",  disabled=True, width="small", format="%.3f"),
+            "imp":     st.column_config.NumberColumn("Imp",  disabled=True, width="small", format="%.3f"),
+            "val/int": st.column_config.TextColumn("Val/Int", disabled=True, width="small"),
+            "values":  st.column_config.TextColumn("Ценности", disabled=True),
+            "by":      st.column_config.TextColumn("Кем",      disabled=True, width="small"),
+            "ts":      st.column_config.TextColumn("Записано", disabled=True, width="medium"),
         },
     )
 
