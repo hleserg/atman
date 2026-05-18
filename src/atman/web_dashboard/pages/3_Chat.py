@@ -90,8 +90,18 @@ st.set_page_config(layout="wide", page_title="Atman Chat")
 # 260px covers: header ~58 + caption ~28 + button ~42 + input ~70 + padding ~62.
 st.markdown("""
 <style>
+/* Reduce Streamlit's default top/bottom page padding */
+.stMainBlockContainer {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+/* Shrink the top header bar */
+header[data-testid="stHeader"] {
+    height: 2.5rem !important;
+}
+/* Adaptive chat container height */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    height: calc(100vh - 260px) !important;
+    height: calc(100vh - 220px) !important;
     min-height: 200px !important;
 }
 [data-testid="stVerticalBlockBorderWrapper"] > div {
