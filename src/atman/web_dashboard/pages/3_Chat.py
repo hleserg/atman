@@ -95,6 +95,11 @@ st.markdown("""
     padding-top: 3.5rem !important;
     padding-bottom: 1.5rem !important;
 }
+/* Taller chat input — fits ~2 lines */
+[data-testid="stChatInput"] textarea {
+    min-height: 3.2rem !important;
+    max-height: 6rem !important;
+}
 /* Adaptive chat container height */
 [data-testid="stVerticalBlockBorderWrapper"] {
     height: calc(100vh - 240px) !important;
