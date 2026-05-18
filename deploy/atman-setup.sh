@@ -511,8 +511,12 @@ echo -e "${BOLD}${GREEN}══════════════════�
 echo ""
 echo -e "${BOLD}Сервисы:${NC}"
 echo -e "  ${GREEN}●${NC} PostgreSQL + pgvector → localhost:${POSTGRES_PORT}"
-echo -e "  ${GREEN}●${NC} Qdrant               → localhost:${QDRANT_PORT}"
-echo -e "  ${GREEN}●${NC} Ollama               → localhost:11434"
+if [[ "${ATMAN_USE_QDRANT:-0}" == "1" ]]; then
+    echo -e "  ${GREEN}●${NC} Qdrant               → localhost:${QDRANT_PORT}  (ATMAN_USE_QDRANT=1)"
+else
+    echo -e "  ${YELLOW}○${NC} Qdrant               → не запущен (export ATMAN_USE_QDRANT=1)"
+fi
+echo -e "  ${YELLOW}○${NC} Ollama               → не используется (LLM через llama-server)"
 echo ""
 echo -e "${BOLD}Модели:${NC}"
 echo -e "  ${GREEN}●${NC} LLM:        ${LLM_MODEL}  (через llama-server :8081)"

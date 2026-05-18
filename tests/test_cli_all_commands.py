@@ -13,6 +13,7 @@ Covers:
 - identity validate (valid file, invalid file)
 - reflection unknown command
 - reflection missing subcommand
+- reflection daily/deep --live (missing agent-id, invalid uuid, empty workspace)
 
 SYSTEM_MAP §3 A–F / §4.1 / §5.3 regression freeze.
 """
@@ -243,6 +244,62 @@ def test_reflection_unknown_command_exits_nonzero() -> None:
 def test_reflection_no_subcommand_exits_nonzero() -> None:
     r = _run_reflection([])
     assert r.returncode != 0
+
+
+def test_reflection_daily_live_without_agent_id_exits_nonzero() -> None:
+    r = _run_reflection(["reflect", "daily", "--live"])
+    assert r.returncode != 0
+    assert "agent-id" in (r.stdout + r.stderr).lower()
+
+
+def test_reflection_daily_live_invalid_agent_id_exits_nonzero() -> None:
+    r = _run_reflection(["reflect", "daily", "--live", "--agent-id", "not-a-uuid"])
+    assert r.returncode != 0
+    assert "Invalid UUID" in r.stdout or "Invalid UUID" in r.stderr
+
+
+def test_reflection_daily_live_empty_workspace_completes(tmp_path: Path) -> None:
+    agent_id = "00000000-0000-0000-0000-000000000001"
+    r = _run_reflection(
+        [
+            "reflect",
+            "daily",
+            "--live",
+            "--agent-id",
+            agent_id,
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+    assert r.returncode == 0, (r.stdout, r.stderr)
+
+
+def test_reflection_deep_live_without_agent_id_exits_nonzero() -> None:
+    r = _run_reflection(["reflect", "deep", "--live"])
+    assert r.returncode != 0
+    assert "agent-id" in (r.stdout + r.stderr).lower()
+
+
+def test_reflection_deep_live_invalid_agent_id_exits_nonzero() -> None:
+    r = _run_reflection(["reflect", "deep", "--live", "--agent-id", "not-a-uuid"])
+    assert r.returncode != 0
+    assert "Invalid UUID" in r.stdout or "Invalid UUID" in r.stderr
+
+
+def test_reflection_deep_live_empty_workspace_completes(tmp_path: Path) -> None:
+    agent_id = "00000000-0000-0000-0000-000000000001"
+    r = _run_reflection(
+        [
+            "reflect",
+            "deep",
+            "--live",
+            "--agent-id",
+            agent_id,
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+    assert r.returncode == 0, (r.stdout, r.stderr)
 
 
 # ---------------------------------------------------------------------------

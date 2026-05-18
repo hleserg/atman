@@ -48,6 +48,7 @@ else:
 
 from atman.core.models.entity import Entity, EntityAlias, EntityType, ResolutionMethod
 from atman.core.ports.entity_registry import EntityRegistry
+from atman.core.session_log import slog as _slog
 
 _DEFAULT_EMBEDDING_THRESHOLD = 0.85
 
@@ -156,7 +157,10 @@ class PostgresEntityRegistry(EntityRegistry):
     def _get_conn(self) -> psycopg.Connection[Any]:
         """Get or create database connection."""
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url, row_factory=dict_row)  # type: ignore[arg-type]
+            # autocommit=True so conn.transaction() blocks create proper BEGIN/COMMIT pairs
+            # rather than savepoints inside an implicit outer transaction started by
+            # the first SELECT in _resolve_serial_id.
+            self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)  # type: ignore[arg-type]
         return self._conn
 
     def close(self) -> None:
@@ -468,6 +472,15 @@ class PostgresEntityRegistry(EntityRegistry):
                             alias_text,
                             learned_from_fact_id,
                         )
+                    _slog(
+                        "entity_resolved",
+                        agent_id=str(agent_id),
+                        text=canonical_name,
+                        entity_type=entity_type.value,
+                        method="L1_exact",
+                        entity_id=str(hit.id),
+                        canonical=hit.canonical_name,
+                    )
                     return hit, ResolutionMethod.L1_exact
 
             # L2 — embedding similarity
@@ -483,6 +496,15 @@ class PostgresEntityRegistry(EntityRegistry):
                             alias_text,
                             learned_from_fact_id,
                         )
+                    _slog(
+                        "entity_resolved",
+                        agent_id=str(agent_id),
+                        text=canonical_name,
+                        entity_type=entity_type.value,
+                        method="L2_embedding",
+                        entity_id=str(near.id),
+                        canonical=near.canonical_name,
+                    )
                     return near, ResolutionMethod.L2_embedding
 
             # L3 — create new entity
@@ -546,6 +568,15 @@ class PostgresEntityRegistry(EntityRegistry):
                     learned_from_fact_id,
                 )
 
+            _slog(
+                "entity_resolved",
+                agent_id=str(agent_id),
+                text=canonical_name,
+                entity_type=entity_type.value,
+                method="L3_new",
+                entity_id=str(created.id),
+                canonical=created.canonical_name,
+            )
             return created, ResolutionMethod.L3_new
 
     def get_entity(self, entity_id: UUID) -> Entity | None:

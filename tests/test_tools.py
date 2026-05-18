@@ -162,7 +162,6 @@ class TestRecordKeyMoment:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,
@@ -310,7 +309,6 @@ class TestRestartSession:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,
@@ -388,7 +386,6 @@ class TestWaitSession:
         deps = AtmanDeps(
             session_manager=SessionManager(state_store),
             identity_service=IdentityService(state_store),
-
             micro_reflection=MicroReflectionService(
                 session_repo=experience_service,  # type: ignore[arg-type]
                 narrative_revision=narrative_revision,

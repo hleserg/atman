@@ -711,10 +711,11 @@ def test_job_name_values():
     assert JobName.memory_guardian_scan == "memory_guardian_scan"
     assert JobName.mrebel_extract == "mrebel_extract"
     assert JobName.lingvo_enrich == "lingvo_enrich"
+    assert JobName.fact_entity_link == "fact_entity_link"
     assert JobName.entity_merge == "entity_merge"
     assert JobName.reflection_overload_check == "reflection_overload_check"
     assert JobName.other == "other"
-    assert len(list(JobName)) == 7
+    assert len(list(JobName)) == 8
 
 
 def test_maintenance_job_default_creation():

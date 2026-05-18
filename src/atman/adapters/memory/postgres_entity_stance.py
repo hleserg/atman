@@ -110,7 +110,7 @@ class PostgresEntityStanceStore(EntityStanceStore):
     def _get_conn(self) -> "psycopg.Connection[Any]":
         """Get or create database connection."""
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url, row_factory=dict_row)  # type: ignore[arg-type]
+            self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)  # type: ignore[arg-type]
         return self._conn
 
     def close(self) -> None:

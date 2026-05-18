@@ -11,7 +11,6 @@ so lean dev/test runs without a DB still work.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from uuid import UUID
@@ -46,6 +45,7 @@ from atman.core.models.reflection import (
 )
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.ports.reflection import NarrativeRepository, ReflectionModel
+from atman.core.ports.state_store import StateStore
 from atman.core.services.identity_service import IdentityService
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.narrative_service import NarrativeService
@@ -81,15 +81,12 @@ class _MockReflectionModel(ReflectionModel):
 
 
 class _NarrativeAdapter(NarrativeRepository):
-    def __init__(self, store: FileStateStore):
+    def __init__(self, store: StateStore, agent_id: UUID):
         self._s = store
+        self._agent_id = agent_id
 
     def get_current(self):
-        p = self._s.narrative_path
-        if not p.exists():
-            return None
-        with open(p, encoding="utf-8") as f:
-            return NarrativeDocument.model_validate(json.load(f))
+        return self._s.load_narrative(self._agent_id)
 
     def get_history(self):
         return []
@@ -114,12 +111,14 @@ def _build_state_store(
         return FileStateStore(workspace=workspace)
     try:
         import psycopg as _pg
+
         with _pg.connect(db_url) as _conn:
             row = _conn.execute(
                 "SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]
             ).fetchone()
         if row is None:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "agent %s not in public.agents — falling back to FileStateStore", agent_id
             )
@@ -128,6 +127,7 @@ def _build_state_store(
         return PostgresStateStore(db_url=db_url, serial_id=serial_id)
     except Exception:
         import logging as _log
+
         _log.getLogger(__name__).warning(
             "PostgresStateStore unavailable — falling back to FileStateStore", exc_info=True
         )
@@ -200,7 +200,7 @@ def build_deps(
     from atman.core.ports.linguistic import LinguisticAnalyzer as _LinguisticAnalyzer
     from atman.core.services.divergence_detector import DivergenceDetector
 
-    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true"
+    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true"
     _affect_linguistic: _LinguisticAnalyzer = NoOpLinguisticAnalyzer()
     if _linguistic_enabled:
         try:
@@ -276,16 +276,33 @@ def build_deps(
             _entity_stance_store = PostgresEntityStanceStore(db_url=_pg_url)
         except Exception:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "PostgresEntityRegistry/Stance unavailable — using in-memory", exc_info=True
             )
 
-    _ambient_memory = _Ambient(
-        linguistic_analyzer=_affect_linguistic,
-        entity_registry=_entity_registry,  # type: ignore[arg-type]
-        state_store=state_store,
-        entity_stance_store=_entity_stance_store,
-    )
+    # SalienceDecay — single-pass SQL batch UPDATE when Postgres is available,
+    # else Python-loop InMemory fallback.
+    _salience_decay = None
+    if isinstance(state_store, PostgresStateStore):
+        try:
+            from atman.adapters.state.postgres_salience_decay import PostgresSalienceDecayService
+
+            _salience_decay = PostgresSalienceDecayService(state_store)
+        except Exception:
+            import logging as _log
+
+            _log.getLogger(__name__).warning(
+                "PostgresSalienceDecayService unavailable — using in-memory", exc_info=True
+            )
+    if _salience_decay is None:
+        from atman.core.services.salience_decay_service import InMemorySalienceDecayService
+
+        _salience_decay = InMemorySalienceDecayService(state_store)
+
+    # factual_memory and ambient_memory are built after the linguistic block
+    # so that _factual_memory is available when constructing AmbientMemoryService.
+    _factual_memory = None
 
     # HLE-52: build the affect adapter here (composition root) and inject via
     # AffectPort so SessionManager never imports the concrete implementation.
@@ -333,6 +350,7 @@ def build_deps(
             )
         except Exception:
             import logging as _logging
+
             _logging.getLogger(__name__).warning(
                 "OpenAIReflectionModel unavailable — using mock (no narrative updates)",
                 exc_info=True,
@@ -342,16 +360,18 @@ def build_deps(
         _narrative_reflection_model = _MockReflectionModel()
 
     narrative_revision = NarrativeRevisionService(
-        narrative_repo=_NarrativeAdapter(state_store),
+        narrative_repo=_NarrativeAdapter(state_store, agent_id),
         reflection_model=_narrative_reflection_model,
         narrative_audit=NoOpNarrativeWriteAudit(),
     )
     # Build optional RAG pipeline when ATMAN_LINGUISTIC_ENABLED=true.
     # Uses the configured embedding backend (ollama/flag) and the same
     # state_store that the session will write to.
+    # Note: _factual_memory is set inside the try block below; AmbientMemoryService
+    # is constructed after this block so it receives the populated reference.
     passive_memory_injector = None
     _embedding_adapter = None
-    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true":
+    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true":
         from atman.config import build_embedding_adapter
         from atman.config import build_memory_backend as _build_mem
         from atman.core.services.passive_memory_injector import PassiveMemoryInjector
@@ -363,6 +383,9 @@ def build_deps(
 
             _embedding_adapter = build_embedding_adapter()
             _factual_memory = _build_mem()
+            # Wire the post_write_scheduler so add_fact triggers async entity-link enrichment.
+            if hasattr(_factual_memory, "_post_write_scheduler"):
+                _factual_memory._post_write_scheduler = post_write_scheduler  # pyright: ignore[reportAttributeAccessIssue]
             # BM25 is zero-dependency and provides a second retrieval signal
             # fused with the dense embedding via Reciprocal Rank Fusion. It
             # rescues exact lexical matches that dense encoders can rank low.
@@ -395,6 +418,16 @@ def build_deps(
             _logging.getLogger(__name__).warning(
                 "Failed to build PassiveMemoryInjector — RAG disabled", exc_info=True
             )
+
+    # AmbientMemoryService — built here so _factual_memory (set above) is available.
+    _ambient_memory = _Ambient(
+        linguistic_analyzer=_affect_linguistic,
+        entity_registry=_entity_registry,  # type: ignore[arg-type]
+        state_store=state_store,
+        entity_stance_store=_entity_stance_store,
+        salience_decay=_salience_decay,
+        factual_memory=_factual_memory,
+    )
 
     # Build optional skill-loop when skills.enabled=true (default).
     #
@@ -462,16 +495,23 @@ def build_deps(
 
                 _mrebel_extractor = MRebelRelationAdapter(device="cpu")
             except Exception:
-                pass  # mrebel unavailable — worker still handles lingvo/decay jobs
+                import logging as _log
+
+                _log.getLogger(__name__).debug(
+                    "mrebel unavailable — worker still handles lingvo/decay jobs",
+                    exc_info=True,
+                )
 
         _maintenance_worker = MaintenanceWorker(
             queue=maintenance_queue,
+            salience_decay=_salience_decay,
             memory_guardian=_memory_guardian,
             state_store=state_store,
             entity_relation_extractor=_mrebel_extractor,
             entity_relation_store=_relation_store,
             entity_registry=_entity_registry,
             linguistic_analyzer=_affect_linguistic if _linguistic_enabled else None,
+            factual_memory=_factual_memory,
             reflection_overload_monitor=_overload_monitor,
         )
     except Exception:
@@ -593,6 +633,7 @@ def _build_skill_manager(agent_id: UUID, embedding_adapter):
 # IdentityRepository / NarrativeRepository adapters over any StateStore
 # ---------------------------------------------------------------------------
 
+
 class _StateStoreIdentityRepo:
     """IdentityRepository protocol adapter over FileStateStore or PostgresStateStore."""
 
@@ -624,6 +665,7 @@ class _StateStoreIdentityRepo:
         snapshot_id: UUID | None = None,
     ) -> IdentitySnapshot:
         from uuid import uuid4 as _uuid4
+
         snap = IdentitySnapshot(
             id=snapshot_id or _uuid4(),
             identity_id=identity.id,
@@ -637,9 +679,7 @@ class _StateStoreIdentityRepo:
 class _StateStoreNarrativeRepo:
     """NarrativeRepository protocol adapter over FileStateStore or PostgresStateStore."""
 
-    def __init__(
-        self, store: FileStateStore | PostgresStateStore, identity_id: UUID
-    ) -> None:
+    def __init__(self, store: FileStateStore | PostgresStateStore, identity_id: UUID) -> None:
         self._store = store
         self._identity_id = identity_id
 
@@ -661,6 +701,7 @@ class _StateStoreNarrativeRepo:
 # ---------------------------------------------------------------------------
 # Production builders for Daily and Deep reflection services
 # ---------------------------------------------------------------------------
+
 
 def _build_reflection_model(override: ReflectionModel | None = None) -> ReflectionModel:
     """Return a ReflectionModel: OpenAIReflectionModel when ATMAN_LLM_BASE_URL set, else mock."""
@@ -687,6 +728,7 @@ def _build_reflection_model(override: ReflectionModel | None = None) -> Reflecti
             )
         except Exception:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "OpenAIReflectionModel unavailable — using mock", exc_info=True
             )
@@ -710,6 +752,7 @@ def _build_entity_adapters(state_store: FileStateStore | PostgresStateStore):
             stance_store = PostgresEntityStanceStore(db_url=_pg_url)
         except Exception:
             import logging as _log
+
             _log.getLogger(__name__).warning(
                 "Postgres entity adapters unavailable — using in-memory", exc_info=True
             )

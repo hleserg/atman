@@ -78,7 +78,7 @@ class PostgresSelfAppliedChangeStore(SelfAppliedChangeStore):
 
     def connect(self) -> None:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url)
+            self._conn = psycopg.connect(self._db_url, autocommit=True)
 
     def close(self) -> None:
         if self._conn is not None and not self._conn.closed:

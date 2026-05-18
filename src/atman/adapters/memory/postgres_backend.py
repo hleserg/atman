@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
+
+    from atman.core.services.post_write_scheduler import PostWriteScheduler
 else:
     try:
         import psycopg
@@ -34,9 +36,11 @@ else:
             stacklevel=2,
         )
 
+from atman.core.models.entity import FactEntityLink
 from atman.core.models.fact import FactRecord, FactStatus, Relation
 from atman.core.ports import FactualMemory
 from atman.core.ports.embedding import EmbeddingPort
+from atman.core.session_log import slog as _slog
 
 _FACT_SELECT = """
     SELECT
@@ -145,6 +149,7 @@ class PostgresFactualMemory(FactualMemory):
         db_url: str | None = None,
         *,
         embedding: EmbeddingPort | None = None,
+        post_write_scheduler: "PostWriteScheduler | None" = None,
     ) -> None:
         if psycopg is None:
             raise ImportError(
@@ -158,6 +163,7 @@ class PostgresFactualMemory(FactualMemory):
             or "postgresql://atman@localhost:5432/atman"
         )
         self._embedding = embedding
+        self._post_write_scheduler = post_write_scheduler
         self._conn: psycopg.Connection[Any] | None = None
         self._closed = False
 
@@ -169,6 +175,7 @@ class PostgresFactualMemory(FactualMemory):
             self._conn = psycopg.connect(
                 self.db_url,
                 row_factory=cast(Any, dict_row),
+                autocommit=False,
             )
 
     def close(self) -> None:
@@ -203,13 +210,14 @@ class PostgresFactualMemory(FactualMemory):
     def _set_agent_context(self, conn: "psycopg.Connection[Any]") -> None:
         """Set RLS session variable if ATMAN_CURRENT_AGENT is configured.
 
-        Uses set_config(..., true) instead of SET LOCAL because PostgreSQL
-        does not accept parameterized placeholders in SET commands.
+        Uses set_config(..., false) for session-level scope so the value
+        persists across explicit commits on the same connection.
+        (is_local=true would be transaction-scoped and lost after commit.)
         """
         agent_id = os.environ.get("ATMAN_CURRENT_AGENT")
         if agent_id:
             conn.execute(
-                "SELECT set_config('atman.current_agent', %s, true)",
+                "SELECT set_config('atman.current_agent', %s, false)",
                 [agent_id],
             )
 
@@ -327,6 +335,26 @@ class PostgresFactualMemory(FactualMemory):
         conn.commit()
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
+
+        _slog(
+            "fact_added",
+            agent_id=str(agent_id),
+            fact_id=str(stored.id),
+            content=str(stored.content or "")[:120],
+            source=stored.source,
+        )
+
+        if self._post_write_scheduler is not None:
+            try:
+                self._post_write_scheduler.schedule_for_fact(stored, agent_id)
+                _slog("fact_entity_link_scheduled", agent_id=str(agent_id), fact_id=str(stored.id))
+            except Exception:
+                import logging as _log
+
+                _log.getLogger(__name__).warning(
+                    "schedule_for_fact failed for fact %s — continuing", stored.id, exc_info=True
+                )
+
         return stored
 
     def get_fact(self, fact_id: UUID) -> FactRecord | None:
@@ -604,6 +632,54 @@ class PostgresFactualMemory(FactualMemory):
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
         return stored
+
+    def save_fact_entity_links(
+        self,
+        fact_id: UUID,
+        agent_id: UUID,
+        links: list[FactEntityLink],
+    ) -> None:
+        """Persist fact→entity links into agent_N.fact_entities.
+
+        Idempotent — ON CONFLICT DO NOTHING so safe to call multiple times for
+        the same fact (e.g. maintenance job retries).
+        """
+
+        if not links:
+            return
+        schema = self._agent_schema(agent_id)
+        if schema is None:
+            return
+        from psycopg import sql
+
+        conn = self._require_conn()
+        self._set_agent_context(conn)
+        insert_q = sql.SQL(
+            "INSERT INTO {}.fact_entities "
+            "(fact_id, entity_id, agent_id, role, confidence) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (fact_id, entity_id, role) DO NOTHING"
+        ).format(sql.Identifier(schema))
+        with conn.cursor() as cur:
+            for link in links:
+                cur.execute(
+                    insert_q,
+                    [
+                        str(link.fact_id),
+                        str(link.entity_id),
+                        str(link.agent_id),
+                        link.role,
+                        link.confidence,
+                    ],
+                )
+        conn.commit()
+        _slog(
+            "fact_entity_links_saved",
+            agent_id=str(agent_id),
+            fact_id=str(fact_id),
+            count=len(links),
+            entities=[(str(link.entity_id)[:8], link.role) for link in links],
+        )
 
     def find_facts_by_entity(
         self,

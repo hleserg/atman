@@ -494,6 +494,28 @@ def cmd_reflect_deep(args: list[str]) -> int:
     return 0
 
 
+def _parse_live_date_start(value: str) -> datetime:
+    """Parse --since YYYY-MM-DD or ISO datetime to UTC (start of day for date-only)."""
+    if len(value) <= 10 and "T" not in value:
+        base = datetime.fromisoformat(value)
+        return base.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _parse_live_date_end(value: str) -> datetime:
+    """Parse --until YYYY-MM-DD or ISO datetime to UTC (end of day for date-only)."""
+    if len(value) <= 10 and "T" not in value:
+        base = datetime.fromisoformat(value)
+        return base.replace(hour=23, minute=59, second=59, tzinfo=UTC)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _resolve_agent_id(parsed: argparse.Namespace) -> UUID | None:
     """Resolve agent_id from --agent-id arg or ATMAN_CURRENT_AGENT env var."""
     import os
@@ -520,13 +542,11 @@ def _cmd_deep_live(parsed: argparse.Namespace) -> int:
 
     now = datetime.now(UTC)
     if parsed.since:
-        since = datetime.fromisoformat(parsed.since).replace(tzinfo=UTC)
+        since = _parse_live_date_start(parsed.since)
     else:
         since = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
     if parsed.until:
-        until = datetime.fromisoformat(parsed.until).replace(
-            hour=23, minute=59, second=59, tzinfo=UTC
-        )
+        until = _parse_live_date_end(parsed.until)
     else:
         until = now
 

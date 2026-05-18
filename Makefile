@@ -130,6 +130,9 @@ demo-e2e-scenario:
 # Pre-warm all native CPU ML models (bge-m3, bge-reranker, gliner, minilm, mrebel).
 # Downloads to HF cache on first run (~6 GB total); subsequent runs complete in seconds.
 # Run before live_chat.py to avoid a 4-min cold-start on first embedding call.
+live-chat:
+	PYTHONPATH=. python3 -m e2e.live_chat
+
 warmup-models:
 	CUDA_VISIBLE_DEVICES= PYTHONPATH=. .venv/bin/python scripts/warmup_native_models.py
 

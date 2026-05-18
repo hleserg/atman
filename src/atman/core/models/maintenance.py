@@ -21,6 +21,7 @@ class JobName(StrEnum):
     memory_guardian_scan = "memory_guardian_scan"
     mrebel_extract = "mrebel_extract"
     lingvo_enrich = "lingvo_enrich"
+    fact_entity_link = "fact_entity_link"
     entity_merge = "entity_merge"
     reflection_overload_check = "reflection_overload_check"
     other = "other"
