@@ -106,10 +106,17 @@ st.markdown("""
     overflow-y: auto !important;
 }
 </style>
+""", unsafe_allow_html=True)
+
+# Ctrl+Enter → newline in chat input.
+# st.markdown strips <script> tags; components.html runs inside an iframe
+# where scripts execute normally — access parent DOM via window.parent.document.
+import streamlit.components.v1 as _components
+_components.html("""
 <script>
 (function() {
     function install() {
-        const ta = document.querySelector('[data-testid="stChatInput"] textarea');
+        var ta = window.parent.document.querySelector('[data-testid="stChatInput"] textarea');
         if (!ta) { setTimeout(install, 300); return; }
         if (ta.dataset.ctrlEnterInstalled) return;
         ta.dataset.ctrlEnterInstalled = "1";
@@ -117,8 +124,8 @@ st.markdown("""
             if (e.key === 'Enter' && e.ctrlKey) {
                 e.stopImmediatePropagation();
                 e.preventDefault();
-                const s = ta.selectionStart, end = ta.selectionEnd;
-                ta.value = ta.value.slice(0, s) + '\n' + ta.value.slice(end);
+                var s = ta.selectionStart, end = ta.selectionEnd;
+                ta.value = ta.value.slice(0, s) + '\\n' + ta.value.slice(end);
                 ta.selectionStart = ta.selectionEnd = s + 1;
                 ta.dispatchEvent(new Event('input', {bubbles: true}));
             }
@@ -127,7 +134,7 @@ st.markdown("""
     install();
 })();
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
