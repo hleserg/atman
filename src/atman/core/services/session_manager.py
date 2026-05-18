@@ -70,6 +70,8 @@ _NARRATIVE_SAVE_RETRIES = 5
 
 _LOG = logging.getLogger(__name__)
 
+from atman.core.session_log import slog as _slog  # noqa: E402
+
 
 @dataclass(frozen=True, slots=True)
 class _FinishJournalMetadata:
@@ -570,6 +572,10 @@ class SessionManager:
             with self._lock:
                 self._journal_locks[context.session_id] = journal_lock
 
+        _slog("session_started", agent_id=str(agent_id),
+              session_id=str(context.session_id),
+              identity_id=str(identity.id),
+              snapshot_id=str(context.identity_snapshot_id))
         return context
 
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
@@ -833,6 +839,9 @@ class SessionManager:
             )
             # NB: post-write enrichment scheduling deferred to finish_session;
             # see comment in append_key_moment for the race-condition rationale.
+            _slog("key_moment_appended", session_id=str(session_id),
+                  agent_id=str(agent_id), moment_id=str(key_moment.id),
+                  what_happened=key_moment.what_happened[:120])
 
     def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
         """Fire-and-forget enqueue of post-write enrichment jobs.
@@ -1085,7 +1094,13 @@ class SessionManager:
         if journal_lock is not None:
             self._release_journal_file(journal_lock, unlink=True)
 
-        return session_result.model_copy(deep=True)
+        final = session_result.model_copy(deep=True)
+        _slog("session_finished", session_id=str(session_id),
+              agent_id=str(final.identity_id),
+              close_reason=safe_close_reason,
+              key_moments=len(final.key_moments),
+              finished_at=str(final.finished_at))
+        return final
 
     def _write_finish_journal_entry(self, session_result: SessionResult) -> None:
         """Persist finish-time metadata before downstream artifacts can partially fail."""

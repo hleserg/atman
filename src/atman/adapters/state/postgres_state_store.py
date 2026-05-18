@@ -56,6 +56,7 @@ from atman.core.models import (
 from atman.core.models.entity import KeyMomentEntityLink
 from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
+from atman.core.session_log import slog as _slog
 
 
 def _row_to_session(row: Any) -> Session:
@@ -167,7 +168,11 @@ class PostgresStateStore(StateStore):
 
     def _get_conn(self) -> psycopg.Connection[Any]:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url, row_factory=dict_row)  # type: ignore[arg-type]
+            # autocommit=True: each conn.transaction() block is a proper BEGIN/COMMIT.
+            # Without this, a bare SELECT (e.g. in _schema_ident/_resolve_serial_id) starts
+            # an implicit transaction, causing subsequent conn.transaction() calls to create
+            # savepoints instead of full transactions — inserts would never be committed.
+            self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)  # type: ignore[arg-type]
         return self._conn
 
     def close(self) -> None:
@@ -686,6 +691,9 @@ class PostgresStateStore(StateStore):
                     "valence": link.valence_toward_entity,
                     "intensity": link.intensity_toward_entity,
                 })
+        _slog("km_entity_links_saved", agent_id=str(agent_id), moment_id=str(moment_id),
+              count=len(links),
+              entities=[(str(l.entity_id)[:8], l.involvement) for l in links])
 
     # ------------------------------------------------------------------
     # Experience operations — removed in v2 (KeyMoments are standalone)

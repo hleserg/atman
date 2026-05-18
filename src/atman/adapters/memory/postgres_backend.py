@@ -38,6 +38,7 @@ else:
 from atman.core.models.fact import FactRecord, FactStatus, Relation
 from atman.core.ports import FactualMemory
 from atman.core.ports.embedding import EmbeddingPort
+from atman.core.session_log import slog as _slog
 
 _FACT_SELECT = """
     SELECT
@@ -172,6 +173,7 @@ class PostgresFactualMemory(FactualMemory):
             self._conn = psycopg.connect(
                 self.db_url,
                 row_factory=cast(Any, dict_row),
+                autocommit=True,
             )
 
     def close(self) -> None:
@@ -331,9 +333,13 @@ class PostgresFactualMemory(FactualMemory):
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
 
+        _slog("fact_added", agent_id=str(agent_id), fact_id=str(stored.id),
+              content=str(stored.content or "")[:120], source=stored.source)
+
         if self._post_write_scheduler is not None:
             try:
                 self._post_write_scheduler.schedule_for_fact(stored, agent_id)
+                _slog("fact_entity_link_scheduled", agent_id=str(agent_id), fact_id=str(stored.id))
             except Exception:
                 import logging as _log
                 _log.getLogger(__name__).warning(
@@ -649,6 +655,9 @@ class PostgresFactualMemory(FactualMemory):
                      link.role, link.confidence],
                 )
         conn.commit()
+        _slog("fact_entity_links_saved", agent_id=str(agent_id), fact_id=str(fact_id),
+              count=len(links),
+              entities=[(str(l.entity_id)[:8], l.role) for l in links])
 
     def find_facts_by_entity(
         self,

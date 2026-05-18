@@ -118,6 +118,74 @@ def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
+# ── Session debug log display (ATMAN_SESSION_LOG=1) ───────────────────────────
+# When ATMAN_SESSION_LOG is set, every slog() event is injected into the
+# current AtmanConsole so it appears in the info panels alongside other events.
+# Set _slog_con[0] = con at the start of each turn to update the target.
+# Remove: delete this block + all _slog_con references + the session_log import.
+
+_slog_con: list["AtmanConsole"] = []  # mutable ref to current turn's console
+
+
+def _fmt_slog_event(event: str, d: dict) -> tuple[str, str, str] | None:
+    """Map a slog event to (icon, label, value) for AtmanConsole.add(), or None to skip."""
+    def _s(key: str, n: int = 80) -> str:
+        return str(d.get(key, ""))[:n]
+
+    if event == "session_started":
+        return ("🚀", "session", f"[cyan]{_s('session_id', 8)}[/cyan] agent={_s('agent_id', 8)}")
+    if event == "session_finished":
+        return ("🏁", "session done", f"[dim]{_s('close_reason')}[/dim]  moments={_s('key_moments')}")
+    if event == "key_moment_appended":
+        return ("💎", "key_moment", f"[dim]{_s('what_happened', 70)}[/dim]")
+    if event == "job_start":
+        return ("⚙", "job start", f"[cyan dim]{_s('job_name')}[/cyan dim]  {_s('agent_id', 8)}")
+    if event == "job_done":
+        result = d.get("result") or {}
+        summary = "  ".join(f"{k}={v}" for k, v in list(result.items())[:3]) if result else ""
+        return ("✓", "job done",
+                f"[green dim]{_s('job_name')}[/green dim]  {_s('elapsed_ms')}ms"
+                + (f"  [dim]{summary[:60]}[/dim]" if summary else ""))
+    if event == "job_failed":
+        return ("✗", "job FAILED",
+                f"[red]{_s('job_name')}[/red]  [dim red]{_s('error', 80)}[/dim red]")
+    if event == "entity_resolved":
+        m = _s("method")
+        color = "green" if m == "L3_new" else "cyan"
+        return ("🏷", "entity",
+                f'[dim]"{_s("text", 30)}"[/dim] → [{color}]{m}[/{color}]'
+                f'  [dim]id={_s("entity_id", 8)}[/dim]')
+    if event == "fact_added":
+        return ("📝", "fact added", f"[dim]{_s('content', 70)}[/dim]")
+    if event == "fact_entity_link_scheduled":
+        return ("⏱", "fact_link sched", f"[dim]{_s('fact_id', 8)}[/dim]")
+    if event == "fact_entity_links_saved":
+        return ("🔗", "fact_entity_links", f"[green]{_s('count')} links[/green]  {_s('entities', 60)}")
+    if event == "km_entity_links_saved":
+        return ("🔗", "km_entity_links", f"[green]{_s('count')} links[/green]  {_s('entities', 60)}")
+    if event == "ambient_injection":
+        return ("🔍", "ambient",
+                f'[dim]"{_s("query", 40)}"[/dim] → [cyan]{_s("items_total")} items[/cyan]'
+                f'  {_s("tokens_used")} tok  {_s("by_kind", 50)}')
+    if event == "moment_accessed":
+        return ("👁", "accessed", f"[dim]{_s('moment_id', 8)}[/dim]")
+    if event == "decay_pass":
+        return ("📉", "decay", f"[cyan]{_s('updated')} moments[/cyan]  cutoff={_s('cutoff', 20)}")
+    return None  # unknown events are silently skipped
+
+
+def _slog_to_con(event: str, data: dict) -> None:
+    if not _slog_con:
+        return
+    fmt = _fmt_slog_event(event, data)
+    if fmt:
+        _slog_con[0].add(*fmt)
+
+
+from atman.core.session_log import set_display_hook as _set_slog_hook
+_set_slog_hook(_slog_to_con)
+
+
 def _get_or_create_agent_id() -> UUID:
     """Load persisted agent_id or mint and save a new one."""
     AGENT_WORKSPACE.mkdir(parents=True, exist_ok=True)
@@ -574,6 +642,8 @@ async def amain() -> int:
     )
 
     con = AtmanConsole()
+    _slog_con.clear()
+    _slog_con.append(con)
     history: list[ModelMessage] = []
     close_reason: str | None = None
     # Keep ~4 recent turns to stay under model context limit.

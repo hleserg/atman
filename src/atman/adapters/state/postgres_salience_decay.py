@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from atman.core.ports.salience_decay import SalienceDecayService
+from atman.core.session_log import slog as _slog
 
 if TYPE_CHECKING:
     from atman.adapters.state.postgres_state_store import PostgresStateStore
@@ -30,6 +31,7 @@ class PostgresSalienceDecayService(SalienceDecayService):
 
     def mark_accessed(self, moment_id: UUID) -> None:
         self._store.mark_moment_accessed(moment_id)
+        _slog("moment_accessed", moment_id=str(moment_id))
 
     def decay_pass(
         self,
@@ -50,7 +52,7 @@ class PostgresSalienceDecayService(SalienceDecayService):
         """
         from psycopg import sql
 
-        schema = self._store._schema_for_agent(agent_id)
+        schema = self._store._schema_ident(agent_id)
         conn = self._store._get_conn()
         cutoff_aware = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=UTC)
         now = datetime.now(UTC)
@@ -87,4 +89,7 @@ class PostgresSalienceDecayService(SalienceDecayService):
                 "cutoff": cutoff_aware,
                 "now": now,
             })
-            return cur.rowcount
+            updated = cur.rowcount
+        _slog("decay_pass", agent_id=str(agent_id), updated=updated,
+              cutoff=cutoff_aware.isoformat())
+        return updated

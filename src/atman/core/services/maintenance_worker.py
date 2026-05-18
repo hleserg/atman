@@ -22,6 +22,8 @@ from atman.core.services.reflection_overload_monitor import ReflectionOverloadMo
 
 _LOG = logging.getLogger(__name__)
 
+from atman.core.session_log import slog as _slog  # noqa: E402
+
 
 class _DispatchOutcome(Enum):
     """Result of `_handle` — distinguishes done vs already-skipped vs no-op."""
@@ -72,17 +74,28 @@ class MaintenanceWorker:
         return len(jobs)
 
     def _dispatch(self, job: MaintenanceJob) -> None:
+        import time as _time
+        _t0 = _time.monotonic()
+        _slog("job_start", job_id=str(job.id), job_name=job.job_name.value,
+              agent_id=str(job.payload.get("agent_id", "")),
+              payload_keys=list(job.payload.keys()))
         try:
             outcome, result = self._handle(job)
+            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
             # _handle returns SKIPPED when it has already called mark_skipped
             # (e.g. unknown job type). Only call mark_done for DONE outcomes.
             # This avoids relying on object-identity mutations of `job.status`,
             # which would break under DB-backed queues that don't share state.
             if outcome is _DispatchOutcome.DONE:
                 self._queue.mark_done(job.id, result=result)
+            _slog("job_done", job_id=str(job.id), job_name=job.job_name.value,
+                  outcome=outcome.value, result=result, elapsed_ms=elapsed_ms)
         except Exception as exc:
+            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
             _LOG.exception("maintenance job %s failed", job.id)
             self._queue.mark_failed(job.id, error=str(exc))
+            _slog("job_failed", job_id=str(job.id), job_name=job.job_name.value,
+                  error=str(exc), elapsed_ms=elapsed_ms)
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:

@@ -54,6 +54,8 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
+from atman.core.session_log import slog as _slog  # noqa: E402
+
 # Anchor types from `AmbientAnchor.anchor_type` that resolve to a stored
 # entity in the registry (and therefore can drive a per-entity backend
 # query). Action / emotion / time refs are handled by the dense pipeline.
@@ -264,7 +266,12 @@ class AmbientMemoryService:
         # Step 4 — mark_accessed for moments we actually returned.
         self._mark_used_moments(out)
 
-        return AmbientResult(items=out, tokens_used=spent)
+        result = AmbientResult(items=out, tokens_used=spent)
+        _slog("ambient_injection", agent_id=str(agent_id), query=text[:100],
+              anchors=[a.text for a in biographical],
+              items_total=len(out), tokens_used=spent,
+              by_kind={k: sum(1 for i in out if i.kind == k) for k in {i.kind for i in out}})
+        return result
 
     # ------------------------------------------------------------------
     # safe wrappers — every backend call is wrapped because the ambient
