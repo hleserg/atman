@@ -146,10 +146,10 @@ async def test_affect_detector(responses: list[dict]) -> None:
             triggered = len(recorded) > before_count
 
             if record is not None:
-                m = record.metrics
-                nrc = f"{m.nrc_valence:+.1f}"
-                lz = f"{m.length_z:+.2f}"
-                sr = f"{m.self_reference_density:.2f}"
+                d = record.demonstrates_thinks or {}
+                nrc = f"{d['nrc_valence']:+.1f}" if "nrc_valence" in d else "[dim]-[/dim]"
+                lz = f"{d['length_z']:+.2f}" if "length_z" in d else "[dim]-[/dim]"
+                sr = f"{d['self_reference_density']:.2f}" if "self_reference_density" in d else "[dim]-[/dim]"
             else:
                 nrc = lz = sr = "[dim]-[/dim]"
 
