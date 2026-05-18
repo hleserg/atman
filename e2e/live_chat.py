@@ -682,8 +682,8 @@ async def amain() -> int:
         except Exception as e:
             _rc.print(f"  [dim yellow]postgres entity registry unavailable: {e}[/dim yellow]")
 
-    # Bootstrap only on first run (no identity stored yet)
-    if not (workspace / "identity.json").exists():
+    # Bootstrap only when the store has no identity yet (works for file and Postgres).
+    if store.load_identity(agent_id) is None:
         bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
