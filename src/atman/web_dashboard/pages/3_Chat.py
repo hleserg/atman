@@ -604,11 +604,11 @@ def _handle_turn(prompt: str, msg_container) -> None:
 def _render_km_table(agent_id_str: str, schema: str) -> None:
     import pandas as pd
 
-    # Controls row
     c_refresh, c_info = st.columns([1, 5])
     if c_refresh.button("🔄", key="km_refresh"):
         _fetch_key_moments.clear()
         st.session_state.pop("km_page", None)
+        st.session_state.pop("km_editor", None)
 
     all_rows = _fetch_key_moments(agent_id_str, schema)
     if all_rows and "error" in all_rows[0]:
@@ -623,51 +623,57 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
     page = st.session_state.get("km_page", 0)
     page = max(0, min(page, n_pages - 1))
 
-    # Pagination controls (only shown when >1 page)
     if n_pages > 1:
         pc1, pc2, pc3 = st.columns([1, 2, 1])
         if pc1.button("◀", key="km_prev", disabled=(page == 0)):
             st.session_state["km_page"] = page - 1
+            st.session_state.pop("km_editor", None)
             st.rerun()
         pc2.caption(f"стр. {page + 1} / {n_pages}  ({total} записей)")
         if pc3.button("▶", key="km_next", disabled=(page == n_pages - 1)):
             st.session_state["km_page"] = page + 1
+            st.session_state.pop("km_editor", None)
             st.rerun()
     else:
         c_info.caption(f"{total} записей")
 
     page_rows = all_rows[page * _KM_PAGE_SIZE : (page + 1) * _KM_PAGE_SIZE]
-    display_cols = ["id", "what", "why", "sal", "ts"]
-    df = pd.DataFrame([{k: r[k] for k in display_cols} for r in page_rows])
 
-    # Multi-row selectable table
-    sel = st.dataframe(
+    # data_editor with checkbox column — checkboxes are part of the table,
+    # visible and functional in full-screen mode.
+    df = pd.DataFrame([
+        {"🗑": False, "_id": r["_id"], "id": r["id"],
+         "what": r["what"], "why": r["why"], "sal": r["sal"], "ts": r["ts"]}
+        for r in page_rows
+    ])
+
+    edited = st.data_editor(
         df,
-        on_select="rerun",
-        selection_mode="multi-row",
         use_container_width=True,
         hide_index=True,
-        key="km_table",
+        key="km_editor",
         column_config={
-            "id":  st.column_config.TextColumn("ID",  width="small"),
-            "what": st.column_config.TextColumn("Что произошло", width="large"),
-            "why":  st.column_config.TextColumn("Почему важно",  width="medium"),
-            "sal":  st.column_config.TextColumn("Sal",           width="small"),
-            "ts":   st.column_config.TextColumn("Записано",      width="medium"),
+            "🗑":   st.column_config.CheckboxColumn("", default=False, width="small"),
+            "_id":  None,  # hidden — used only for DELETE
+            "id":   st.column_config.TextColumn("ID",             disabled=True, width="small"),
+            "what": st.column_config.TextColumn("Что произошло",  disabled=True, width="large"),
+            "why":  st.column_config.TextColumn("Почему важно",   disabled=True, width="medium"),
+            "sal":  st.column_config.TextColumn("Sal",            disabled=True, width="small"),
+            "ts":   st.column_config.TextColumn("Записано",       disabled=True, width="medium"),
         },
     )
 
-    selected_indices = (sel.selection.rows if hasattr(sel, "selection") else [])
-    if selected_indices:
-        selected_ids = [page_rows[i]["_id"] for i in selected_indices]
+    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
+    if to_delete_ids:
         if st.button(
-            f"🗑 Удалить выбранные ({len(selected_ids)})",
+            f"🗑 Удалить выбранные ({len(to_delete_ids)})",
             type="primary",
             key="km_delete",
         ):
             try:
-                _delete_key_moments(schema, selected_ids)
+                _delete_key_moments(schema, to_delete_ids)
                 _fetch_key_moments.clear()
+                st.session_state.pop("km_editor", None)
                 st.rerun()
             except Exception as exc:
                 st.error(f"Ошибка удаления: {exc}")
