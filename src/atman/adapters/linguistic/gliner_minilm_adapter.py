@@ -200,12 +200,8 @@ _KEY_MOMENT_LEGACY_LABELS = [
 ]
 
 
-def _pick_top(scores: dict[str, float], threshold: float = 0.15) -> str | None:
-    """Return the label with the highest score above threshold, or None.
-
-    With multi_label=False (softmax), scores sum to 1. A lower threshold (0.15)
-    ensures the top label is returned unless the model is completely uncertain.
-    """
+def _pick_top(scores: dict[str, float], threshold: float = 0.5) -> str | None:
+    """Return the label with the highest score above threshold, or None."""
     if not scores:
         return None
     top_label, top_score = max(scores.items(), key=lambda kv: kv[1])
@@ -232,7 +228,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         minilm_model: str = "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
         device: str = "cpu",
         ner_threshold: float = 0.5,
-        classification_threshold: float = 0.15,
+        classification_threshold: float = 0.5,
     ) -> None:
         self._gliner_model = gliner_model
         self._minilm_model = minilm_model
@@ -366,7 +362,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         if classifier is None:
             return {}
         try:
-            result = classifier(text, candidate_labels, multi_label=False)
+            result = classifier(text, candidate_labels, multi_label=True)
         except Exception:
             logger.exception("Classification inference failed for text of length %d", len(text))
             return {}

@@ -181,7 +181,7 @@ def build_deps(
     from atman.core.ports.linguistic import LinguisticAnalyzer as _LinguisticAnalyzer
     from atman.core.services.divergence_detector import DivergenceDetector
 
-    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true"
+    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true"
     _affect_linguistic: _LinguisticAnalyzer = NoOpLinguisticAnalyzer()
     if _linguistic_enabled:
         try:
@@ -352,7 +352,7 @@ def build_deps(
     # is constructed after this block so it receives the populated reference.
     passive_memory_injector = None
     _embedding_adapter = None
-    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true":
+    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true":
         from atman.config import build_embedding_adapter
         from atman.config import build_memory_backend as _build_mem
         from atman.core.services.passive_memory_injector import PassiveMemoryInjector

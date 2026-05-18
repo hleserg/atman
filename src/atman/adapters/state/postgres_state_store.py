@@ -138,9 +138,7 @@ class PostgresStateStore(StateStore):
 
     NOT implemented (raise ``NotImplementedError``):
       - Experience operations (the v1 ``ExperienceRecord`` model — use
-        :class:`ExperienceViewRepository` or follow Этап 18 migration)
-      - Identity / Narrative / Eigenstate (still served by FileStateStore
-        in the file-deployment path; deferred for this adapter)
+        Session + KeyMoment or legacy FileStateStore for ExperienceRecord flows)
     """
 
     def __init__(
@@ -928,8 +926,9 @@ class PostgresStateStore(StateStore):
     # ------------------------------------------------------------------
 
     def save_eigenstate(self, eigenstate: Eigenstate) -> Eigenstate:
-        agent_id = eigenstate.identity_id or eigenstate.session_id
+        agent_id = eigenstate.identity_id
         if agent_id is None:
+            # session_id is not a public.agents row — cannot resolve agent_N schema.
             return eigenstate
         schema = self._schema_ident(agent_id)
         conn = self._get_conn()
@@ -946,16 +945,17 @@ class PostgresStateStore(StateStore):
         session_id: UUID | None = None,
         identity_id: UUID | None = None,
     ) -> Eigenstate | None:
-        agent_id = identity_id or session_id
-        if agent_id is None:
+        if identity_id is None:
+            # Callers must pass identity_id (agent UUID); session_id alone cannot
+            # resolve the per-agent schema in Postgres.
             return None
-        schema = self._schema_ident(agent_id)
+        schema = self._schema_ident(identity_id)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
             q = sql.SQL("SELECT eigenstate FROM {s}.identity WHERE agent_id = %(aid)s").format(
                 s=schema
             )
-            cur.execute(q, {"aid": agent_id})
+            cur.execute(q, {"aid": identity_id})
             row = cur.fetchone()
         if row is None or not row["eigenstate"]:
             return None

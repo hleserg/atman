@@ -1,10 +1,10 @@
--- Migration 0019: accept fact_entity_link jobs in the shared maintenance queue.
+-- Migration 0021: accept fact_entity_link jobs in the shared maintenance queue.
 --
 -- Entity-link enrichment after fact writes schedules JobName.fact_entity_link.
 -- Existing databases created by migrations 0011/0018 reject the new enum value.
 --
 -- Usage:
---   psql -d atman -f migrations/versions/0019_maintenance_fact_entity_link_job.sql
+--   psql -d atman -f migrations/versions/0021_maintenance_fact_entity_link_job.sql
 --
 -- Rollback:
 --   ALTER TABLE public.maintenance_jobs DROP CONSTRAINT IF EXISTS maintenance_jobs_job_name_check;

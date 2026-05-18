@@ -1166,7 +1166,9 @@ class SessionManager:
         """Write SessionExperience for FileStateStore / in-memory adapters.
 
         PostgresStateStore v2 stores sessions and key moments only; experience
-        operations raise NotImplementedError and are skipped here.
+        operations raise NotImplementedError and are skipped here. Reflection on
+        Postgres uses Session + KeyMoment via StateStoreSessionRepository, not
+        ExperienceRecord rows.
         """
         if not _experience_store_available(self._state_store):
             return
