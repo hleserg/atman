@@ -15,7 +15,7 @@ Live mode (real StateStore + OpenAI-compatible LLM when ATMAN_LLM_BASE_URL is se
 
 import argparse
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from uuid import UUID, uuid4
 
 from atman.adapters.reflection.fixture_loader import (
@@ -42,6 +42,7 @@ from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.session import Session
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.ports.state_store import StateStore
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
     DailyReflectionService,
@@ -404,6 +405,7 @@ def _cmd_daily_live(parsed: argparse.Namespace) -> int:
 
     workspace = Path(parsed.workspace).expanduser()
     state_store = _build_state_store(workspace, agent_id)
+    _bootstrap_live_workspace(state_store, agent_id)
 
     date = datetime.now(UTC)
     print_ok(f"Agent: {agent_id}")
@@ -497,8 +499,8 @@ def cmd_reflect_deep(args: list[str]) -> int:
 def _parse_live_date_start(value: str) -> datetime:
     """Parse --since YYYY-MM-DD or ISO datetime to UTC (start of day for date-only)."""
     if len(value) <= 10 and "T" not in value:
-        base = datetime.fromisoformat(value)
-        return base.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
+        day = datetime.fromisoformat(value).date()
+        return datetime.combine(day, time.min, tzinfo=UTC)
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
@@ -508,12 +510,26 @@ def _parse_live_date_start(value: str) -> datetime:
 def _parse_live_date_end(value: str) -> datetime:
     """Parse --until YYYY-MM-DD or ISO datetime to UTC (end of day for date-only)."""
     if len(value) <= 10 and "T" not in value:
-        base = datetime.fromisoformat(value)
-        return base.replace(hour=23, minute=59, second=59, tzinfo=UTC)
+        day = datetime.fromisoformat(value).date()
+        return datetime.combine(day, time.max, tzinfo=UTC)
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _bootstrap_live_workspace(state_store: StateStore, agent_id: UUID) -> None:
+    """Ensure identity and narrative exist before live reflection (same as build_deps)."""
+    from atman.core.services.identity_service import IdentityService
+    from atman.core.services.narrative_service import NarrativeService
+
+    identity_service = IdentityService(state_store)
+    narrative_service = NarrativeService(state_store)
+    identity = state_store.load_identity(agent_id)
+    if identity is None:
+        identity = identity_service.bootstrap_identity(agent_id)
+    if state_store.load_narrative(identity.id) is None:
+        narrative_service.create_narrative(identity)
 
 
 def _resolve_agent_id(parsed: argparse.Namespace) -> UUID | None:
@@ -552,6 +568,7 @@ def _cmd_deep_live(parsed: argparse.Namespace) -> int:
 
     workspace = Path(parsed.workspace).expanduser()
     state_store = _build_state_store(workspace, agent_id)
+    _bootstrap_live_workspace(state_store, agent_id)
 
     print_ok(f"Agent: {agent_id}")
     print_ok(f"Reflecting on period: {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}")

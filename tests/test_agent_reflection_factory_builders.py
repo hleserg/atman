@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -19,7 +19,11 @@ from atman.adapters.agent.factory import (
 )
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
 from atman.adapters.storage.file_state_store import FileStateStore
-from atman.cli_reflection import _parse_live_date_end, _parse_live_date_start
+from atman.cli_reflection import (
+    _bootstrap_live_workspace,
+    _parse_live_date_end,
+    _parse_live_date_start,
+)
 from atman.core.models import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.identity import Identity
 from atman.core.models.reflection import ReflectionLevel
@@ -204,6 +208,15 @@ def test_state_store_narrative_repo_save_and_load(file_store_with_identity: tupl
     assert repo.get_history() == []
 
 
+def test_bootstrap_live_workspace_creates_identity_and_narrative(tmp_path: Path) -> None:
+    agent_id = uuid4()
+    store = FileStateStore(tmp_path / "bootstrap")
+    _bootstrap_live_workspace(store, agent_id)
+    identity = store.load_identity(agent_id)
+    assert identity is not None
+    assert store.load_narrative(identity.id) is not None
+
+
 def test_parse_live_date_start_date_only() -> None:
     dt = _parse_live_date_start("2026-05-15")
     assert dt.tzinfo == UTC
@@ -219,7 +232,7 @@ def test_parse_live_date_start_converts_timezone() -> None:
 def test_parse_live_date_end_date_only() -> None:
     dt = _parse_live_date_end("2026-05-15")
     assert dt.tzinfo == UTC
-    assert dt.hour == 23 and dt.minute == 59
+    assert dt == datetime.combine(datetime.fromisoformat("2026-05-15").date(), time.max, tzinfo=UTC)
 
 
 def test_parse_live_date_end_converts_timezone() -> None:
