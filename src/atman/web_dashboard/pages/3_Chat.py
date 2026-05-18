@@ -92,7 +92,7 @@ st.markdown("""
 <style>
 /* Reduce Streamlit's default top/bottom page padding */
 .stMainBlockContainer {
-    padding-top: 2.5rem !important;
+    padding-top: 3.5rem !important;
     padding-bottom: 1.5rem !important;
 }
 /* Adaptive chat container height */
