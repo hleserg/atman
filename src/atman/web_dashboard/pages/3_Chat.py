@@ -369,11 +369,17 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
 def _delete_key_moments(schema: str, ids: list[str]) -> None:
     from uuid import UUID
     import psycopg
-    with psycopg.connect(_pg_url(), autocommit=True) as conn:
+    uuid_ids = [UUID(i) for i in ids]
+    with psycopg.connect(_pg_url(), autocommit=False) as conn:
+        conn.execute(
+            f"DELETE FROM {schema}.key_moment_entities WHERE key_moment_id = ANY(%s)",
+            [uuid_ids],
+        )
         conn.execute(
             f"DELETE FROM {schema}.key_moments WHERE id = ANY(%s)",
-            [[UUID(i) for i in ids]],
+            [uuid_ids],
         )
+        conn.commit()
 
 
 @st.cache_data(ttl=5)
