@@ -877,13 +877,6 @@ with col_chat:
     session_id   = st.session_state.get("session_id")
     serial       = st.session_state.get("agent_serial")
 
-    st.caption(
-        f"agent `{agent_id_str[:8]}…`  "
-        f"session `{str(session_id)[:8] if session_id else '?'}…`  "
-        f"model `{_AGENT_MODEL}`  "
-        f"db schema `{'agent_' + str(serial) if serial else '—'}`"
-    )
-
     # ── Session-close button ─────────────────────────────────────────────────
     if not st.session_state.get("session_closed"):
         if st.button("🔚 Завершить сессию", type="secondary"):
@@ -893,6 +886,13 @@ with col_chat:
                 status_widget.update(label="Сессия завершена", state="complete", expanded=True)
     else:
         st.info("Сессия завершена. Обновите страницу чтобы начать новую.")
+
+    st.caption(
+        f"agent `{agent_id_str[:8]}…`  "
+        f"session `{str(session_id)[:8] if session_id else '?'}…`  "
+        f"model `{_AGENT_MODEL}`  "
+        f"db schema `{'agent_' + str(serial) if serial else '—'}`"
+    )
 
     # ── Chat messages (scrollable fixed-height container) ────────────────────
     msg_container = st.container(height=300, border=False)  # CSS overrides to calc(100vh-260px)
