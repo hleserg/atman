@@ -97,7 +97,7 @@ st.markdown("""
 }
 /* Adaptive chat container height */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    height: calc(100vh - 200px) !important;
+    height: calc(100vh - 160px) !important;
     min-height: 200px !important;
 }
 [data-testid="stVerticalBlockBorderWrapper"] > div {
@@ -118,6 +118,9 @@ _components.html("""
     function install() {
         var ta = window.parent.document.querySelector('[data-testid="stChatInput"] textarea');
         if (!ta) { setTimeout(install, 300); return; }
+        // Auto-focus
+        ta.focus();
+        // Ctrl+Enter → newline
         if (ta.dataset.ctrlEnterInstalled) return;
         ta.dataset.ctrlEnterInstalled = "1";
         ta.addEventListener('keydown', function(e) {
