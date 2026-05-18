@@ -639,10 +639,12 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
 
     page_rows = all_rows[page * _KM_PAGE_SIZE : (page + 1) * _KM_PAGE_SIZE]
 
-    # data_editor with checkbox column — checkboxes are part of the table,
-    # visible and functional in full-screen mode.
+    # Dropdown action column — the only control that lives INSIDE the table
+    # and is therefore visible and clickable in full-screen mode.
+    # Selecting "🗑 удалить" triggers a rerun; the code below detects it
+    # and deletes immediately, no external button needed.
     df = pd.DataFrame([
-        {"🗑": False, "_id": r["_id"], "id": r["id"],
+        {"": "—", "_id": r["_id"], "id": r["id"],
          "what": r["what"], "why": r["why"], "sal": r["sal"], "ts": r["ts"]}
         for r in page_rows
     ])
@@ -653,30 +655,28 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
         hide_index=True,
         key="km_editor",
         column_config={
-            "🗑":   st.column_config.CheckboxColumn("", default=False, width="small"),
-            "_id":  None,  # hidden — used only for DELETE
-            "id":   st.column_config.TextColumn("ID",             disabled=True, width="small"),
-            "what": st.column_config.TextColumn("Что произошло",  disabled=True, width="large"),
-            "why":  st.column_config.TextColumn("Почему важно",   disabled=True, width="medium"),
-            "sal":  st.column_config.TextColumn("Sal",            disabled=True, width="small"),
-            "ts":   st.column_config.TextColumn("Записано",       disabled=True, width="medium"),
+            "":     st.column_config.SelectboxColumn(
+                        "", options=["—", "🗑 удалить"],
+                        default="—", width="small",
+                    ),
+            "_id":  None,
+            "id":   st.column_config.TextColumn("ID",            disabled=True, width="small"),
+            "what": st.column_config.TextColumn("Что произошло", disabled=True, width="large"),
+            "why":  st.column_config.TextColumn("Почему важно",  disabled=True, width="medium"),
+            "sal":  st.column_config.TextColumn("Sal",           disabled=True, width="small"),
+            "ts":   st.column_config.TextColumn("Записано",      disabled=True, width="medium"),
         },
     )
 
-    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
+    to_delete_ids = edited.loc[edited[""] == "🗑 удалить", "_id"].tolist()
     if to_delete_ids:
-        if st.button(
-            f"🗑 Удалить выбранные ({len(to_delete_ids)})",
-            type="primary",
-            key="km_delete",
-        ):
-            try:
-                _delete_key_moments(schema, to_delete_ids)
-                _fetch_key_moments.clear()
-                st.session_state.pop("km_editor", None)
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Ошибка удаления: {exc}")
+        try:
+            _delete_key_moments(schema, to_delete_ids)
+        except Exception as exc:
+            st.error(f"Ошибка удаления: {exc}")
+        _fetch_key_moments.clear()
+        st.session_state.pop("km_editor", None)
+        st.rerun()
 
 
 # ── Debug panel ───────────────────────────────────────────────────────────────
