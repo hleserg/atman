@@ -208,13 +208,15 @@ class PostgresFactualMemory(FactualMemory):
     def _set_agent_context(self, conn: "psycopg.Connection[Any]") -> None:
         """Set RLS session variable if ATMAN_CURRENT_AGENT is configured.
 
-        Uses set_config(..., true) instead of SET LOCAL because PostgreSQL
-        does not accept parameterized placeholders in SET commands.
+        Uses set_config(..., false) for session-level scope so the value
+        persists across subsequent autocommit statements on the same connection.
+        (is_local=true would only survive the single-statement "transaction"
+        that autocommit creates, making RLS checks fail on the next statement.)
         """
         agent_id = os.environ.get("ATMAN_CURRENT_AGENT")
         if agent_id:
             conn.execute(
-                "SELECT set_config('atman.current_agent', %s, true)",
+                "SELECT set_config('atman.current_agent', %s, false)",
                 [agent_id],
             )
 

@@ -814,6 +814,9 @@ class SessionManager:
 
             moment_with_time = moment.model_copy(update={"recorded_at": self._clock.now()})
             key_moment = moment_with_time.to_key_moment()
+            # Set session_id here so both the journal and any immediate DB write
+            # have the correct FK — to_key_moment() leaves it None.
+            key_moment.session_id = session_id
 
             if moment.incomplete_coloring:
                 session_result.incomplete_coloring = True
@@ -837,8 +840,19 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
-            # NB: post-write enrichment scheduling deferred to finish_session;
-            # see comment in append_key_moment for the race-condition rationale.
+            # Write to DB immediately so moments survive a crash before finish_session.
+            # store_key_moment is an idempotent upsert — finish_session calling it
+            # again is safe. If the DB write fails we log and continue; the journal
+            # above is the crash-recovery fallback.
+            try:
+                self._state_store.store_key_moment(key_moment)
+                # Moment is now durable — safe to schedule post-write enrichment.
+                self._schedule_post_write(key_moment, agent_id)
+            except Exception:
+                _LOG.warning(
+                    "store_key_moment failed for %s — moment in journal, enrichment deferred",
+                    key_moment.id, exc_info=True,
+                )
             _slog("key_moment_appended", session_id=str(session_id),
                   agent_id=str(agent_id), moment_id=str(key_moment.id),
                   what_happened=key_moment.what_happened[:120])
@@ -1020,10 +1034,13 @@ class SessionManager:
         unexamined_fact_refs: list[UUID] = list(session_result._facts_read - _colored_fact_ids)
 
         try:
-            # Save each KeyMoment — idempotent (skip if already exists for retry)
+            # Upsert each KeyMoment — idempotent; moments written in append_key_moment_input
+            # are already in DB, this is a no-op for them.  Moments from crashed/recovered
+            # sessions that arrived via journal replay may arrive here without prior DB write.
             for moment in session_result.key_moments:
-                if self._state_store.get_key_moment(moment.id) is None:
-                    self._state_store.create_key_moment(moment)
+                if moment.session_id is None:
+                    moment.session_id = session_id
+                self._state_store.store_key_moment(moment)
 
             # Store session→moments mapping
             self._state_store.store_key_moments(session_id, session_result.key_moments)
