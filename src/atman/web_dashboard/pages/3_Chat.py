@@ -394,8 +394,11 @@ def _delete_key_moments(schema: str, ids: list[str]) -> None:
         conn.commit()
 
 
+_FACTS_PAGE_SIZE = 50
+
+
 @st.cache_data(ttl=5)
-def _fetch_facts(agent_id_str: str) -> list[dict]:
+def _fetch_facts(agent_id_str: str, limit: int = 10000) -> list[dict]:
     url = _pg_url()
     if not url:
         return []
@@ -404,21 +407,57 @@ def _fetch_facts(agent_id_str: str) -> list[dict]:
         with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 """
-                SELECT id, content, salience, source, created_at
+                SELECT id, content, source, tags, status,
+                       salience, confirmation_count, last_confirmed_at,
+                       invalidation_note, created_at
                 FROM public.facts
                 WHERE agent_id = %s
-                ORDER BY created_at DESC LIMIT 10
+                ORDER BY created_at DESC LIMIT %s
                 """,
-                [agent_id_str],
+                [agent_id_str, limit],
             ).fetchall()
         return [
-            {"id": str(r[0])[:8], "content": (r[1] or "")[:100],
-             "sal": f"{float(r[2] or 0):.2f}", "source": (r[3] or "")[:20],
-             "ts": str(r[4])[:19]}
+            {
+                "_id":      str(r[0]),
+                "id":       str(r[0])[:8],
+                "content":  r[1] or "",
+                "source":   r[2] or "",
+                "tags":     ", ".join(r[3] or []),
+                "status":   r[4] or "",
+                "sal":      round(float(r[5] or 0), 3),
+                "confirms": r[6] or 0,
+                "confirmed": str(r[7])[:19] if r[7] else "",
+                "inv_note": r[8] or "",
+                "ts":       str(r[9])[:19],
+            }
             for r in rows
         ]
     except Exception as exc:
         return [{"error": str(exc)}]
+
+
+def _delete_facts(schema: str, ids: list[str]) -> None:
+    from uuid import UUID
+    import psycopg
+    uuid_ids = [UUID(i) for i in ids]
+    with psycopg.connect(_pg_url(), autocommit=False) as conn:
+        conn.execute(
+            f"DELETE FROM {schema}.fact_entities WHERE fact_id = ANY(%s)",
+            [uuid_ids],
+        )
+        conn.execute(
+            "DELETE FROM public.fact_relations WHERE source_id = ANY(%s) OR target_id = ANY(%s)",
+            [uuid_ids, uuid_ids],
+        )
+        conn.execute(
+            "UPDATE public.facts SET superseded_by = NULL WHERE superseded_by = ANY(%s)",
+            [uuid_ids],
+        )
+        conn.execute(
+            "DELETE FROM public.facts WHERE id = ANY(%s)",
+            [uuid_ids],
+        )
+        conn.commit()
 
 
 # ── Event formatting ──────────────────────────────────────────────────────────
@@ -698,6 +737,87 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
                 st.error(f"Ошибка удаления: {exc}")
 
 
+# ── Facts table with pagination + delete ─────────────────────────────────────
+
+def _render_facts_table(agent_id_str: str, schema: str) -> None:
+    import pandas as pd
+
+    c_refresh, c_info = st.columns([1, 5])
+    if c_refresh.button("🔄", key="facts_refresh"):
+        _fetch_facts.clear()
+        st.session_state.pop("facts_page", None)
+        st.session_state.pop("facts_editor", None)
+
+    all_rows = _fetch_facts(agent_id_str)
+    if all_rows and "error" in all_rows[0]:
+        st.error(all_rows[0]["error"])
+        return
+    if not all_rows:
+        st.caption("— no facts —")
+        return
+
+    total = len(all_rows)
+    n_pages = max(1, (total + _FACTS_PAGE_SIZE - 1) // _FACTS_PAGE_SIZE)
+    page = st.session_state.get("facts_page", 0)
+    page = max(0, min(page, n_pages - 1))
+
+    if n_pages > 1:
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        if pc1.button("◀", key="facts_prev", disabled=(page == 0)):
+            st.session_state["facts_page"] = page - 1
+            st.session_state.pop("facts_editor", None)
+            st.rerun()
+        pc2.caption(f"стр. {page + 1} / {n_pages}  ({total} записей)")
+        if pc3.button("▶", key="facts_next", disabled=(page == n_pages - 1)):
+            st.session_state["facts_page"] = page + 1
+            st.session_state.pop("facts_editor", None)
+            st.rerun()
+    else:
+        c_info.caption(f"{total} записей")
+
+    page_rows = all_rows[page * _FACTS_PAGE_SIZE : (page + 1) * _FACTS_PAGE_SIZE]
+
+    df = pd.DataFrame([
+        {"🗑": False, "_id": r["_id"], "id": r["id"],
+         "content": r["content"], "source": r["source"], "tags": r["tags"],
+         "status": r["status"], "sal": r["sal"], "confirms": r["confirms"],
+         "confirmed": r["confirmed"], "inv_note": r["inv_note"], "ts": r["ts"]}
+        for r in page_rows
+    ])
+
+    edited = st.data_editor(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        key="facts_editor",
+        column_config={
+            "🗑":       st.column_config.CheckboxColumn("🗑", default=False, width="small"),
+            "_id":      None,
+            "id":       st.column_config.TextColumn("ID",         disabled=True, width="small"),
+            "content":  st.column_config.TextColumn("Содержание", disabled=True),
+            "source":   st.column_config.TextColumn("Источник",   disabled=True, width="small"),
+            "tags":     st.column_config.TextColumn("Теги",       disabled=True, width="small"),
+            "status":   st.column_config.TextColumn("Статус",     disabled=True, width="small"),
+            "sal":      st.column_config.NumberColumn("Sal",      disabled=True, width="small", format="%.3f"),
+            "confirms": st.column_config.NumberColumn("Подтв.",   disabled=True, width="small"),
+            "confirmed":st.column_config.TextColumn("Посл. подтв.", disabled=True, width="medium"),
+            "inv_note": st.column_config.TextColumn("Аннулирован", disabled=True),
+            "ts":       st.column_config.TextColumn("Создан",     disabled=True, width="medium"),
+        },
+    )
+
+    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
+    if to_delete_ids:
+        if st.button(f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="facts_delete"):
+            try:
+                _delete_facts(schema, to_delete_ids)
+                _fetch_facts.clear()
+                st.session_state.pop("facts_editor", None)
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Ошибка удаления: {exc}")
+
+
 # ── Debug panel ───────────────────────────────────────────────────────────────
 
 def _render_debug_panel() -> None:
@@ -705,6 +825,8 @@ def _render_debug_panel() -> None:
     agent_id_str = st.session_state.get("agent_id_str", "")
     agent_serial = st.session_state.get("agent_serial")
     last_rag     = st.session_state.get("last_rag", {})
+
+    schema = f"agent_{agent_serial}" if agent_serial is not None else None
 
     tab_ev, tab_km, tab_facts, tab_rag = st.tabs(["Events", "Key Moments", "Facts", "RAG"])
 
@@ -716,24 +838,16 @@ def _render_debug_panel() -> None:
             st.markdown(_fmt_event(ev))
 
     with tab_km:
-        if agent_serial is None:
+        if schema is None:
             st.warning("DB not available — POSTGRES_* env vars not set")
         else:
-            schema = f"agent_{agent_serial}"
             _render_km_table(agent_id_str, schema)
 
     with tab_facts:
-        c1, _ = st.columns([1, 3])
-        if c1.button("🔄", key="facts_refresh"):
-            _fetch_facts.clear()
-        rows = _fetch_facts(agent_id_str)
-        if rows and "error" in rows[0]:
-            st.error(rows[0]["error"])
-        elif not rows:
-            st.caption("— no facts —")
+        if schema is None:
+            st.warning("DB not available — POSTGRES_* env vars not set")
         else:
-            import pandas as pd
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            _render_facts_table(agent_id_str, schema)
 
     with tab_rag:
         if not last_rag:
