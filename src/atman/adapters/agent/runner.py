@@ -1347,6 +1347,8 @@ class AtmanRunner:
                 return "Context limit was reached — the session was closed before you could finish consciously."
             elif close_reason == "interrupted":
                 return "The session was interrupted by an external signal — you were not part of the closing."
+            elif close_reason == "menu_timeout":
+                return "The inactivity menu timed out — the session closed without you choosing an action."
         else:
             if close_reason == "timeout_sleep":
                 return "Ты задремал — пользователь отошёл, ты решил поспать."
@@ -1359,6 +1361,8 @@ class AtmanRunner:
                 )
             elif close_reason == "interrupted":
                 return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
+            elif close_reason == "menu_timeout":
+                return "Меню бездействия истекло по таймауту — сессия закрылась без выбранного действия."
 
         return None
 
