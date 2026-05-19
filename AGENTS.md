@@ -319,7 +319,118 @@ Rules:
   auto-updated by `make codemap`. Do not edit those blocks manually.
 
 <!-- codemap:auto:start section="docs-structure" -->
-## Current Docs Map
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+- **architecture/**
+  - **ADR/**
+      - `README.md` — Architecture Decision Records
+  - **codemap/**
+      - `DELTA_REPORT.md` — Codemap Delta Report
+      - `ENDPOINTS.md` — Endpoints Reference
+      - `STARTUP_DEPS.md` — Startup Dependencies
+      - `TEST_ENV.md` — Test Environment
+      - `UNDOCUMENTED.md` — Undocumented Public API
+    - `SYSTEM-ru.md` — Source: SYSTEM.md
+    - `SYSTEM.md` — Source: SYSTEM.md
+    - `SYSTEM_MAP-ru.md` — Карта системы Atman
+    - `SYSTEM_MAP.md` — Atman System Map
+- **archive/**
+  - **2026-05/**
+      - `01-factual-memory-adapter.md` — 01. Factual Memory Adapter
+      - `02-experience-store.md` — Work package 02: Experience Store
+      - `03-identity-and-narrative.md` — WP-03: Identity Store, Eigenstate и Self-Narrative
+      - `04-reflection-engine.md` — WP-04: Reflection Engine
+      - `05-session-manager.md` — 05 - Session Manager
+      - `06-reality-and-affect.md` — 06 - Reality Anchor и Affective Regulation
+      - `07-ambient-and-proactive.md` — Work package 07: Ambient Memory Layer + Proactive Engine
+      - `08-skill-manager.md` — WP-08: Skill Manager
+      - `09-background-agent.md` — WP-09: Background Agent, Personality Loader и scheduler shell
+      - `ATMAN_INTEGRATION_RESEARCH.md` — Atman как согласованный контур памяти, рефлексии и навыков
+      - `ATMAN_MEMORY_AND_LINGUISTIC_FINAL_v3.md` — Atman — план интеграции памяти и лингвистического анализа
+      - `CODEBASE_IMPLEMENTATION_MAP_RU.md` — Подробная карта реализованного кода Atman (RU)
+      - `DATABASE_SCHEMA.md` — Схема базы данных Atman
+      - `DATADOG-LLM-OBSERVABILITY.md` — Datadog LLM Observability for Atman
+      - `EMBEDDING-ru.md` — Архитектура Embedding
+      - `EMBEDDING.md` — Embedding Architecture
+      - `EVAL_STORAGE.md` — Evaluation Storage Architecture
+      - `GITHUB_AUTOMATIONS.md` — GitHub automations
+      - `GPT-about-system.md` — Резюме
+      - `ISSUE_BACKLOG.md` — Issue Backlog (Imported)
+      - `LIVE_E2E_RUNBOOK.md` — Live E2E Runbook — gemma4 (user agent) ↔ Atman session/reflection
+      - `MEMORY-ARCHITECTURE.md` — Atman — Архитектура памяти
+      - `PLAYBOOK_MARKERS.md` — PLAYBOOK Markers Convention
+      - `PROD_EVAL_BOUNDARY.md` — Production / Eval Boundary
+      - `README.md` — Archive — May 2026
+      - `README_FACTUAL_MEMORY.md` — Factual Memory — документация перенесена
+      - `REFLECTIONS.md` — Reflections Schema — Architecture Document
+      - `REFLECTION_FUTURE.md` — Reflection Engine — будущие изменения
+      - `RESEARCH_FACTUAL_MEMORY.md` — Atman: factual memory, transferable skill и identity integration
+      - `ROADMAP.md` — ATMAN — Роадмап (май 2026)
+      - `SENTRY_SETUP.md` — Sentry — настройка мониторинга
+      - `SESSION_LIFECYCLE.md` — Plan: Uncolored Perception + Context-Aware Session Lifecycle
+      - `SYSTEM 0.00.md` — ATMAN
+      - `TEST_COVERAGE_PLAN.md` — Test Coverage Plan (per SYSTEM_MAP)
+      - `WP-affect-detector.md` — WP: Affect Detector
+      - `agent-thinking-comparison-ru.md` — Как мыслит агент: Atman vs. стандартный агент 2026
+      - `agent-thinking-comparison.md` — How an Agent Thinks: Atman vs. a Standard 2026 Agent
+      - `agent-ui-research.md` — Agent UI Research: Open Source Solutions for Universal Agent Interface
+      - `atman_funding_strategy_ru.md` — Стратегия финансирования Atman: гранты, фелловшипы и платёжные рельсы для open-source AI-проекта из России (май 2026)
+      - `dashboard-research.md` — Dashboard Research for Atman Project
+      - `fullsystem 0.00.md` — Source: SYSTEM.md
+      - `reflective-session-protocol.md` — Reflective Session Protocol
+      - `safety-relevance.md` — Atman components and safety / alignment relevance
+      - `secure-contact-vault.md` — Idea: Secure Contact Vault
+      - `skill-manager-design.md` — Skill Manager — дизайн
+      - `work-packages-README.md` — Work packages по SYSTEM.md
+- **content/**
+    - `COMPARISON-ru.md` — Как мыслит агент: Atman vs. стандартный агент 2026
+    - `COMPARISON.md` — How an Agent Thinks: Atman vs. a Standard 2026 Agent
+    - `MANIFEST-ru.md` — ATMAN
+    - `MANIFEST.md` — ATMAN
+    - `README-ru.md` — Atman
+    - `README.md` — Atman
+    - `SYSTEM-ru.md` — Source: SYSTEM.md
+    - `SYSTEM.md` — Source: SYSTEM.md
+- **demo-data/**
+- **design/**
+    - `DESIGN_living_codemap.md` — Design — Atman Living Codemap
+    - `README.md` — docs/design — Design Documents
+- **development/**
+    - `DEVELOPMENT_STANDARD.md` — Стандарт разработки Atman
+    - `SESSION_TESTER_RUNBOOK.md` — Session Tester Runbook
+- **features/**
+  - **affect-detector/**
+      - `README-ru.md` — Affect Detector (E21)
+      - `README.md` — Affect Detector (E21)
+  - **agent-adapter/**
+      - `README-ru.md` — Agent Adapter
+      - `README.md` — Agent Adapter
+  - **eval-runner/**
+      - `README-ru.md` — E1 Evaluation Runner Framework
+      - `README.md` — E1 Evaluation Runner Framework
+  - **experience-store/**
+      - `README-ru.md` — Experience Store — рабочий пакет 02
+      - `README.md` — Experience Store - Work Package 02
+  - **factual-memory/**
+      - `README-ru.md` — Atman — Factual Memory Adapter
+      - `README.md` — Factual Memory Adapter
+  - **full-corpus-demo/**
+      - `README-ru.md` — Демо полного корпуса
+      - `README.md` — Full corpus demo
+  - **identity-store/**
+      - `README-ru.md` — Identity Store: Руководство по функционалу WP-03
+      - `README.md` — Identity Store: WP-03 Feature Guide
+  - **reflection-engine/**
+      - `README-ru.md` — Движок рефлексии
+      - `README.md` — Reflection Engine
+  - **session-manager/**
+      - `README-ru.md` — Session Manager (Менеджер сессий)
+      - `README.md` — Session Manager
+  - **web-dashboard/**
+      - `README-ru.md` — Веб-дашборд
+      - `README.md` — Web Dashboard
+- **ops/**
+    - `README.md` — docs/ops — Operational Documentation
+- **pic/**
+- **research/**
 <!-- codemap:auto:end -->
 

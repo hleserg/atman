@@ -1,0 +1,28 @@
+components:
+  core-models:
+    path: src/atman/core/models
+    display: "Core / Domain Models"
+  core-ports:
+    path: src/atman/core/ports
+    display: "Core / Ports"
+  core-services:
+    path: src/atman/core/services
+    display: "Core / Services"
+  adapters:
+    path: src/atman/adapters
+    display: "Adapters"
+  affect:
+    path: src/atman/affect
+    display: "Affect Detector"
+  eval:
+    path: src/atman/eval
+    display: "Eval (isolated)"
+  skills:
+    path: src/atman/skills
+    display: "Skills"
+  tui:
+    path: src/atman/tui
+    display: "TUI"
+  web-dashboard:
+    path: src/atman/web_dashboard
+    display: "Web Dashboard"

@@ -1,0 +1,42 @@
+name: Codemap Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "docs/architecture/SYSTEM_MAP.md"
+      - "README.md"
+      - "AGENTS.md"
+      - ".cursor/rules/**"
+  pull_request:
+    paths:
+      - "src/**"
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - ".cursor/rules/**"
+
+jobs:
+  codemap-check:
+    name: Codemap staleness check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install project (dev deps)
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run codemap check
+        run: python -m scripts.codemap --no-coverage --lang en --check
+
+      - name: Check agent instruction files
+        run: python -m scripts.codemap agents --lang en --check
