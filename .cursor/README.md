@@ -21,6 +21,10 @@ This file provides:
 
 **Version**: See file header for current version and last update date.
 
+### `skills/linear-project-orchestration/`
+
+**Linear project orchestration** — MCP-driven workflow: ready-queue by blockers, optional parallel issues, In Progress/Done + project state, per-issue completion documents, project closure doc with links. Invoke in chat: «работай по проекту &lt;name&gt;» or load skill `linear-project-orchestration`.
+
 ### `SYNC_GUIDE.md`
 
 **Synchronization guide** for keeping the master prompt aligned with project standards.

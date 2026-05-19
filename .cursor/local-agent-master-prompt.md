@@ -20,6 +20,7 @@ Before starting any work, you **MUST** read these documents in order:
 2. **[../docs/development/DEVELOPMENT_STANDARD.md](../docs/development/DEVELOPMENT_STANDARD.md)** — Complete development standard (terminology, architecture boundaries, coding conventions)
 3. **[../docs/architecture/SYSTEM.md](../docs/architecture/SYSTEM.md)** — System architecture (7 components, modes, protocols)
 4. **[../MANIFEST.md](../MANIFEST.md)** — Philosophical foundation and project vision
+5. **Linear workflow** — [../docs/development/DEVELOPMENT_STANDARD.md](../docs/development/DEVELOPMENT_STANDARD.md) **§30** + skill [linear-project-orchestration](skills/linear-project-orchestration/SKILL.md) when working from a Linear project or issue
 
 These documents define the single source of truth for:
 

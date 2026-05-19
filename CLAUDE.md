@@ -106,7 +106,7 @@ make check
 ❌ Запрещено: заканчивать работу без смены статуса на "Done"  
 ❌ Запрещено: откладывать смену статуса "на потом"
 
-Используй инструменты Linear MCP (`mcp__deb1bed9-*`) для смены статусов.
+Используй инструменты **Linear MCP** (`save_issue`, `save_project`, …). Полный workflow: **`docs/development/DEVELOPMENT_STANDARD.md` §30**, **`AGENTS.md` → Linear**, skill **`.cursor/skills/linear-project-orchestration/SKILL.md`** при «работай по проекту X».
 
 ## Notion
 
