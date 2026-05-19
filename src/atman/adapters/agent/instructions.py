@@ -272,9 +272,7 @@ def build_skill_suggestions_section(suggestions: list) -> str:
         card = getattr(s, "card_text", None) or getattr(s, "description", "")
         name = getattr(s, "skill_name", None) or getattr(s, "name", "")
         lines.append(f"- **{name}**: {card}\n")
-    lines.append(
-        "\nЕсли задача соответствует навыку — используй `atman_skills_invoke`.\n"
-    )
+    lines.append("\nЕсли задача соответствует навыку — используй `atman_skills_invoke`.\n")
     return "".join(lines)
 
 

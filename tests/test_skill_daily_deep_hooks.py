@@ -275,7 +275,11 @@ class TestDraftPromotion:
         agent_id = uuid4()
         draft = self._make_draft(agent_id, "draft-skill", success_count=5)
         revision_skill = _make_skill(
-            agent_id, "needs-revision", revision_needed=True, sessions_since_use=10, revision_priority=1
+            agent_id,
+            "needs-revision",
+            revision_needed=True,
+            sessions_since_use=10,
+            revision_priority=1,
         )
         manager._store.save_skill(draft)
         manager._store.save_skill(revision_skill)

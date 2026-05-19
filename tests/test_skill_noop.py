@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from atman.skills.noop import NoopSkillManager, SkillsDisabledError
 from atman.core.ports.skill_manager import SkillManagerPort
+from atman.skills.noop import NoopSkillManager, SkillsDisabledError
 
 
 def test_noop_satisfies_protocol():
