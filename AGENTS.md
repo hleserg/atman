@@ -395,7 +395,6 @@ Rules:
     - `DESIGN_living_codemap.md` — Design — Atman Living Codemap
     - `README.md` — docs/design — Design Documents
 - **development/**
-  - **work-packages/**
     - `DEVELOPMENT_STANDARD.md` — Стандарт разработки Atman
     - `SESSION_TESTER_RUNBOOK.md` — Session Tester Runbook
 - **features/**
@@ -429,7 +428,8 @@ Rules:
   - **web-dashboard/**
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
-- **ideas/**
+- **observability/**
+    - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
 - **ops/**
     - `README.md` — docs/ops — Operational Documentation
 - **pic/**

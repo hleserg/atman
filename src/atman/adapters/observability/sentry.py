@@ -323,6 +323,18 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
 # ---------------------------------------------------------------------------
 
 
+def _sentry_sdk_active() -> bool:
+    """True when Sentry was initialized via this adapter or init_observability()."""
+    if _initialized:
+        return True
+    try:
+        from atman.observability import is_enabled as obs_enabled
+
+        return obs_enabled()
+    except ImportError:
+        return False
+
+
 @contextmanager
 def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
     """Context manager that emits in_progress / ok / error check-ins for a cron job.
@@ -332,7 +344,7 @@ def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
         with cron_checkin("atman-maintenance"):
             run_maintenance_batch()
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk

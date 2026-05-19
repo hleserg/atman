@@ -160,7 +160,11 @@
 | `adapters/observability/in_memory_overload_alert_sink.py` (R13) | `ReflectionOverloadAlertSink` | алерты в памяти; падения sink подавляются, чтобы монитор не валил вызывающего |
 | `adapters/observability/logging_overload_alert_sink.py` (HLE-30) | `ReflectionOverloadAlertSink` | прокидывает алерты через стандартный `logging` на CRITICAL/WARNING; structured payload (severity + details) через `extra` для JSON-форматеров; ошибки логирования подавляются |
 | `adapters/observability/composite_overload_alert_sink.py` (HLE-30) | `ReflectionOverloadAlertSink` | fan-out обёртка над упорядоченным набором sink'ов; исключения отдельного sink'а подавляются, чтобы флапающий downstream не блокировал остальные |
-| `adapters/observability/sentry.py` | — | opt-in инициализация Sentry SDK через `SENTRY_DSN` (`enable_logs=True`, требуется `sentry-sdk>=2.35.0`); scope-теги (`agent_id`, `session_id`); `session_transaction` / `pipeline_span` / spans maintenance/reflection (один yield, no-op при отключении); capture тихих исключений; helpers метрик (`attributes=` с fallback на legacy `tags=` / `incr`); `install_slog_breadcrumb_hook()` пишет `sentry_sdk.logger` и breadcrumbs для каждого `slog()`, сохраняя уже зарегистрированный display hook (например Rich-консоль live_chat) |
+| `adapters/observability/sentry.py` | — | legacy-хелперы Sentry (`init_sentry_from_env`, scope-теги, spans, метрики, `cron_checkin`); no-op, если SDK не инициализирован ни адаптером, ни `observability.init_observability()`; в CLI предпочтителен `init_observability()` — не вызывать `init_sentry_from_env()` после него (повторный init перезаписывает sampling/scrubbing) |
+| `observability/sentry_init.py` (HLE-240) | — | канонический `init_observability(level)` / `is_enabled()`; уровни `ATMAN_OBS_LEVEL` (`off` \| `minimal` \| `debug` \| `verbose`); `off` не импортирует `sentry_sdk`; уровни подключают `traces_sampler`, scrubbing, Spotlight, profiling — см. `docs/observability/levels.md` |
+| `observability/sampling.py` | — | `_traces_sampler`: AI-маршруты / `gen_ai.*` на 1.0, иначе 0.1 |
+| `observability/scrubbing.py` | — | расширенный denylist + `before_send` / `before_send_transaction` (отбрасывает `/health`, `/healthz`) |
+| `observability/spans.py` | — | `ai_chat_span`, `memory_span`, `db_span`, `cron_span` — общие имена op для сканера инструментирования |
 | `core/session_log.py` | — | JSONL session debug log (`ATMAN_SESSION_LOG`); `slog()` + опциональные `set_display_hook` / `get_display_hook` для live UI и цепочки observability |
 | `adapters/agent/pending_reviews_context.py` (R11.7) | — | `format_pending_reviews_block`: priority-first, oldest-first, обрезка контекста |
 | **`adapters/state/postgres_state_store.py`** (`PostgresStateStore`) | **`StateStore`** | **PostgreSQL v2** — per-agent schemas (`agent_N.sessions`, `agent_N.key_moments`); полный Session API (`create_session`, `get_session`, `update_session`, `list_recent_sessions`) и v2 KeyMoment API (`create_key_moment`, `store_key_moment` upsert, `mark_moment_accessed`, `update_moment_structured_markers`, `find_moments_by_entity`); резолв схемы через фиксированный `serial_id` или кэшированный lookup по `public.agents`; Identity/Narrative/Eigenstate по-прежнему `NotImplementedError` (обслуживается `FileStateStore`) |
@@ -225,6 +229,7 @@
 | `cli_identity.py` | CLI | Identity Store |
 | `cli_reflection.py` | CLI | Reflection Engine: `reflect micro|daily|deep` с `--fixtures` (mock) или `--live --agent-id <uuid> [--workspace .atman]` (реальный `FileStateStore`/`PostgresStateStore` + опциональный LLM через `ATMAN_LLM_BASE_URL`); deep live принимает `--since` / `--until` `YYYY-MM-DD` |
 | `term.py` | utility | Rich-вывод для CLI/демо |
+| `observability/__init__.py` | observability | реэкспорт `init_observability`, `is_enabled`, `ObsLevel`; подключён из `cli.py`, `cli_experience.py`, `cli_identity.py`, `cli_reflection.py`, `cli_maintenance.py` |
 | `tui/app.py` | TUI | Точка входа Textual-приложения (Tests / Features / Docs) |
 | `tui/tests_tab.py`, `tui/features_tab.py`, `tui/docs_tab.py` | TUI | вкладки |
 | `tui/features_registry.py` | TUI | реестр фич |

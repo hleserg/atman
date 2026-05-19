@@ -63,9 +63,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             args.batch_size,
             job_name or "all",
         )
-        from atman.adapters.observability.sentry import cron_checkin, init_sentry_from_env
+        from atman.adapters.observability.sentry import cron_checkin
 
-        init_sentry_from_env()
         try:
             while True:
                 with cron_checkin("atman-maintenance"):
