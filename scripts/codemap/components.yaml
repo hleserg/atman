@@ -1,28 +1,67 @@
+# scripts/codemap/components.yaml
+# Маппинг компонентов Atman → реальные директории в src/atman/
+# Верифицировано: ls src/atman/ от 2026-05-19
+#
+# Добавить компонент: новая запись + git commit. Скрипт подхватит автоматически.
+
 components:
-  core-models:
-    path: src/atman/core/models
-    display: "Core / Domain Models"
-  core-ports:
-    path: src/atman/core/ports
-    display: "Core / Ports"
-  core-services:
-    path: src/atman/core/services
-    display: "Core / Services"
+
+  core:
+    path: src/atman/core
+    display: "Core"
+    description: "Domain models, ports, services — основа системы"
+
   adapters:
     path: src/atman/adapters
     display: "Adapters"
+    description: "Реализации портов: LLM, storage, embedding"
+
   affect:
     path: src/atman/affect
-    display: "Affect Detector"
-  eval:
-    path: src/atman/eval
-    display: "Eval (isolated)"
+    display: "Affect / Reality Anchor"
+    description: "Аффективная регуляция, Reality Anchor, детектор расхождений"
+
+  reflection:
+    path: src/atman/reflection
+    display: "Reflection Engine"
+    description: "Micro / daily / deep reflection, паттерны, entity stances"
+
   skills:
     path: src/atman/skills
-    display: "Skills"
+    display: "Skill Loop"
+    description: "Skill manager, регистрация и вызов навыков"
+
   tui:
     path: src/atman/tui
     display: "TUI"
-  web-dashboard:
+    description: "Textual-based терминальный интерфейс"
+
+  web_dashboard:
     path: src/atman/web_dashboard
     display: "Web Dashboard"
+    description: "FastAPI / веб-интерфейс"
+
+  eval:
+    path: src/atman/eval
+    display: "Eval (isolated)"
+    description: "Eval namespace — изолирован от production кода (see PROD_EVAL_BOUNDARY)"
+    isolated: true  # никогда не импортируется из production кода
+
+# ── Компоненты которых нет в src/ но они в components.yaml как «в очереди» ──
+# Раскомментируй когда директория появится в коде:
+#
+#  session:
+#    path: src/atman/session
+#    display: "Session Manager"
+#
+#  proactive:
+#    path: src/atman/proactive
+#    display: "Proactive Engine"
+#
+#  identity:
+#    path: src/atman/identity
+#    display: "Identity Store"
+#
+#  factual_memory:
+#    path: src/atman/factual_memory
+#    display: "Factual Memory"
