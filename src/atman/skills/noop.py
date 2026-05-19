@@ -88,3 +88,11 @@ class NoopSkillManager:
 
     def process_deep_skills(self, agent_id: UUID) -> DeepSkillSummary:
         return DeepSkillSummary()
+
+    def collect_behavioral_hints_from_message(
+        self,
+        message: str,
+        agent_id: UUID,
+        session_id: UUID,
+    ) -> None:
+        return

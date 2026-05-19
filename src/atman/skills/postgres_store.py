@@ -526,6 +526,45 @@ class PostgresSkillStore:
             ).fetchall()
         return [_row_to_invocation(cast(Any, r)) for r in rows]
 
+    def count_invocations_in_last_n_sessions(
+        self, skill_id: UUID, agent_id: UUID, n_sessions: int
+    ) -> int:
+        with self._conn(agent_id) as conn:
+            row = conn.execute(
+                """
+                WITH ranked AS (
+                    SELECT session_id,
+                           MIN(started_at) AS first_ts
+                    FROM public.skill_invocations
+                    WHERE agent_id = %s
+                    GROUP BY session_id
+                    ORDER BY first_ts DESC
+                    LIMIT %s
+                )
+                SELECT COUNT(DISTINCT si.session_id)
+                FROM public.skill_invocations si
+                JOIN ranked r ON si.session_id = r.session_id
+                WHERE si.skill_id = %s AND si.agent_id = %s
+                """,
+                [agent_id, n_sessions, skill_id, agent_id],
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def list_invocations_by_skill(
+        self, skill_id: UUID, agent_id: UUID, limit: int = 20
+    ) -> list[SkillInvocation]:
+        with self._conn(agent_id) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM public.skill_invocations
+                WHERE skill_id = %s AND agent_id = %s
+                ORDER BY started_at DESC
+                LIMIT %s
+                """,
+                [skill_id, agent_id, limit],
+            ).fetchall()
+        return [_row_to_invocation(cast(Any, r)) for r in rows]
+
     def set_final_status(self, invocation_id: UUID, final_status: str) -> None:
         with self._conn() as conn:
             conn.execute(

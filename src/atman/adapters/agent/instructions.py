@@ -259,6 +259,23 @@ I don't pretend to be something I'm not yet. I am learning who I am through expe
 """
 
 
+def build_skill_suggestions_section(suggestions: list) -> str:
+    """Render trigger_router suggestions into a context block for the agent.
+
+    Only called when trigger_router returned at least one suggestion.
+    The section is injected per-turn (not part of the static system prompt).
+    """
+    if not suggestions:
+        return ""
+    lines = ["\n## Релевантные навыки\n\n"]
+    for s in suggestions:
+        card = getattr(s, "card_text", None) or getattr(s, "description", "")
+        name = getattr(s, "skill_name", None) or getattr(s, "name", "")
+        lines.append(f"- **{name}**: {card}\n")
+    lines.append("\nЕсли задача соответствует навыку — используй `atman_skills_invoke`.\n")
+    return "".join(lines)
+
+
 def _truncate_text(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text

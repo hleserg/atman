@@ -445,6 +445,7 @@ def build_deps(
     skill_manager = _build_skill_manager(
         agent_id=agent_id,
         embedding_adapter=_embedding_adapter,
+        entity_registry=_entity_registry,
     )
 
     # HLE-30: in-memory ReflectionEventStore shared with the overload monitor
@@ -572,7 +573,23 @@ def _skills_enabled() -> bool:
     return _settings.skills.enabled
 
 
-def _build_skill_manager(agent_id: UUID, embedding_adapter):
+def _optional_embedding_adapter():
+    """Return embedding port when available; None on misconfiguration (non-fatal)."""
+    import logging as _logging
+
+    try:
+        from atman.config import build_embedding_adapter
+
+        return build_embedding_adapter()
+    except Exception:
+        _logging.getLogger(__name__).warning(
+            "Embedding adapter unavailable — skill-loop will use keyword routing only",
+            exc_info=True,
+        )
+        return None
+
+
+def _build_skill_manager(agent_id: UUID, embedding_adapter, entity_registry=None):
     """Assemble SkillManager with graceful fallback.
 
     Behaviour, in order of preference, when the skill loop is enabled:
@@ -630,6 +647,7 @@ def _build_skill_manager(agent_id: UUID, embedding_adapter):
             projector=PydanticAgentProjector(),
             config=_settings.skills,
             agents_root=_Path(_settings.skills.skills_root).expanduser(),
+            entity_registry=entity_registry,
         )
     except Exception:
         log.warning("Failed to build SkillManager — skill-loop disabled", exc_info=True)
@@ -801,6 +819,10 @@ def build_daily_reflection_service(
         state_store=state_store, divergence_event_store=divergence_event_store
     )
 
+    skill_manager = _build_skill_manager(
+        agent_id, _optional_embedding_adapter(), entity_registry=entity_registry
+    )
+
     return DailyReflectionService(
         session_repo=session_repo,
         identity_repo=identity_repo,
@@ -818,6 +840,7 @@ def build_daily_reflection_service(
         ),
         findings_triage=FindingsTriage(guardian=guardian),
         reflection_request_queue=InMemoryReflectionRequestQueue(),
+        skill_manager=skill_manager,
         agent_id=agent_id,
     )
 
@@ -865,6 +888,10 @@ def build_deep_reflection_service(
         state_store=state_store, divergence_event_store=divergence_event_store
     )
 
+    skill_manager = _build_skill_manager(
+        agent_id, _optional_embedding_adapter(), entity_registry=entity_registry
+    )
+
     return DeepReflectionService(
         session_repo=session_repo,
         identity_repo=identity_repo,
@@ -892,5 +919,6 @@ def build_deep_reflection_service(
             reflection_model=model,
         ),
         reflection_request_queue=InMemoryReflectionRequestQueue(),
+        skill_manager=skill_manager,
         agent_id=agent_id,
     )

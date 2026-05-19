@@ -119,6 +119,7 @@ class SkillsSettings(BaseModel):
     min_confidence: float = 0.65  # default router confidence threshold
     # Daily/Deep reflection thresholds (HLE-36)
     daily_revision_idle_bump_sessions: int = 5  # idle sessions before priority bump in daily
+    draft_promote_min_successes: int = 3  # successes needed to promote draft → active
     deep_archive_sessions: int = 50  # sessions without use → archive candidate at deep
     deep_failure_rate_threshold: float = 0.5  # failure_count / invocations to flag problematic
     deep_min_invocations_for_failure_rate: int = 5  # min invocations before applying ratio
