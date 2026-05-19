@@ -702,8 +702,6 @@ async def amain() -> int:
     _log("session_id", session_id=str(session_id), workspace=str(workspace))
     _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
 
-    import sentry_sdk as _sdk
-
     from atman.adapters.observability.sentry import (
         session_transaction,
         set_agent_scope,
@@ -712,8 +710,28 @@ async def amain() -> int:
 
     set_agent_scope(str(agent_id))
     set_session_tag(str(session_id))
-    _sentry_tx = session_transaction(str(session_id), str(agent_id))
-    _sentry_tx.__enter__()
+
+    with session_transaction(str(session_id), str(agent_id)):
+        return await _run_live_chat_session(
+            llm=llm,
+            agent_id=agent_id,
+            session_id=session_id,
+            deps=deps,
+            sm=sm,
+            workspace=workspace,
+        )
+
+
+async def _run_live_chat_session(
+    *,
+    llm: OpenAIChatModel,
+    agent_id,
+    session_id,
+    deps,
+    sm,
+    workspace: Path,
+) -> int:
+    from atman.adapters.observability.sentry import pipeline_span
 
     agent = Agent(
         llm,
@@ -770,11 +788,11 @@ async def amain() -> int:
             _log("user_msg", text=user_text)
 
             # ── Atman pre-turn: entity registration + ambient snapshot ─────────
-            with _sdk.start_span(op="atman.ner", description="entity detection"):
+            with pipeline_span("atman.ner", "entity detection"):
                 _register_entities(user_text, deps, con)
-            with _sdk.start_span(op="atman.rag.ambient", description="ambient RAG"):
+            with pipeline_span("atman.rag.ambient", "ambient RAG"):
                 _ambient_snapshot(user_text, deps, con)
-            with _sdk.start_span(op="atman.rag.passive", description="passive RAG injection"):
+            with pipeline_span("atman.rag.passive", "passive RAG injection"):
                 deps = _surface_passive_context(user_text, deps, con)
             con.flush("atman ▶ pre")
 
@@ -853,7 +871,7 @@ async def amain() -> int:
             print(f"agent> {clean}\n")
 
             # ── Atman post-turn: analyze agent response ────────────────────────
-            with _sdk.start_span(op="atman.affect", description="affect processing"):
+            with pipeline_span("atman.affect", "affect processing"):
                 await _analyze_agent_response(clean, deps, sm, session_id, con)
             con.flush("atman ◀ agent")
 
@@ -933,7 +951,6 @@ async def amain() -> int:
         con.flush("atman session end")
         _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
 
-        _sentry_tx.__exit__(None, None, None)
     return 0
 
 

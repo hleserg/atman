@@ -159,20 +159,27 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
     if not _initialized:
         yield
         return
-    try:
-        import sentry_sdk
+    import sentry_sdk
 
-        with sentry_sdk.start_transaction(
-            op="session",
-            name="session_lifecycle",
-        ) as tx:
-            tx.set_tag("agent_id", agent_id)
-            tx.set_tag("session_id", session_id)
-            yield
-            return
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
-    yield
+    with sentry_sdk.start_transaction(
+        op="session",
+        name="session_lifecycle",
+    ) as tx:
+        tx.set_tag("agent_id", agent_id)
+        tx.set_tag("session_id", session_id)
+        yield
+
+
+@contextmanager
+def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]:
+    """Child span for a pipeline stage (NER, RAG, affect, …). No-op when Sentry is off."""
+    if not _initialized:
+        yield
+        return
+    import sentry_sdk
+
+    with sentry_sdk.start_span(op=op, description=description or op):
+        yield
 
 
 @contextmanager
@@ -181,17 +188,12 @@ def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, N
     if not _initialized:
         yield
         return
-    try:
-        import sentry_sdk
+    import sentry_sdk
 
-        with sentry_sdk.start_span(op="maintenance.job", description=job_name) as span:
-            span.set_data("agent_id", agent_id)
-            span.set_data("job_name", job_name)
-            yield
-            return
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
-    yield
+    with sentry_sdk.start_span(op="maintenance.job", description=job_name) as span:
+        span.set_data("agent_id", agent_id)
+        span.set_data("job_name", job_name)
+        yield
 
 
 @contextmanager
@@ -200,16 +202,11 @@ def reflection_span(reflection_type: str) -> Generator[None, None, None]:
     if not _initialized:
         yield
         return
-    try:
-        import sentry_sdk
+    import sentry_sdk
 
-        with sentry_sdk.start_span(op="reflection", description=reflection_type) as span:
-            span.set_data("reflection_type", reflection_type)
-            yield
-            return
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
-    yield
+    with sentry_sdk.start_span(op="reflection", description=reflection_type) as span:
+        span.set_data("reflection_type", reflection_type)
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -304,12 +301,7 @@ def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
     if not _initialized:
         yield
         return
-    try:
-        import sentry_sdk
+    import sentry_sdk
 
-        with sentry_sdk.monitor(monitor_slug=monitor_slug):
-            yield
-        return
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
-    yield
+    with sentry_sdk.monitor(monitor_slug=monitor_slug):
+        yield

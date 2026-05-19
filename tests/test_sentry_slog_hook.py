@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -54,3 +55,37 @@ def test_install_slog_breadcrumb_hook_is_idempotent() -> None:
     session_log.slog("once")
 
     assert calls == 1
+
+
+def test_session_transaction_propagates_body_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failing session body must not be masked by a fallback yield in the CM."""
+    sentry_module._initialized = True
+    calls = {"entered": False, "exited": False}
+
+    class _FakeTx:
+        def set_tag(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    @contextmanager
+    def _fake_start_transaction(**_kwargs: object):
+        calls["entered"] = True
+        yield _FakeTx()
+
+    monkeypatch.setattr(
+        "sentry_sdk.start_transaction",
+        _fake_start_transaction,
+        raising=False,
+    )
+
+    with (
+        pytest.raises(RuntimeError, match="session failed"),
+        sentry_module.session_transaction("sid", "aid"),
+    ):
+        raise RuntimeError("session failed")
+
+    assert calls["entered"] is True
+
+
+def test_pipeline_span_noops_when_sentry_disabled() -> None:
+    with sentry_module.pipeline_span("atman.ner", "entity detection"):
+        pass
