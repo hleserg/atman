@@ -60,6 +60,21 @@ def _extract_thinking_from_messages(messages: list) -> str | None:
     return "\n---\n".join(parts) if parts else None
 
 
+def _call_trigger_router_if_enabled(
+    user_text: str,
+    agent_id,
+    session_id,
+    skill_manager,
+) -> list:
+    """Call trigger_router and return suggestions; returns [] on any failure or when disabled."""
+    if skill_manager is None:
+        return []
+    try:
+        return skill_manager.trigger_router(user_text, agent_id, session_id) or []
+    except Exception:
+        return []
+
+
 async def _run_affect_detector(
     output: str,
     thinking: str | None,
@@ -805,6 +820,7 @@ class AtmanRunner:
             # Tracks the last RAG message appended to history (assistant_message /
             # user_message modes) so it can be removed before the next turn's injection.
             _last_rag_history_msg: object = None
+            _last_skill_history_msg: object = None
 
             while True:
                 print_prompt("You: ")
@@ -841,6 +857,27 @@ class AtmanRunner:
                 # Detect user language from their message (most recent wins)
                 if len(user_text.strip()) >= 4:
                     user_language = "ru" if _is_mostly_cyrillic(user_text) else "en"
+
+                # Collect behavioral hints from the incoming user message (§7 Phase 3).
+                # Signals like "ok", "works", "не работает" etc. are appended to open
+                # invocations from the previous turn before the agent runs again.
+                if deps.skill_manager is not None:
+                    with contextlib.suppress(Exception):
+                        deps.skill_manager.collect_behavioral_hints_from_message(
+                            user_text, deps.agent_id, session_id
+                        )
+
+                # Skill router: run trigger_router in parallel with memory retrieval
+                # (§4/§5 of skill-manager-design). Suggestions are appended to the
+                # injected_context for this turn only.
+                _suggestions = _call_trigger_router_if_enabled(
+                    user_text, deps.agent_id, session_id, deps.skill_manager
+                )
+                _skill_suggestions_text = ""
+                if _suggestions:
+                    from atman.adapters.agent.instructions import build_skill_suggestions_section
+
+                    _skill_suggestions_text = build_skill_suggestions_section(_suggestions)
 
                 # Surface relevant memories via RAG when PassiveMemoryInjector is wired.
                 # build_rag_context caps the result to rag_token_budget tokens.
@@ -892,6 +929,36 @@ class AtmanRunner:
                             # History-based modes: capture the appended message so
                             # we can remove it before the next turn's injection.
                             _last_rag_history_msg = history[-1]
+                else:
+                    # Without PMI there is no per-turn reset above — clear stale skill text.
+                    deps = replace(deps, injected_context=_base_injected_context)
+
+                # Append skill suggestions (from trigger_router) to this turn's context.
+                # Remove last turn's skill message even when this turn has no suggestions
+                # (same ephemeral pattern as RAG above).
+                if _last_skill_history_msg is not None:
+                    with contextlib.suppress(ValueError):
+                        history.remove(_last_skill_history_msg)
+                    _last_skill_history_msg = None
+
+                if _skill_suggestions_text:
+                    _history_len_before_skills = len(history)
+                    _skill_extra = inject_memory(
+                        _skill_suggestions_text,
+                        mode=self._config.memory_injection_mode,
+                        history=history,
+                        prepend=False,
+                    )
+                    if _skill_extra is not None:
+                        _current_ctx = deps.injected_context or ""
+                        deps = replace(
+                            deps,
+                            injected_context=(
+                                f"{_current_ctx}\n{_skill_extra}" if _current_ctx else _skill_extra
+                            ),
+                        )
+                    elif len(history) > _history_len_before_skills:
+                        _last_skill_history_msg = history[-1]
 
                 try:
                     result = await agent.run(
@@ -1433,6 +1500,7 @@ class AtmanTurn:
             deps = self._inject_passive_rag(user_text, deps)
         with pipeline_span("atman.rag.ambient", "ambient RAG"):
             deps = self._inject_ambient(user_text, deps)
+        deps = self._inject_skill_suggestions(user_text, deps)
 
         _LOG.debug(
             "[AtmanTurn.pre] done  injected_context_len=%d  passive=%r  ambient=%r",
@@ -1635,6 +1703,35 @@ class AtmanTurn:
             _LOG.warning("[AtmanTurn] ambient_rag failed: %s", exc, exc_info=True)
             self.ambient_summary = f"error: {exc}"
             return deps
+
+    def _inject_skill_suggestions(self, text: str, deps: AtmanDeps) -> AtmanDeps:
+        """Behavioral hints + trigger_router suggestions (parity with AtmanRunner chat loop)."""
+        if deps.skill_manager is None or self._session_id is None:
+            _LOG.debug("[AtmanTurn] skill_suggestions skipped: no skill_manager or session_id")
+            return deps
+        with contextlib.suppress(Exception):
+            deps.skill_manager.collect_behavioral_hints_from_message(
+                text, deps.agent_id, self._session_id
+            )
+        suggestions = _call_trigger_router_if_enabled(
+            text, deps.agent_id, self._session_id, deps.skill_manager
+        )
+        if not suggestions:
+            return deps
+        try:
+            from atman.adapters.agent.instructions import build_skill_suggestions_section
+
+            section = build_skill_suggestions_section(suggestions)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] skill_suggestions failed: %s", exc, exc_info=True)
+            return deps
+        if not section:
+            return deps
+        existing = deps.injected_context or ""
+        merged = (existing + "\n" + section).strip() if existing else section
+        _LOG.debug("[AtmanTurn] skill_suggestions injected: len=%d", len(section))
+        self._emit("skill_suggestions", count=len(suggestions))
+        return replace(deps, injected_context=merged)
 
     # ── Post-turn steps ───────────────────────────────────────────────────────
 

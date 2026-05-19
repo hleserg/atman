@@ -12,6 +12,7 @@ Disable the entire loop by setting atman.skills.enabled = false in config —
 nothing outside this package needs to change.
 """
 
+from atman.core.ports.skill_manager import SkillManagerPort
 from atman.skills.models import (
     Skill,
     SkillInvocation,
@@ -21,7 +22,6 @@ from atman.skills.models import (
     SkillSuggestion,
 )
 from atman.skills.noop import NoopSkillManager, SkillsDisabledError
-from atman.skills.port import SkillManagerPort
 
 __all__ = [
     "NoopSkillManager",

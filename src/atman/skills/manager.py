@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess  # nosec B404
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from atman.config import SkillsSettings
@@ -33,6 +35,17 @@ from atman.skills.retriever import SkillRetriever
 from atman.skills.store import SkillStore
 
 _log = logging.getLogger(__name__)
+
+
+def _message_contains_hint_pattern(text_lower: str, pattern: str) -> bool:
+    """Match short tokens on word boundaries to avoid false positives (e.g. 'no' in 'know')."""
+    if len(pattern) <= 4:
+        return bool(re.search(rf"(?<!\w){re.escape(pattern)}(?!\w)", text_lower))
+    return pattern in text_lower
+
+
+if TYPE_CHECKING:
+    from atman.core.ports.entity_registry import EntityRegistry
 
 
 def _now() -> datetime:
@@ -54,12 +67,14 @@ class SkillManager:
         projector: ProjectionAdapter,
         config: SkillsSettings,
         agents_root: Path,
+        entity_registry: EntityRegistry | None = None,
     ) -> None:
         self._store = store
         self._retriever = retriever
         self._projector = projector
         self._config = config
         self._agents_root = agents_root
+        self._entity_registry = entity_registry
         # Per-session cache: set of skill names loaded in this session
         self._session_loaded: dict[UUID, set[str]] = {}
 
@@ -231,9 +246,8 @@ class SkillManager:
 
             shutil.copy2(code_path, scripts_dir / code_path.name)
 
-        # Create a placeholder entity_id — real entity registration happens
-        # when the entity registry is integrated (future work)
-        entity_id = uuid4()
+        # Register in entity store (§3) or use placeholder UUID when unavailable.
+        entity_id = self._register_skill_entity(agent_id, name, description)
         now = _now()
         skill = Skill(
             id=uuid4(),
@@ -266,6 +280,32 @@ class SkillManager:
         self._store.save_skill(skill)
         _log.info("Captured skill '%s' for agent %s (draft)", name, agent_id)
         return skill
+
+    def _register_skill_entity(self, agent_id: UUID, name: str, description: str) -> UUID:
+        """Register skill as entity (EntityType.skill) and return the entity_id.
+
+        Falls back to a random UUID when entity_registry is not wired so the
+        skill-loop degrades gracefully in file-only mode.
+        """
+        if self._entity_registry is None:
+            return uuid4()
+        try:
+            from atman.core.models.entity import EntityType
+
+            entity, _ = self._entity_registry.resolve_or_create(
+                agent_id,
+                name,
+                EntityType.skill,
+                description=description,
+            )
+            return entity.id
+        except Exception as exc:
+            _log.warning(
+                "_register_skill_entity: entity registration failed for '%s': %s",
+                name,
+                exc,
+            )
+            return uuid4()
 
     # ── Session-end marker (HLE-35) ───────────────────────────────────────────
 
@@ -442,19 +482,46 @@ class SkillManager:
     def process_daily_skills(self, agent_id: UUID) -> DailySkillSummary:
         """Daily-reflection hook.
 
-        Bumps ``revision_priority`` for revision-needed skills that have
-        stayed idle longer than ``daily_revision_idle_bump_sessions``, then
-        returns a summary listing skills the operator should look at this
-        run. ``high_priority_revisions`` lifts anything with priority ≥ 3.
+        1. Promotes draft skills to active when success_count reaches the
+           configured threshold (draft_promote_min_successes).
+        2. Bumps revision_priority for revision-needed skills that have stayed
+           idle longer than daily_revision_idle_bump_sessions.
+
+        Returns a summary the DailyReflectionService can fold into its notes.
         """
+        promoted: list[str] = []
+        try:
+            draft_skills = self._store.list_by_status(agent_id, SkillStatus.draft)
+        except Exception as exc:
+            _log.warning("process_daily_skills: draft lookup failed: %s", exc)
+            draft_skills = []
+
+        promote_threshold = self._config.draft_promote_min_successes
+        for skill in draft_skills:
+            if skill.success_count >= promote_threshold:
+                try:
+                    self._store.update_skill_status(skill.id, SkillStatus.active)
+                    promoted.append(skill.name)
+                    _log.info(
+                        "Promoted skill '%s' from draft to active (%d successes)",
+                        skill.name,
+                        skill.success_count,
+                    )
+                except Exception as exc:
+                    _log.warning(
+                        "process_daily_skills: promotion failed for %s: %s",
+                        skill.name,
+                        exc,
+                    )
+
         try:
             pending = self._store.list_by_revision_needed(agent_id)
         except Exception as exc:
-            _log.warning("process_daily_skills: store lookup failed: %s", exc)
-            return DailySkillSummary()
+            _log.warning("process_daily_skills: revision lookup failed: %s", exc)
+            return DailySkillSummary(promoted_from_draft=promoted)
 
         if not pending:
-            return DailySkillSummary()
+            return DailySkillSummary(promoted_from_draft=promoted)
 
         idle_threshold = self._config.daily_revision_idle_bump_sessions
         bumped = 0
@@ -487,6 +554,7 @@ class SkillManager:
             revision_needed_count=len(pending),
             revision_priority_bumped=bumped,
             high_priority_revisions=high_priority,
+            promoted_from_draft=promoted,
         )
 
     def process_deep_skills(self, agent_id: UUID) -> DeepSkillSummary:
@@ -533,15 +601,121 @@ class SkillManager:
                     skill.sessions_since_use,
                 )
 
-            # Auto-pin: skill used enough times in recent window
-            # Simplified: check if invocations_count justifies auto-pin
-            # (full window tracking would require per-session history query)
-            if (
-                not skill.auto_pinned
-                and not skill.user_pinned
-                and skill.invocations_count >= self._config.auto_pin_threshold_uses
-            ):
-                self._store.update_pinning(skill.id, auto_pinned=True)
-                _log.info(
-                    "Auto-pinned skill '%s' (%d invocations)", skill.name, skill.invocations_count
+            # Auto-pin: skill used in ≥ threshold sessions within a sliding window.
+            # Design §2/§16: "≥ auto_pin_threshold_uses sessions in last
+            # auto_pin_threshold_sessions sessions".
+            if not skill.auto_pinned and not skill.user_pinned:
+                try:
+                    sessions_used = self._store.count_invocations_in_last_n_sessions(
+                        skill.id,
+                        agent_id,
+                        self._config.auto_pin_threshold_sessions,
+                    )
+                except Exception as exc:
+                    _log.warning(
+                        "_recalculate_pinning: window count failed for '%s': %s",
+                        skill.name,
+                        exc,
+                    )
+                    sessions_used = 0
+
+                if sessions_used >= self._config.auto_pin_threshold_uses:
+                    self._store.update_pinning(skill.id, auto_pinned=True)
+                    _log.info(
+                        "Auto-pinned skill '%s' (used in %d of last %d sessions)",
+                        skill.name,
+                        sessions_used,
+                        self._config.auto_pin_threshold_sessions,
+                    )
+
+    # ── Behavioral hint collection (§7 Phase 3) ──────────────────────────────
+
+    # Positive patterns: short affirmations and acknowledgements
+    _POSITIVE_PATTERNS = frozenset(
+        [
+            "ok",
+            "ок",
+            "окей",
+            "спасибо",
+            "благодарю",
+            "thanks",
+            "thank you",
+            "работает",
+            "работало",
+            "сработало",
+            "works",
+            "worked",
+            "great",
+            "отлично",
+            "хорошо",
+            "good",
+            "perfect",
+            "yes",
+            "да",
+            "👍",
+        ]
+    )
+    # Negative patterns: explicit rejection or repetition of the same request
+    _NEGATIVE_PATTERNS = frozenset(
+        [
+            "нет",
+            "no",
+            "не работает",
+            "not working",
+            "wrong",
+            "неверно",
+            "неправильно",
+            "ошибка",
+            "error",
+            "broken",
+            "failed",
+            "fail",
+            "не то",
+            "not that",
+        ]
+    )
+
+    def collect_behavioral_hints_from_message(
+        self,
+        message: str,
+        agent_id: UUID,
+        session_id: UUID,
+    ) -> None:
+        """Scan user message for positive/negative feedback and record hints.
+
+        Called at start of each runner turn before agent.run() so reactions
+        to the previous turn's skill use are captured.
+        """
+        if not message or not message.strip():
+            return
+
+        open_invocations = self._store.get_unprocessed_invocations(agent_id, session_id)
+        if not open_invocations:
+            return
+
+        text_lower = message.lower()
+        hint: str | None = None
+
+        for pattern in self._POSITIVE_PATTERNS:
+            if _message_contains_hint_pattern(text_lower, pattern):
+                # Substrings must match _determine_final_status (helped / didnt_help).
+                hint = "user_helped_signal"
+                break
+        if hint is None:
+            for pattern in self._NEGATIVE_PATTERNS:
+                if _message_contains_hint_pattern(text_lower, pattern):
+                    hint = "user_didnt_help_signal"
+                    break
+
+        if hint is None:
+            return
+
+        for inv in open_invocations:
+            try:
+                self._store.append_behavioral_hint(inv.id, hint)
+            except Exception as exc:
+                _log.debug(
+                    "collect_behavioral_hints: append failed for invocation %s: %s",
+                    inv.id,
+                    exc,
                 )

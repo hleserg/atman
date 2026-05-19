@@ -23,6 +23,7 @@ from atman.core.ports.reflection_overload_alert import (
 )
 from atman.core.ports.reflection_request_queue import ReflectionRequestQueue
 from atman.core.ports.self_applied_changes import SelfAppliedChangeStore
+from atman.core.ports.skill_manager import SkillManagerPort
 from atman.core.ports.state_store import (
     DateRangeQuery,
     DepthQuery,
@@ -57,6 +58,7 @@ __all__ = [
     "ReflectionRequestQueue",
     "SelfAppliedChangeStore",
     "SessionExperienceQuery",
+    "SkillManagerPort",
     "StateStore",
     "UsageType",
     "ValuesTouchedQuery",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from collections.abc import Callable
@@ -74,5 +75,15 @@ def make_slog_hook(events_store: list[dict]) -> Callable[[str, dict], None]:
 
 
 def install_slog_hook(events_store: list[dict]) -> None:
-    """Register the slog hook globally (overwrites any previous hook)."""
-    session_log.set_display_hook(make_slog_hook(events_store))
+    """Register the slog hook, chaining with any existing display hook (e.g. Sentry)."""
+    ui_hook = make_slog_hook(events_store)
+    previous = session_log.get_display_hook()
+
+    def chained(event: str, data: dict) -> None:
+        if previous is not None:
+            with contextlib.suppress(Exception):
+                previous(event, data)
+        with contextlib.suppress(Exception):
+            ui_hook(event, data)
+
+    session_log.set_display_hook(chained)

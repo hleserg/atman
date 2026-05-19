@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from atman.core.ports.memory_guardian import MemoryGuardian
     from atman.core.ports.pending_human_review import PendingHumanReviewInbox
     from atman.core.ports.reflection_request_queue import ReflectionRequestQueue
+    from atman.core.ports.skill_manager import SkillManagerPort
     from atman.core.ports.state_store import StateStore
     from atman.core.services.ambient_memory_service import AmbientMemoryService
     from atman.core.services.identity_service import IdentityService
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from atman.core.services.reflection_overload_monitor import ReflectionOverloadMonitor
     from atman.core.services.reflection_service import MicroReflectionService
     from atman.core.services.session_manager import SessionManager
-    from atman.skills.port import SkillManagerPort
 
 
 @dataclass(frozen=True)

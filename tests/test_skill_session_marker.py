@@ -169,6 +169,6 @@ def test_noop_marker_returns_none(tmp_path: Path) -> None:
 
 
 def test_marker_satisfies_port_protocol() -> None:
-    from atman.skills.port import SkillManagerPort
+    from atman.core.ports.skill_manager import SkillManagerPort
 
     assert isinstance(NoopSkillManager(), SkillManagerPort)

@@ -50,6 +50,20 @@ def test_build_daily_reflection_service_reflects_empty_day(
     assert event.reflection_level == ReflectionLevel.DAILY
 
 
+def test_build_daily_reflection_service_survives_embedding_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    file_store_with_identity: tuple,
+) -> None:
+    def _raise() -> None:
+        raise RuntimeError("embedding backend unavailable")
+
+    monkeypatch.setattr("atman.config.build_embedding_adapter", _raise)
+
+    agent_id, store = file_store_with_identity
+    service = build_daily_reflection_service(agent_id, store)
+    assert isinstance(service, DailyReflectionService)
+
+
 def test_build_daily_reflection_service_falls_back_when_postgres_entity_adapters_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
