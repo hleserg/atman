@@ -1,0 +1,24 @@
+# Thresholds for codemap quality gates and component status assessment
+component_status:
+  # A component is "implemented" (green checkmark) when:
+  # - directory exists
+  # - has at least 1 non-stub adapter (heuristic: >1 non-empty py file with a class)
+  # - test count > 0
+  min_py_files_for_implemented: 1
+  min_tests_for_implemented: 1
+
+# Classifier confidence thresholds for doc placement rules
+classifier:
+  high_confidence: 0.90   # AUTO-MOVE threshold
+  medium_confidence: 0.70  # SUGGEST threshold
+  low_confidence: 0.50     # IGNORE threshold
+
+# TODO/FIXME counts that trigger warnings
+todos:
+  warn_per_component: 10
+  error_per_component: 25
+
+# Snapshot diff thresholds
+snapshots:
+  max_class_delta_warn: 5    # Warn if > N classes added/removed in one run
+  max_function_delta_warn: 10
