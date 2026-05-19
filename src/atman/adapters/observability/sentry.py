@@ -123,7 +123,7 @@ def install_slog_breadcrumb_hook() -> None:
 
     _previous = get_display_hook()
 
-    def _breadcrumb_hook(event: str, data: dict) -> None:
+    def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
         if _initialized:
             try:
                 import sentry_sdk
@@ -258,7 +258,7 @@ def metric_distribution(
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.distribution(name, value, unit=unit, tags=tags or {})
+        sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=tags or {})
     except Exception:
         pass
 
@@ -270,7 +270,7 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.gauge(name, value, tags=tags or {})
+        sentry_sdk.metrics.gauge(name, value, attributes=tags or {})
     except Exception:
         pass
 
@@ -282,7 +282,7 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.incr(name, value, tags=tags or {})
+        sentry_sdk.metrics.count(name, value, attributes=tags or {})
     except Exception:
         pass
 

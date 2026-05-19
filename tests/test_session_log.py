@@ -34,3 +34,19 @@ def test_slog_writes_json_line_when_enabled(
     payload = json.loads(lines[0])
     assert payload["event"] == "hello"
     assert payload["answer"] == 42
+
+
+def test_get_display_hook_returns_registered_hook() -> None:
+    seen: list[tuple[str, dict[str, object]]] = []
+
+    def hook(event: str, data: dict[str, object]) -> None:
+        seen.append((event, data))
+
+    session_log.set_display_hook(hook)
+    try:
+        assert session_log.get_display_hook() is hook
+        session_log.slog("hooked", value=1)
+        assert seen and seen[0][0] == "hooked"
+    finally:
+        session_log.set_display_hook(None)
+        assert session_log.get_display_hook() is None
