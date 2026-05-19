@@ -64,6 +64,7 @@ def _init(dsn: str, environment: str = "production", release: str | None = None)
         ],
         send_default_pii=False,
         max_breadcrumbs=200,
+        enable_logs=True,
     )
     _initialized = True
     _LOG.info("Sentry initialized (env=%s, sample_rate=%.2f)", environment, sample_rate)
@@ -127,13 +128,21 @@ def install_slog_breadcrumb_hook() -> None:
         if _initialized:
             try:
                 import sentry_sdk
+                import sentry_sdk.logger as _sl
 
-                level = "error" if event == "job_failed" else "info"
+                attrs = {k: str(v) for k, v in data.items() if k != "ts"}
+                attrs["event"] = event
+                if event == "job_failed":
+                    _sl.error("atman.{event}", event=event, attributes=attrs)
+                elif event in ("session_error", "reflect_error"):
+                    _sl.warning("atman.{event}", event=event, attributes=attrs)
+                else:
+                    _sl.info("atman.{event}", event=event, attributes=attrs)
                 sentry_sdk.add_breadcrumb(
                     category=f"atman.{event}",
                     message=event,
-                    level=level,
-                    data={k: v for k, v in data.items() if k != "ts"},
+                    level="error" if event == "job_failed" else "info",
+                    data=attrs,
                 )
             except Exception:  # nosec B110 — observability helpers must never raise
                 pass
