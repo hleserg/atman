@@ -23,6 +23,7 @@ from atman.core.services.reflection_overload_monitor import ReflectionOverloadMo
 _LOG = logging.getLogger(__name__)
 
 from atman.core.session_log import slog as _slog  # noqa: E402
+from atman.observability.spans import job_scope as _job_scope  # noqa: E402
 
 
 class _DispatchOutcome(Enum):
@@ -76,12 +77,6 @@ class MaintenanceWorker:
     def _dispatch(self, job: MaintenanceJob) -> None:
         import time as _time
 
-        try:
-            import sentry_sdk as _sentry
-            _isolation_scope = _sentry.isolation_scope
-        except Exception:
-            from contextlib import nullcontext as _isolation_scope  # type: ignore[assignment]
-
         _t0 = _time.monotonic()
         _slog(
             "job_start",
@@ -90,15 +85,13 @@ class MaintenanceWorker:
             agent_id=str(job.payload.get("agent_id", "")),
             payload_keys=list(job.payload.keys()),
         )
-        with _isolation_scope() as scope:
-            try:
-                if scope is not None:
-                    scope.set_tag("job.name", job.job_name.value)
-                    scope.set_tag("job.id", str(job.id))
-                    if job.agent_id is not None:
-                        scope.set_tag("agent_id", str(job.agent_id))
-            except Exception:
-                pass
+        _tags: dict[str, str] = {
+            "job.name": job.job_name.value,
+            "job.id": str(job.id),
+        }
+        if job.agent_id is not None:
+            _tags["agent_id"] = str(job.agent_id)
+        with _job_scope(_tags):
             try:
                 outcome, result = self._handle(job)
                 elapsed_ms = round((_time.monotonic() - _t0) * 1000)
