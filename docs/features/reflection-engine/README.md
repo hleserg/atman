@@ -45,18 +45,25 @@ Runs weekly or on demand. Performs full structural analysis: entity relation map
 ## Public API
 
 ```python
-# Micro reflection — run after session close
-await micro_service.run(agent_id=agent_id, session_id=session_id)
+from uuid import UUID
+from datetime import datetime, timezone
 
-# Daily reflection — detect patterns
-result = await daily_service.run(agent_id=agent_id)
-for pattern in result.new_patterns:
+# Micro reflection — run after session close (synchronous)
+event = micro_service.reflect(session_id=session_id, agent_id=agent_id)
+
+# Daily reflection — detect patterns for a given day
+event = daily_service.reflect(date=datetime.now(timezone.utc))
+for pattern in event.patterns_detected:
     print(pattern.type, pattern.status, pattern.confidence)
 
-# Deep reflection — full analysis
-result = await deep_service.run(agent_id=agent_id)
-print(result.health_assessment.overall_score)
+# Deep reflection — full structural analysis over a time window
+event = deep_service.reflect(
+    since=datetime(2026, 5, 1, tzinfo=timezone.utc),
+    until=datetime(2026, 5, 19, tzinfo=timezone.utc),
+)
 ```
+
+All methods are synchronous.
 
 ## Configuration
 

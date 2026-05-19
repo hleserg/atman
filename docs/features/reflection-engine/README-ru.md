@@ -45,18 +45,25 @@
 ## Публичный API
 
 ```python
-# Micro рефлексия — запустить после закрытия сессии
-await micro_service.run(agent_id=agent_id, session_id=session_id)
+from uuid import UUID
+from datetime import datetime, timezone
 
-# Daily рефлексия — обнаружение паттернов
-result = await daily_service.run(agent_id=agent_id)
-for pattern in result.new_patterns:
+# Micro рефлексия — запустить после закрытия сессии (синхронно)
+event = micro_service.reflect(session_id=session_id, agent_id=agent_id)
+
+# Daily рефлексия — обнаружение паттернов за день
+event = daily_service.reflect(date=datetime.now(timezone.utc))
+for pattern in event.patterns_detected:
     print(pattern.type, pattern.status, pattern.confidence)
 
-# Deep рефлексия — полный анализ
-result = await deep_service.run(agent_id=agent_id)
-print(result.health_assessment.overall_score)
+# Deep рефлексия — полный структурный анализ за период
+event = deep_service.reflect(
+    since=datetime(2026, 5, 1, tzinfo=timezone.utc),
+    until=datetime(2026, 5, 19, tzinfo=timezone.utc),
+)
 ```
+
+Все методы синхронные.
 
 ## Конфигурация
 

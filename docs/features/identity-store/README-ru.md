@@ -85,6 +85,6 @@ snapshot = identity_service.create_snapshot(agent_id, description="до рефл
 # Добавление нового принципа
 identity = identity_service.add_principle(
     agent_id,
-    Principle(text="Всегда уточнять перед предположениями.", source="reflection")
+    Principle(statement="Всегда уточнять перед предположениями.")
 )
 ```

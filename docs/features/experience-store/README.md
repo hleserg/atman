@@ -12,7 +12,7 @@ Experiences are the raw material for reflection. `MicroReflectionService` reads 
 
 **`KeyMoment`** — a first-class standalone record representing a significant moment within a session. Has a salience score that decays over time. Two key methods:
 - `mark_accessed()` — call when this moment is retrieved; updates last-accessed timestamp
-- `calculate_current_salience(now)` — returns current salience value accounting for time decay
+- `calculate_current_salience(current_time)` — returns current salience value accounting for time decay
 
 **`SessionExperience`** — a read-only view over a closed session, assembled from its key moments and metadata. Not mutated after session close.
 
@@ -101,6 +101,6 @@ experiences = experience_service.list_recent(limit=5)
 
 # Check current salience of a stored moment
 moment = state_store.get_key_moment(moment_id)
-current_salience = moment.calculate_current_salience(now=datetime.now(timezone.utc))
+current_salience = moment.calculate_current_salience(current_time=datetime.now(timezone.utc))
 moment.mark_accessed()
 ```

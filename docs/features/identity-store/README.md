@@ -85,6 +85,6 @@ snapshot = identity_service.create_snapshot(agent_id, description="pre-reflectio
 # Add a new principle
 identity = identity_service.add_principle(
     agent_id,
-    Principle(text="Always clarify before assuming.", source="reflection")
+    Principle(statement="Always clarify before assuming.")
 )
 ```
