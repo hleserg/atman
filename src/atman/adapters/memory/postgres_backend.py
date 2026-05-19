@@ -41,6 +41,7 @@ from atman.core.models.fact import FactRecord, FactStatus, Relation
 from atman.core.ports import FactualMemory
 from atman.core.ports.embedding import EmbeddingPort
 from atman.core.session_log import slog as _slog
+from atman.observability.spans import db_span
 
 _FACT_SELECT = """
     SELECT
@@ -329,10 +330,11 @@ class PostgresFactualMemory(FactualMemory):
 
         agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
 
-        with conn.cursor() as cur:
-            self._insert_fact_rows(cur, record, agent_id)
+        with db_span("postgresql", "insert", collection="facts"):
+            with conn.cursor() as cur:
+                self._insert_fact_rows(cur, record, agent_id)
 
-        conn.commit()
+            conn.commit()
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
 
@@ -417,10 +419,11 @@ class PostgresFactualMemory(FactualMemory):
 
         where_sql = " AND ".join(conditions) if conditions else "TRUE"
 
-        with conn.cursor() as cur:
-            rows = self._load_rows(cur, where_sql, params, order_sql, limit)
-
-        conn.commit()
+        with db_span("postgresql", "query", collection="facts") as span:
+            span.set_data("db.query.mode", "vector" if (query and vec is not None) else "text" if query else "salience")
+            with conn.cursor() as cur:
+                rows = self._load_rows(cur, where_sql, params, order_sql, limit)
+            conn.commit()
         return rows
 
     def invalidate_fact(

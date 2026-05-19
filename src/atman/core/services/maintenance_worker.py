@@ -76,6 +76,12 @@ class MaintenanceWorker:
     def _dispatch(self, job: MaintenanceJob) -> None:
         import time as _time
 
+        try:
+            import sentry_sdk as _sentry
+            _isolation_scope = _sentry.isolation_scope
+        except Exception:
+            from contextlib import nullcontext as _isolation_scope  # type: ignore[assignment]
+
         _t0 = _time.monotonic()
         _slog(
             "job_start",
@@ -84,34 +90,42 @@ class MaintenanceWorker:
             agent_id=str(job.payload.get("agent_id", "")),
             payload_keys=list(job.payload.keys()),
         )
-        try:
-            outcome, result = self._handle(job)
-            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
-            # _handle returns SKIPPED when it has already called mark_skipped
-            # (e.g. unknown job type). Only call mark_done for DONE outcomes.
-            # This avoids relying on object-identity mutations of `job.status`,
-            # which would break under DB-backed queues that don't share state.
-            if outcome is _DispatchOutcome.DONE:
-                self._queue.mark_done(job.id, result=result)
-            _slog(
-                "job_done",
-                job_id=str(job.id),
-                job_name=job.job_name.value,
-                outcome=outcome.value,
-                result=result,
-                elapsed_ms=elapsed_ms,
-            )
-        except Exception as exc:
-            elapsed_ms = round((_time.monotonic() - _t0) * 1000)
-            _LOG.exception("maintenance job %s failed", job.id)
-            self._queue.mark_failed(job.id, error=str(exc))
-            _slog(
-                "job_failed",
-                job_id=str(job.id),
-                job_name=job.job_name.value,
-                error=str(exc),
-                elapsed_ms=elapsed_ms,
-            )
+        with _isolation_scope() as scope:
+            try:
+                scope.set_tag("job.name", job.job_name.value)
+                scope.set_tag("job.id", str(job.id))
+                if job.agent_id is not None:
+                    scope.set_tag("agent_id", str(job.agent_id))
+            except Exception:
+                pass
+            try:
+                outcome, result = self._handle(job)
+                elapsed_ms = round((_time.monotonic() - _t0) * 1000)
+                # _handle returns SKIPPED when it has already called mark_skipped
+                # (e.g. unknown job type). Only call mark_done for DONE outcomes.
+                # This avoids relying on object-identity mutations of `job.status`,
+                # which would break under DB-backed queues that don't share state.
+                if outcome is _DispatchOutcome.DONE:
+                    self._queue.mark_done(job.id, result=result)
+                _slog(
+                    "job_done",
+                    job_id=str(job.id),
+                    job_name=job.job_name.value,
+                    outcome=outcome.value,
+                    result=result,
+                    elapsed_ms=elapsed_ms,
+                )
+            except Exception as exc:
+                elapsed_ms = round((_time.monotonic() - _t0) * 1000)
+                _LOG.exception("maintenance job %s failed", job.id)
+                self._queue.mark_failed(job.id, error=str(exc))
+                _slog(
+                    "job_failed",
+                    job_id=str(job.id),
+                    job_name=job.job_name.value,
+                    error=str(exc),
+                    elapsed_ms=elapsed_ms,
+                )
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:

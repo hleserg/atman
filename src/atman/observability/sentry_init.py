@@ -41,7 +41,9 @@ def init_observability(level: str | None = None) -> None:
     global _initialized, _current_level
 
     if level is None:
-        level = os.getenv("ATMAN_OBS_LEVEL", "minimal")
+        level = os.getenv("ATMAN_OBS_LEVEL", "minimal").strip().lower()
+    else:
+        level = level.strip().lower()
 
     # True no-op — must not import sentry_sdk at all
     if level == "off":
