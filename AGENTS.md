@@ -322,6 +322,8 @@ Rules:
 <!-- Updated automatically by `make codemap`. Do not edit. -->
 - **architecture/**
   - **ADR/**
+      - `ADR-001-production-isolation-ru.md` — ADR-001 — Изоляция продакшена (пространство имён eval)
+      - `ADR-001-production-isolation.md` — ADR-001 — Production Isolation (eval namespace)
       - `README.md` — Architecture Decision Records
   - **codemap/**
       - `DELTA_REPORT.md` — Codemap Delta Report
@@ -329,8 +331,8 @@ Rules:
       - `STARTUP_DEPS.md` — Startup Dependencies
       - `TEST_ENV.md` — Test Environment
       - `UNDOCUMENTED.md` — Undocumented Public API
-    - `SYSTEM-ru.md` — Source: SYSTEM.md
-    - `SYSTEM.md` — Source: SYSTEM.md
+    - `SYSTEM-ru.md` — Atman — Архитектура системы
+    - `SYSTEM.md` — Atman — System Architecture
     - `SYSTEM_MAP-ru.md` — Карта системы Atman
     - `SYSTEM_MAP.md` — Atman System Map
 - **archive/**
@@ -408,17 +410,17 @@ Rules:
       - `README-ru.md` — E1 Evaluation Runner Framework
       - `README.md` — E1 Evaluation Runner Framework
   - **experience-store/**
-      - `README-ru.md` — Experience Store — рабочий пакет 02
-      - `README.md` — Experience Store - Work Package 02
+      - `README-ru.md` — Experience Store (Хранилище опыта)
+      - `README.md` — Experience Store
   - **factual-memory/**
-      - `README-ru.md` — Atman — Factual Memory Adapter
-      - `README.md` — Factual Memory Adapter
+      - `README-ru.md` — Factual Memory (Фактическая память)
+      - `README.md` — Factual Memory
   - **full-corpus-demo/**
       - `README-ru.md` — Демо полного корпуса
       - `README.md` — Full corpus demo
   - **identity-store/**
-      - `README-ru.md` — Identity Store: Руководство по функционалу WP-03
-      - `README.md` — Identity Store: WP-03 Feature Guide
+      - `README-ru.md` — Identity Store (Хранилище идентичности)
+      - `README.md` — Identity Store
   - **observability/**
       - `README-ru.md` — Observability (Sentry)
       - `README.md` — Observability (Sentry)
@@ -436,7 +438,11 @@ Rules:
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
 - **ops/**
+    - `INSTALLATION-ru.md` — Установка Atman
+    - `INSTALLATION.md` — Installing Atman
     - `README.md` — docs/ops — Operational Documentation
+    - `SENTRY_SETUP-ru.md` — Настройка Sentry
+    - `SENTRY_SETUP.md` — Sentry Setup
 - **pic/**
 - **research/**
 <!-- codemap:auto:end -->

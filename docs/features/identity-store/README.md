@@ -1,302 +1,90 @@
-# Identity Store: WP-03 Feature Guide
+# Identity Store
 
-**Status:** Implemented
-**Work Package:** [03-identity-and-narrative.md](../../development/work-packages/03-identity-and-narrative.md)
+> **Russian:** [README-ru.md](README-ru.md)
 
----
+## What It Does
 
-## Overview
+Identity Store is the agent's structured self-representation. It holds what the agent considers true about itself: its values, habits, principles, goals, and open questions. The identity is not static — it evolves through reflection and can be updated in response to what the agent learns about itself.
 
-Identity Store is Atman's module for **living self-representation**. It provides:
+## Key Concepts
 
-- **Honest bootstrap identity** — no fake seeded principles or values
-- **Structured identity** — values, habits, principles, goals, open questions
-- **Eigenstate** — emotional-cognitive state at session end
-- **Self-narrative** — three-layer first-person document for session start
-- **Explicit lifecycle** — snapshots, archiving, first-person validation
+**`Identity`** — the root record. Aggregates all identity components for a given agent.
 
-## Key Principles
+**`CoreValue`** — a fundamental value the agent holds (e.g., honesty, care, precision). Values have weight and are not changed lightly.
 
-### 1. Bootstrap Honesty
+**`Habit`** — a recurring behavioral pattern, positive or negative. Observed over time through experience.
 
-Bootstrap creates **genuinely empty identity** with honest self-description about lack of data:
+**`Principle`** — an actionable rule derived from values (e.g., "Always clarify before assuming").
 
-```python
-identity = Identity(
-    self_description="I am in the earliest stage of existence. "
-                    "I have no accumulated experience yet...",
-    core_values=[],      # Empty - no fake data
-    habits=[],           # Empty - no invented patterns
-    principles=[],       # Empty - no seeded guidelines
-    goals=[],
-    open_questions=[...] # Honest questions about self
-)
-```
+**`Goal`** — a current objective the agent is working toward. Can be short-term or long-term.
 
-❌ **Wrong:** Pre-seeding with "be helpful", "serve user", etc.
-✅ **Right:** Empty state with honest acknowledgment
+**`OpenQuestion`** — something the agent is genuinely uncertain about, tracked for ongoing reflection.
 
-### 2. Separation of Concerns
+**`IdentitySnapshot`** — a point-in-time frozen copy of the full identity state. Created before reflection-driven updates so they can be reverted.
 
-- **Values** — fundamental importance ("honesty", "competence")
-- **Habits** — observed behavior patterns (descriptive, not prescriptive)
-- **Principles** — consciously chosen guidelines (normative, not descriptive)
-- **Goals** — objectives (agent-owned or user-owned)
+**`HelpfulnessLevel`** — a structured descriptor of the agent's current disposition toward helpfulness.
 
-### 3. Three-Layer Narrative
+## Public API
 
-Self-narrative has explicit structure:
-
-- **CORE LAYER** — stable identity, rarely changes
-- **RECENT LAYER** — ephemeral, replaced after each session
-- **THREADS** — ongoing storylines, must be explicitly closed
-
-### 4. First-Person Validation
-
-Narrative content must be first-person:
-
-❌ **Wrong:** "The agent learned something today"
-✅ **Right:** "I learned something today"
-
-## Architecture
-
-```text
-┌─────────────────────────────────────┐
-│         Identity Service            │
-│   (bootstrap, update, snapshot)     │
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│        Narrative Service            │
-│   (render, validate, archive)       │
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│       FileStateStore                │
-│   (persistence adapter)             │
-└─────────────────────────────────────┘
-```
-
-### Models
-
-- `Identity` — complete self-representation
-- `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`
-- `IdentitySnapshot` — versioned history
-- `Eigenstate` — session end state
-- `NarrativeDocument` — three-layer structure
-- `NarrativeThread` — ongoing storyline
-
-## Usage
-
-### Bootstrap Identity
-
-```bash
-# Create new identity
-atman-identity init --workspace ./my-workspace
-
-# With specific agent ID
-atman-identity init --workspace ./my-workspace --agent-id <uuid>
-```
-
-### Show Identity
-
-```bash
-atman-identity show --workspace ./my-workspace --agent-id <uuid>
-```
-
-### Create Snapshot
-
-```bash
-atman-identity snapshot \
-  --workspace ./my-workspace \
-  --agent-id <uuid> \
-  --description "Manual checkpoint"
-```
-
-### Render Narrative
-
-```bash
-# From identity only
-atman-identity render --workspace ./my-workspace --agent-id <uuid>
-
-# From identity + eigenstate
-atman-identity render \
-  --workspace ./my-workspace \
-  --agent-id <uuid> \
-  --eigenstate fixtures/eigenstate_sample.json
-```
-
-### Validate Narrative
-
-```bash
-atman-identity validate ./my-workspace/NARRATIVE.md
-```
-
-## Demo
-
-Run reproducible walkthrough:
-
-```bash
-make demo-identity         # With pauses
-make demo-identity-fast    # Instant output
-```
-
-Demo shows:
-
-1. Bootstrap honest empty identity
-2. Add values, habits, principles, goals
-3. Create snapshots
-4. Generate three-layer narrative
-5. Update from eigenstate
-6. Add and close threads
-7. Render and validate NARRATIVE.md
-
-## Storage Layout
-
-```text
-workspace/
-├── identity.json                # Current identity
-├── identity_snapshots/          # Versioned history
-│   └── <snapshot-id>.json
-├── narrative.json               # Current narrative
-├── narrative_archive/           # Old narratives
-│   └── <narrative-id>_<timestamp>.json
-├── eigenstate.json              # Latest eigenstate
-├── NARRATIVE.md                 # Rendered markdown
-└── experiences/                 # Experience records
-    └── <experience-id>.json
-```
-
-## Testing
-
-Key test coverage:
-
-- ✓ Bootstrap creates honest empty identity
-- ✓ No fake seeded principles or values
-- ✓ Snapshots are immutable
-- ✓ Narrative has mandatory sections (CORE, RECENT)
-- ✓ First-person validation rejects third-person
-- ✓ Recent layer replaces, core layer preserved
-- ✓ Threads must be explicitly closed
-
-Run tests:
-
-```bash
-pytest tests/test_identity_models.py -v
-pytest tests/test_narrative_models.py -v
-pytest tests/test_identity_service.py -v
-pytest tests/test_narrative_service.py -v
-```
-
-## Integration
-
-### From Code
+`IdentityService` manages the full lifecycle:
 
 ```python
-from pathlib import Path
-from uuid import uuid4
-from atman.adapters.storage import FileStateStore
-from atman.core.services import IdentityService, NarrativeService
-from atman.core.models import CoreValue, Principle, Eigenstate
+class IdentityService:
+    def bootstrap_identity(self, agent_id: UUID) -> Identity: ...
+    def get_identity(self, agent_id: UUID) -> Identity | None: ...
+    def add_core_value(self, agent_id: UUID, value: CoreValue) -> Identity: ...
+    def add_principle(self, agent_id: UUID, principle: Principle) -> Identity: ...
+    def add_habit(self, agent_id: UUID, habit: Habit) -> Identity: ...
+    def add_goal(self, agent_id: UUID, goal: Goal) -> Identity: ...
+    def create_snapshot(self, agent_id: UUID, description: str) -> IdentitySnapshot: ...
+    def apply_self_change(self, agent_id: UUID, target_kind: SelfChangeTargetKind, payload: Any, source: SelfChangeSource) -> SelfAppliedChange: ...
+    def revert_self_change(self, agent_id: UUID, change_id: UUID) -> Identity: ...
+```
 
-# Initialize
-workspace = Path("./my-workspace")
-store = FileStateStore(workspace)
-identity_service = IdentityService(store)
-narrative_service = NarrativeService(store)
+All methods are synchronous. `apply_self_change` and `revert_self_change` are called by `DeepReflectionService` when the reflection model proposes changes to the agent's self-understanding.
 
-# Bootstrap
-agent_id = uuid4()
+Identity is persisted via the `StateStore` port.
+
+## Configuration
+
+Uses the shared `StateStore` backend:
+
+| `ATMAN_MEMORY_BACKEND` | Backend |
+|------------------------|---------|
+| `inmemory` | `InMemoryStateStore` |
+| `file` (default) | `FileStateStore` — one JSON file per identity record |
+| `postgres` | `PostgresStateStore` |
+
+## Example Usage
+
+```bash
+# Run the identity demo
+make demo-identity
+
+# CLI
+python -m atman.cli_identity
+```
+
+Programmatic usage:
+
+```python
+from uuid import UUID
+
+agent_id = UUID("...")
+
+# Bootstrap a new agent identity
 identity = identity_service.bootstrap_identity(agent_id)
 
-# Add value
-value = CoreValue(
-    name="honesty",
-    description="Being truthful",
-    confidence=0.8
-)
-identity = identity_service.add_core_value(agent_id, value)
+# Inspect current values
+for value in identity.core_values:
+    print(value.name, value.confidence)
 
-# Create narrative
-narrative = narrative_service.create_narrative(identity)
+# Snapshot before reflection applies changes
+snapshot = identity_service.create_snapshot(agent_id, description="pre-reflection")
 
-# Render to file
-output = workspace / "NARRATIVE.md"
-narrative_service.render_to_file(identity.id, output)
-```
-
-### Session Lifecycle Integration
-
-```python
-# At session start
-narrative = narrative_service.get_narrative(agent_id)
-markdown = narrative.render_markdown()
-# -> Feed to agent as context
-
-# At session end
-eigenstate = Eigenstate(
-    session_id=session_id,
-    emotional_tone=0.3,
-    session_summary="...",
-    open_threads=["..."]
-)
-store.save_eigenstate(eigenstate)
-
-# Update narrative
-identity = identity_service.get_identity(agent_id)
-narrative = narrative_service.update_from_identity_and_eigenstate(
-    identity, eigenstate
+# Add a new principle
+identity = identity_service.add_principle(
+    agent_id,
+    Principle(statement="Always clarify before assuming.")
 )
 ```
-
-## Invariants
-
-### Identity
-
-- Bootstrap creates empty identity with honest self-description
-- No fake seeded values or principles
-- Schema version tracked for migrations
-- Timestamps for created_at and updated_at
-
-### Snapshots
-
-- Created on significant changes (values, principles, baseline shift)
-- Immutable — preserve state at point in time
-- Include change summary
-
-### Narrative
-
-- Three layers: CORE, RECENT, THREADS
-- CORE layer stable, rarely changes
-- RECENT layer ephemeral, replaced each session
-- Threads must be explicitly closed (with reason)
-- Content validated for first-person style
-
-### Eigenstate
-
-- Captured at session end
-- Records emotional tone, cognitive load, open threads
-- Used to update narrative
-
-## Future Integration
-
-This module is designed to integrate with:
-
-- **Experience Store** (WP-02) — identity built from real experience
-- **Reflection Engine** — deep analysis updates identity
-- **Session Manager** — uses narrative at session start, saves eigenstate at end
-- **Reality Anchor** — uses identity to detect drift
-
-See `docs/architecture/SYSTEM.md` for full integration picture.
-
-## References
-
-- Work Package: [03-identity-and-narrative.md](../../development/work-packages/03-identity-and-narrative.md)
-- Architecture: [SYSTEM.md](../../architecture/SYSTEM.md)
-- Development Standard: [DEVELOPMENT_STANDARD.md](../../development/DEVELOPMENT_STANDARD.md)
-
----
-
-**Next:** See [Russian version (README-ru.md)](./README-ru.md)
