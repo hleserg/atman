@@ -145,13 +145,11 @@ def build_deps(
 
     # Initialize Sentry once at the composition root if SENTRY_DSN is configured.
     # No-op when the env var is absent — all observability calls degrade gracefully.
-    from atman.adapters.observability.sentry import (
-        init_sentry_from_env,
-        install_slog_breadcrumb_hook,
-        set_agent_scope,
-    )
+    from atman.adapters.observability.sentry import install_slog_breadcrumb_hook, set_agent_scope
+    from atman.observability import init_observability, is_enabled
 
-    if init_sentry_from_env():
+    init_observability()
+    if is_enabled():
         set_agent_scope(str(agent_id))
         install_slog_breadcrumb_hook()
 

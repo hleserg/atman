@@ -9,7 +9,7 @@ returns a no-op span automatically in that case.
 
 Recognised by the instrumentation scanner (P3.1) via INSTRUMENTATION_MARKERS:
     ai_chat_span, ai_embeddings_span, ai_rerank_span, memory_span, db_span,
-    cron_span
+    cron_span, pipeline_span
 """
 
 from __future__ import annotations
@@ -97,6 +97,19 @@ def db_span(
             span.set_data("db.collection", collection)
         for key, value in data.items():
             span.set_data(key, value)
+        yield span
+
+
+@contextmanager
+def pipeline_span(op: str, description: str = "") -> Generator[Any, None, None]:
+    """Generic span for an internal pipeline stage (NER, RAG, affect, etc.).
+
+    Use the specific helpers (ai_chat_span, memory_span, db_span) where possible.
+    pipeline_span is the escape hatch for stages that don't map to a named helper.
+    """
+    import sentry_sdk
+
+    with sentry_sdk.start_span(op=op, description=description or op) as span:
         yield span
 
 
