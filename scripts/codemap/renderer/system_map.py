@@ -27,9 +27,10 @@ def _render_modules_table(files: list[FileMetadata], repo_root: Path) -> str:
         rel = Path(fm.path)
         with contextlib.suppress(ValueError):
             rel = rel.relative_to(repo_root / "src" / "atman")
+        rel_posix = rel.as_posix()
         classes = ", ".join(f"`{c.name}`" for c in fm.public_classes[:6])
         ports = ", ".join(f"`{p.name}`" for p in fm.ports[:4])
-        lines.append(f"| `{rel}` | {classes} | {ports} |")
+        lines.append(f"| `{rel_posix}` | {classes} | {ports} |")
     if len(lines) == 2:
         lines.append("| *(none)* | — | — |")
     return "\n".join(lines)
