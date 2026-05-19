@@ -178,7 +178,7 @@ def walk_file(path: Path) -> FileMetadata:
 
     meta.imports_external = _extract_external_imports(tree)
 
-    for node in ast.walk(tree):
+    for node in tree.body:
         # Schema versions: top-level assignments SCHEMA_VERSION = "x.y.z"
         if (
             isinstance(node, ast.Assign)

@@ -51,7 +51,7 @@ def parse_pyproject(path: Path) -> PyprojectInfo:
     )
 
     # Extract test paths from pytest config
-    pytest_cfg = data.get("tool", {}).get("pytest.ini_options", {})
+    pytest_cfg = data.get("tool", {}).get("pytest", {}).get("ini_options", {})
     info.test_paths = pytest_cfg.get("testpaths", [])
 
     return info

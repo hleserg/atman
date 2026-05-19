@@ -33,7 +33,9 @@ jobs:
         run: uv pip install --system -e ".[dev]"
 
       - name: Run codemap (update markers before sync)
-        run: python -m scripts.codemap --no-coverage --lang en
+        run: |
+          python -m scripts.codemap --no-coverage --lang en
+          python -m scripts.codemap agents
 
       - name: Sync site content
         run: make sync-site-content
