@@ -1,0 +1,24 @@
+{
+  "component_id": "web_dashboard",
+  "recorded_at": "2026-05-19T16:52:49.962326+00:00",
+  "class_names": [],
+  "function_names": [
+    "main",
+    "list_markdown_files",
+    "get_chat_deps",
+    "make_slog_hook",
+    "install_slog_hook",
+    "demo_subprocess_env",
+    "python_script_cmd",
+    "pytest_cmd",
+    "get_demo_command",
+    "run_command_async",
+    "run_command_sync"
+  ],
+  "port_names": [],
+  "pydantic_model_names": [],
+  "cli_commands": [],
+  "todo_count": 0,
+  "file_count": 10,
+  "schema_versions": []
+}
