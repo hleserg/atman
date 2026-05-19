@@ -419,6 +419,9 @@ Rules:
   - **identity-store/**
       - `README-ru.md` — Identity Store: Руководство по функционалу WP-03
       - `README.md` — Identity Store: WP-03 Feature Guide
+  - **observability/**
+      - `instrumentation-allowlist-rationale.md` — Instrumentation allowlist rationale
+      - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
   - **reflection-engine/**
       - `README-ru.md` — Движок рефлексии
       - `README.md` — Reflection Engine
