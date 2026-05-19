@@ -420,6 +420,8 @@ Rules:
       - `README-ru.md` — Identity Store: Руководство по функционалу WP-03
       - `README.md` — Identity Store: WP-03 Feature Guide
   - **observability/**
+      - `README-ru.md` — Observability (Sentry)
+      - `README.md` — Observability (Sentry)
       - `instrumentation-allowlist-rationale.md` — Instrumentation allowlist rationale
       - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
   - **reflection-engine/**
