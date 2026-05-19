@@ -436,8 +436,6 @@ Rules:
     - `README.md` — docs/ops — Operational Documentation
     - `SENTRY_SETUP-ru.md` — Настройка Sentry
     - `SENTRY_SETUP.md` — Sentry Setup
-    - `УСТАНОВКА-en.md` — Installing Atman
-    - `УСТАНОВКА.md` — Установка Atman
 - **pic/**
 - **research/**
 <!-- codemap:auto:end -->
