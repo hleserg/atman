@@ -43,17 +43,13 @@ def make_event_scrubber(level: str) -> Any:
 def _make_before_send(level: str) -> Any:
     """Factory for before_send callback (no-op filter for now; extensible)."""
 
-    def before_send(
-        event: dict[str, Any], hint: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
         return event
 
     return before_send
 
 
-_HEALTH_ROUTES: frozenset[str] = frozenset(
-    {"/health", "/healthz", "/metrics", "/livez", "/readyz"}
-)
+_HEALTH_ROUTES: frozenset[str] = frozenset({"/health", "/healthz", "/metrics", "/livez", "/readyz"})
 
 
 def _make_before_send_transaction(level: str) -> Any:

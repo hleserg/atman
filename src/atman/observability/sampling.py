@@ -19,9 +19,7 @@ def _traces_sampler(sampling_context: dict[str, Any]) -> float:
     falls back to 0.1 for everything else.
     """
     custom: dict[str, Any] = sampling_context.get("custom_sampling_context", {})
-    transaction_context: dict[str, Any] = sampling_context.get(
-        "transaction_context", {}
-    )
+    transaction_context: dict[str, Any] = sampling_context.get("transaction_context", {})
 
     if "gen_ai.operation.name" in custom:
         return 1.0

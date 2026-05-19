@@ -20,18 +20,14 @@ from typing import Any
 
 
 @contextmanager
-def ai_chat_span(
-    provider: str, model: str, *, op_name: str = "chat"
-) -> Generator[Any, None, None]:
+def ai_chat_span(provider: str, model: str, *, op_name: str = "chat") -> Generator[Any, None, None]:
     """Span for a single LLM chat completion.
 
     Sets gen_ai.operation.name, gen_ai.provider.name, gen_ai.request.model.
     """
     import sentry_sdk
 
-    with sentry_sdk.start_span(
-        op=f"gen_ai.{op_name}", name=f"{provider}/{model}"
-    ) as span:
+    with sentry_sdk.start_span(op=f"gen_ai.{op_name}", name=f"{provider}/{model}") as span:
         span.set_data("gen_ai.operation.name", op_name)
         span.set_data("gen_ai.provider.name", provider)
         span.set_data("gen_ai.request.model", model)
@@ -39,15 +35,11 @@ def ai_chat_span(
 
 
 @contextmanager
-def ai_embeddings_span(
-    provider: str, model: str
-) -> Generator[Any, None, None]:
+def ai_embeddings_span(provider: str, model: str) -> Generator[Any, None, None]:
     """Span for an embedding call (single batch)."""
     import sentry_sdk
 
-    with sentry_sdk.start_span(
-        op="gen_ai.embeddings", name=f"{provider}/{model}"
-    ) as span:
+    with sentry_sdk.start_span(op="gen_ai.embeddings", name=f"{provider}/{model}") as span:
         span.set_data("gen_ai.operation.name", "embeddings")
         span.set_data("gen_ai.provider.name", provider)
         span.set_data("gen_ai.request.model", model)
@@ -61,9 +53,7 @@ def ai_rerank_span(
     """Span for a reranking call."""
     import sentry_sdk
 
-    with sentry_sdk.start_span(
-        op="gen_ai.rerank", name=f"{provider}/{model}"
-    ) as span:
+    with sentry_sdk.start_span(op="gen_ai.rerank", name=f"{provider}/{model}") as span:
         span.set_data("gen_ai.operation.name", "rerank")
         span.set_data("gen_ai.provider.name", provider)
         span.set_data("gen_ai.request.model", model)
@@ -73,15 +63,11 @@ def ai_rerank_span(
 
 
 @contextmanager
-def memory_span(
-    action: str, namespace: str, **data: Any
-) -> Generator[Any, None, None]:
+def memory_span(action: str, namespace: str, **data: Any) -> Generator[Any, None, None]:
     """Span for a memory operation (recall / store / extract / reflect / clarify)."""
     import sentry_sdk
 
-    with sentry_sdk.start_span(
-        op=f"memory.{action}", name=f"{action}:{namespace}"
-    ) as span:
+    with sentry_sdk.start_span(op=f"memory.{action}", name=f"{action}:{namespace}") as span:
         span.set_data("memory.action", action)
         span.set_data("memory.namespace", namespace)
         for key, value in data.items():

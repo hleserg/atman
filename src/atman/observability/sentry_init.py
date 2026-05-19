@@ -63,6 +63,7 @@ def init_observability(level: str | None = None) -> None:
 
     # ---- everything below this line may import sentry_sdk ----
     import sentry_sdk
+    from sentry_sdk.integrations import Integration
     from sentry_sdk.integrations.asyncio import AsyncioIntegration
     from sentry_sdk.integrations.httpx import HttpxIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration
@@ -74,7 +75,7 @@ def init_observability(level: str | None = None) -> None:
         make_event_scrubber,
     )
 
-    integrations: list[sentry_sdk.integrations.Integration] = [
+    integrations: list[Integration] = [
         AsyncioIntegration(),
         HttpxIntegration(),
         LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
