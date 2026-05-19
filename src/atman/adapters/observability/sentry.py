@@ -63,6 +63,7 @@ def _init(dsn: str, environment: str = "production", release: str | None = None)
             LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
         ],
         send_default_pii=False,
+        max_breadcrumbs=200,
     )
     _initialized = True
     _LOG.info("Sentry initialized (env=%s, sample_rate=%.2f)", environment, sample_rate)
@@ -99,6 +100,48 @@ def set_session_tag(session_id: str) -> None:
         sentry_sdk.set_tag("session_id", session_id)
     except Exception:
         pass
+
+
+_slog_hook_installed = False
+
+
+def install_slog_breadcrumb_hook() -> None:
+    """Chain a Sentry breadcrumb emitter onto the slog display hook.
+
+    Every ``slog()`` event becomes a Sentry breadcrumb automatically.
+    Preserves any already-registered hook (e.g., the Rich-console hook in
+    live_chat.py) — both hooks receive the event in order.
+
+    Safe to call when Sentry is not initialized: the inner hook checks
+    ``_initialized`` at call time and skips breadcrumb emission.
+    Idempotent — calling multiple times installs the hook only once.
+    """
+    global _slog_hook_installed
+    if _slog_hook_installed:
+        return
+    from atman.core.session_log import get_display_hook, set_display_hook
+
+    _previous = get_display_hook()
+
+    def _breadcrumb_hook(event: str, data: dict) -> None:
+        if _initialized:
+            try:
+                import sentry_sdk
+
+                level = "error" if event == "job_failed" else "info"
+                sentry_sdk.add_breadcrumb(
+                    category=f"atman.{event}",
+                    message=event,
+                    level=level,
+                    data={k: v for k, v in data.items() if k != "ts"},
+                )
+            except Exception:
+                pass
+        if _previous is not None:
+            _previous(event, data)
+
+    set_display_hook(_breadcrumb_hook)
+    _slog_hook_installed = True
 
 
 # ---------------------------------------------------------------------------

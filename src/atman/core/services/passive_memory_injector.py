@@ -11,6 +11,7 @@ When LinguisticAnalyzer + MemoryReranker are provided (LINGUISTIC_ENABLED=True),
 uses ambient-anchor mode: parallel queries per entity/anchor type, then reranking.
 """
 
+import time as _time
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from atman.core.models.fact import FactStatus
 from atman.core.ports import EmbeddingPort, FactualMemory
 from atman.core.ports.state_store import StateStore
 from atman.core.services.session_working_memory import SessionWorkingMemory
+from atman.core.session_log import slog as _slog
 
 RRF_K = 60
 
@@ -218,6 +220,7 @@ class PassiveMemoryInjector:
             limit=self.candidate_pool_size,
             include_invalidated=False,
         )
+        _slog("passive_candidates", count=len(candidate_facts), pool_size=self.candidate_pool_size)
 
         # Embedding scoring + working-memory dedup + empty-content skip.
         # Use embed_batch so remote adapters (Ollama, flag) make one round-trip
@@ -229,11 +232,19 @@ class PassiveMemoryInjector:
         ]
         scored_facts: list[tuple[FactRecord, float]] = []
         if eligible:
+            _t0_embed = _time.monotonic()
             batch_embeddings = self.embedding.embed_batch([f.content for f in eligible])
             for fact, fact_embedding in zip(eligible, batch_embeddings, strict=True):
                 score = self.embedding.similarity(query_embedding, fact_embedding)
                 if score >= self.min_threshold:
                     scored_facts.append((fact, float(score)))
+            _slog(
+                "passive_embedded",
+                eligible_count=len(eligible),
+                passed_threshold=len(scored_facts),
+                threshold=self.min_threshold,
+                latency_ms=round((_time.monotonic() - _t0_embed) * 1000, 1),
+            )
 
         if not scored_facts:
             return surfaced
@@ -243,7 +254,17 @@ class PassiveMemoryInjector:
         ordered = self._fuse_with_bm25(context_text, scored_facts)
 
         # Optional cross-encoder reranking (ambient mode).
-        ordered = self._apply_reranker(context_text, ordered)
+        if self._ambient_mode:
+            _t0_rerank = _time.monotonic()
+            ordered = self._apply_reranker(context_text, ordered)
+            _slog(
+                "passive_reranked",
+                input_count=min(len(ordered), self._reranker_top_n),
+                output_count=len(ordered),
+                latency_ms=round((_time.monotonic() - _t0_rerank) * 1000, 1),
+            )
+        else:
+            ordered = self._apply_reranker(context_text, ordered)
 
         for fact, score in ordered[: self.top_k]:
             surfaced.append(SurfacedMemoryItem(item=fact, source="similarity", score=score))
@@ -268,6 +289,12 @@ class PassiveMemoryInjector:
                 if working_memory:
                     working_memory.add_fact(fact)
 
+        _slog(
+            "passive_surfaced",
+            direct_count=sum(1 for s in surfaced if s.source != "associative"),
+            associative_count=sum(1 for s in surfaced if s.source == "associative"),
+            total=len(surfaced),
+        )
         return surfaced
 
     def _fuse_with_bm25(

@@ -36,6 +36,7 @@ from atman.affect.metrics import (
 from atman.affect.models import AffectMetrics, AffectRecord, AgentMemoryReport, TriggerReason
 from atman.core.models.experience import ContextHalo, EmotionalDepth, FeltSense, KeyMoment
 from atman.core.ports.linguistic import LinguisticAnalyzer
+from atman.core.session_log import slog as _slog
 
 if TYPE_CHECKING:
     from atman.core.ports.divergence_events import DivergenceEventStore
@@ -177,6 +178,17 @@ class AffectDetector:
         char_count = len(clean_text.strip())
         self._baseline.update(vec, char_count=char_count, extra={"phase": "process"})
 
+        _top3_z = sorted(z.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
+        _slog(
+            "affect_metrics",
+            nrc_valence=round(metrics.nrc_valence, 3),
+            hedge_density=round(metrics.hedge_density, 4),
+            emotion_energy=round(metrics.emotion_lexical_energy, 4),
+            top3_z=[(k, round(v, 3)) for k, v in _top3_z],
+            lang=lang,
+            cold_start=self._is_cold_start(session_id),
+        )
+
         # Handle emphasis trigger unconditionally if emphasized words present
         if emphasized:
             await self._handle_emphasis(
@@ -264,6 +276,18 @@ class AffectDetector:
             primary = TriggerReason.LINGUISTIC
         else:
             primary = TriggerReason.RANDOM_SAMPLE
+
+        _slog(
+            "affect_trigger",
+            trigger_reason=primary.value,
+            all_reasons=[r.value for r in reasons],
+            tags=tags,
+            strong_signals=sum(
+                1 for k in METRIC_KEYS if abs(z.get(k, 0.0)) > self.config.sigma_threshold
+            ),
+            divergence_score=round(divergence, 3) if divergence is not None else None,
+        )
+
         excerpt = clean_text.strip()[:500]
         says_writes = {"text_excerpt": excerpt, "lang": lang}
         demonstrates = metrics.model_dump()

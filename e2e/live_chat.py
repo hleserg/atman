@@ -702,6 +702,8 @@ async def amain() -> int:
     _log("session_id", session_id=str(session_id), workspace=str(workspace))
     _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
 
+    import sentry_sdk as _sdk
+
     from atman.adapters.observability.sentry import (
         session_transaction,
         set_agent_scope,
@@ -768,9 +770,12 @@ async def amain() -> int:
             _log("user_msg", text=user_text)
 
             # ── Atman pre-turn: entity registration + ambient snapshot ─────────
-            _register_entities(user_text, deps, con)
-            _ambient_snapshot(user_text, deps, con)
-            deps = _surface_passive_context(user_text, deps, con)
+            with _sdk.start_span(op="atman.ner", description="entity detection"):
+                _register_entities(user_text, deps, con)
+            with _sdk.start_span(op="atman.rag.ambient", description="ambient RAG"):
+                _ambient_snapshot(user_text, deps, con)
+            with _sdk.start_span(op="atman.rag.passive", description="passive RAG injection"):
+                deps = _surface_passive_context(user_text, deps, con)
             con.flush("atman ▶ pre")
 
             # ── Agent run ──────────────────────────────────────────────────────
@@ -848,7 +853,8 @@ async def amain() -> int:
             print(f"agent> {clean}\n")
 
             # ── Atman post-turn: analyze agent response ────────────────────────
-            await _analyze_agent_response(clean, deps, sm, session_id, con)
+            with _sdk.start_span(op="atman.affect", description="affect processing"):
+                await _analyze_agent_response(clean, deps, sm, session_id, con)
             con.flush("atman ◀ agent")
 
     finally:
