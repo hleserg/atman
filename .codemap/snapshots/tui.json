@@ -1,0 +1,37 @@
+{
+  "component_id": "tui",
+  "recorded_at": "2026-05-19T15:22:29.336635+00:00",
+  "class_names": [
+    "AtmanDevApp",
+    "DocsTab",
+    "DemoCommand",
+    "FeatureInfo",
+    "FeaturesTab",
+    "PytestSummary",
+    "TestKindStats",
+    "TestsTab"
+  ],
+  "function_names": [
+    "main",
+    "uv_or_python_argv",
+    "pytest_cmd",
+    "python_script_cmd",
+    "get_feature",
+    "parse_collect_only",
+    "parse_verbose_result_line",
+    "classify_nodeids",
+    "parse_summary_line",
+    "parse_coverage_total_percent",
+    "extract_failure_only_log",
+    "junit_failure_error_count",
+    "parse_junit_counts",
+    "find_repo_root",
+    "stream_command"
+  ],
+  "port_names": [],
+  "pydantic_model_names": [],
+  "cli_commands": [],
+  "todo_count": 0,
+  "file_count": 10,
+  "schema_versions": []
+}

@@ -1,0 +1,50 @@
+{
+  "component_id": "affect",
+  "recorded_at": "2026-05-19T15:22:29.336635+00:00",
+  "class_names": [
+    "RollingBaseline",
+    "AffectDetectorConfig",
+    "AffectDetector",
+    "TriggerReason",
+    "AffectMetrics",
+    "AffectRecord",
+    "AgentMemoryReport",
+    "RefusalDetectorConfig",
+    "RefusalScore"
+  ],
+  "function_names": [
+    "main",
+    "load_lexicons",
+    "tokenize",
+    "normalize",
+    "emotion_score",
+    "dominant_emotion",
+    "valence",
+    "strip_markdown",
+    "emphasis_signal",
+    "nrc_emotion_vector",
+    "nrc_emotion_score",
+    "emotion_lexical_energy",
+    "hedge_density",
+    "length_anomaly_z",
+    "question_tail",
+    "self_reference_density",
+    "disclaimer_density",
+    "negation_inversion_valence",
+    "min_length_gate",
+    "sincerity_score",
+    "score_refusal",
+    "is_value_refusal"
+  ],
+  "port_names": [],
+  "pydantic_model_names": [
+    "AffectDetectorConfig",
+    "AffectMetrics",
+    "AffectRecord",
+    "AgentMemoryReport"
+  ],
+  "cli_commands": [],
+  "todo_count": 0,
+  "file_count": 8,
+  "schema_versions": []
+}

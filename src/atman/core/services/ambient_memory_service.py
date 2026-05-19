@@ -299,8 +299,16 @@ class AmbientMemoryService:
             _LOG.warning("registry.find_by_name failed for %r", anchor.text, exc_info=True)
             return None
         if not matches:
+            _slog("anchor_miss", anchor=anchor.text, anchor_type=anchor.anchor_type)
             return None
-        return matches[0]
+        entity = matches[0]
+        _slog(
+            "anchor_hit",
+            anchor=anchor.text,
+            anchor_type=anchor.anchor_type,
+            entity_id=str(entity.id),
+        )
+        return entity
 
     def _safe_get_current_stance(self, agent_id: UUID, entity_id: UUID) -> EntityStance | None:
         if self._stance is None:

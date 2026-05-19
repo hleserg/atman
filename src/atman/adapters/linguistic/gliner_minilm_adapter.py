@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time as _time
 from typing import Any
 
 from typing_extensions import override
@@ -17,6 +18,7 @@ from atman.core.ports.linguistic import (
     RawSpan,
     UserMessageAnalysis,
 )
+from atman.core.session_log import slog as _slog
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +449,16 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         key = hashlib.sha256(text.encode()).hexdigest()
         cached = self._session_cache.get(key)
         if cached is not None:
+            _slog(
+                "ner_inference",
+                call="analyze_user_message",
+                entity_count=len(cached.entities),
+                anchor_count=len(cached.anchors),
+                cache_hit=True,
+                latency_ms=0,
+            )
             return cached
+        _t0 = _time.monotonic()
         entities = self._run_ner(text)
         anchors = self._extract_anchors(entities, text)
         language = self._detect_language(text)
@@ -458,6 +469,14 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             detected_language=language,
         )
         self._session_cache[key] = result
+        _slog(
+            "ner_inference",
+            call="analyze_user_message",
+            entity_count=len(entities),
+            anchor_count=len(anchors),
+            cache_hit=False,
+            latency_ms=round((_time.monotonic() - _t0) * 1000, 1),
+        )
         return result
 
     @override
@@ -468,6 +487,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         thinking: str | None = None,
     ) -> AgentMessageAnalysis:
         """Point A: analyse agent message with 13-label NER + 5 MiniLM classifications."""
+        _t0 = _time.monotonic()
         # Legacy EntityType NER (used for entity registration)
         message_entities = self._run_ner(message)
         thinking_entities = self._run_ner(thinking) if thinking else []
@@ -510,6 +530,15 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
 
         language = self._detect_language(message)
 
+        _slog(
+            "ner_inference",
+            call="analyze_agent_message",
+            entity_count=len(message_entities),
+            span_count=len(message_spans),
+            divergence_signals=divergence_signals,
+            boundary_markers_count=len(boundary_markers),
+            latency_ms=round((_time.monotonic() - _t0) * 1000, 1),
+        )
         return AgentMessageAnalysis(
             message_entities=message_entities,
             thinking_entities=thinking_entities,

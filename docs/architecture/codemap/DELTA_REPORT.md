@@ -1,5 +1,8 @@
 # Codemap Delta Report
 
-> Generated at 2026-05-19T15:11:30.493628+00:00 by `make codemap`. Do not edit.
+> Generated at 2026-05-19T15:22:29.336635+00:00 by `make codemap`. Do not edit.
 
-*No changes detected since last run.*
+**1 component(s) changed:**
+
+### `adapters`
+- **New functions:** `install_slog_breadcrumb_hook`, `pipeline_span`
