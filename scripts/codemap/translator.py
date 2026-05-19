@@ -47,10 +47,15 @@ def _translate_block(en_content: str, section: str) -> str:
     return message.content[0].text  # type: ignore[index]
 
 
-def _replace_ru_block(text: str, section: str, new_content: str) -> str:
-    """Replace the RU block for a given section with new_content."""
+def _replace_ru_block(text: str, section: str, new_content: str) -> tuple[str, bool]:
+    """Replace the RU block for a given section with new_content.
+
+    Returns (updated_text, replaced) where replaced is False if no matching
+    lang="ru" block was found (translation generated but cannot be inserted).
+    """
     lines = text.splitlines(keepends=True)
     output: list[str] = []
+    replaced = False
     i = 0
     while i < len(lines):
         m = _START_RU_RE.search(lines[i])
@@ -71,10 +76,11 @@ def _replace_ru_block(text: str, section: str, new_content: str) -> str:
                 output.append(ln + "\n")
             if end_line:
                 output.append(end_line)
+            replaced = True
         else:
             output.append(lines[i])
             i += 1
-    return "".join(output)
+    return "".join(output), replaced
 
 
 def translate_stale_blocks(
@@ -159,8 +165,11 @@ def translate_stale_blocks(
         log.info("Translating section '%s' in %s", section, ru_path)
         try:
             ru_content = _translate_block(en_content.strip(), section)
-            ru_text = _replace_ru_block(ru_text, section, ru_content)
-            translated.append(section)
+            ru_text, replaced = _replace_ru_block(ru_text, section, ru_content)
+            if replaced:
+                translated.append(section)
+            else:
+                log.warning("No lang='ru' block found for section '%s' in %s", section, ru_path)
         except Exception as exc:
             log.error("Failed to translate section '%s': %s", section, exc)
 

@@ -62,10 +62,10 @@ _RULES: list[tuple[re.Pattern, str, str, float]] = [
         "docs/research/",
         0.85,
     ),
-    # Docs in repo root (except allowed files)
+    # Docs in repo root (except allowed files) — only single-component paths
     (
         re.compile(
-            r"^(?!README|MANIFEST|AGENTS|CLAUDE|LICENSE|CHANGELOG|CONTRIBUTING).*\.md$",
+            r"^(?!README|MANIFEST|AGENTS|CLAUDE|LICENSE|CHANGELOG|CONTRIBUTING)[^/\\]+\.md$",
             re.IGNORECASE,
         ),
         "Docs in repo root should be under docs/ (except README/MANIFEST/AGENTS/CLAUDE)",
