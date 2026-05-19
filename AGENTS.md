@@ -325,6 +325,7 @@ Rules:
       - `README.md` — Architecture Decision Records
   - **codemap/**
       - `DELTA_REPORT.md` — Codemap Delta Report
+      - `ENDPOINTS.md` — Endpoints Reference
       - `STARTUP_DEPS.md` — Startup Dependencies
       - `TEST_ENV.md` — Test Environment
       - `UNDOCUMENTED.md` — Undocumented Public API
