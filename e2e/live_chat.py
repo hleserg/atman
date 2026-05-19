@@ -55,6 +55,7 @@ from rich.text import Text
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.factory import build_deps
+from atman.adapters.agent.preflight import PreflightError, run_cli_preflight
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.tools import (
     record_key_moment,
@@ -604,6 +605,13 @@ async def amain() -> int:
     workspace = AGENT_WORKSPACE
     workspace.mkdir(parents=True, exist_ok=True)
     agent_id = _get_or_create_agent_id()
+
+    try:
+        run_cli_preflight(print_fn=_rc.print)
+    except PreflightError as exc:
+        _rc.print(f"\n[red bold]Preflight failed — session aborted.[/red bold]\n{exc}")
+        return 1
+
     config = AgentConfig(model=ModelConfig(model=AGENT_MODEL, context_limit=4096))
     deps, sm, store = build_deps(workspace, agent_id, config)
 

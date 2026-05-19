@@ -45,6 +45,11 @@ _LOG = logging.getLogger(__name__)
 _refusal_config = RefusalDetectorConfig()
 
 
+def _S(s: str) -> str:
+    """Replace lone surrogates so the string is safe for UTF-8 encoding."""
+    return s.encode("utf-8", "replace").decode("utf-8")
+
+
 def _extract_thinking_from_messages(messages: list) -> str | None:
     """Extract ThinkingPart content from new messages after agent.run()."""
     parts: list[str] = []
@@ -1336,3 +1341,442 @@ class AtmanRunner:
                 return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
 
         return None
+
+
+# ── Per-turn Atman pipeline (SDK entry-point) ─────────────────────────────────
+
+
+class AtmanTurn:
+    """Encapsulates the complete per-turn Atman pipeline for any host agent.
+
+    Usage::
+
+        turn = AtmanTurn(deps, sm, session_id)
+        deps = turn.pre(user_text)   # entity reg + passive RAG + ambient injection
+        result = await agent.run(user_text, deps=deps, ...)
+        turn.post(result.output)     # response analysis + identity facts + maintenance
+
+    All Atman pipeline output is injected into ``deps.injected_context``
+    (which feeds the LLM system prompt via ``build_instructions``).  Nothing
+    is inserted into visible chat messages — the agent is fully unaware of
+    the Atman machinery.
+
+    Pass ``on_event`` to receive structured pipeline events (e.g. for a live
+    debug UI).  The callback has the same signature as ``session_log.slog``::
+
+        on_event(event_name: str, **data)
+
+    Pass ``session_log.slog`` directly to route events through the standard
+    slog channel (and thus to any registered display hook).
+    """
+
+    def __init__(
+        self,
+        deps: "AtmanDeps",
+        sm: "SessionManager",
+        session_id: "UUID | None",
+        on_event: "Any | None" = None,
+    ) -> None:
+        self._deps = deps
+        self._sm = sm
+        self._session_id = session_id
+        self._on_event = on_event
+        # Populated by pre(); readable by UI for RAG display.
+        self.passive_summary: str = ""
+        self.ambient_summary: str = ""
+
+    def _emit(self, event: str, **data: Any) -> None:
+        if self._on_event is not None:
+            try:
+                self._on_event(event, **data)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def pre(self, user_text: str) -> "AtmanDeps":
+        """Run pre-turn pipeline; returns updated deps with injected_context set."""
+        _LOG.debug("[AtmanTurn.pre] start  text=%r", user_text[:80])
+        deps = self._deps
+
+        deps = self._register_user_entities(user_text, deps)
+        deps = self._inject_passive_rag(user_text, deps)
+        deps = self._inject_ambient(user_text, deps)
+
+        _LOG.debug(
+            "[AtmanTurn.pre] done  injected_context_len=%d  passive=%r  ambient=%r",
+            len(deps.injected_context or ""),
+            self.passive_summary,
+            self.ambient_summary,
+        )
+        self._deps = deps
+        return deps
+
+    def post(self, agent_text: str) -> None:
+        """Run post-turn pipeline (entity reg, auto key moment, identity facts, maintenance)."""
+        _LOG.debug("[AtmanTurn.post] start  text=%r", agent_text[:80])
+        deps = self._deps
+
+        self._analyze_response(agent_text, deps)
+        self._drain_maintenance(deps)
+
+        _LOG.debug("[AtmanTurn.post] done")
+
+    # ── Pre-turn steps ────────────────────────────────────────────────────────
+
+    def _register_user_entities(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+        if deps.ambient_memory is None:
+            _LOG.debug("[AtmanTurn] entity_reg skipped: no ambient_memory")
+            return deps
+        if deps.entity_registry is None:
+            _LOG.debug("[AtmanTurn] entity_reg skipped: no entity_registry")
+            return deps
+        try:
+            analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
+            entities = analysis.entities or []
+            _LOG.debug(
+                "[AtmanTurn] user entities detected: n=%d  entities=%r",
+                len(entities),
+                [_S(e.text) for e in entities[:5]],
+            )
+            self._emit(
+                "entity_resolved",
+                entities=[
+                    {"text": _S(e.text), "type": getattr(e.entity_type, "value", str(e.entity_type))}
+                    for e in entities
+                ],
+            )
+            for entity in entities:
+                if len(entity.text) < 2:
+                    continue
+                try:
+                    deps.entity_registry.resolve_or_create(
+                        deps.agent_id,
+                        _S(entity.text),
+                        entity.entity_type,
+                    )
+                    _LOG.debug(
+                        "[AtmanTurn] entity registered: text=%r type=%s",
+                        _S(entity.text),
+                        getattr(entity.entity_type, "value", str(entity.entity_type)),
+                    )
+                except Exception as exc:
+                    _LOG.warning(
+                        "[AtmanTurn] entity_registry.resolve_or_create failed: %s  entity=%r",
+                        exc, _S(entity.text),
+                    )
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] user entity analysis failed: %s", exc)
+        return deps
+
+    def _inject_passive_rag(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+        if deps.passive_memory_injector is None:
+            _LOG.debug("[AtmanTurn] passive_rag skipped: no passive_memory_injector")
+            self.passive_summary = "no injector"
+            return deps
+        try:
+            from atman.core.services.passive_memory_injector import build_rag_context
+
+            items = deps.passive_memory_injector.surface_for_context(text)
+            _LOG.debug("[AtmanTurn] passive surface_for_context: n_items=%d", len(items))
+            if not items:
+                self.passive_summary = "0 items"
+                return deps
+
+            rag = build_rag_context(items, budget=1500)
+            _LOG.debug(
+                "[AtmanTurn] passive rag built: n=%d  tokens_used=%d",
+                len(rag.items), rag.tokens_used,
+            )
+            if not rag.items:
+                self.passive_summary = "0 rag items"
+                return deps
+
+            lines = []
+            for item in rag.items:
+                payload = item.payload
+                text_frag = (
+                    getattr(payload, "content", None)
+                    or getattr(payload, "what_happened", None)
+                    or str(payload)[:120]
+                )
+                lines.append(f"- [{item.kind}] {_S(str(text_frag))[:150]}")
+                _LOG.debug(
+                    "[AtmanTurn] passive item: kind=%s  score=%.3f  text=%r",
+                    item.kind, getattr(item, "score", 0.0), _S(str(text_frag))[:60],
+                )
+
+            ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
+            self.passive_summary = f"{len(rag.items)} items, {rag.tokens_used} tok"
+            _LOG.info(
+                "[AtmanTurn] passive_rag injected: n=%d  tokens=%d",
+                len(rag.items), rag.tokens_used,
+            )
+            self._emit(
+                "passive_rag",
+                items_total=len(rag.items),
+                tokens_used=rag.tokens_used,
+                items=[
+                    {"kind": it.kind, "score": round(getattr(it, "score", 0.0), 3)}
+                    for it in rag.items[:5]
+                ],
+            )
+
+            existing = deps.injected_context or ""
+            merged = (existing + "\n" + ctx_str).strip() if existing else ctx_str
+            return replace(deps, injected_context=merged)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] passive_rag failed: %s", exc, exc_info=True)
+            self.passive_summary = f"error: {exc}"
+            return deps
+
+    def _inject_ambient(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+        if deps.ambient_memory is None:
+            _LOG.debug("[AtmanTurn] ambient_rag skipped: no ambient_memory")
+            self.ambient_summary = "no ambient_memory"
+            return deps
+        try:
+            result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
+            items = result.items
+            _LOG.debug(
+                "[AtmanTurn] ambient compose_injection: n=%d  tokens=%d",
+                len(items), result.tokens_used,
+            )
+            if not items:
+                self.ambient_summary = f"0 items, {result.tokens_used} tok"
+                return deps
+
+            lines = []
+            for it in items:
+                p = it.payload
+                if it.kind == "stance":
+                    txt = getattr(p, "stance_text", "") or ""
+                elif it.kind == "moment":
+                    txt = getattr(p, "what_happened", "") or ""
+                else:
+                    txt = getattr(p, "content", "") or ""
+                lines.append(f"[{it.kind}] {it.anchor_text or ''}: {_S(str(txt))[:100]}")
+                _LOG.debug(
+                    "[AtmanTurn] ambient item: kind=%s  anchor=%r  score=%.3f  text=%r",
+                    it.kind,
+                    it.anchor_text or "",
+                    getattr(it, "score", 0.0),
+                    _S(str(txt))[:60],
+                )
+
+            ambient_str = "\n".join(lines)
+            self.ambient_summary = f"{len(items)} items, {result.tokens_used} tok"
+            _LOG.info(
+                "[AtmanTurn] ambient_rag injected: n=%d  tokens=%d",
+                len(items), result.tokens_used,
+            )
+            self._emit(
+                "ambient_injection",
+                items_total=len(items),
+                tokens_used=result.tokens_used,
+                items=[
+                    {"kind": it.kind, "anchor": it.anchor_text or "", "score": round(getattr(it, "score", 0.0), 3)}
+                    for it in items[:5]
+                ],
+            )
+
+            existing = deps.injected_context or ""
+            merged = (existing + "\n" + ambient_str).strip() if existing else ambient_str
+            return replace(deps, injected_context=merged)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] ambient_rag failed: %s", exc, exc_info=True)
+            self.ambient_summary = f"error: {exc}"
+            return deps
+
+    # ── Post-turn steps ───────────────────────────────────────────────────────
+
+    def _analyze_response(self, text: str, deps: "AtmanDeps") -> None:
+        if deps.ambient_memory is None:
+            _LOG.debug("[AtmanTurn] response analysis skipped: no ambient_memory")
+            return
+        try:
+            analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] analyze_agent_message failed: %s", exc, exc_info=True)
+            return
+
+        _LOG.info(
+            "[AtmanTurn] agent analysis: stance=%r  cognitive_mode=%r  primary_emotion=%r"
+            "  cognitive_load=%r  boundary_markers=%r  divergence=%r  entities=%d  spans=%d",
+            analysis.stance,
+            analysis.cognitive_mode,
+            analysis.primary_emotion,
+            analysis.cognitive_load_label,
+            analysis.boundary_markers,
+            analysis.divergence_signals,
+            len(analysis.message_entities),
+            len(analysis.message_spans),
+        )
+        self._emit(
+            "agent_analysis",
+            stance=analysis.stance,
+            cognitive_mode=analysis.cognitive_mode,
+            primary_emotion=analysis.primary_emotion,
+            cognitive_load_label=analysis.cognitive_load_label,
+            boundary_markers=analysis.boundary_markers,
+            divergence=analysis.divergence_signals,
+            entities=[_S(e.text) for e in analysis.message_entities],
+            spans=[{"text": _S(s.text)[:20], "label": s.label} for s in analysis.message_spans[:5]],
+        )
+
+        # 1. Register entities from agent response
+        if deps.entity_registry is not None:
+            for ent in analysis.message_entities:
+                if len(ent.text) < 2:
+                    continue
+                try:
+                    deps.entity_registry.resolve_or_create(
+                        deps.agent_id,
+                        _S(ent.text),
+                        ent.entity_type,
+                    )
+                    _LOG.debug(
+                        "[AtmanTurn] agent entity registered: text=%r type=%s",
+                        _S(ent.text),
+                        getattr(ent.entity_type, "value", str(ent.entity_type)),
+                    )
+                except Exception as exc:
+                    _LOG.warning(
+                        "[AtmanTurn] agent entity_registry failed: %s  entity=%r",
+                        exc, _S(ent.text),
+                    )
+
+        if analysis.message_spans:
+            _LOG.debug(
+                "[AtmanTurn] point-A spans: %r",
+                [{"text": _S(s.text)[:20], "label": s.label} for s in analysis.message_spans[:5]],
+            )
+
+        # 2. Auto-record key moment on boundary event with full structured_markers
+        if analysis.boundary_markers and self._session_id is not None:
+            _LOG.info(
+                "[AtmanTurn] boundary event: markers=%r",
+                analysis.boundary_markers,
+            )
+            try:
+                from atman.core.models.session import KeyMomentInput
+
+                markers_str = ", ".join(analysis.boundary_markers[:3])
+                kmi = KeyMomentInput(
+                    what_happened=_S(text[:300]),
+                    why_it_matters=f"Boundary event detected: {markers_str}",
+                    emotional_valence=0.0,
+                    emotional_intensity=0.0,
+                    incomplete_coloring=True,
+                )
+                moment = kmi.to_key_moment()
+                a_markers: dict[str, Any] = {
+                    "a": {
+                        "stance": analysis.stance,
+                        "cognitive_mode": analysis.cognitive_mode,
+                        "self_orientation": analysis.self_orientation,
+                        "primary_emotion": analysis.primary_emotion,
+                        "cognitive_load_label": analysis.cognitive_load_label,
+                        "boundary_markers": analysis.boundary_markers,
+                        "divergence_signals": analysis.divergence_signals,
+                        "spans": [
+                            {"text": _S(s.text), "label": s.label}
+                            for s in analysis.message_spans
+                        ],
+                    }
+                }
+                moment.structured_markers = a_markers
+                moment.structured_markers_version = "2.0"
+                self._sm.append_key_moment(self._session_id, moment)
+                _LOG.info(
+                    "[AtmanTurn] auto key moment written: markers=%r  a=%r",
+                    analysis.boundary_markers,
+                    a_markers["a"],
+                )
+                self._emit(
+                    "key_moment_appended",
+                    what_happened=_S(text[:100]),
+                    markers=analysis.boundary_markers,
+                    stance=analysis.stance,
+                    primary_emotion=analysis.primary_emotion,
+                )
+            except Exception as exc:
+                _LOG.warning("[AtmanTurn] auto key moment failed: %s", exc, exc_info=True)
+
+        # 3. Write identity facts when agent self-describes
+        if analysis.boundary_markers and deps.passive_memory_injector is not None:
+            self._write_identity_facts(text, analysis, deps)
+
+    def _write_identity_facts(self, text: str, analysis: object, deps: "AtmanDeps") -> None:
+        try:
+            factual_memory = deps.passive_memory_injector.factual_memory  # type: ignore[union-attr]
+        except AttributeError:
+            _LOG.debug("[AtmanTurn] identity facts skipped: no factual_memory on injector")
+            return
+        if factual_memory is None:
+            return
+
+        from atman.core.models.fact import FactRecord
+
+        identity_markers = {
+            "я принимаю", "я выбираю", "моё имя", "меня зовут", "я решила", "я решил",
+        }
+        marker_text = " ".join(getattr(analysis, "boundary_markers", [])).lower()
+        if not any(m in marker_text for m in identity_markers):
+            _LOG.debug(
+                "[AtmanTurn] identity facts skipped: no identity boundary marker in %r",
+                marker_text[:80],
+            )
+            return
+
+        person_entities = [
+            _S(e.text)
+            for e in getattr(analysis, "message_entities", [])
+            if getattr(e.entity_type, "value", str(e.entity_type)) == "person"
+            and len(e.text) >= 2
+        ]
+        _LOG.debug("[AtmanTurn] identity facts: person_entities=%r", person_entities)
+
+        facts_written = 0
+        for name in person_entities[:2]:
+            try:
+                record = FactRecord(
+                    agent_id=deps.agent_id,
+                    content=f"Агент называет себя: {name}",
+                    source="agent_boundary_event",
+                    tags=["identity", "agent_name", "self_description"],
+                )
+                factual_memory.add_fact(record)
+                facts_written += 1
+                _LOG.info("[AtmanTurn] identity fact written: %r", record.content)
+            except Exception as exc:
+                _LOG.warning("[AtmanTurn] identity fact failed: %s  name=%r", exc, name)
+
+        try:
+            record = FactRecord(
+                agent_id=deps.agent_id,
+                content=_S(f"Агент о себе: {text[:200]}"),
+                source="agent_boundary_event",
+                tags=["identity", "self_description"],
+            )
+            factual_memory.add_fact(record)
+            facts_written += 1
+            _LOG.info("[AtmanTurn] identity self-desc fact: %r", record.content[:80])
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] identity self-desc fact failed: %s", exc)
+
+        _LOG.info("[AtmanTurn] identity facts written: %d total", facts_written)
+        if facts_written:
+            self._emit("identity_facts_written", count=facts_written)
+
+    def _drain_maintenance(self, deps: "AtmanDeps") -> None:
+        if deps.maintenance_worker is None:
+            _LOG.debug("[AtmanTurn] maintenance skipped: no maintenance_worker")
+            return
+        try:
+            done = deps.maintenance_worker.run_once(batch_size=10)
+            _LOG.info("[AtmanTurn] maintenance drained: %d job(s)", done)
+            if done:
+                self._emit("maintenance_drained", jobs_done=done)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] maintenance drain failed: %s", exc)

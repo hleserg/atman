@@ -45,6 +45,40 @@ def _load_env() -> None:
 
 _load_env()
 
+# ── Debug logging to file ─────────────────────────────────────────────────────
+_LOG = logging.getLogger("atman")
+_DEBUG_LOG = Path(os.getenv("ATMAN_DEBUG_LOG", str(Path.home() / ".atman" / "chat-debug.log")))
+_debug_logging_installed = False
+
+
+def _setup_debug_logging() -> None:
+    """Install a rotating DEBUG file handler on the atman logger (once per process)."""
+    global _debug_logging_installed
+    if _debug_logging_installed:
+        return
+    _debug_logging_installed = True
+    try:
+        from logging.handlers import RotatingFileHandler
+        _DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            _DEBUG_LOG, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        root_atman = logging.getLogger("atman")
+        root_atman.setLevel(logging.DEBUG)
+        root_atman.addHandler(handler)
+        root_atman.propagate = False
+        root_atman.debug("[chat-ui] debug logging installed → %s", _DEBUG_LOG)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Failed to install debug log: %s", exc)
+
+
+_setup_debug_logging()
+
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -52,6 +86,7 @@ from pydantic_ai.settings import ModelSettings
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.runner import AtmanTurn
 from atman.adapters.agent.tools import (
     record_key_moment,
     request_reflection,
@@ -59,7 +94,8 @@ from atman.adapters.agent.tools import (
     restart_session,
     wait_session,
 )
-from atman.core.services.passive_memory_injector import build_rag_context
+from atman.adapters.agent.preflight import run_streamlit_preflight
+from atman.core.session_log import slog as _slog
 from atman.web_dashboard.utils.chat_deps import get_chat_deps, install_slog_hook
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -157,48 +193,6 @@ def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
-def _surface_passive_context(user_text: str, deps):
-    if deps.passive_memory_injector is None:
-        return deps, None
-    try:
-        items = deps.passive_memory_injector.surface_for_context(user_text)
-        if not items:
-            return deps, None
-        rag = build_rag_context(items, budget=1500)
-        if not rag.items:
-            return deps, None
-        lines = [
-            f"- [{it.kind}] {_S(str(getattr(it.payload, 'content', None) or getattr(it.payload, 'what_happened', '') or '')[:150])}"
-            for it in rag.items
-        ]
-        ctx = "## Из памяти (релевантное)\n" + "\n".join(lines)
-        return replace(deps, injected_context=ctx), f"{len(rag.items)} items, {rag.tokens_used} tok"
-    except Exception as exc:
-        return deps, f"error: {exc}"
-
-
-def _get_ambient_injection(text: str, deps):
-    if deps.ambient_memory is None:
-        return None, ""
-    try:
-        result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
-        if not result.items:
-            return result, ""
-        lines = []
-        for it in result.items:
-            p = it.payload
-            if it.kind == "stance":
-                txt = getattr(p, "stance_text", "") or ""
-            elif it.kind == "moment":
-                txt = getattr(p, "what_happened", "") or ""
-            else:
-                txt = getattr(p, "content", "") or ""
-            lines.append(f"[{it.kind}] {it.anchor_text or ''}: {_S(str(txt))[:100]}")
-        return result, "\n".join(lines)
-    except Exception:
-        return None, ""
-
-
 def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
     """Wrap async run_stream() in a sync generator via queue+thread."""
     tok_q: queue.Queue[str | None] = queue.Queue()
@@ -233,62 +227,6 @@ def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
 
     return _gen(), holder
 
-
-def _register_entities_sync(text: str, deps) -> None:
-    if deps.ambient_memory is None or deps.entity_registry is None:
-        return
-    try:
-        analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
-        for ent in (analysis.entities or []):
-            if len(ent.text) < 2:
-                continue
-            try:
-                deps.entity_registry.resolve_or_create(
-                    deps.agent_id, _S(ent.text), ent.entity_type
-                )
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-
-def _analyze_response_sync(text: str, deps, sm, session_id) -> None:
-    if deps.ambient_memory is None:
-        return
-    try:
-        analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
-    except Exception:
-        return
-    for ent in (analysis.message_entities or []):
-        if len(ent.text) >= 2:
-            try:
-                deps.entity_registry.resolve_or_create(
-                    deps.agent_id, _S(ent.text), ent.entity_type
-                )
-            except Exception:
-                pass
-    if analysis.boundary_markers and session_id is not None:
-        try:
-            from atman.core.models.experience import EmotionalDepth
-            from atman.core.models.session import KeyMomentInput
-            kmi = KeyMomentInput(
-                what_happened=_S(text[:300]),
-                why_it_matters=f"Boundary: {', '.join(analysis.boundary_markers[:3])}",
-                emotional_valence=0.0,
-                emotional_intensity=0.0,
-                incomplete_coloring=True,
-                depth=EmotionalDepth.SURFACE,
-            )
-            moment = kmi.to_key_moment()
-            moment.structured_markers = {"a": {
-                "stance": analysis.stance,
-                "cognitive_mode": analysis.cognitive_mode,
-                "boundary_markers": analysis.boundary_markers,
-            }}
-            moment.structured_markers_version = "2.0"
-            sm.append_key_moment(session_id, moment)
-        except Exception:
-            pass
 
 
 def _sanitize_history(messages: list) -> list:
@@ -558,8 +496,31 @@ def _initialize() -> None:
     if st.session_state.get("initialized"):
         return
 
+    run_streamlit_preflight()
+
     with st.spinner("Инициализация Atman…"):
         deps, sm, _store = get_chat_deps()
+
+    # Connectivity dump — answers "why is the agent disconnected from Atman"
+    _LOG.info(
+        "[chat init] deps wired: state_store=%s  entity_registry=%s"
+        "  passive_memory=%s  ambient_memory=%s"
+        "  maintenance_worker=%s  factual_memory=%s",
+        type(_store).__name__,
+        type(deps.entity_registry).__name__ if deps.entity_registry else "None",
+        deps.passive_memory_injector is not None,
+        deps.ambient_memory is not None,
+        deps.maintenance_worker is not None,
+        getattr(getattr(deps, "passive_memory_injector", None), "factual_memory", None) is not None,
+    )
+    _LOG.info(
+        "[chat init] env: DATABASE_URL=%s  ATMAN_DB_URL=%s"
+        "  ATMAN_LINGUISTIC_ENABLED=%s  AGENT_LLM_BASE_URL=%s",
+        bool(os.getenv("DATABASE_URL")),
+        bool(os.getenv("ATMAN_DB_URL")),
+        os.getenv("ATMAN_LINGUISTIC_ENABLED", "(unset)"),
+        os.getenv("AGENT_LLM_BASE_URL", "(unset)"),
+    )
 
     events_log: list[dict] = []
     install_slog_hook(events_log)
@@ -604,6 +565,11 @@ def _initialize() -> None:
         except Exception:
             pass
 
+    _LOG.info(
+        "[chat init] agent_id=%s  agent_serial=%s  session_id=%s  debug_log=%s",
+        deps.agent_id, agent_serial, ctx.session_id, _DEBUG_LOG,
+    )
+
     st.session_state.update({
         "initialized": True,
         "session_closed": False,
@@ -631,17 +597,15 @@ def _handle_turn(prompt: str, msg_container) -> None:
     model_settings = st.session_state.model_settings
     history       = st.session_state.pydantic_history
 
-    # Pre-turn
-    _register_entities_sync(prompt, deps)
-    deps, passive_summary = _surface_passive_context(prompt, deps)
-    _, ambient_text = _get_ambient_injection(prompt, deps)
-    if ambient_text:
-        merged = ((deps.injected_context or "") + "\n" + ambient_text).strip()
-        deps = replace(deps, injected_context=merged)
+    _LOG.info("[chat turn] user text=%r", prompt[:80])
+
+    # Pre-turn: entity registration + RAG injection (all invisible to agent — goes into system prompt)
+    turn = AtmanTurn(deps, sm, session_id, on_event=_slog)
+    deps = turn.pre(prompt)
 
     st.session_state.last_rag = {
-        "passive": passive_summary or "none",
-        "ambient": ambient_text or "none",
+        "passive": turn.passive_summary or "none",
+        "ambient": turn.ambient_summary or "none",
         "injected": deps.injected_context or "",
     }
 
@@ -671,6 +635,8 @@ def _handle_turn(prompt: str, msg_container) -> None:
                 placeholder.error(f"💥 {type(exc).__name__}: {exc}")
                 return
 
+    _LOG.info("[chat turn] agent response=%r", response_text[:80])
+
     # Update pydantic history
     streamed = holder.get("result")
     if streamed is not None:
@@ -682,15 +648,9 @@ def _handle_turn(prompt: str, msg_container) -> None:
 
     st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-    # Post-turn
+    # Post-turn: response analysis + key moments + identity facts + maintenance (all under the hood)
     if response_text:
-        _analyze_response_sync(response_text, deps, sm, session_id)
-
-    if getattr(deps, "maintenance_worker", None) is not None:
-        try:
-            deps.maintenance_worker.run_once(batch_size=10)
-        except Exception:
-            pass
+        turn.post(response_text)
 
     st.session_state.deps = deps
     st.session_state.pydantic_history = history
@@ -939,7 +899,8 @@ with col_chat:
         f"agent `{agent_id_str[:8]}…`  "
         f"session `{str(session_id)[:8] if session_id else '?'}…`  "
         f"model `{_AGENT_MODEL}`  "
-        f"db schema `{'agent_' + str(serial) if serial else '—'}`"
+        f"db schema `{'agent_' + str(serial) if serial else '—'}`  "
+        f"debug → `{_DEBUG_LOG}`"
     )
 
     # ── Chat messages (scrollable fixed-height container) ────────────────────
