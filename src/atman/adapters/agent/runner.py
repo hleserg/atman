@@ -1421,13 +1421,18 @@ class AtmanTurn:
 
     def pre(self, user_text: str) -> AtmanDeps:
         """Run pre-turn pipeline; returns updated deps with injected_context set."""
+        from atman.adapters.observability.sentry import pipeline_span
+
         _LOG.debug("[AtmanTurn.pre] start  text=%r", user_text[:80])
         # Per-turn RAG only — never accumulate prior turns' injected_context.
         deps = replace(self._deps, injected_context=None)
 
-        deps = self._register_user_entities(user_text, deps)
-        deps = self._inject_passive_rag(user_text, deps)
-        deps = self._inject_ambient(user_text, deps)
+        with pipeline_span("atman.ner", "entity detection"):
+            deps = self._register_user_entities(user_text, deps)
+        with pipeline_span("atman.rag.passive", "passive RAG injection"):
+            deps = self._inject_passive_rag(user_text, deps)
+        with pipeline_span("atman.rag.ambient", "ambient RAG"):
+            deps = self._inject_ambient(user_text, deps)
 
         _LOG.debug(
             "[AtmanTurn.pre] done  injected_context_len=%d  passive=%r  ambient=%r",
@@ -1440,13 +1445,16 @@ class AtmanTurn:
 
     def post(self, agent_text: str) -> None:
         """Run post-turn pipeline (entity reg, auto key moment, identity facts, maintenance)."""
+        from atman.adapters.observability.sentry import pipeline_span
+
         _LOG.debug("[AtmanTurn.post] start  text=%r", agent_text[:80])
         self.auto_key_moment_written = False
         self.auto_key_moment_markers = []
         deps = self._deps
 
-        self._analyze_response(agent_text, deps)
-        self._run_affect_and_refusal(agent_text)
+        with pipeline_span("atman.affect", "affect processing"):
+            self._analyze_response(agent_text, deps)
+            self._run_affect_and_refusal(agent_text)
         self._drain_maintenance(deps)
 
         _LOG.debug("[AtmanTurn.post] done")

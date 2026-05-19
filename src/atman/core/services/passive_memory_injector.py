@@ -256,10 +256,11 @@ class PassiveMemoryInjector:
         # Optional cross-encoder reranking (ambient mode).
         if self._ambient_mode:
             _t0_rerank = _time.monotonic()
+            pre_rerank_count = len(ordered)
             ordered = self._apply_reranker(context_text, ordered)
             _slog(
                 "passive_reranked",
-                input_count=min(len(ordered), self._reranker_top_n),
+                input_count=min(pre_rerank_count, self._reranker_top_n),
                 output_count=len(ordered),
                 latency_ms=round((_time.monotonic() - _t0_rerank) * 1000, 1),
             )
