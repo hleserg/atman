@@ -34,7 +34,7 @@ def render_undocumented(
                     rel = Path(fm.path)
                     with contextlib.suppress(ValueError):
                         rel = rel.relative_to(repo_root / "src" / "atman")
-                    undoc.append((str(rel), cls.name))
+                    undoc.append((rel.as_posix(), cls.name))
 
         if undoc:
             any_found = True

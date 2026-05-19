@@ -49,6 +49,12 @@ def test_off_level_env_var(monkeypatch):
     assert not is_enabled()
 
 
+def test_off_level_env_var_case_insensitive(monkeypatch):
+    monkeypatch.setenv("ATMAN_OBS_LEVEL", " OFF ")
+    init_observability()
+    assert not is_enabled()
+
+
 # ---------------------------------------------------------------------------
 # Invalid level falls back to minimal (with warning)
 # ---------------------------------------------------------------------------
