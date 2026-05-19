@@ -42,17 +42,18 @@ def test_init_sentry_from_env_off_level_blocks_fallback_init(
     monkeypatch.setenv("ATMAN_OBS_LEVEL", "off")
     orig = sentry_mod._initialized
     try:
-        with patch("atman.adapters.observability.sentry._init") as mock_init:
-            # Force the try-block to raise so we hit the fallback path
-            with patch(
+        with (
+            patch("atman.adapters.observability.sentry._init") as mock_init,
+            patch(
                 "builtins.__import__",
                 side_effect=lambda name, *a, **kw: (
                     (_ for _ in ()).throw(ImportError("simulated"))
                     if name == "atman.observability"
                     else __import__(name, *a, **kw)
                 ),
-            ):
-                result = sentry_mod.init_sentry_from_env()
+            ),
+        ):
+            result = sentry_mod.init_sentry_from_env()
         mock_init.assert_not_called()
         assert result is False
     finally:
