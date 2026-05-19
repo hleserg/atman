@@ -506,9 +506,27 @@ async def amain() -> int:
 
     set_agent_scope(str(agent_id))
     set_session_tag(str(session_id))
-    _sentry_tx = session_transaction(str(session_id), str(agent_id))
-    _sentry_tx.__enter__()
 
+    with session_transaction(str(session_id), str(agent_id)):
+        return await _run_live_chat_session(
+            llm=llm,
+            agent_id=agent_id,
+            session_id=session_id,
+            deps=deps,
+            sm=sm,
+            workspace=workspace,
+        )
+
+
+async def _run_live_chat_session(
+    *,
+    llm: OpenAIChatModel,
+    agent_id,
+    session_id,
+    deps,
+    sm,
+    workspace: Path,
+) -> int:
     agent = Agent(
         llm,
         deps_type=type(deps),
@@ -727,7 +745,6 @@ async def amain() -> int:
         con.flush("atman session end")
         _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
 
-        _sentry_tx.__exit__(None, None, None)
     return 0
 
 

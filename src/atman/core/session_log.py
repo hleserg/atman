@@ -49,6 +49,11 @@ def set_display_hook(fn: Callable[[str, dict[str, Any]], None] | None) -> None:
     _DISPLAY_HOOK = fn
 
 
+def get_display_hook() -> Callable[[str, dict[str, Any]], None] | None:
+    """Return the currently registered display hook, or None."""
+    return _DISPLAY_HOOK
+
+
 def _init() -> bool:
     global _ENABLED, _LOG_PATH
     if _ENABLED is not None:
