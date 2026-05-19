@@ -361,7 +361,11 @@ async def _do_turn(
         if turn.auto_key_moment_written:
             tm.auto_km_written = True
             tm.auto_km_markers = turn.auto_key_moment_markers
-        tm.affect_processed = getattr(sm, "affect_detector", None) is not None
+        if session_id is not None:
+            active = sm.get_active_session(session_id)
+            tm.affect_processed = bool(
+                active and any(e.event_type == "agent_response" for e in active.events)
+            )
     except Exception as exc:
         tm.errors.append(f"post-turn: {exc}")
 

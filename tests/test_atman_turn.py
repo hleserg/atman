@@ -87,3 +87,17 @@ def test_atman_turn_post_schedules_affect_via_record_event() -> None:
     agent_events = [e for e in active.events if e.event_type == "agent_response"]
     assert agent_events
     assert "Agent reply" in agent_events[-1].description
+
+
+def test_atman_turn_pre_does_not_retain_stale_context_on_second_turn() -> None:
+    """Second pre() must not see injected_context from a prior turn."""
+    deps, sm = _minimal_deps(injected_context="turn-one context")
+    turn = AtmanTurn(deps, sm, deps.session_id)
+    first = turn.pre("first")
+    assert first.injected_context is None or "turn-one context" not in (
+        first.injected_context or ""
+    )
+    second = turn.pre("second")
+    assert second.injected_context is None or "turn-one context" not in (
+        second.injected_context or ""
+    )
