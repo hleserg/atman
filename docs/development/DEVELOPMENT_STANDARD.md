@@ -743,6 +743,10 @@ with db_span("postgresql", "SELECT", collection="sessions"):
 
 Sentry Event Scrubber расширяет `DEFAULT_DENYLIST` полями памяти/промптов. При `ATMAN_OBS_LEVEL=off` или пустом `SENTRY_DSN` данные никуда не уходят.
 
+### Dev loop
+
+Локальная отладка трасс без SaaS-квот: `make spotlight` + `ATMAN_OBS_LEVEL=debug`. Подробности — `docs/features/observability/spotlight.md`.
+
 ## 20. Ошибки и деградация
 
 Atman должен уметь честно работать в неполном режиме:

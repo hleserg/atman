@@ -93,7 +93,7 @@ def _init(dsn: str, environment: str = "production", release: str | None = None)
 
 def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
     """Tag all subsequent events in this scope with agent_id / session_id."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -108,7 +108,7 @@ def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
 
 def set_session_tag(session_id: str) -> None:
     """Update session_id tag mid-session (call after start_session returns)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -140,7 +140,7 @@ def install_slog_breadcrumb_hook() -> None:
     _previous = get_display_hook()
 
     def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
-        if _initialized:
+        if _sentry_sdk_active():
             attrs = {k: str(v) for k, v in data.items() if k != "ts"}
             attrs["event"] = event
             try:
@@ -184,7 +184,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
     Wraps ``start_session`` ? all turns ? ``finish_session`` so every LLM
     call and NLP job appears as a child span in the same trace.
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -201,7 +201,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
 @contextmanager
 def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]:
     """Child span for a pipeline stage (NER, RAG, affect, ?). No-op when Sentry is off."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -213,7 +213,7 @@ def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]
 @contextmanager
 def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, None, None]:
     """Child span for a single maintenance job execution."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -227,7 +227,7 @@ def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, N
 @contextmanager
 def reflection_span(reflection_type: str) -> Generator[None, None, None]:
     """Span for a single reflection run (micro / daily / deep)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -254,7 +254,7 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
             _LOG.debug("risky_call failed", exc_info=True)
             capture_silent_exception(e, context="risky_call", session_id=str(sid))
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -311,7 +311,7 @@ def metric_distribution(
     name: str, value: float, unit: str = "none", tags: dict[str, str] | None = None
 ) -> None:
     """Emit a distribution metric (histograms, latencies, sizes)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_distribution(name, value, unit, _metric_tags(tags))
@@ -319,7 +319,7 @@ def metric_distribution(
 
 def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) -> None:
     """Emit a gauge metric (queue depths, counts at a point in time)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_gauge(name, value, _metric_tags(tags))
@@ -327,7 +327,7 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
 
 def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None = None) -> None:
     """Increment a counter metric."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_count(name, value, _metric_tags(tags))
