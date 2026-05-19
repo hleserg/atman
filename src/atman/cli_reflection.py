@@ -3,16 +3,19 @@ CLI for Reflection Engine.
 
 Commands (run from the repo with the package installed, e.g. ``pip install -e ".[dev]"``):
 
-- python -m atman.cli_reflection reflect micro --fixtures
-- python -m atman.cli_reflection reflect daily --fixtures
-- python -m atman.cli_reflection reflect deep --fixtures
+Fixtures mode (mock data, no external dependencies):
+  python -m atman.cli_reflection reflect micro --fixtures
+  python -m atman.cli_reflection reflect daily --fixtures
+  python -m atman.cli_reflection reflect deep --fixtures
 
-Note: Non-fixtures modes require integration with FileStateStore,
-which is not yet implemented. Use ``python src/demo_reflection.py`` for the full walkthrough.
+Live mode (real StateStore + OpenAI-compatible LLM when ATMAN_LLM_BASE_URL is set):
+  python -m atman.cli_reflection reflect daily --live --agent-id <uuid>
+  python -m atman.cli_reflection reflect deep --live --agent-id <uuid> [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 """
 
+import argparse
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from uuid import UUID, uuid4
 
 from atman.adapters.reflection.fixture_loader import (
@@ -39,6 +42,7 @@ from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.session import Session
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
+from atman.core.ports.state_store import StateStore
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.reflection_service import (
     DailyReflectionService,
@@ -339,9 +343,19 @@ def cmd_reflect_daily(args: list[str]) -> int:
     """Run daily reflection."""
     print_banner("Daily Reflection")
 
-    if "--fixtures" not in args:
-        print_err("Only --fixtures mode is supported for now")
-        print_help_text("Usage: atman reflect daily --fixtures")
+    p = argparse.ArgumentParser(prog="atman reflect daily", add_help=False)
+    p.add_argument("--fixtures", action="store_true")
+    p.add_argument("--live", action="store_true")
+    p.add_argument("--agent-id", dest="agent_id", default=None)
+    p.add_argument("--workspace", default=".atman")
+    parsed, _ = p.parse_known_args(args)
+
+    if parsed.live:
+        return _cmd_daily_live(parsed)
+
+    if not parsed.fixtures:
+        print_err("Specify --fixtures (mock data) or --live --agent-id <uuid> (real data)")
+        print_help_text("Usage: atman reflect daily --fixtures | --live --agent-id <uuid>")
         return 1
 
     print_ok("Using test fixtures...")
@@ -378,13 +392,63 @@ def cmd_reflect_daily(args: list[str]) -> int:
     return 0
 
 
+def _cmd_daily_live(parsed: argparse.Namespace) -> int:
+    """Daily reflection in live mode (real StateStore + optional LLM)."""
+    from pathlib import Path
+
+    from atman.adapters.agent.factory import _build_state_store, build_daily_reflection_service
+
+    agent_id = _resolve_agent_id(parsed)
+    if agent_id is None:
+        print_err("--agent-id <uuid> is required for --live mode (or set ATMAN_CURRENT_AGENT)")
+        return 1
+
+    workspace = Path(parsed.workspace).expanduser()
+    state_store = _build_state_store(workspace, agent_id)
+    _bootstrap_live_workspace(state_store, agent_id)
+
+    date = datetime.now(UTC)
+    print_ok(f"Agent: {agent_id}")
+    print_ok(f"Reflecting on date: {date.strftime('%Y-%m-%d')}")
+    demo_pace()
+
+    service = build_daily_reflection_service(agent_id, state_store)
+    event = service.reflect(date)
+
+    print_ok("\nReflection Complete!")
+    demo_pace()
+    print_info(f"  Level: {event.reflection_level}")
+    print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
+    print_info(f"  Patterns detected: {len(event.patterns_detected)}")
+    print_info(f"  Reframing notes added: {event.reframing_notes_added}")
+    print_info(f"  Key insight: {event.key_insight}")
+    if event.notes:
+        print_info(f"  Notes: {event.notes}")
+
+    return 0
+
+
 def cmd_reflect_deep(args: list[str]) -> int:
     """Run deep reflection."""
     print_banner("Deep Reflection")
 
-    if "--fixtures" not in args:
-        print_err("Only --fixtures mode is supported for now")
-        print_help_text("Usage: atman reflect deep --fixtures")
+    p = argparse.ArgumentParser(prog="atman reflect deep", add_help=False)
+    p.add_argument("--fixtures", action="store_true")
+    p.add_argument("--live", action="store_true")
+    p.add_argument("--agent-id", dest="agent_id", default=None)
+    p.add_argument("--workspace", default=".atman")
+    p.add_argument("--since", default=None, help="Start date YYYY-MM-DD (default: 7 days ago)")
+    p.add_argument("--until", default=None, help="End date YYYY-MM-DD (default: today)")
+    parsed, _ = p.parse_known_args(args)
+
+    if parsed.live:
+        return _cmd_deep_live(parsed)
+
+    if not parsed.fixtures:
+        print_err("Specify --fixtures (mock data) or --live --agent-id <uuid> (real data)")
+        print_help_text(
+            "Usage: atman reflect deep --fixtures | --live --agent-id <uuid> [--since YYYY-MM-DD] [--until YYYY-MM-DD]"
+        )
         return 1
 
     print_ok("Using test fixtures...")
@@ -427,6 +491,100 @@ def cmd_reflect_deep(args: list[str]) -> int:
         if assessment:
             print_info(f"  Health score: {assessment.overall_score:.2f}/1.0")
 
+    print_info(f"  Key insight: {event.key_insight}")
+
+    return 0
+
+
+def _parse_live_date_start(value: str) -> datetime:
+    """Parse --since YYYY-MM-DD or ISO datetime to UTC (start of day for date-only)."""
+    if len(value) <= 10 and "T" not in value:
+        day = datetime.fromisoformat(value).date()
+        return datetime.combine(day, time.min, tzinfo=UTC)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _parse_live_date_end(value: str) -> datetime:
+    """Parse --until YYYY-MM-DD or ISO datetime to UTC (end of day for date-only)."""
+    if len(value) <= 10 and "T" not in value:
+        day = datetime.fromisoformat(value).date()
+        return datetime.combine(day, time.max, tzinfo=UTC)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _bootstrap_live_workspace(state_store: StateStore, agent_id: UUID) -> None:
+    """Ensure identity and narrative exist before live reflection (same as build_deps)."""
+    from atman.core.services.identity_service import IdentityService
+    from atman.core.services.narrative_service import NarrativeService
+
+    identity_service = IdentityService(state_store)
+    narrative_service = NarrativeService(state_store)
+    identity = state_store.load_identity(agent_id)
+    if identity is None:
+        identity = identity_service.bootstrap_identity(agent_id)
+    if state_store.load_narrative(identity.id) is None:
+        narrative_service.create_narrative(identity)
+
+
+def _resolve_agent_id(parsed: argparse.Namespace) -> UUID | None:
+    """Resolve agent_id from --agent-id arg or ATMAN_CURRENT_AGENT env var."""
+    import os
+
+    raw = parsed.agent_id or os.environ.get("ATMAN_CURRENT_AGENT")
+    if raw:
+        try:
+            return UUID(raw)
+        except ValueError:
+            print_err(f"Invalid UUID: {raw!r}")
+    return None
+
+
+def _cmd_deep_live(parsed: argparse.Namespace) -> int:
+    """Deep reflection in live mode (real StateStore + optional LLM)."""
+    from pathlib import Path
+
+    from atman.adapters.agent.factory import _build_state_store, build_deep_reflection_service
+
+    agent_id = _resolve_agent_id(parsed)
+    if agent_id is None:
+        print_err("--agent-id <uuid> is required for --live mode (or set ATMAN_CURRENT_AGENT)")
+        return 1
+
+    now = datetime.now(UTC)
+    if parsed.since:
+        since = _parse_live_date_start(parsed.since)
+    else:
+        since = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if parsed.until:
+        until = _parse_live_date_end(parsed.until)
+    else:
+        until = now
+
+    workspace = Path(parsed.workspace).expanduser()
+    state_store = _build_state_store(workspace, agent_id)
+    _bootstrap_live_workspace(state_store, agent_id)
+
+    print_ok(f"Agent: {agent_id}")
+    print_ok(f"Reflecting on period: {since.strftime('%Y-%m-%d')} to {until.strftime('%Y-%m-%d')}")
+    demo_pace()
+
+    service = build_deep_reflection_service(agent_id, state_store)
+    event = service.reflect(since, until)
+
+    print_ok("\nReflection Complete!")
+    demo_pace()
+    print_info(f"  Level: {event.reflection_level}")
+    print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
+    print_info(f"  Patterns detected: {len(event.patterns_detected)}")
+    print_info(f"  Reframing notes added: {event.reframing_notes_added}")
+    if event.notes:
+        print_info(f"  Notes: {event.notes}")
     print_info(f"  Key insight: {event.key_insight}")
 
     return 0

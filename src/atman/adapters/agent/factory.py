@@ -37,6 +37,7 @@ except ImportError:
     _AffectDetectorConfig = None  # type: ignore[assignment,misc]
     _AFFECT_AVAILABLE = False
 from atman.core.models import NarrativeDocument
+from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.reflection import (
     HealthCriterionOutput,
     NarrativeUpdateOutput,
@@ -45,10 +46,15 @@ from atman.core.models.reflection import (
 )
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
 from atman.core.ports.reflection import NarrativeRepository, ReflectionModel
+from atman.core.ports.state_store import StateStore
 from atman.core.services.identity_service import IdentityService
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.narrative_service import NarrativeService
-from atman.core.services.reflection_service import MicroReflectionService
+from atman.core.services.reflection_service import (
+    DailyReflectionService,
+    DeepReflectionService,
+    MicroReflectionService,
+)
 from atman.core.services.session_manager import SessionManager
 
 
@@ -76,9 +82,9 @@ class _MockReflectionModel(ReflectionModel):
 
 
 class _NarrativeAdapter(NarrativeRepository):
-    def __init__(self, store: FileStateStore | PostgresStateStore, *, identity_id: UUID):
+    def __init__(self, store: StateStore, agent_id: UUID):
         self._s = store
-        self._identity_id = identity_id
+        self._agent_id = agent_id
 
     def get_current(self) -> NarrativeDocument | None:
         if isinstance(self._s, FileStateStore):
@@ -87,7 +93,7 @@ class _NarrativeAdapter(NarrativeRepository):
                 return None
             with open(p, encoding="utf-8") as f:
                 return NarrativeDocument.model_validate(json.load(f))
-        return self._s.load_narrative(self._identity_id)
+        return self._s.load_narrative(self._agent_id)
 
     def get_history(self) -> list[NarrativeDocument]:
         return []
@@ -144,6 +150,13 @@ def build_deps(
     if config is None:
         config = AgentConfig()
 
+    # Initialize Sentry once at the composition root if SENTRY_DSN is configured.
+    # No-op when the env var is absent — all observability calls degrade gracefully.
+    from atman.adapters.observability.sentry import init_sentry_from_env, set_agent_scope
+
+    if init_sentry_from_env():
+        set_agent_scope(str(agent_id))
+
     workspace.mkdir(parents=True, exist_ok=True)
     state_store = _build_state_store(workspace, agent_id)
     identity_service = IdentityService(state_store)
@@ -158,17 +171,30 @@ def build_deps(
     # Maintenance queue + post-write scheduler (HLE-27): enqueue mREBEL +
     # lingvo enrichment jobs after every KeyMoment write.
     #
-    # The queue is the in-memory variant by default — sufficient for
-    # single-process dev runs. **Important:** nothing in build_deps spawns a
-    # MaintenanceWorker drain; the queue accumulates until an out-of-process
-    # consumer runs `python -m atman.cli_maintenance run --loop`. Production
-    # Postgres deploys swap the queue for `PostgresMaintenanceQueue` and run
-    # a long-lived worker pod against it. In CI / unit tests the queue is
-    # introspected directly — there's no orphan-worker requirement.
-    from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
+    # Use PostgresMaintenanceQueue when DATABASE_URL is set and the state
+    # store is Postgres — jobs survive process restarts. Falls back to the
+    # in-memory variant for zero-config / CI runs.
     from atman.core.services.post_write_scheduler import PostWriteScheduler
 
-    maintenance_queue = InMemoryMaintenanceQueue()
+    _mq_pg_url = os.environ.get("ATMAN_DB_URL") or os.environ.get("DATABASE_URL")
+    if _mq_pg_url and isinstance(state_store, PostgresStateStore):
+        try:
+            from atman.adapters.maintenance.postgres_queue import PostgresMaintenanceQueue
+
+            maintenance_queue = PostgresMaintenanceQueue(db_url=_mq_pg_url)
+        except Exception:
+            import logging as _mq_log
+
+            _mq_log.getLogger(__name__).warning(
+                "PostgresMaintenanceQueue unavailable — falling back to in-memory", exc_info=True
+            )
+            from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
+
+            maintenance_queue = InMemoryMaintenanceQueue()
+    else:
+        from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
+
+        maintenance_queue = InMemoryMaintenanceQueue()
     post_write_scheduler = PostWriteScheduler(maintenance_queue)
 
     # HLE-29: divergence pipeline. The detector turns LinguisticAnalysis into
@@ -188,7 +214,7 @@ def build_deps(
     from atman.core.ports.linguistic import LinguisticAnalyzer as _LinguisticAnalyzer
     from atman.core.services.divergence_detector import DivergenceDetector
 
-    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true"
+    _linguistic_enabled = os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true"
     _affect_linguistic: _LinguisticAnalyzer = NoOpLinguisticAnalyzer()
     if _linguistic_enabled:
         try:
@@ -348,7 +374,7 @@ def build_deps(
         _narrative_reflection_model = _MockReflectionModel()
 
     narrative_revision = NarrativeRevisionService(
-        narrative_repo=_NarrativeAdapter(state_store, identity_id=agent_id),
+        narrative_repo=_NarrativeAdapter(state_store, agent_id),
         reflection_model=_narrative_reflection_model,
         narrative_audit=NoOpNarrativeWriteAudit(),
     )
@@ -359,7 +385,7 @@ def build_deps(
     # is constructed after this block so it receives the populated reference.
     passive_memory_injector = None
     _embedding_adapter = None
-    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "true").lower() == "true":
+    if os.getenv("ATMAN_LINGUISTIC_ENABLED", "false").lower() == "true":
         from atman.config import build_embedding_adapter
         from atman.config import build_memory_backend as _build_mem
         from atman.core.services.passive_memory_injector import PassiveMemoryInjector
@@ -373,7 +399,7 @@ def build_deps(
             _factual_memory = _build_mem()
             # Wire the post_write_scheduler so add_fact triggers async entity-link enrichment.
             if hasattr(_factual_memory, "_post_write_scheduler"):
-                _factual_memory._post_write_scheduler = post_write_scheduler  # type: ignore[attr-defined]
+                _factual_memory._post_write_scheduler = post_write_scheduler  # pyright: ignore[reportAttributeAccessIssue]
             # BM25 is zero-dependency and provides a second retrieval signal
             # fused with the dense embedding via Reciprocal Rank Fusion. It
             # rescues exact lexical matches that dense encoders can rank low.
@@ -482,8 +508,13 @@ def build_deps(
                 from atman.adapters.linguistic.mrebel_adapter import MRebelRelationAdapter
 
                 _mrebel_extractor = MRebelRelationAdapter(device="cpu")
-            except Exception:  # nosec B110
-                pass  # mrebel unavailable — worker still handles lingvo/decay jobs
+            except Exception:
+                import logging as _log
+
+                _log.getLogger(__name__).debug(
+                    "mrebel unavailable — worker still handles lingvo/decay jobs",
+                    exc_info=True,
+                )
 
         _maintenance_worker = MaintenanceWorker(
             queue=maintenance_queue,
@@ -610,3 +641,263 @@ def _build_skill_manager(agent_id: UUID, embedding_adapter):
     except Exception:
         log.warning("Failed to build SkillManager — skill-loop disabled", exc_info=True)
         return None
+
+
+# ---------------------------------------------------------------------------
+# IdentityRepository / NarrativeRepository adapters over any StateStore
+# ---------------------------------------------------------------------------
+
+
+class _StateStoreIdentityRepo:
+    """IdentityRepository protocol adapter over FileStateStore or PostgresStateStore."""
+
+    def __init__(self, store: FileStateStore | PostgresStateStore, agent_id: UUID) -> None:
+        self._store = store
+        self._agent_id = agent_id
+
+    def get_current(self) -> Identity | None:
+        return self._store.load_identity(self._agent_id)
+
+    def get_snapshot(self, snapshot_id: UUID) -> IdentitySnapshot | None:
+        for snap in self._store.list_identity_snapshots(self._agent_id, limit=500):
+            if snap.id == snapshot_id:
+                return snap
+        return None
+
+    def get_history(self) -> list[IdentitySnapshot]:
+        return self._store.list_identity_snapshots(self._agent_id)
+
+    def update(self, identity: Identity) -> None:
+        self._store.save_identity(identity)
+
+    def create_snapshot(
+        self,
+        identity: Identity,
+        description: str,
+        change_summary: str,
+        *,
+        snapshot_id: UUID | None = None,
+    ) -> IdentitySnapshot:
+        from uuid import uuid4 as _uuid4
+
+        snap = IdentitySnapshot(
+            id=snapshot_id or _uuid4(),
+            identity_id=identity.id,
+            identity_snapshot=identity.model_copy(deep=True),
+            description=description,
+            change_summary=change_summary,
+        )
+        return self._store.create_identity_snapshot(snap)
+
+
+class _StateStoreNarrativeRepo:
+    """NarrativeRepository protocol adapter over FileStateStore or PostgresStateStore."""
+
+    def __init__(self, store: FileStateStore | PostgresStateStore, identity_id: UUID) -> None:
+        self._store = store
+        self._identity_id = identity_id
+
+    def get_current(self) -> NarrativeDocument | None:
+        return self._store.load_narrative(self._identity_id)
+
+    def update(
+        self,
+        narrative: NarrativeDocument,
+        *,
+        expected_updated_at=None,
+    ) -> None:
+        self._store.save_narrative(narrative, expected_updated_at=expected_updated_at)
+
+    def get_history(self) -> list[NarrativeDocument]:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Production builders for Daily and Deep reflection services
+# ---------------------------------------------------------------------------
+
+
+def _build_reflection_model(override: ReflectionModel | None = None) -> ReflectionModel:
+    """Return a ReflectionModel: OpenAIReflectionModel when ATMAN_LLM_BASE_URL set, else mock."""
+    if override is not None:
+        return override
+    _url = os.getenv("ATMAN_LLM_BASE_URL", "")
+    if _url:
+        try:
+            from atman.adapters.reflection.openai_reflection_model import OpenAIReflectionModel
+            from atman.config import OpenAILLMConfig
+
+            _model = (
+                os.getenv("ATMAN_LLM_MODEL")
+                or os.getenv("LLM_MODEL")
+                or os.getenv("AGENT_LLM_MODEL")
+                or "gemma4"
+            )
+            return OpenAIReflectionModel(
+                OpenAILLMConfig(
+                    base_url=_url,
+                    api_key=os.getenv("ATMAN_LLM_API_KEY", "dummy"),
+                    model=_model,
+                )
+            )
+        except Exception:
+            import logging as _log
+
+            _log.getLogger(__name__).warning(
+                "OpenAIReflectionModel unavailable — using mock", exc_info=True
+            )
+    return _MockReflectionModel()
+
+
+def _build_entity_adapters(state_store: FileStateStore | PostgresStateStore):
+    """Return (entity_registry, stance_store): Postgres when available, else in-memory."""
+    from atman.adapters.memory.in_memory_entity_registry import InMemoryEntityRegistry
+    from atman.adapters.memory.in_memory_entity_stance import InMemoryEntityStanceStore
+
+    registry = InMemoryEntityRegistry()
+    stance_store = InMemoryEntityStanceStore()
+    _pg_url = os.environ.get("ATMAN_DB_URL") or os.environ.get("DATABASE_URL")
+    if _pg_url and isinstance(state_store, PostgresStateStore):
+        try:
+            from atman.adapters.memory.postgres_entity_registry import PostgresEntityRegistry
+            from atman.adapters.memory.postgres_entity_stance import PostgresEntityStanceStore
+
+            registry = PostgresEntityRegistry(db_url=_pg_url)
+            stance_store = PostgresEntityStanceStore(db_url=_pg_url)
+        except Exception:
+            import logging as _log
+
+            _log.getLogger(__name__).warning(
+                "Postgres entity adapters unavailable — using in-memory", exc_info=True
+            )
+    return registry, stance_store
+
+
+def build_daily_reflection_service(
+    agent_id: UUID,
+    state_store: FileStateStore | PostgresStateStore,
+    *,
+    reflection_model: ReflectionModel | None = None,
+) -> DailyReflectionService:
+    """
+    Assemble a fully-wired DailyReflectionService with R5-R10 optional hooks.
+
+    Uses OpenAIReflectionModel when ATMAN_LLM_BASE_URL is set, otherwise MockReflectionModel.
+    Uses Postgres adapters for entity registry/stance when DATABASE_URL is configured and
+    state_store is PostgresStateStore; falls back to in-memory otherwise.
+    """
+    from atman.adapters.memory.in_memory_divergence_events import InMemoryDivergenceEventStore
+    from atman.adapters.memory.in_memory_memory_guardian import InMemoryMemoryGuardian
+    from atman.adapters.storage.in_memory_reflection_store import (
+        InMemoryPatternStore,
+        InMemoryReflectionEventStore,
+    )
+    from atman.core.services.divergence_aggregator import DivergenceAggregator
+    from atman.core.services.entity_stance_formulator import EntityStanceFormulator
+    from atman.core.services.findings_triage import FindingsTriage
+
+    model = _build_reflection_model(reflection_model)
+    session_repo = StateStoreSessionRepository(state_store, agent_id=agent_id)
+    identity_repo = _StateStoreIdentityRepo(state_store, agent_id)
+    pattern_store = InMemoryPatternStore()
+    event_store = InMemoryReflectionEventStore()
+
+    entity_registry, stance_store = _build_entity_adapters(state_store)
+    divergence_event_store = InMemoryDivergenceEventStore()
+    guardian = InMemoryMemoryGuardian(
+        state_store=state_store, divergence_event_store=divergence_event_store
+    )
+
+    return DailyReflectionService(
+        session_repo=session_repo,
+        identity_repo=identity_repo,
+        pattern_store=pattern_store,
+        reflection_model=model,
+        event_store=event_store,
+        divergence_aggregator=DivergenceAggregator(
+            event_store=divergence_event_store, pattern_store=pattern_store
+        ),
+        entity_stance_formulator=EntityStanceFormulator(
+            state_store=state_store,
+            entity_registry=entity_registry,
+            stance_store=stance_store,
+            reflection_model=model,
+        ),
+        findings_triage=FindingsTriage(guardian=guardian),
+        reflection_request_queue=InMemoryReflectionRequestQueue(),
+        agent_id=agent_id,
+    )
+
+
+def build_deep_reflection_service(
+    agent_id: UUID,
+    state_store: FileStateStore | PostgresStateStore,
+    *,
+    reflection_model: ReflectionModel | None = None,
+) -> DeepReflectionService:
+    """
+    Assemble a fully-wired DeepReflectionService with R5-R10 optional hooks.
+
+    Uses OpenAIReflectionModel when ATMAN_LLM_BASE_URL is set, otherwise MockReflectionModel.
+    Uses Postgres adapters for entity registry/stance when DATABASE_URL is configured and
+    state_store is PostgresStateStore; falls back to in-memory otherwise.
+    """
+    from atman.adapters.memory.in_memory_divergence_events import InMemoryDivergenceEventStore
+    from atman.adapters.memory.in_memory_entity_relation_store import InMemoryEntityRelationStore
+    from atman.adapters.memory.in_memory_memory_guardian import InMemoryMemoryGuardian
+    from atman.adapters.storage.in_memory_reflection_store import (
+        InMemoryHealthAssessmentStore,
+        InMemoryPatternStore,
+        InMemoryReflectionEventStore,
+    )
+    from atman.core.services.entity_relations_formulator import EntityRelationsFormulator
+    from atman.core.services.entity_stance_formulator import EntityStanceFormulator
+    from atman.core.services.merge_candidates_handler import MergeCandidatesHandler
+
+    model = _build_reflection_model(reflection_model)
+    session_repo = StateStoreSessionRepository(state_store, agent_id=agent_id)
+    identity_repo = _StateStoreIdentityRepo(state_store, agent_id)
+
+    identity = state_store.load_identity(agent_id)
+    identity_id = identity.id if identity else agent_id
+    narrative_repo = _StateStoreNarrativeRepo(state_store, identity_id)
+
+    pattern_store = InMemoryPatternStore()
+    health_store = InMemoryHealthAssessmentStore()
+    event_store = InMemoryReflectionEventStore()
+
+    entity_registry, stance_store = _build_entity_adapters(state_store)
+    divergence_event_store = InMemoryDivergenceEventStore()
+    guardian = InMemoryMemoryGuardian(
+        state_store=state_store, divergence_event_store=divergence_event_store
+    )
+
+    return DeepReflectionService(
+        session_repo=session_repo,
+        identity_repo=identity_repo,
+        narrative_repo=narrative_repo,
+        pattern_store=pattern_store,
+        health_store=health_store,
+        reflection_model=model,
+        event_store=event_store,
+        entity_stance_formulator=EntityStanceFormulator(
+            state_store=state_store,
+            entity_registry=entity_registry,
+            stance_store=stance_store,
+            reflection_model=model,
+        ),
+        entity_relations_formulator=EntityRelationsFormulator(
+            state_store=state_store,
+            entity_registry=entity_registry,
+            relation_store=InMemoryEntityRelationStore(),
+            reflection_model=model,
+        ),
+        merge_candidates_handler=MergeCandidatesHandler(
+            state_store=state_store,
+            entity_registry=entity_registry,
+            guardian=guardian,
+            reflection_model=model,
+        ),
+        reflection_request_queue=InMemoryReflectionRequestQueue(),
+        agent_id=agent_id,
+    )

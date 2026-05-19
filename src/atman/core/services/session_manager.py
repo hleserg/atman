@@ -37,11 +37,13 @@ from atman.core.exceptions import (
 from atman.core.models import (
     ActiveSessionSummary,
     Eigenstate,
+    ExperienceRecord,
     KeyMoment,
     KeyMomentInput,
     Session,
     SessionContext,
     SessionEvent,
+    SessionExperience,
     SessionResult,
 )
 from atman.core.ports.affect import AffectPort
@@ -93,6 +95,15 @@ def _session_finish_marker(session_id: UUID) -> str:
 def deterministic_session_experience_id(session_id: UUID) -> UUID:
     """Return a deterministic UUID derived from session_id (used by external callers)."""
     return uuid5(_SESSION_EXPERIENCE_ID_NS, str(session_id))
+
+
+def _experience_store_available(state_store: StateStore) -> bool:
+    """True when the store implements legacy ExperienceRecord persistence."""
+    try:
+        state_store.get_experience(deterministic_session_experience_id(UUID(int=0)))
+    except NotImplementedError:
+        return False
+    return True
 
 
 class SessionManager:
@@ -1065,6 +1076,17 @@ class SessionManager:
                         moment, agent_id=session_result.identity_id
                     )
 
+            self._persist_legacy_session_experience(
+                session_id,
+                session_result,
+                safe_close_reason=safe_close_reason,
+                unexamined_fact_refs=unexamined_fact_refs,
+                key_insight=key_insight,
+                restart_reason=restart_reason,
+                user_language=user_language,
+                colored_fact_ids=_colored_fact_ids,
+            )
+
             eigenstate = self._create_eigenstate(session_result)
             session_result.eigenstate = eigenstate
             self._state_store.save_eigenstate(eigenstate)
@@ -1126,6 +1148,77 @@ class SessionManager:
             finished_at=str(final.finished_at),
         )
         return final
+
+    def _persist_legacy_session_experience(
+        self,
+        session_id: UUID,
+        session_result: SessionResult,
+        *,
+        safe_close_reason: (
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+        ),
+        unexamined_fact_refs: list[UUID],
+        key_insight: str,
+        restart_reason: str | None,
+        user_language: str,
+        colored_fact_ids: set[UUID],
+    ) -> None:
+        """Write SessionExperience for FileStateStore / in-memory adapters.
+
+        PostgresStateStore v2 stores sessions and key moments only; experience
+        operations raise NotImplementedError and are skipped here. Reflection on
+        Postgres uses Session + KeyMoment via StateStoreSessionRepository, not
+        ExperienceRecord rows.
+        """
+        if not _experience_store_available(self._state_store):
+            return
+
+        experience_id = deterministic_session_experience_id(session_id)
+        existing_record = self._state_store.get_experience(experience_id)
+        if existing_record is not None:
+            if existing_record.experience.session_id != session_id:
+                raise ValueError(
+                    f"Stored experience {experience_id} belongs to another session "
+                    f"({existing_record.experience.session_id}); refusing to proceed."
+                )
+            return
+
+        fact_refs_set: set[UUID] = set(colored_fact_ids)
+        fact_refs_set.update(session_result._facts_read)
+        key_moment_ids = [m.id for m in session_result.key_moments]
+
+        avg_emotional_intensity = 0.5
+        has_profound_moment = False
+        if session_result.key_moments:
+            from atman.core.models.experience import EmotionalDepth
+
+            avg_emotional_intensity = sum(
+                m.how_i_felt.emotional_intensity for m in session_result.key_moments
+            ) / len(session_result.key_moments)
+            has_profound_moment = any(
+                m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in session_result.key_moments
+            )
+
+        experience = SessionExperience(
+            id=experience_id,
+            session_id=session_id,
+            timestamp=session_result.finished_at or self._clock.now(),
+            key_moment_ids=key_moment_ids,
+            unexamined_fact_refs=unexamined_fact_refs,
+            recorded_by="session_manager",
+            identity_snapshot_id=session_result.identity_snapshot_id,
+            importance=0.5,
+            salience=0.5,
+            avg_emotional_intensity=avg_emotional_intensity,
+            has_profound_moment=has_profound_moment,
+            incomplete_coloring=session_result.incomplete_coloring,
+            fact_refs=list(fact_refs_set),
+            close_reason=safe_close_reason,
+            agent_recap=key_insight or None,
+            restart_reason=restart_reason or "",
+            user_language=user_language,
+        )
+        self._state_store.create_experience(ExperienceRecord(experience=experience))
 
     def _write_finish_journal_entry(self, session_result: SessionResult) -> None:
         """Persist finish-time metadata before downstream artifacts can partially fail."""

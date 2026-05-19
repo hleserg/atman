@@ -1884,7 +1884,7 @@ def test_orphan_recovery_skips_currently_active_sessions(
     # Session A's journal should still exist (not treated as orphan)
     assert journal_path_a.exists()
 
-    # Key moments are persisted on append (crash-safe); session A is still active
+    # Key moments are durable immediately (append_key_moment_input writes to store)
     moments_before = store.get_key_moments_for_session(context_a.session_id)
     assert len(moments_before) == 1
 

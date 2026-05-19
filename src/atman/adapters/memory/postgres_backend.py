@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
 
-    from atman.core.models.entity import FactEntityLink
     from atman.core.services.post_write_scheduler import PostWriteScheduler
 else:
     try:
@@ -37,6 +36,7 @@ else:
             stacklevel=2,
         )
 
+from atman.core.models.entity import FactEntityLink
 from atman.core.models.fact import FactRecord, FactStatus, Relation
 from atman.core.ports import FactualMemory
 from atman.core.ports.embedding import EmbeddingPort
@@ -175,7 +175,7 @@ class PostgresFactualMemory(FactualMemory):
             self._conn = psycopg.connect(
                 self.db_url,
                 row_factory=cast(Any, dict_row),
-                autocommit=True,
+                autocommit=False,
             )
 
     def close(self) -> None:
@@ -211,9 +211,8 @@ class PostgresFactualMemory(FactualMemory):
         """Set RLS session variable if ATMAN_CURRENT_AGENT is configured.
 
         Uses set_config(..., false) for session-level scope so the value
-        persists across subsequent autocommit statements on the same connection.
-        (is_local=true would only survive the single-statement "transaction"
-        that autocommit creates, making RLS checks fail on the next statement.)
+        persists across explicit commits on the same connection.
+        (is_local=true would be transaction-scoped and lost after commit.)
         """
         agent_id = os.environ.get("ATMAN_CURRENT_AGENT")
         if agent_id:
@@ -638,7 +637,7 @@ class PostgresFactualMemory(FactualMemory):
         self,
         fact_id: UUID,
         agent_id: UUID,
-        links: "list[FactEntityLink]",
+        links: list[FactEntityLink],
     ) -> None:
         """Persist fact→entity links into agent_N.fact_entities.
 
@@ -651,20 +650,20 @@ class PostgresFactualMemory(FactualMemory):
         schema = self._agent_schema(agent_id)
         if schema is None:
             return
-        conn = self._require_conn()
-        self._set_agent_context(conn)
         from psycopg import sql
 
-        insert_sql = sql.SQL(
-            "INSERT INTO {schema}.fact_entities "
+        conn = self._require_conn()
+        self._set_agent_context(conn)
+        insert_q = sql.SQL(
+            "INSERT INTO {}.fact_entities "
             "(fact_id, entity_id, agent_id, role, confidence) "
             "VALUES (%s, %s, %s, %s, %s) "
             "ON CONFLICT (fact_id, entity_id, role) DO NOTHING"
-        ).format(schema=sql.Identifier(schema))
+        ).format(sql.Identifier(schema))
         with conn.cursor() as cur:
             for link in links:
                 cur.execute(
-                    insert_sql,
+                    insert_q,
                     [
                         str(link.fact_id),
                         str(link.entity_id),

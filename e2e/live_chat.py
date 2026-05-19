@@ -528,6 +528,9 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
                 for it in items
             ],
         )
+        from atman.adapters.observability.sentry import metric_increment
+
+        metric_increment("atman.rag.items_injected", len(items))
         if not items:
             con.add("🧭", "ambient RAG", f"[dim]0 items  tokens={result.tokens_used}[/dim]")
         else:
@@ -695,8 +698,8 @@ async def amain() -> int:
         except Exception as e:
             _rc.print(f"  [dim yellow]postgres entity registry unavailable: {e}[/dim yellow]")
 
-    # Bootstrap only on first run (no identity stored yet)
-    if not (workspace / "identity.json").exists():
+    # Bootstrap only when the store has no identity yet (works for file and Postgres).
+    if store.load_identity(agent_id) is None:
         bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
@@ -711,6 +714,17 @@ async def amain() -> int:
     deps = replace(deps, session_id=session_id)
     _log("session_id", session_id=str(session_id), workspace=str(workspace))
     _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
+
+    from atman.adapters.observability.sentry import (
+        session_transaction,
+        set_agent_scope,
+        set_session_tag,
+    )
+
+    set_agent_scope(str(agent_id))
+    set_session_tag(str(session_id))
+    _sentry_tx = session_transaction(str(session_id), str(agent_id))
+    _sentry_tx.__enter__()
 
     agent = Agent(
         llm,
@@ -727,6 +741,10 @@ async def amain() -> int:
     # Keep ~4 recent turns to stay under model context limit.
     # Gemma4 via llama-server defaults to n_ctx=8192; system prompt alone is ~1.5k tokens.
     _MAX_HISTORY = 8
+
+    import time as _session_timer
+
+    _session_t0 = _session_timer.monotonic()
 
     try:
         while True:
@@ -772,6 +790,9 @@ async def amain() -> int:
             trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
             if len(history) > _MAX_HISTORY:
                 con.warn(f"History trimmed {len(history)} → {len(trimmed)} messages")
+            import time as _time
+
+            _t0_llm = _time.monotonic()
             try:
                 result = await agent.run(
                     user_text,
@@ -797,8 +818,12 @@ async def amain() -> int:
                 con.flush("atman ✗")
                 continue
 
-            new_messages = _sanitize_history(list(result.all_messages()))
-            history.extend(new_messages)
+            _llm_ms = (_time.monotonic() - _t0_llm) * 1000
+            from atman.adapters.observability.sentry import metric_distribution
+
+            metric_distribution("atman.llm.latency_ms", _llm_ms, unit="millisecond")
+
+            history = _sanitize_history(list(result.all_messages()))
 
             # ── Atman post-turn: tool calls ────────────────────────────────────
             for msg in result.new_messages():
@@ -851,6 +876,13 @@ async def amain() -> int:
                 close_reason=close_reason,
             )
             con.ok(f"finish_session  close_reason={close_reason}")
+            from atman.adapters.observability.sentry import metric_distribution
+
+            metric_distribution(
+                "atman.session.duration",
+                (_session_timer.monotonic() - _session_t0) * 1000,
+                unit="millisecond",
+            )
         except ValueError as exc:
             if "Cannot finish session without key moments" in str(exc):
                 from atman.adapters.agent.runner import _force_finish
@@ -888,17 +920,17 @@ async def amain() -> int:
             try:
                 findings = deps.memory_guardian.get_unresolved(agent_id)
                 for f in findings:
-                    detail = str(f.details)[:100]
+                    detail_text = str(f.details)[:100]
                     _log(
                         "validation_finding",
                         severity=f.severity,
                         finding_type=f.finding_type,
-                        details=detail,
+                        details=detail_text,
                     )
                     con.add(
                         "⚠",
                         f"finding [{f.severity}]",
-                        f"[dim]{f.finding_type}:[/dim] {detail}",
+                        f"[dim]{f.finding_type}:[/dim] {detail_text}",
                     )
             except Exception:
                 pass
@@ -907,6 +939,8 @@ async def amain() -> int:
 
         con.flush("atman session end")
         _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
+
+        _sentry_tx.__exit__(None, None, None)
     return 0
 
 

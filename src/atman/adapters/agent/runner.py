@@ -76,8 +76,11 @@ async def _run_affect_detector(
         clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
         if clean:
             await detector.process(clean, thinking=thinking, session_id=session_id)
-    except Exception:
+    except Exception as exc:
         _LOG.debug("affect detector process() failed", exc_info=True)
+        from atman.adapters.observability.sentry import capture_silent_exception
+
+        capture_silent_exception(exc, context="affect_detector", session_id=str(session_id))
 
 
 def _auto_record_refusal_if_needed(
@@ -108,8 +111,11 @@ def _auto_record_refusal_if_needed(
             ),
         )
         _LOG.debug("Auto-recorded value refusal as key moment")
-    except Exception:
+    except Exception as exc:
         _LOG.debug("auto_record_refusal: append_key_moment_input failed", exc_info=True)
+        from atman.adapters.observability.sentry import capture_silent_exception
+
+        capture_silent_exception(exc, context="auto_record_refusal")
 
 
 # PLAYBOOK-START

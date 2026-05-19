@@ -15,22 +15,29 @@ import pydantic
 from atman.adapters.reflection.exceptions import OllamaReflectionError
 from atman.adapters.reflection.prompts import (
     OllamaMessage,
+    build_entity_merge_messages,
+    build_entity_relation_messages,
     build_health_messages,
     build_narrative_messages,
     build_pattern_messages,
     build_reframing_messages,
+    build_stance_formulation_messages,
 )
 from atman.config import OpenAILLMConfig
+from atman.core.models.entity import Entity
 from atman.core.models.experience import KeyMoment, SessionExperience
 from atman.core.models.identity import Identity
 from atman.core.models.narrative import NarrativeDocument
 from atman.core.models.reflection import (
+    EntityRelationFormulationOutput,
     HealthCriterionOutput,
     JahodaCriterion,
+    MergeDecisionOutput,
     NarrativeUpdateOutput,
     PatternDetectionOutput,
     ReflectionLevel,
     ReframingNoteOutput,
+    StanceFormulationOutput,
 )
 from atman.core.ports.reflection import ReflectionModel
 
@@ -182,3 +189,34 @@ class OpenAIReflectionModel(ReflectionModel):
             identity, experiences, criterion, key_moments_by_session=key_moments_by_session
         )
         return self._call_with_retry(messages, HealthCriterionOutput)
+
+    def formulate_entity_stance(
+        self,
+        entity: Entity,
+        moments: list[KeyMoment],
+        structured_markers: dict[str, int] | None = None,
+    ) -> StanceFormulationOutput:
+        """Formulate entity stance via OpenAI-compatible API (R7)."""
+        messages = build_stance_formulation_messages(entity, moments, structured_markers)
+        return self._call_with_retry(messages, StanceFormulationOutput)
+
+    def formulate_entity_relation(
+        self,
+        entity_a: Entity,
+        entity_b: Entity,
+        shared_moments: list[KeyMoment],
+    ) -> EntityRelationFormulationOutput:
+        """Formulate typed relation between two entities via OpenAI-compatible API (R9)."""
+        messages = build_entity_relation_messages(entity_a, entity_b, shared_moments)
+        return self._call_with_retry(messages, EntityRelationFormulationOutput)
+
+    def decide_entity_merge(
+        self,
+        entity_a: Entity,
+        entity_b: Entity,
+        contexts_a: list[KeyMoment],
+        contexts_b: list[KeyMoment],
+    ) -> MergeDecisionOutput:
+        """Decide whether two near-duplicate entities should merge via OpenAI-compatible API (R10)."""
+        messages = build_entity_merge_messages(entity_a, entity_b, contexts_a, contexts_b)
+        return self._call_with_retry(messages, MergeDecisionOutput)

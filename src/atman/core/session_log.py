@@ -81,4 +81,4 @@ def slog(event: str, **data: Any) -> None:
         with _LOCK, _LOG_PATH.open("a", encoding="utf-8") as f:  # type: ignore[union-attr]
             f.write(line)
     except Exception:  # nosec B110 — slog must never raise
-        pass
+        return
