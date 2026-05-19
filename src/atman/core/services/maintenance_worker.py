@@ -224,6 +224,9 @@ class MaintenanceWorker:
         if moment is None:
             self._queue.mark_skipped(job.id, reason=f"key moment {moment_id} not found")
             return _DispatchOutcome.SKIPPED, None
+        if _moment_has_markers(moment):
+            self._queue.mark_skipped(job.id, reason="structured markers already present")
+            return _DispatchOutcome.SKIPPED, None
         analysis = self._analyzer.analyze_key_moment(
             moment.what_happened or "", moment.why_it_matters or ""
         )

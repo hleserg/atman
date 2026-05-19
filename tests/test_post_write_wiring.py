@@ -299,7 +299,7 @@ def test_worker_lingvo_updates_structured_markers() -> None:
     refreshed = store.get_key_moment(moment.id)
     assert refreshed is not None
     assert refreshed.structured_markers
-    assert refreshed.structured_markers_version == "1.0"
+    assert refreshed.structured_markers_version == "2.0"
 
 
 def test_worker_lingvo_persists_structured_markers_in_file_store(tmp_path: Path) -> None:
@@ -319,7 +319,7 @@ def test_worker_lingvo_persists_structured_markers_in_file_store(tmp_path: Path)
     refreshed = reopened.get_key_moment(moment.id)
     assert refreshed is not None
     assert refreshed.structured_markers
-    assert refreshed.structured_markers_version == "1.0"
+    assert refreshed.structured_markers_version == "2.0"
     session_moment = reopened.get_key_moments_for_session(session_id)[0]
     assert session_moment.structured_markers == refreshed.structured_markers
 
@@ -327,7 +327,7 @@ def test_worker_lingvo_persists_structured_markers_in_file_store(tmp_path: Path)
 def test_worker_lingvo_idempotent_when_markers_present() -> None:
     agent = uuid4()
     store = InMemoryStateStore()
-    pre_filled: dict[str, Any] = {"boundary_markers": ["principle:already"]}
+    pre_filled: dict[str, Any] = {"k": {"boundary_markers": ["principle:already"]}}
     moment = KeyMoment(
         what_happened="prefilled",
         how_i_felt=FeltSense(
@@ -335,7 +335,7 @@ def test_worker_lingvo_idempotent_when_markers_present() -> None:
         ),
         why_it_matters="why",
         structured_markers=pre_filled,
-        structured_markers_version="1.0",
+        structured_markers_version="2.0",
     )
     store.store_key_moments(uuid4(), [moment])
 

@@ -73,7 +73,9 @@ class TestReflectionStore:
         store = ReflectionStore(db_url="postgresql://test:pass@localhost/db")
         store.connect()
 
-        mock_psycopg.connect.assert_called_once_with("postgresql://test:pass@localhost/db")
+        mock_psycopg.connect.assert_called_once_with(
+            "postgresql://test:pass@localhost/db", autocommit=True
+        )
         assert store._conn == mock_conn
 
     @patch("atman.adapters.storage.reflection_store.psycopg")

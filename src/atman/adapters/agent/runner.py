@@ -755,10 +755,19 @@ class AtmanRunner:
             # Build and inject the full memory bundle (identity + narrative + prev session)
             # into agent awareness. All automatically recalled content goes through
             # inject_memory() so delivery mode is consistent and configurable.
-            recent_experiences = session_manager._state_store.list_recent_experiences(limit=1)
             prev_text = None
-            if recent_experiences:
-                prev_text = self._build_wake_up_message(recent_experiences[0].experience)
+            recent_sessions = session_manager._state_store.list_recent_sessions(
+                self._agent_id, limit=5
+            )
+            for prior_session in recent_sessions:
+                if prior_session.id == session_id:
+                    continue
+                if (
+                    prior_session.status in ("completed", "interrupted")
+                    and prior_session.close_reason
+                ):
+                    prev_text = self._build_wake_up_message(prior_session)
+                    break
 
             memory_bundle = build_memory_context(deps, prev_session_text=prev_text)
             pending_block = format_pending_reviews_block(deps.pending_review_inbox)
@@ -1303,19 +1312,24 @@ class AtmanRunner:
                 print_err(f"Free time run failed: {exc!s}")
                 continue
 
-    def _build_wake_up_message(self, experience: object) -> str | None:
-        """Build wake-up message based on close_reason from last SessionExperience."""
+    def _build_wake_up_message(self, prior: object) -> str | None:
+        """Build wake-up message from the last closed Session (v2) or SessionExperience (legacy)."""
         from atman.core.models import SessionExperience
+        from atman.core.models.session import Session
 
-        if not isinstance(experience, SessionExperience):
+        if isinstance(prior, Session):
+            close_reason = prior.close_reason
+            lang = prior.user_language or "ru"
+            reason = prior.restart_reason or ""
+        elif isinstance(prior, SessionExperience):
+            close_reason = prior.close_reason
+            lang = getattr(prior, "user_language", None) or "ru"
+            reason = getattr(prior, "restart_reason", None) or ""
+        else:
             return None
 
-        close_reason = experience.close_reason
         if not close_reason:
             return None
-
-        lang = getattr(experience, "user_language", None) or "ru"
-        reason = getattr(experience, "restart_reason", None) or ""
 
         if lang == "en":
             if close_reason == "timeout_sleep":

@@ -68,7 +68,6 @@ from atman.core.models import (
 from atman.core.models.fact import FactStatus
 from atman.core.ports.state_store import DateRangeQuery
 from atman.core.services import SessionManager
-from atman.core.services.session_manager import deterministic_session_experience_id
 
 
 def _record(
@@ -435,10 +434,9 @@ def test_invariant_unexamined_fact_refs_only_facts_read_but_not_colored() -> Non
     manager.finish_session(ctx.session_id)
 
     # fact2 and fact3 should be unexamined (read but not colored)
-    experience_id = deterministic_session_experience_id(ctx.session_id)
-    experience_record = store.get_experience(experience_id)
-    assert experience_record is not None
-    unexamined = set(experience_record.experience.unexamined_fact_refs)
+    closed = store.get_session(ctx.session_id)
+    assert closed is not None
+    unexamined = set(closed.unexamined_fact_refs)
     assert fact2 in unexamined
     assert fact3 in unexamined
     assert fact1 not in unexamined  # colored in key moment
@@ -485,10 +483,9 @@ def test_invariant_unexamined_fact_refs_colored_facts_excluded() -> None:
     manager.finish_session(ctx.session_id)
 
     # fact_id is colored (in key moment), so NOT in unexamined
-    experience_id = deterministic_session_experience_id(ctx.session_id)
-    experience_record = store.get_experience(experience_id)
-    assert experience_record is not None
-    assert fact_id not in experience_record.experience.unexamined_fact_refs
+    closed = store.get_session(ctx.session_id)
+    assert closed is not None
+    assert fact_id not in closed.unexamined_fact_refs
 
 
 def test_invariant_unexamined_fact_refs_empty_when_no_facts_read() -> None:
@@ -525,10 +522,9 @@ def test_invariant_unexamined_fact_refs_empty_when_no_facts_read() -> None:
 
     manager.finish_session(ctx.session_id)
 
-    experience_id = deterministic_session_experience_id(ctx.session_id)
-    experience_record = store.get_experience(experience_id)
-    assert experience_record is not None
-    assert experience_record.experience.unexamined_fact_refs == []
+    closed = store.get_session(ctx.session_id)
+    assert closed is not None
+    assert closed.unexamined_fact_refs == []
 
 
 def test_invariant_unexamined_fact_refs_only_in_key_moment_not_unexamined() -> None:
@@ -572,10 +568,9 @@ def test_invariant_unexamined_fact_refs_only_in_key_moment_not_unexamined() -> N
 
     manager.finish_session(ctx.session_id)
 
-    experience_id = deterministic_session_experience_id(ctx.session_id)
-    experience_record = store.get_experience(experience_id)
-    assert experience_record is not None
-    unexamined = experience_record.experience.unexamined_fact_refs
+    closed = store.get_session(ctx.session_id)
+    assert closed is not None
+    unexamined = closed.unexamined_fact_refs
 
     # read_fact is unexamined (read but not colored)
     assert read_fact in unexamined
@@ -682,6 +677,8 @@ def test_invariant_events_do_not_affect_key_moments(_session_manager):
 
 def test_invariant_fact_refs_aggregate_from_all_sources(_session_manager, _temp_storage):
     """SessionExperience fact_refs must aggregate from key moments AND _note_facts_read."""
+    from atman.core.services.session_experience_view import build_session_experience
+
     manager, agent_id = _session_manager
     context = manager.start_session(agent_id)
 
@@ -701,15 +698,18 @@ def test_invariant_fact_refs_aggregate_from_all_sources(_session_manager, _temp_
 
     manager.finish_session(context.session_id)
 
-    experiences = _temp_storage.list_recent_experiences(limit=1)
-    assert len(experiences) == 1
-    exp = experiences[0].experience
+    closed = _temp_storage.get_session(context.session_id)
+    assert closed is not None
+    moments = _temp_storage.get_key_moments_for_session(context.session_id)
+    exp = build_session_experience(closed, moments)
     assert km_fact_id in exp.fact_refs
     assert noted_fact_id in exp.fact_refs
 
 
 def test_invariant_incomplete_coloring_flag_propagates(_session_manager, _temp_storage):
     """incomplete_coloring flag must propagate from KeyMomentInput to SessionExperience."""
+    from atman.core.services.session_experience_view import build_session_experience
+
     manager, agent_id = _session_manager
     context = manager.start_session(agent_id)
 
@@ -727,9 +727,11 @@ def test_invariant_incomplete_coloring_flag_propagates(_session_manager, _temp_s
 
     manager.finish_session(context.session_id)
 
-    experiences = _temp_storage.list_recent_experiences(limit=1)
-    assert len(experiences) == 1
-    assert experiences[0].experience.incomplete_coloring is True
+    closed = _temp_storage.get_session(context.session_id)
+    assert closed is not None
+    moments = _temp_storage.get_key_moments_for_session(context.session_id)
+    exp = build_session_experience(closed, moments)
+    assert exp.incomplete_coloring is True
 
 
 # Invariant (R12): agent_driven_run_key is idempotent inside the same UTC
