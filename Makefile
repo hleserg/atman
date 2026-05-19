@@ -209,6 +209,7 @@ agent-check-prep: agent-cli-lint typecheck-agent-cli agent-smoke agent-preflight
 # Update all codemap:auto blocks (SYSTEM_MAP.md, AGENTS.md, .cursor/rules, ancillary reports).
 codemap:
 	python3 -m scripts.codemap --no-coverage --lang en
+	python3 -m scripts.codemap agents --lang en
 
 # CI gate: exit 1 if any tracked file is stale.
 codemap-check:
