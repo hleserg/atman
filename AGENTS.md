@@ -294,3 +294,32 @@ The master prompt provides:
 1. Read `.cursor/local-agent-master-prompt.md`
 2. Review `docs/development/DEVELOPMENT_STANDARD.md`
 3. Check relevant sections in `docs/architecture/SYSTEM.md`
+
+
+## Documentation Structure
+
+Before creating any documentation file, check where it belongs.
+Full spec: `docs/design/DESIGN_docs_structure.md`
+
+| You're writing... | Put it in |
+|-------------------|-----------|
+| Architecture decision (stable, reviewed) | `docs/architecture/ADR/ADR-NNN-title.md` |
+| Design doc (in progress) | `docs/design/DESIGN_*.md` |
+| Feature user guide | `docs/features/<slug>/README.md` + `README-ru.md` |
+| Work package / task spec | `docs/development/work-packages/NN-name.md` |
+| Ops runbook (install, monitor, debug) | `docs/ops/` |
+| Research / experiment | `docs/research/` |
+| Hypothesis, not yet started | `docs/ideas/` |
+| Session / implementation report | `reports/` |
+
+Rules:
+- `docs/architecture/`, `docs/design/`, `docs/ops/` require a `-ru.md` pair (EN first).
+- `docs/content/` is auto-managed — never edit files there directly.
+- Blocks between `<!-- codemap:auto:start -->` and `<!-- codemap:auto:end -->` are
+  auto-updated by `make codemap`. Do not edit those blocks manually.
+
+<!-- codemap:auto:start section="docs-structure" -->
+## Current Docs Map
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
