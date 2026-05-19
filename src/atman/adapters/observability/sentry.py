@@ -15,8 +15,8 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Generator
-from contextlib import contextmanager
-from typing import Any
+from contextlib import contextmanager, suppress
+from typing import Any, cast
 
 _LOG = logging.getLogger(__name__)
 
@@ -255,42 +255,63 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
 # ---------------------------------------------------------------------------
 
 
+def _metric_tags(tags: dict[str, str] | None) -> dict[str, str]:
+    return tags or {}
+
+
+def _emit_metric_distribution(name: str, value: float, unit: str, tags: dict[str, str]) -> None:
+    import sentry_sdk
+
+    try:
+        sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=tags)
+    except (AttributeError, TypeError):
+        cast(Any, sentry_sdk.metrics.distribution)(name, value, unit=unit, tags=tags)
+
+
+def _emit_metric_gauge(name: str, value: float, tags: dict[str, str]) -> None:
+    import sentry_sdk
+
+    try:
+        sentry_sdk.metrics.gauge(name, value, attributes=tags)
+    except (AttributeError, TypeError):
+        cast(Any, sentry_sdk.metrics.gauge)(name, value, tags=tags)
+
+
+def _emit_metric_count(name: str, value: float, tags: dict[str, str]) -> None:
+    import sentry_sdk
+
+    try:
+        sentry_sdk.metrics.count(name, value, attributes=tags)
+    except (AttributeError, TypeError):
+        incr = getattr(sentry_sdk.metrics, "incr", None)
+        if incr is not None:
+            cast(Any, incr)(name, value, tags=tags)
+
+
 def metric_distribution(
     name: str, value: float, unit: str = "none", tags: dict[str, str] | None = None
 ) -> None:
     """Emit a distribution metric (histograms, latencies, sizes)."""
     if not _initialized:
         return
-    try:
-        import sentry_sdk
-
-        sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=tags or {})
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
+    with suppress(Exception):
+        _emit_metric_distribution(name, value, unit, _metric_tags(tags))
 
 
 def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) -> None:
     """Emit a gauge metric (queue depths, counts at a point in time)."""
     if not _initialized:
         return
-    try:
-        import sentry_sdk
-
-        sentry_sdk.metrics.gauge(name, value, attributes=tags or {})
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
+    with suppress(Exception):
+        _emit_metric_gauge(name, value, _metric_tags(tags))
 
 
 def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None = None) -> None:
     """Increment a counter metric."""
     if not _initialized:
         return
-    try:
-        import sentry_sdk
-
-        sentry_sdk.metrics.count(name, value, attributes=tags or {})
-    except Exception:  # nosec B110 — observability helpers must never raise
-        pass
+    with suppress(Exception):
+        _emit_metric_count(name, value, _metric_tags(tags))
 
 
 # ---------------------------------------------------------------------------

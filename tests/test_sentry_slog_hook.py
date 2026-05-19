@@ -89,3 +89,23 @@ def test_session_transaction_propagates_body_exceptions(monkeypatch: pytest.Monk
 def test_pipeline_span_noops_when_sentry_disabled() -> None:
     with sentry_module.pipeline_span("atman.ner", "entity detection"):
         pass
+
+
+def test_metric_increment_falls_back_to_incr(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sentry_sdk
+
+    sentry_module._initialized = True
+    calls: list[str] = []
+
+    class _Metrics:
+        def count(self, *_args: object, **_kwargs: object) -> None:
+            raise TypeError("attributes unsupported")
+
+        def incr(self, *_args: object, **_kwargs: object) -> None:
+            calls.append("incr")
+
+    monkeypatch.setattr(sentry_sdk, "metrics", _Metrics(), raising=True)
+
+    sentry_module.metric_increment("atman.turn", 1.0, {"agent": "a1"})
+
+    assert calls == ["incr"]
