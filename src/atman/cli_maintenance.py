@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 import time
 from uuid import UUID
@@ -235,6 +236,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    from atman.observability import init_observability
+
+    init_observability(os.getenv("ATMAN_OBS_LEVEL", "minimal"))
     parser = _build_parser()
     args = parser.parse_args()
 

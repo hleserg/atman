@@ -9,6 +9,7 @@ Commands:
 - narrative validate: Validate NARRATIVE.md
 """
 
+import os
 import sys
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -189,6 +190,9 @@ def cmd_narrative_validate(narrative_path: Path) -> None:
 
 def main() -> None:
     """CLI entry point."""
+    from atman.observability import init_observability
+
+    init_observability(os.getenv("ATMAN_OBS_LEVEL", "minimal"))
     import argparse
 
     parser = argparse.ArgumentParser(description="Identity Store CLI")
