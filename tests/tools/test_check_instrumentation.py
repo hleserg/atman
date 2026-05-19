@@ -2,27 +2,21 @@
 
 from __future__ import annotations
 
+# Add tools/ to path for import
+import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
-# Add tools/ to path for import
-import sys
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
 
-from check_instrumentation import (  # noqa: E402
+import ast
+
+from check_instrumentation import (
     INSTRUMENTATION_MARKERS,
-    _has_skip_file_comment,
-    _has_skip_inline,
-    _node_is_instrumented,
     _qualified_name,
     main,
     scan_file,
 )
-import ast
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,10 +43,14 @@ def _write_py(tmp_path: Path, name: str, content: str) -> Path:
 
 
 def test_uninstrumented_function_exit_1(tmp_path):
-    f = _write_py(tmp_path, "bad.py", """
+    f = _write_py(
+        tmp_path,
+        "bad.py",
+        """
         def my_handler():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert len(violations) == 1
     assert violations[0][0] == f
@@ -60,10 +58,14 @@ def test_uninstrumented_function_exit_1(tmp_path):
 
 
 def test_main_returns_1_for_violations(tmp_path):
-    _write_py(tmp_path, "bad.py", """
+    _write_py(
+        tmp_path,
+        "bad.py",
+        """
         def my_handler():
             pass
-    """)
+    """,
+    )
     rc = main([str(tmp_path)])
     assert rc == 1
 
@@ -74,23 +76,31 @@ def test_main_returns_1_for_violations(tmp_path):
 
 
 def test_sentry_skip_inline(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():  # sentry: skip
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
 
 def test_sentry_skip_file(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         # sentry: skip-file
         def my_handler():
             pass
 
         def another():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -101,41 +111,57 @@ def test_sentry_skip_file(tmp_path):
 
 
 def test_ai_chat_span_in_body(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():
             with ai_chat_span("anthropic", "claude"):
                 pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
 
 def test_memory_span_in_body(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():
             with memory_span("recall", "facts"):
                 pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
 
 def test_db_span_in_body(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():
             with db_span("postgresql", "SELECT"):
                 pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
 
 def test_sentry_sdk_start_span_in_body(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():
             with sentry_sdk.start_span(op="test"):
                 pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -146,21 +172,29 @@ def test_sentry_sdk_start_span_in_body(tmp_path):
 
 
 def test_sentry_trace_decorator(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         @sentry_sdk.trace
         def my_handler():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
 
 def test_cron_monitor_decorator(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         @sentry_sdk.crons.monitor(monitor_slug="job")
         def my_job():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -171,10 +205,14 @@ def test_cron_monitor_decorator(tmp_path):
 
 
 def test_private_function_exempt(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def _internal_helper():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -185,10 +223,14 @@ def test_private_function_exempt(tmp_path):
 
 
 def test_allowlist_by_function_name(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         def my_handler():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset({"my_handler"}))
     assert violations == []
 
@@ -199,21 +241,29 @@ def test_allowlist_by_function_name(tmp_path):
 
 
 def test_async_uninstrumented(tmp_path):
-    f = _write_py(tmp_path, "bad.py", """
+    f = _write_py(
+        tmp_path,
+        "bad.py",
+        """
         async def async_handler():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert len(violations) == 1
     assert violations[0][2] == "async_handler"
 
 
 def test_async_instrumented(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         async def async_handler():
             with ai_chat_span("x", "y"):
                 pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -224,7 +274,10 @@ def test_async_instrumented(tmp_path):
 
 
 def test_multiple_violations(tmp_path):
-    f = _write_py(tmp_path, "bad.py", """
+    f = _write_py(
+        tmp_path,
+        "bad.py",
+        """
         def handler_one():
             pass
 
@@ -233,7 +286,8 @@ def test_multiple_violations(tmp_path):
 
         def _private():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     names = {v[2] for v in violations}
     assert names == {"handler_one", "handler_two"}
@@ -245,14 +299,18 @@ def test_multiple_violations(tmp_path):
 
 
 def test_skip_file_overrides_multiple(tmp_path):
-    f = _write_py(tmp_path, "ok.py", """
+    f = _write_py(
+        tmp_path,
+        "ok.py",
+        """
         # sentry: skip-file
         def handler_one():
             pass
 
         def handler_two():
             pass
-    """)
+    """,
+    )
     violations = scan_file(f, frozenset())
     assert violations == []
 
@@ -263,8 +321,14 @@ def test_skip_file_overrides_multiple(tmp_path):
 
 
 def test_instrumentation_markers_include_helpers():
-    for name in ("ai_chat_span", "ai_embeddings_span", "ai_rerank_span",
-                 "memory_span", "db_span", "cron_span"):
+    for name in (
+        "ai_chat_span",
+        "ai_embeddings_span",
+        "ai_rerank_span",
+        "memory_span",
+        "db_span",
+        "cron_span",
+    ):
         assert name in INSTRUMENTATION_MARKERS, f"{name} missing from INSTRUMENTATION_MARKERS"
 
 
