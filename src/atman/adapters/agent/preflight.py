@@ -19,19 +19,20 @@ Both raise / call st.stop() if a REQUIRED check fails and cannot be auto-fixed.
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # nosec B404 — trusted dev install/warmup helpers
 import sys
 import time
 from pathlib import Path
 
-
 # ── Public exception ──────────────────────────────────────────────────────────
+
 
 class PreflightError(Exception):
     """Raised when a required component is unavailable and cannot be fixed."""
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _pg_url() -> str:
     u = os.getenv("POSTGRES_USER", "")
@@ -71,6 +72,7 @@ def check_postgres(pg_url: str) -> tuple[bool, str]:
         return False, "No DB URL — set POSTGRES_USER or DATABASE_URL in .env"
     try:
         import psycopg
+
         with psycopg.connect(pg_url, connect_timeout=5) as conn:
             conn.execute("SELECT 1")
         return True, ""
@@ -83,6 +85,7 @@ def check_llm(base_url: str) -> tuple[bool, str]:
     models_url = base_url.rstrip("/") + "/models"
     try:
         import httpx
+
         resp = httpx.get(models_url, timeout=5, follow_redirects=True)
         if resp.status_code < 400:
             return True, ""
@@ -106,7 +109,7 @@ def is_warmup_needed() -> bool:
 
 def install_nlp() -> bool:
     """Run `pip install -e .[linguistic]`. Returns True on success."""
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603
         [sys.executable, "-m", "pip", "install", "-e", ".[linguistic]"],
         cwd=_repo_root(),
         capture_output=True,
@@ -115,10 +118,10 @@ def install_nlp() -> bool:
     return result.returncode == 0
 
 
-def start_warmup_background() -> "subprocess.Popen[str]":
+def start_warmup_background() -> subprocess.Popen[bytes]:
     """Launch warmup_native_models.py in a detached background process."""
     root = _repo_root()
-    return subprocess.Popen(
+    return subprocess.Popen(  # nosec B603
         [sys.executable, "scripts/warmup_native_models.py"],
         cwd=root,
         env={**os.environ, "CUDA_VISIBLE_DEVICES": "", "PYTHONPATH": f"{root}/src"},
@@ -128,6 +131,7 @@ def start_warmup_background() -> "subprocess.Popen[str]":
 
 
 # ── CLI preflight ─────────────────────────────────────────────────────────────
+
 
 def run_cli_preflight(print_fn=None) -> None:
     """Interactive preflight for CLI runners (e.g. live_chat.py).
@@ -163,7 +167,7 @@ def run_cli_preflight(print_fn=None) -> None:
             )
         _p("[green]✅ Packages installed. Restarting…[/green]")
         time.sleep(0.4)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        os.execv(sys.executable, [sys.executable, *sys.argv])  # nosec B606
         # Never reached
 
     # 2. PostgreSQL (hard block)
@@ -196,6 +200,7 @@ def run_cli_preflight(print_fn=None) -> None:
 
 # ── Streamlit preflight ───────────────────────────────────────────────────────
 
+
 def run_streamlit_preflight() -> None:
     """Preflight for Streamlit context (3_Chat.py).
 
@@ -214,7 +219,7 @@ def run_streamlit_preflight() -> None:
             if success:
                 st.success("✅ Packages installed. Restarting Streamlit server…")
                 time.sleep(1)
-                os.execv(sys.executable, sys.argv)
+                os.execv(sys.executable, sys.argv)  # nosec B606
                 # Never reached
             else:
                 st.session_state.pop("_preflight_installing", None)

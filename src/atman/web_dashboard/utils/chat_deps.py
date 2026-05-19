@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 from uuid import UUID, uuid4
 
 from atman.adapters.agent.factory import build_deps
@@ -62,11 +62,13 @@ def make_slog_hook(events_store: list[dict]) -> Callable[[str, dict], None]:
     """Return a hook that appends every slog event to ``events_store``."""
 
     def hook(event: str, data: dict) -> None:
-        events_store.append({
-            "event": event,
-            "data": data,
-            "ts": datetime.now(UTC).isoformat(),
-        })
+        events_store.append(
+            {
+                "event": event,
+                "data": data,
+                "ts": datetime.now(UTC).isoformat(),
+            }
+        )
 
     return hook
 

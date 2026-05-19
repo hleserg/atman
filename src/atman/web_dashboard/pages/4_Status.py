@@ -40,6 +40,7 @@ st.title("System Status")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _ok(label: str) -> None:
     st.markdown(f"✅ **{label}**")
 
@@ -78,6 +79,7 @@ with st.sidebar:
     st.markdown("### Agent connection")
     if st.button("Connect / Refresh", use_container_width=True):
         from atman.web_dashboard.utils.chat_deps import get_chat_deps
+
         try:
             deps, sm, _ss = get_chat_deps()
             st.session_state["deps"] = deps
@@ -91,7 +93,9 @@ deps = st.session_state.get("deps")
 sm = st.session_state.get("sm")
 
 if deps is None:
-    st.info("Agent not initialized. Open the **Chat** page first, or click **Connect / Refresh** in the sidebar.")
+    st.info(
+        "Agent not initialized. Open the **Chat** page first, or click **Connect / Refresh** in the sidebar."
+    )
 
 st.markdown("---")
 
@@ -109,6 +113,7 @@ with col_pg:
     else:
         try:
             import psycopg
+
             t0 = time.perf_counter()
             with psycopg.connect(pg_url, connect_timeout=5) as conn:
                 conn.execute("SELECT 1")
@@ -134,6 +139,7 @@ with col_llm:
     models_url = base_url.rstrip("/") + "/models"
     try:
         import httpx
+
         t0 = time.perf_counter()
         resp = httpx.get(models_url, timeout=5, follow_redirects=True)
         ms = int((time.perf_counter() - t0) * 1000)
@@ -190,7 +196,12 @@ else:
 
 nlp_data = [
     ("GLiNER", "gliner", "urchade/gliner_multi-v2.1", "Entity extraction"),
-    ("MiniLM (NLI)", "transformers", "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli", "Zero-shot classification"),
+    (
+        "MiniLM (NLI)",
+        "transformers",
+        "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
+        "Zero-shot classification",
+    ),
     ("BGE-M3", "FlagEmbedding", "BAAI/bge-m3", "Dense embeddings"),
     ("BGE-Reranker", "FlagEmbedding", "BAAI/bge-reranker-v2-m3", "Cross-encoder reranker"),
     ("mREBEL", "transformers", "Babelscape/mrebel-large", "Relation extraction"),
@@ -210,12 +221,16 @@ for model_label, pkg, model_id, role in nlp_data:
 if missing_pkgs:
     st.warning(f"Missing packages: {', '.join(f'`{p}`' for p in sorted(missing_pkgs))}")
     if st.button("Install + warmup  (`pip install atman[linguistic]` → `make warmup-models`)"):
-        import subprocess, sys
+        import subprocess  # nosec B404
+        import sys
+
         repo_root = str(Path(__file__).resolve().parents[4])
         with st.spinner("Step 1/2 — installing packages…"):
-            r1 = subprocess.run(
+            r1 = subprocess.run(  # nosec B603
                 [sys.executable, "-m", "pip", "install", "-e", ".[linguistic]"],
-                capture_output=True, text=True, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
             )
         if r1.returncode != 0:
             st.error("pip install failed")
@@ -223,13 +238,21 @@ if missing_pkgs:
         else:
             st.success("Packages installed.")
             with st.spinner("Step 2/2 — warming up models (downloading weights, ~6 GB first run)…"):
-                r2 = subprocess.run(
+                r2 = subprocess.run(  # nosec B603
                     [sys.executable, "scripts/warmup_native_models.py"],
-                    capture_output=True, text=True, cwd=repo_root,
-                    env={**os.environ, "CUDA_VISIBLE_DEVICES": "", "PYTHONPATH": f"{repo_root}/src"},
+                    capture_output=True,
+                    text=True,
+                    cwd=repo_root,
+                    env={
+                        **os.environ,
+                        "CUDA_VISIBLE_DEVICES": "",
+                        "PYTHONPATH": f"{repo_root}/src",
+                    },
                 )
             if r2.returncode == 0:
-                st.success("All models warmed. **Restart the Streamlit server** (`make chat-ui`) to pick up changes.")
+                st.success(
+                    "All models warmed. **Restart the Streamlit server** (`make chat-ui`) to pick up changes."
+                )
                 st.code(r2.stdout[-2000:], language="text")
             else:
                 st.error("Warmup failed")
@@ -240,6 +263,7 @@ if missing_pkgs:
 # ══════════════════════════════════════════════════════════════════════════════
 st.header("4 · Message Pipeline")
 st.caption("Steps run by AtmanTurn.pre() and AtmanTurn.post() every turn.")
+
 
 def _pipe(step: str, ok: bool | None, note: str = "") -> None:
     if ok is True:
@@ -261,39 +285,45 @@ else:
     rrq = deps.reflection_request_queue
     pri = deps.pending_review_inbox
 
-    _pipe("Entity Registration (pre)",
-          er is not None and am is not None,
-          f"entity_registry={'✓' if er else '✗'}  ambient_memory={'✓' if am else '✗'}")
-    _pipe("Passive RAG injection (pre)",
-          pm is not None,
-          f"passive_memory_injector={'✓' if pm else '✗'}")
-    _pipe("Ambient memory injection (pre)",
-          am is not None,
-          f"ambient_memory={'✓' if am else '✗'}")
+    _pipe(
+        "Entity Registration (pre)",
+        er is not None and am is not None,
+        f"entity_registry={'✓' if er else '✗'}  ambient_memory={'✓' if am else '✗'}",
+    )
+    _pipe(
+        "Passive RAG injection (pre)",
+        pm is not None,
+        f"passive_memory_injector={'✓' if pm else '✗'}",
+    )
+    _pipe("Ambient memory injection (pre)", am is not None, f"ambient_memory={'✓' if am else '✗'}")
 
     affect = getattr(sm, "affect_detector", None) if sm else None
     la = getattr(affect, "_linguistic_analyzer", None) if affect else None
     la_name = type(la).__name__ if la else "None"
     is_noop = la_name == "NoOpLinguisticAnalyzer" or la is None
 
-    _pipe("Response analysis (post)",
-          affect is not None,
-          f"affect={'✓' if affect else '✗'}  linguistic={la_name}")
-    _pipe("Auto key moment (post)",
-          affect is not None and not is_noop,
-          "requires AffectDetector + real LinguisticAnalyzer" if is_noop or affect is None else "")
-    _pipe("Identity facts write (post)",
-          True,
-          "identity_service always available")
-    _pipe("Maintenance drain (post)",
-          mw is not None,
-          f"maintenance_worker={'✓' if mw else '✗'}")
-    _pipe("Reflection queue (post)",
-          rrq is not None,
-          f"reflection_request_queue={'✓' if rrq else '✗'}")
-    _pipe("Pending review inbox (post)",
-          pri is not None,
-          f"pending_review_inbox={'✓' if pri else '✗'}")
+    _pipe(
+        "Response analysis (post)",
+        affect is not None,
+        f"affect={'✓' if affect else '✗'}  linguistic={la_name}",
+    )
+    _pipe(
+        "Auto key moment (post)",
+        affect is not None and not is_noop,
+        "requires AffectDetector + real LinguisticAnalyzer" if is_noop or affect is None else "",
+    )
+    _pipe("Identity facts write (post)", True, "identity_service always available")
+    _pipe("Maintenance drain (post)", mw is not None, f"maintenance_worker={'✓' if mw else '✗'}")
+    _pipe(
+        "Reflection queue (post)",
+        rrq is not None,
+        f"reflection_request_queue={'✓' if rrq else '✗'}",
+    )
+    _pipe(
+        "Pending review inbox (post)",
+        pri is not None,
+        f"pending_review_inbox={'✓' if pri else '✗'}",
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Section 5 — System Prompt
@@ -304,12 +334,12 @@ if deps is None:
     st.caption("*Connect first to see system prompt.*")
 else:
     from atman.adapters.agent.instructions import build_instructions
+
     try:
         instructions = build_instructions(deps)
         char_count = len(instructions)
         st.caption(
-            f"Source: `atman.adapters.agent.instructions.build_instructions` · "
-            f"{char_count} chars"
+            f"Source: `atman.adapters.agent.instructions.build_instructions` · {char_count} chars"
         )
         with st.expander("Show system prompt", expanded=False):
             st.code(instructions, language="markdown")
@@ -322,7 +352,10 @@ else:
 st.header("6 · Agent Skills")
 
 TOOLS_INFO = [
-    ("record_key_moment", "Records a significant moment with emotional valence. Requires AffectDetector."),
+    (
+        "record_key_moment",
+        "Records a significant moment with emotional valence. Requires AffectDetector.",
+    ),
     ("restart_session", "Agent-initiated session restart with optional reason."),
     ("wait_session", "Suspend session for N minutes (sleep mode)."),
     ("resolve_pending_review", "Commit or discard a pending human-review item."),
@@ -371,7 +404,7 @@ else:
                 why_it_matters="Verifying record_key_moment tool path is intact.",
                 emotional_valence=0.1,
                 emotional_intensity=0.2,
-                emotional_depth=EmotionalDepth.PASSING,
+                emotional_depth=EmotionalDepth.SURFACE,
                 self_reported_emotions=["curious"],
                 tags=["atman:status-probe"],
             )

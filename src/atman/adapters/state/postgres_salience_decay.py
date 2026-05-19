@@ -22,7 +22,7 @@ class PostgresSalienceDecayService(SalienceDecayService):
     adjustments inline using a CASE expression.
     """
 
-    def __init__(self, state_store: "PostgresStateStore") -> None:
+    def __init__(self, state_store: PostgresStateStore) -> None:
         self._store = state_store
 
     def calculate_lambda(self, depth: str, importance: float) -> float:
@@ -81,15 +81,19 @@ class PostgresSalienceDecayService(SalienceDecayService):
         """).format(s=schema)
 
         with conn.transaction(), conn.cursor() as cur:
-            cur.execute(q, {
-                "lam_surface": decay_lambda_surface,
-                "lam_meaningful": decay_lambda_meaningful,
-                "lam_profound": decay_lambda_profound,
-                "min_sal": min_salience,
-                "cutoff": cutoff_aware,
-                "now": now,
-            })
+            cur.execute(
+                q,
+                {
+                    "lam_surface": decay_lambda_surface,
+                    "lam_meaningful": decay_lambda_meaningful,
+                    "lam_profound": decay_lambda_profound,
+                    "min_sal": min_salience,
+                    "cutoff": cutoff_aware,
+                    "now": now,
+                },
+            )
             updated = cur.rowcount
-        _slog("decay_pass", agent_id=str(agent_id), updated=updated,
-              cutoff=cutoff_aware.isoformat())
+        _slog(
+            "decay_pass", agent_id=str(agent_id), updated=updated, cutoff=cutoff_aware.isoformat()
+        )
         return updated

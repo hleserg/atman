@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
+
+    from atman.core.models.entity import FactEntityLink
     from atman.core.services.post_write_scheduler import PostWriteScheduler
 else:
     try:
@@ -335,8 +337,13 @@ class PostgresFactualMemory(FactualMemory):
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
 
-        _slog("fact_added", agent_id=str(agent_id), fact_id=str(stored.id),
-              content=str(stored.content or "")[:120], source=stored.source)
+        _slog(
+            "fact_added",
+            agent_id=str(agent_id),
+            fact_id=str(stored.id),
+            content=str(stored.content or "")[:120],
+            source=stored.source,
+        )
 
         if self._post_write_scheduler is not None:
             try:
@@ -344,6 +351,7 @@ class PostgresFactualMemory(FactualMemory):
                 _slog("fact_entity_link_scheduled", agent_id=str(agent_id), fact_id=str(stored.id))
             except Exception:
                 import logging as _log
+
                 _log.getLogger(__name__).warning(
                     "schedule_for_fact failed for fact %s — continuing", stored.id, exc_info=True
                 )
@@ -637,7 +645,6 @@ class PostgresFactualMemory(FactualMemory):
         Idempotent — ON CONFLICT DO NOTHING so safe to call multiple times for
         the same fact (e.g. maintenance job retries).
         """
-        from atman.core.models.entity import FactEntityLink  # local import — avoid circular dep
 
         if not links:
             return
@@ -646,20 +653,34 @@ class PostgresFactualMemory(FactualMemory):
             return
         conn = self._require_conn()
         self._set_agent_context(conn)
+        from psycopg import sql
+
+        insert_sql = sql.SQL(
+            "INSERT INTO {schema}.fact_entities "
+            "(fact_id, entity_id, agent_id, role, confidence) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (fact_id, entity_id, role) DO NOTHING"
+        ).format(schema=sql.Identifier(schema))
         with conn.cursor() as cur:
             for link in links:
                 cur.execute(
-                    f"INSERT INTO {schema}.fact_entities "  # nosec B608
-                    "(fact_id, entity_id, agent_id, role, confidence) "
-                    "VALUES (%s, %s, %s, %s, %s) "
-                    "ON CONFLICT (fact_id, entity_id, role) DO NOTHING",
-                    [str(link.fact_id), str(link.entity_id), str(link.agent_id),
-                     link.role, link.confidence],
+                    insert_sql,
+                    [
+                        str(link.fact_id),
+                        str(link.entity_id),
+                        str(link.agent_id),
+                        link.role,
+                        link.confidence,
+                    ],
                 )
         conn.commit()
-        _slog("fact_entity_links_saved", agent_id=str(agent_id), fact_id=str(fact_id),
-              count=len(links),
-              entities=[(str(l.entity_id)[:8], l.role) for l in links])
+        _slog(
+            "fact_entity_links_saved",
+            agent_id=str(agent_id),
+            fact_id=str(fact_id),
+            count=len(links),
+            entities=[(str(link.entity_id)[:8], link.role) for link in links],
+        )
 
     def find_facts_by_entity(
         self,

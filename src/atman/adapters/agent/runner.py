@@ -1372,10 +1372,10 @@ class AtmanTurn:
 
     def __init__(
         self,
-        deps: "AtmanDeps",
-        sm: "SessionManager",
-        session_id: "UUID | None",
-        on_event: "Any | None" = None,
+        deps: AtmanDeps,
+        sm: SessionManager,
+        session_id: UUID | None,
+        on_event: Any | None = None,
     ) -> None:
         self._deps = deps
         self._sm = sm
@@ -1387,14 +1387,12 @@ class AtmanTurn:
 
     def _emit(self, event: str, **data: Any) -> None:
         if self._on_event is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._on_event(event, **data)
-            except Exception:  # noqa: BLE001
-                pass
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def pre(self, user_text: str) -> "AtmanDeps":
+    def pre(self, user_text: str) -> AtmanDeps:
         """Run pre-turn pipeline; returns updated deps with injected_context set."""
         _LOG.debug("[AtmanTurn.pre] start  text=%r", user_text[:80])
         deps = self._deps
@@ -1424,7 +1422,7 @@ class AtmanTurn:
 
     # ── Pre-turn steps ────────────────────────────────────────────────────────
 
-    def _register_user_entities(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+    def _register_user_entities(self, text: str, deps: AtmanDeps) -> AtmanDeps:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] entity_reg skipped: no ambient_memory")
             return deps
@@ -1442,7 +1440,10 @@ class AtmanTurn:
             self._emit(
                 "entity_resolved",
                 entities=[
-                    {"text": _S(e.text), "type": getattr(e.entity_type, "value", str(e.entity_type))}
+                    {
+                        "text": _S(e.text),
+                        "type": getattr(e.entity_type, "value", str(e.entity_type)),
+                    }
                     for e in entities
                 ],
             )
@@ -1463,13 +1464,14 @@ class AtmanTurn:
                 except Exception as exc:
                     _LOG.warning(
                         "[AtmanTurn] entity_registry.resolve_or_create failed: %s  entity=%r",
-                        exc, _S(entity.text),
+                        exc,
+                        _S(entity.text),
                     )
         except Exception as exc:
             _LOG.warning("[AtmanTurn] user entity analysis failed: %s", exc)
         return deps
 
-    def _inject_passive_rag(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+    def _inject_passive_rag(self, text: str, deps: AtmanDeps) -> AtmanDeps:
         if deps.passive_memory_injector is None:
             _LOG.debug("[AtmanTurn] passive_rag skipped: no passive_memory_injector")
             self.passive_summary = "no injector"
@@ -1486,7 +1488,8 @@ class AtmanTurn:
             rag = build_rag_context(items, budget=1500)
             _LOG.debug(
                 "[AtmanTurn] passive rag built: n=%d  tokens_used=%d",
-                len(rag.items), rag.tokens_used,
+                len(rag.items),
+                rag.tokens_used,
             )
             if not rag.items:
                 self.passive_summary = "0 rag items"
@@ -1494,32 +1497,32 @@ class AtmanTurn:
 
             lines = []
             for item in rag.items:
-                payload = item.payload
+                payload = item.item
                 text_frag = (
                     getattr(payload, "content", None)
                     or getattr(payload, "what_happened", None)
                     or str(payload)[:120]
                 )
-                lines.append(f"- [{item.kind}] {_S(str(text_frag))[:150]}")
+                lines.append(f"- [{item.source}] {_S(str(text_frag))[:150]}")
                 _LOG.debug(
                     "[AtmanTurn] passive item: kind=%s  score=%.3f  text=%r",
-                    item.kind, getattr(item, "score", 0.0), _S(str(text_frag))[:60],
+                    item.source,
+                    item.score,
+                    _S(str(text_frag))[:60],
                 )
 
             ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
             self.passive_summary = f"{len(rag.items)} items, {rag.tokens_used} tok"
             _LOG.info(
                 "[AtmanTurn] passive_rag injected: n=%d  tokens=%d",
-                len(rag.items), rag.tokens_used,
+                len(rag.items),
+                rag.tokens_used,
             )
             self._emit(
                 "passive_rag",
                 items_total=len(rag.items),
                 tokens_used=rag.tokens_used,
-                items=[
-                    {"kind": it.kind, "score": round(getattr(it, "score", 0.0), 3)}
-                    for it in rag.items[:5]
-                ],
+                items=[{"kind": it.source, "score": round(it.score, 3)} for it in rag.items[:5]],
             )
 
             existing = deps.injected_context or ""
@@ -1530,7 +1533,7 @@ class AtmanTurn:
             self.passive_summary = f"error: {exc}"
             return deps
 
-    def _inject_ambient(self, text: str, deps: "AtmanDeps") -> "AtmanDeps":
+    def _inject_ambient(self, text: str, deps: AtmanDeps) -> AtmanDeps:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] ambient_rag skipped: no ambient_memory")
             self.ambient_summary = "no ambient_memory"
@@ -1540,7 +1543,8 @@ class AtmanTurn:
             items = result.items
             _LOG.debug(
                 "[AtmanTurn] ambient compose_injection: n=%d  tokens=%d",
-                len(items), result.tokens_used,
+                len(items),
+                result.tokens_used,
             )
             if not items:
                 self.ambient_summary = f"0 items, {result.tokens_used} tok"
@@ -1568,14 +1572,19 @@ class AtmanTurn:
             self.ambient_summary = f"{len(items)} items, {result.tokens_used} tok"
             _LOG.info(
                 "[AtmanTurn] ambient_rag injected: n=%d  tokens=%d",
-                len(items), result.tokens_used,
+                len(items),
+                result.tokens_used,
             )
             self._emit(
                 "ambient_injection",
                 items_total=len(items),
                 tokens_used=result.tokens_used,
                 items=[
-                    {"kind": it.kind, "anchor": it.anchor_text or "", "score": round(getattr(it, "score", 0.0), 3)}
+                    {
+                        "kind": it.kind,
+                        "anchor": it.anchor_text or "",
+                        "score": round(getattr(it, "score", 0.0), 3),
+                    }
                     for it in items[:5]
                 ],
             )
@@ -1590,7 +1599,7 @@ class AtmanTurn:
 
     # ── Post-turn steps ───────────────────────────────────────────────────────
 
-    def _analyze_response(self, text: str, deps: "AtmanDeps") -> None:
+    def _analyze_response(self, text: str, deps: AtmanDeps) -> None:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] response analysis skipped: no ambient_memory")
             return
@@ -1643,7 +1652,8 @@ class AtmanTurn:
                 except Exception as exc:
                     _LOG.warning(
                         "[AtmanTurn] agent entity_registry failed: %s  entity=%r",
-                        exc, _S(ent.text),
+                        exc,
+                        _S(ent.text),
                     )
 
         if analysis.message_spans:
@@ -1667,6 +1677,7 @@ class AtmanTurn:
                     why_it_matters=f"Boundary event detected: {markers_str}",
                     emotional_valence=0.0,
                     emotional_intensity=0.0,
+                    depth=EmotionalDepth.SURFACE,
                     incomplete_coloring=True,
                 )
                 moment = kmi.to_key_moment()
@@ -1680,8 +1691,7 @@ class AtmanTurn:
                         "boundary_markers": analysis.boundary_markers,
                         "divergence_signals": analysis.divergence_signals,
                         "spans": [
-                            {"text": _S(s.text), "label": s.label}
-                            for s in analysis.message_spans
+                            {"text": _S(s.text), "label": s.label} for s in analysis.message_spans
                         ],
                     }
                 }
@@ -1707,7 +1717,7 @@ class AtmanTurn:
         if analysis.boundary_markers and deps.passive_memory_injector is not None:
             self._write_identity_facts(text, analysis, deps)
 
-    def _write_identity_facts(self, text: str, analysis: object, deps: "AtmanDeps") -> None:
+    def _write_identity_facts(self, text: str, analysis: object, deps: AtmanDeps) -> None:
         try:
             factual_memory = deps.passive_memory_injector.factual_memory  # type: ignore[union-attr]
         except AttributeError:
@@ -1719,7 +1729,12 @@ class AtmanTurn:
         from atman.core.models.fact import FactRecord
 
         identity_markers = {
-            "я принимаю", "я выбираю", "моё имя", "меня зовут", "я решила", "я решил",
+            "я принимаю",
+            "я выбираю",
+            "моё имя",
+            "меня зовут",
+            "я решила",
+            "я решил",
         }
         marker_text = " ".join(getattr(analysis, "boundary_markers", [])).lower()
         if not any(m in marker_text for m in identity_markers):
@@ -1732,8 +1747,7 @@ class AtmanTurn:
         person_entities = [
             _S(e.text)
             for e in getattr(analysis, "message_entities", [])
-            if getattr(e.entity_type, "value", str(e.entity_type)) == "person"
-            and len(e.text) >= 2
+            if getattr(e.entity_type, "value", str(e.entity_type)) == "person" and len(e.text) >= 2
         ]
         _LOG.debug("[AtmanTurn] identity facts: person_entities=%r", person_entities)
 
@@ -1769,7 +1783,7 @@ class AtmanTurn:
         if facts_written:
             self._emit("identity_facts_written", count=facts_written)
 
-    def _drain_maintenance(self, deps: "AtmanDeps") -> None:
+    def _drain_maintenance(self, deps: AtmanDeps) -> None:
         if deps.maintenance_worker is None:
             _LOG.debug("[AtmanTurn] maintenance skipped: no maintenance_worker")
             return

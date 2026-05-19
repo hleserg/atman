@@ -127,9 +127,7 @@ class PostWriteScheduler:
                 scheduled_at=when,
             )
         except Exception:
-            _LOG.exception(
-                "Failed to enqueue fact_entity_link for fact %s — continuing", fact.id
-            )
+            _LOG.exception("Failed to enqueue fact_entity_link for fact %s — continuing", fact.id)
 
     # PLAYBOOK-START
     # id: fire-and-forget-asyncio-task-strong-refs

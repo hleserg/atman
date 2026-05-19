@@ -266,6 +266,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]  # pytest.raises(Exception) is acceptable in tests
 "src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
+"src/atman/web_dashboard/pages/3_Chat.py" = ["E402"]  # .env + debug logging before heavy imports
+"e2e/live_chat.py" = ["E402"]  # suppress noisy loggers before Rich / agent imports
+"e2e/session_tester.py" = ["E402"]  # sys.path + env before agent stack imports
 
 [tool.ruff.lint.isort]
 known-first-party = ["atman", "agent", "e2e"]

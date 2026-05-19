@@ -2271,7 +2271,9 @@ def _deleted_test_unexamined_facts_excludes_facts_colored_across_multiple_moment
     assert exp_record.experience.unexamined_fact_refs == [fact_id_unexamined]
 
 
-def _deleted_test_unexamined_facts_aggregated_fact_refs_includes_all_facts(session_manager, temp_storage):
+def _deleted_test_unexamined_facts_aggregated_fact_refs_includes_all_facts(
+    session_manager, temp_storage
+):
     """E21.7: SessionExperience.fact_refs includes both colored and unexamined facts."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)

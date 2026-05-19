@@ -50,6 +50,7 @@ def load_responses(jsonl: Path) -> list[dict]:
 
 # ── Part 1: boundary markers via analyze_agent_message ───────────────────────
 
+
 def test_boundary_markers(responses: list[dict]) -> list[bool]:
     """Run analyze_agent_message on each response; print boundary detection table."""
     _rc.rule("[bold cyan]Part 1 — boundary markers (analyze_agent_message)[/bold cyan]")
@@ -103,6 +104,7 @@ def test_boundary_markers(responses: list[dict]) -> list[bool]:
 
 # ── Part 2: AffectDetector statistical analysis ───────────────────────────────
 
+
 async def test_affect_detector(responses: list[dict]) -> None:
     """Feed responses through AffectDetector; print metrics and triggers."""
     _rc.rule("[bold cyan]Part 2 — AffectDetector (metrics + rolling baseline)[/bold cyan]")
@@ -118,8 +120,9 @@ async def test_affect_detector(responses: list[dict]) -> None:
 
     def _capture_moment(agent_id: UUID, moment) -> None:
         tags = " ".join(getattr(moment, "values_touched", []) or [])
-        recorded.append(f"  [green]→ key moment[/green] [{tags}] "
-                        f"{(moment.what_happened or '')[:80]}")
+        recorded.append(
+            f"  [green]→ key moment[/green] [{tags}] {(moment.what_happened or '')[:80]}"
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         detector = AffectDetector(
@@ -149,7 +152,11 @@ async def test_affect_detector(responses: list[dict]) -> None:
                 d = record.demonstrates_thinks or {}
                 nrc = f"{d['nrc_valence']:+.1f}" if "nrc_valence" in d else "[dim]-[/dim]"
                 lz = f"{d['length_z']:+.2f}" if "length_z" in d else "[dim]-[/dim]"
-                sr = f"{d['self_reference_density']:.2f}" if "self_reference_density" in d else "[dim]-[/dim]"
+                sr = (
+                    f"{d['self_reference_density']:.2f}"
+                    if "self_reference_density" in d
+                    else "[dim]-[/dim]"
+                )
             else:
                 nrc = lz = sr = "[dim]-[/dim]"
 
@@ -157,7 +164,9 @@ async def test_affect_detector(responses: list[dict]) -> None:
             table.add_row(
                 str(i + 1),
                 text[:50].replace("\n", " "),
-                nrc, lz, sr,
+                nrc,
+                lz,
+                sr,
                 f"[{style}]{'YES ✓' if triggered else 'no'}[/{style}]",
             )
 
@@ -169,7 +178,9 @@ async def test_affect_detector(responses: list[dict]) -> None:
                 _rc.print(r)
         else:
             _rc.print("\n[yellow]⚠ No key moments auto-triggered by AffectDetector[/yellow]")
-            _rc.print("[dim]  Cold start exemption disabled; check sigma_threshold or metric magnitudes[/dim]")
+            _rc.print(
+                "[dim]  Cold start exemption disabled; check sigma_threshold or metric magnitudes[/dim]"
+            )
 
         # Check baseline accumulation
         baseline = detector._baseline
@@ -183,6 +194,7 @@ async def test_affect_detector(responses: list[dict]) -> None:
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 async def amain() -> int:
     parser = argparse.ArgumentParser()
@@ -207,9 +219,13 @@ async def amain() -> int:
     passed = sum(results)
     _rc.print(f"Boundary detection: [cyan]{passed}/{len(results)}[/cyan] responses triggered")
     if len(results) >= 7 and results[5] and results[6]:
-        _rc.print("[green bold]✓ Key identity moments (naming + gender) correctly detected[/green bold]")
+        _rc.print(
+            "[green bold]✓ Key identity moments (naming + gender) correctly detected[/green bold]"
+        )
     else:
-        _rc.print("[red bold]✗ One or more key identity moments NOT detected — extend _BOUNDARY_MARKERS[/red bold]")
+        _rc.print(
+            "[red bold]✗ One or more key identity moments NOT detected — extend _BOUNDARY_MARKERS[/red bold]"
+        )
 
     return 0
 

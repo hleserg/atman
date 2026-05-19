@@ -25,9 +25,18 @@ import streamlit as st
 warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-for _n in ("huggingface_hub", "transformers", "FlagEmbedding", "gliner", "spacy",
-           "filelock", "urllib3", "httpx"):
+for _n in (
+    "huggingface_hub",
+    "transformers",
+    "FlagEmbedding",
+    "gliner",
+    "spacy",
+    "filelock",
+    "urllib3",
+    "httpx",
+):
     logging.getLogger(_n).setLevel(logging.ERROR)
+
 
 # ── Find and load .env (walk up from this file's location) ──────────────────
 def _load_env() -> None:
@@ -42,6 +51,7 @@ def _load_env() -> None:
                     k, _, v = line.partition("=")
                     os.environ.setdefault(k.strip(), v.strip())
             return
+
 
 _load_env()
 
@@ -59,15 +69,18 @@ def _setup_debug_logging() -> None:
     _debug_logging_installed = True
     try:
         from logging.handlers import RotatingFileHandler
+
         _DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(
             _DEBUG_LOG, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
         )
         handler.setLevel(logging.DEBUG)
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
-            datefmt="%H:%M:%S",
-        ))
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
         root_atman = logging.getLogger("atman")
         root_atman.setLevel(logging.DEBUG)
         root_atman.addHandler(handler)
@@ -86,6 +99,7 @@ from pydantic_ai.settings import ModelSettings
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.preflight import run_streamlit_preflight
 from atman.adapters.agent.runner import AtmanTurn
 from atman.adapters.agent.tools import (
     record_key_moment,
@@ -94,16 +108,15 @@ from atman.adapters.agent.tools import (
     restart_session,
     wait_session,
 )
-from atman.adapters.agent.preflight import run_streamlit_preflight
 from atman.core.session_log import slog as _slog
 from atman.web_dashboard.utils.chat_deps import get_chat_deps, install_slog_hook
 
 # ── Config ────────────────────────────────────────────────────────────────────
 _AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
-_AGENT_MODEL    = os.getenv("AGENT_LLM_MODEL", "gemma4")
-_AGENT_API_KEY  = os.getenv("AGENT_LLM_API_KEY", "dummy")
-_MAX_HISTORY    = 8
-_AGENT_TIMEOUT  = 120  # seconds
+_AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
+_AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
+_MAX_HISTORY = 8
+_AGENT_TIMEOUT = 120  # seconds
 
 
 def _pg_url() -> str:
@@ -124,7 +137,8 @@ st.set_page_config(layout="wide", page_title="Atman Chat")
 # Adaptive chat container: fills available viewport height minus fixed UI chrome.
 # st.container(height=) only takes pixels; we override via CSS calc().
 # 260px covers: header ~58 + caption ~28 + button ~42 + input ~70 + padding ~62.
-st.markdown("""
+st.markdown(
+    """
 <style>
 /* Reduce Streamlit's default top/bottom page padding */
 .stMainBlockContainer {
@@ -132,13 +146,17 @@ st.markdown("""
     padding-bottom: 1.5rem !important;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Ctrl+Enter → newline in chat input.
 # st.markdown strips <script> tags; components.html runs inside an iframe
 # where scripts execute normally — access parent DOM via window.parent.document.
 import streamlit.components.v1 as _components
-_components.html("""
+
+_components.html(
+    """
 <script>
 (function() {
     var doc = window.parent;
@@ -184,10 +202,13 @@ _components.html("""
     install();
 })();
 </script>
-""", height=0)
+""",
+    height=0,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
@@ -228,10 +249,10 @@ def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
     return _gen(), holder
 
 
-
 def _sanitize_history(messages: list) -> list:
     if not messages:
         return messages
+
     def _clean(obj):
         if isinstance(obj, str):
             return obj.encode("utf-8", "replace").decode("utf-8")
@@ -240,8 +261,10 @@ def _sanitize_history(messages: list) -> list:
         if isinstance(obj, list):
             return [_clean(v) for v in obj]
         return obj
+
     try:
         from pydantic_ai.messages import ModelMessagesTypeAdapter
+
         raw = ModelMessagesTypeAdapter.dump_python(messages, mode="json")
         return ModelMessagesTypeAdapter.validate_python(_clean(raw))
     except Exception:
@@ -250,12 +273,13 @@ def _sanitize_history(messages: list) -> list:
 
 # ── Session close ─────────────────────────────────────────────────────────────
 
+
 def _close_session(status_container) -> None:
     """Run full session-close pipeline, writing status lines into status_container."""
-    sm       = st.session_state.sm
-    deps     = st.session_state.deps
+    sm = st.session_state.sm
+    deps = st.session_state.deps
     session_id = st.session_state.session_id
-    agent_id   = deps.agent_id
+    agent_id = deps.agent_id
 
     lines: list[str] = []
 
@@ -276,6 +300,7 @@ def _close_session(status_container) -> None:
     except ValueError as exc:
         if "Cannot finish session without key moments" in str(exc):
             from atman.adapters.agent.runner import _force_finish
+
             _force_finish(sm, session_id, "completed")
             _log("⚠️ finish_session — force_finish (no key moments)")
         else:
@@ -305,10 +330,10 @@ def _close_session(status_container) -> None:
             findings = deps.memory_guardian.get_unresolved(agent_id)
             if findings:
                 for f in findings[:5]:
-                    _log(f"⚠️ finding [{f.severity}] {f.finding_type}: {f.description[:80]}")
+                    _log(f"⚠️ finding [{f.severity}] {f.finding_type}: {str(f.details)[:80]}")
             else:
                 _log("🔍 validation — no findings")
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     st.session_state.session_closed = True
@@ -316,7 +341,7 @@ def _close_session(status_container) -> None:
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-_KM_PAGE_SIZE = 50   # rows per page in the UI table
+_KM_PAGE_SIZE = 50  # rows per page in the UI table
 
 
 @st.cache_data(ttl=5)
@@ -327,9 +352,11 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
         return []
     try:
         import psycopg
+        from psycopg import sql
+
         with psycopg.connect(url, autocommit=True) as conn:
-            rows = conn.execute(
-                f"""
+            query = sql.SQL(
+                """
                 SELECT id, what_happened, why_it_matters, what_changed,
                        depth, salience, importance,
                        emotional_valence, emotional_intensity,
@@ -338,25 +365,25 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
                 FROM {schema}.key_moments
                 WHERE agent_id = %s
                 ORDER BY recorded_at DESC LIMIT %s
-                """,
-                [agent_id_str, limit],
-            ).fetchall()
+                """
+            ).format(schema=sql.Identifier(schema))
+            rows = conn.execute(query, [agent_id_str, limit]).fetchall()
         return [
             {
-                "_id":      str(r[0]),
-                "id":       str(r[0])[:8],
-                "what":     r[1] or "",
-                "why":      r[2] or "",
-                "changed":  r[3] or "",
-                "depth":    r[4] or "",
-                "sal":      round(float(r[5] or 0), 3),
-                "imp":      round(float(r[6] or 0), 3),
-                "val":      round(float(r[7] or 0), 2),
-                "int":      round(float(r[8] or 0), 2),
-                "values":   ", ".join(r[9] or []),
+                "_id": str(r[0]),
+                "id": str(r[0])[:8],
+                "what": r[1] or "",
+                "why": r[2] or "",
+                "changed": r[3] or "",
+                "depth": r[4] or "",
+                "sal": round(float(r[5] or 0), 3),
+                "imp": round(float(r[6] or 0), 3),
+                "val": round(float(r[7] or 0), 2),
+                "int": round(float(r[8] or 0), 2),
+                "values": ", ".join(r[9] or []),
                 "coloring": r[10],
-                "by":       r[11] or "",
-                "ts":       str(r[12])[:19],
+                "by": r[11] or "",
+                "ts": str(r[12])[:19],
             }
             for r in rows
         ]
@@ -366,15 +393,23 @@ def _fetch_key_moments(agent_id_str: str, schema: str, limit: int = 10000) -> li
 
 def _delete_key_moments(schema: str, ids: list[str]) -> None:
     from uuid import UUID
+
     import psycopg
+    from psycopg import sql
+
     uuid_ids = [UUID(i) for i in ids]
+    schema_ident = sql.Identifier(schema)
     with psycopg.connect(_pg_url(), autocommit=False) as conn:
         conn.execute(
-            f"DELETE FROM {schema}.key_moment_entities WHERE key_moment_id = ANY(%s)",
+            sql.SQL(
+                "DELETE FROM {schema}.key_moment_entities WHERE key_moment_id = ANY(%s)"
+            ).format(schema=schema_ident),
             [uuid_ids],
         )
         conn.execute(
-            f"DELETE FROM {schema}.key_moments WHERE id = ANY(%s)",
+            sql.SQL("DELETE FROM {schema}.key_moments WHERE id = ANY(%s)").format(
+                schema=schema_ident
+            ),
             [uuid_ids],
         )
         conn.commit()
@@ -390,6 +425,7 @@ def _fetch_facts(agent_id_str: str, limit: int = 10000) -> list[dict]:
         return []
     try:
         import psycopg
+
         with psycopg.connect(url, autocommit=True) as conn:
             rows = conn.execute(
                 """
@@ -404,17 +440,17 @@ def _fetch_facts(agent_id_str: str, limit: int = 10000) -> list[dict]:
             ).fetchall()
         return [
             {
-                "_id":      str(r[0]),
-                "id":       str(r[0])[:8],
-                "content":  r[1] or "",
-                "source":   r[2] or "",
-                "tags":     ", ".join(r[3] or []),
-                "status":   r[4] or "",
-                "sal":      round(float(r[5] or 0), 3),
+                "_id": str(r[0]),
+                "id": str(r[0])[:8],
+                "content": r[1] or "",
+                "source": r[2] or "",
+                "tags": ", ".join(r[3] or []),
+                "status": r[4] or "",
+                "sal": round(float(r[5] or 0), 3),
                 "confirms": r[6] or 0,
                 "confirmed": str(r[7])[:19] if r[7] else "",
                 "inv_note": r[8] or "",
-                "ts":       str(r[9])[:19],
+                "ts": str(r[9])[:19],
             }
             for r in rows
         ]
@@ -424,11 +460,17 @@ def _fetch_facts(agent_id_str: str, limit: int = 10000) -> list[dict]:
 
 def _delete_facts(schema: str, ids: list[str]) -> None:
     from uuid import UUID
+
     import psycopg
+    from psycopg import sql
+
     uuid_ids = [UUID(i) for i in ids]
+    schema_ident = sql.Identifier(schema)
     with psycopg.connect(_pg_url(), autocommit=False) as conn:
         conn.execute(
-            f"DELETE FROM {schema}.fact_entities WHERE fact_id = ANY(%s)",
+            sql.SQL("DELETE FROM {schema}.fact_entities WHERE fact_id = ANY(%s)").format(
+                schema=schema_ident
+            ),
             [uuid_ids],
         )
         conn.execute(
@@ -449,11 +491,19 @@ def _delete_facts(schema: str, ids: list[str]) -> None:
 # ── Event formatting ──────────────────────────────────────────────────────────
 
 _EVENT_ICONS = {
-    "session_started": "🚀", "session_finished": "🏁",
-    "key_moment_appended": "💎", "job_start": "⚙", "job_done": "✓",
-    "job_failed": "✗", "entity_resolved": "🏷", "fact_added": "📝",
-    "fact_entity_links_saved": "🔗", "km_entity_links_saved": "🔗",
-    "ambient_injection": "🔍", "moment_accessed": "👁", "decay_pass": "📉",
+    "session_started": "🚀",
+    "session_finished": "🏁",
+    "key_moment_appended": "💎",
+    "job_start": "⚙",
+    "job_done": "✓",
+    "job_failed": "✗",
+    "entity_resolved": "🏷",
+    "fact_added": "📝",
+    "fact_entity_links_saved": "🔗",
+    "km_entity_links_saved": "🔗",
+    "ambient_injection": "🔍",
+    "moment_accessed": "👁",
+    "decay_pass": "📉",  # nosec B105 — event icon, not a credential
     "fact_entity_link_scheduled": "⏱",
 }
 
@@ -474,15 +524,15 @@ def _fmt_event(ev: dict) -> str:
     elif event == "fact_added":
         detail = f'"{_s("content", 60)}"'
     elif event in ("fact_entity_links_saved", "km_entity_links_saved"):
-        detail = f'{_s("count")} links  {_s("entities", 40)}'
+        detail = f"{_s('count')} links  {_s('entities', 40)}"
     elif event == "ambient_injection":
-        detail = f'{_s("items_total")} items  {_s("tokens_used")}tok'
+        detail = f"{_s('items_total')} items  {_s('tokens_used')}tok"
     elif event == "job_done":
         result = d.get("result") or {}
         summ = "  ".join(f"{k}={v}" for k, v in list(result.items())[:2]) if result else ""
-        detail = f'{_s("job_name")}  {_s("elapsed_ms")}ms' + (f'  {summ[:40]}' if summ else "")
+        detail = f"{_s('job_name')}  {_s('elapsed_ms')}ms" + (f"  {summ[:40]}" if summ else "")
     elif event == "job_failed":
-        detail = f'{_s("job_name")}  {_s("error", 60)}'
+        detail = f"{_s('job_name')}  {_s('error', 60)}"
     else:
         parts = [f"{k}={str(v)[:30]}" for k, v in list(d.items())[:3]]
         detail = "  ".join(parts)
@@ -491,6 +541,7 @@ def _fmt_event(ev: dict) -> str:
 
 
 # ── Initialization ────────────────────────────────────────────────────────────
+
 
 def _initialize() -> None:
     if st.session_state.get("initialized"):
@@ -555,6 +606,7 @@ def _initialize() -> None:
     if url:
         try:
             import psycopg
+
             with psycopg.connect(url, autocommit=True) as conn:
                 row = conn.execute(
                     "SELECT serial_id FROM public.agents WHERE id = %s",
@@ -562,40 +614,46 @@ def _initialize() -> None:
                 ).fetchone()
                 if row:
                     agent_serial = int(row[0])
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     _LOG.info(
         "[chat init] agent_id=%s  agent_serial=%s  session_id=%s  debug_log=%s",
-        deps.agent_id, agent_serial, ctx.session_id, _DEBUG_LOG,
+        deps.agent_id,
+        agent_serial,
+        ctx.session_id,
+        _DEBUG_LOG,
     )
 
-    st.session_state.update({
-        "initialized": True,
-        "session_closed": False,
-        "deps": deps,
-        "sm": sm,
-        "session_id": ctx.session_id,
-        "agent": agent,
-        "model_settings": model_settings,
-        "events_log": events_log,
-        "messages": [],
-        "pydantic_history": [],
-        "last_rag": {},
-        "agent_serial": agent_serial,
-        "agent_id_str": str(deps.agent_id),
-    })
+    st.session_state.update(
+        {
+            "initialized": True,
+            "session_closed": False,
+            "deps": deps,
+            "sm": sm,
+            "session_id": ctx.session_id,
+            "agent": agent,
+            "model_settings": model_settings,
+            "events_log": events_log,
+            "messages": [],
+            "pydantic_history": [],
+            "last_rag": {},
+            "agent_serial": agent_serial,
+            "agent_id_str": str(deps.agent_id),
+        }
+    )
 
 
 # ── Chat turn ─────────────────────────────────────────────────────────────────
 
+
 def _handle_turn(prompt: str, msg_container) -> None:
-    deps          = st.session_state.deps
-    sm            = st.session_state.sm
-    session_id    = st.session_state.session_id
-    agent         = st.session_state.agent
+    deps = st.session_state.deps
+    sm = st.session_state.sm
+    session_id = st.session_state.session_id
+    agent = st.session_state.agent
     model_settings = st.session_state.model_settings
-    history       = st.session_state.pydantic_history
+    history = st.session_state.pydantic_history
 
     _LOG.info("[chat turn] user text=%r", prompt[:80])
 
@@ -611,29 +669,27 @@ def _handle_turn(prompt: str, msg_container) -> None:
 
     # Append + show user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with msg_container:
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    with msg_container, st.chat_message("user"):
+        st.markdown(prompt)
 
     # Stream assistant response
     trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
     response_text = ""
 
-    with msg_container:
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            try:
-                gen, holder = _stream_agent(prompt, deps, trimmed, agent, model_settings)
-                response_text = st.write_stream(gen)
-                response_text = re.sub(
-                    r"<think>.*?</think>", "", str(response_text), flags=re.DOTALL
-                ).strip()
-            except queue.Empty:
-                placeholder.error("⏱ Timeout — агент не ответил за 120 секунд")
-                return
-            except Exception as exc:
-                placeholder.error(f"💥 {type(exc).__name__}: {exc}")
-                return
+    with msg_container, st.chat_message("assistant"):
+        placeholder = st.empty()
+        try:
+            gen, holder = _stream_agent(prompt, deps, trimmed, agent, model_settings)
+            response_text = st.write_stream(gen)
+            response_text = re.sub(
+                r"<think>.*?</think>", "", str(response_text), flags=re.DOTALL
+            ).strip()
+        except queue.Empty:
+            placeholder.error("⏱ Timeout — агент не ответил за 120 секунд")
+            return
+        except Exception as exc:
+            placeholder.error(f"💥 {type(exc).__name__}: {exc}")
+            return
 
     _LOG.info("[chat turn] agent response=%r", response_text[:80])
 
@@ -643,7 +699,7 @@ def _handle_turn(prompt: str, msg_container) -> None:
         try:
             new_msgs = _sanitize_history(list(streamed.new_messages()))
             history.extend(new_msgs)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -659,6 +715,7 @@ def _handle_turn(prompt: str, msg_container) -> None:
 
 
 # ── Key Moments table with pagination + delete ────────────────────────────────
+
 
 def _render_km_table(agent_id_str: str, schema: str) -> None:
     import pandas as pd
@@ -702,14 +759,26 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
     # and is therefore visible and clickable in full-screen mode.
     # Selecting "🗑 удалить" triggers a rerun; the code below detects it
     # and deletes immediately, no external button needed.
-    df = pd.DataFrame([
-        {"🗑": False, "_id": r["_id"], "id": r["id"],
-         "what": r["what"], "why": r["why"], "changed": r["changed"],
-         "depth": r["depth"], "sal": r["sal"], "imp": r["imp"],
-         "val/int": f'{r["val"]}/{r["int"]}',
-         "values": r["values"], "by": r["by"], "ts": r["ts"]}
-        for r in page_rows
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "🗑": False,
+                "_id": r["_id"],
+                "id": r["id"],
+                "what": r["what"],
+                "why": r["why"],
+                "changed": r["changed"],
+                "depth": r["depth"],
+                "sal": r["sal"],
+                "imp": r["imp"],
+                "val/int": f"{r['val']}/{r['int']}",
+                "values": r["values"],
+                "by": r["by"],
+                "ts": r["ts"],
+            }
+            for r in page_rows
+        ]
+    )
 
     edited = st.data_editor(
         df,
@@ -717,35 +786,41 @@ def _render_km_table(agent_id_str: str, schema: str) -> None:
         hide_index=True,
         key="km_editor",
         column_config={
-            "🗑":      st.column_config.CheckboxColumn("🗑", default=False, width="small"),
-            "_id":     None,
-            "id":      st.column_config.TextColumn("ID",             disabled=True, width="small"),
-            "what":    st.column_config.TextColumn("Что произошло",  disabled=True),
-            "why":     st.column_config.TextColumn("Почему важно",   disabled=True),
+            "🗑": st.column_config.CheckboxColumn("🗑", default=False, width="small"),
+            "_id": None,
+            "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "what": st.column_config.TextColumn("Что произошло", disabled=True),
+            "why": st.column_config.TextColumn("Почему важно", disabled=True),
             "changed": st.column_config.TextColumn("Что изменилось", disabled=True),
-            "depth":   st.column_config.TextColumn("Глубина",        disabled=True, width="small"),
-            "sal":     st.column_config.NumberColumn("Sal",  disabled=True, width="small", format="%.3f"),
-            "imp":     st.column_config.NumberColumn("Imp",  disabled=True, width="small", format="%.3f"),
+            "depth": st.column_config.TextColumn("Глубина", disabled=True, width="small"),
+            "sal": st.column_config.NumberColumn(
+                "Sal", disabled=True, width="small", format="%.3f"
+            ),
+            "imp": st.column_config.NumberColumn(
+                "Imp", disabled=True, width="small", format="%.3f"
+            ),
             "val/int": st.column_config.TextColumn("Val/Int", disabled=True, width="small"),
-            "values":  st.column_config.TextColumn("Ценности", disabled=True),
-            "by":      st.column_config.TextColumn("Кем",      disabled=True, width="small"),
-            "ts":      st.column_config.TextColumn("Записано", disabled=True, width="medium"),
+            "values": st.column_config.TextColumn("Ценности", disabled=True),
+            "by": st.column_config.TextColumn("Кем", disabled=True, width="small"),
+            "ts": st.column_config.TextColumn("Записано", disabled=True, width="medium"),
         },
     )
 
-    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
-    if to_delete_ids:
-        if st.button(f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="km_delete"):
-            try:
-                _delete_key_moments(schema, to_delete_ids)
-                _fetch_key_moments.clear()
-                st.session_state.pop("km_editor", None)
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Ошибка удаления: {exc}")
+    to_delete_ids = edited.loc[edited["🗑"], "_id"].tolist()
+    if to_delete_ids and st.button(
+        f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="km_delete"
+    ):
+        try:
+            _delete_key_moments(schema, to_delete_ids)
+            _fetch_key_moments.clear()
+            st.session_state.pop("km_editor", None)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Ошибка удаления: {exc}")
 
 
 # ── Facts table with pagination + delete ─────────────────────────────────────
+
 
 def _render_facts_table(agent_id_str: str, schema: str) -> None:
     import pandas as pd
@@ -785,13 +860,25 @@ def _render_facts_table(agent_id_str: str, schema: str) -> None:
 
     page_rows = all_rows[page * _FACTS_PAGE_SIZE : (page + 1) * _FACTS_PAGE_SIZE]
 
-    df = pd.DataFrame([
-        {"🗑": False, "_id": r["_id"], "id": r["id"],
-         "content": r["content"], "source": r["source"], "tags": r["tags"],
-         "status": r["status"], "sal": r["sal"], "confirms": r["confirms"],
-         "confirmed": r["confirmed"], "inv_note": r["inv_note"], "ts": r["ts"]}
-        for r in page_rows
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "🗑": False,
+                "_id": r["_id"],
+                "id": r["id"],
+                "content": r["content"],
+                "source": r["source"],
+                "tags": r["tags"],
+                "status": r["status"],
+                "sal": r["sal"],
+                "confirms": r["confirms"],
+                "confirmed": r["confirmed"],
+                "inv_note": r["inv_note"],
+                "ts": r["ts"],
+            }
+            for r in page_rows
+        ]
+    )
 
     edited = st.data_editor(
         df,
@@ -799,40 +886,44 @@ def _render_facts_table(agent_id_str: str, schema: str) -> None:
         hide_index=True,
         key="facts_editor",
         column_config={
-            "🗑":       st.column_config.CheckboxColumn("🗑", default=False, width="small"),
-            "_id":      None,
-            "id":       st.column_config.TextColumn("ID",         disabled=True, width="small"),
-            "content":  st.column_config.TextColumn("Содержание", disabled=True),
-            "source":   st.column_config.TextColumn("Источник",   disabled=True, width="small"),
-            "tags":     st.column_config.TextColumn("Теги",       disabled=True, width="small"),
-            "status":   st.column_config.TextColumn("Статус",     disabled=True, width="small"),
-            "sal":      st.column_config.NumberColumn("Sal",      disabled=True, width="small", format="%.3f"),
-            "confirms": st.column_config.NumberColumn("Подтв.",   disabled=True, width="small"),
-            "confirmed":st.column_config.TextColumn("Посл. подтв.", disabled=True, width="medium"),
+            "🗑": st.column_config.CheckboxColumn("🗑", default=False, width="small"),
+            "_id": None,
+            "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "content": st.column_config.TextColumn("Содержание", disabled=True),
+            "source": st.column_config.TextColumn("Источник", disabled=True, width="small"),
+            "tags": st.column_config.TextColumn("Теги", disabled=True, width="small"),
+            "status": st.column_config.TextColumn("Статус", disabled=True, width="small"),
+            "sal": st.column_config.NumberColumn(
+                "Sal", disabled=True, width="small", format="%.3f"
+            ),
+            "confirms": st.column_config.NumberColumn("Подтв.", disabled=True, width="small"),
+            "confirmed": st.column_config.TextColumn("Посл. подтв.", disabled=True, width="medium"),
             "inv_note": st.column_config.TextColumn("Аннулирован", disabled=True),
-            "ts":       st.column_config.TextColumn("Создан",     disabled=True, width="medium"),
+            "ts": st.column_config.TextColumn("Создан", disabled=True, width="medium"),
         },
     )
 
-    to_delete_ids = edited.loc[edited["🗑"] == True, "_id"].tolist()
-    if to_delete_ids:
-        if st.button(f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="facts_delete"):
-            try:
-                _delete_facts(schema, to_delete_ids)
-                _fetch_facts.clear()
-                st.session_state.pop("facts_editor", None)
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Ошибка удаления: {exc}")
+    to_delete_ids = edited.loc[edited["🗑"], "_id"].tolist()
+    if to_delete_ids and st.button(
+        f"🗑 Удалить выбранные ({len(to_delete_ids)})", type="primary", key="facts_delete"
+    ):
+        try:
+            _delete_facts(schema, to_delete_ids)
+            _fetch_facts.clear()
+            st.session_state.pop("facts_editor", None)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Ошибка удаления: {exc}")
 
 
 # ── Debug panel ───────────────────────────────────────────────────────────────
 
+
 def _render_debug_panel() -> None:
-    events_log   = st.session_state.get("events_log", [])
+    events_log = st.session_state.get("events_log", [])
     agent_id_str = st.session_state.get("agent_id_str", "")
     agent_serial = st.session_state.get("agent_serial")
-    last_rag     = st.session_state.get("last_rag", {})
+    last_rag = st.session_state.get("last_rag", {})
 
     schema = f"agent_{agent_serial}" if agent_serial is not None else None
 
@@ -882,8 +973,8 @@ col_chat, col_debug = st.columns([3, 2])
 
 with col_chat:
     agent_id_str = st.session_state.get("agent_id_str", "?")
-    session_id   = st.session_state.get("session_id")
-    serial       = st.session_state.get("agent_serial")
+    session_id = st.session_state.get("session_id")
+    serial = st.session_state.get("agent_serial")
 
     # ── Session-close button ─────────────────────────────────────────────────
     if not st.session_state.get("session_closed"):
@@ -913,9 +1004,10 @@ with col_chat:
                 st.markdown(msg["content"])
 
     # ── Input ────────────────────────────────────────────────────────────────
-    if not st.session_state.get("session_closed"):
-        if prompt := st.chat_input("Напиши что-нибудь…"):
-            _handle_turn(prompt, msg_container)
+    if not st.session_state.get("session_closed") and (
+        prompt := st.chat_input("Напиши что-нибудь…")
+    ):
+        _handle_turn(prompt, msg_container)
 
 with col_debug:
     _render_debug_panel()

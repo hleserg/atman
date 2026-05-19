@@ -75,10 +75,15 @@ class MaintenanceWorker:
 
     def _dispatch(self, job: MaintenanceJob) -> None:
         import time as _time
+
         _t0 = _time.monotonic()
-        _slog("job_start", job_id=str(job.id), job_name=job.job_name.value,
-              agent_id=str(job.payload.get("agent_id", "")),
-              payload_keys=list(job.payload.keys()))
+        _slog(
+            "job_start",
+            job_id=str(job.id),
+            job_name=job.job_name.value,
+            agent_id=str(job.payload.get("agent_id", "")),
+            payload_keys=list(job.payload.keys()),
+        )
         try:
             outcome, result = self._handle(job)
             elapsed_ms = round((_time.monotonic() - _t0) * 1000)
@@ -88,14 +93,25 @@ class MaintenanceWorker:
             # which would break under DB-backed queues that don't share state.
             if outcome is _DispatchOutcome.DONE:
                 self._queue.mark_done(job.id, result=result)
-            _slog("job_done", job_id=str(job.id), job_name=job.job_name.value,
-                  outcome=outcome.value, result=result, elapsed_ms=elapsed_ms)
+            _slog(
+                "job_done",
+                job_id=str(job.id),
+                job_name=job.job_name.value,
+                outcome=outcome.value,
+                result=result,
+                elapsed_ms=elapsed_ms,
+            )
         except Exception as exc:
             elapsed_ms = round((_time.monotonic() - _t0) * 1000)
             _LOG.exception("maintenance job %s failed", job.id)
             self._queue.mark_failed(job.id, error=str(exc))
-            _slog("job_failed", job_id=str(job.id), job_name=job.job_name.value,
-                  error=str(exc), elapsed_ms=elapsed_ms)
+            _slog(
+                "job_failed",
+                job_id=str(job.id),
+                job_name=job.job_name.value,
+                error=str(exc),
+                elapsed_ms=elapsed_ms,
+            )
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:
@@ -250,11 +266,7 @@ class MaintenanceWorker:
         writes the links into agent_N.fact_entities via save_fact_entity_links.
         Skipped (not failed) when any required dependency is absent.
         """
-        if (
-            self._factual_memory is None
-            or self._analyzer is None
-            or self._entity_registry is None
-        ):
+        if self._factual_memory is None or self._analyzer is None or self._entity_registry is None:
             self._queue.mark_skipped(job.id, reason="fact entity link enrichment not configured")
             return _DispatchOutcome.SKIPPED, None
 
@@ -304,7 +316,9 @@ class MaintenanceWorker:
 
         save_fn = getattr(self._factual_memory, "save_fact_entity_links", None)
         if save_fn is None:
-            self._queue.mark_skipped(job.id, reason="factual_memory does not support save_fact_entity_links")
+            self._queue.mark_skipped(
+                job.id, reason="factual_memory does not support save_fact_entity_links"
+            )
             return _DispatchOutcome.SKIPPED, None
 
         if unique_links:
@@ -367,8 +381,8 @@ def _write_km_entity_links(
     moment_id: UUID,
     agent_id: UUID,
     analysis: object,
-    entity_registry: "EntityRegistry | None",
-    state_store: "StateStore",
+    entity_registry: EntityRegistry | None,
+    state_store: StateStore,
 ) -> int:
     """Resolve entities from a KeyMomentAnalysis and persist key_moment_entities rows.
 
@@ -389,9 +403,7 @@ def _write_km_entity_links(
     # Legacy NER entities (biographic: person, place, org, …) → "mentioned"
     for ent in getattr(analysis, "entities", []):
         try:
-            resolved, _ = entity_registry.resolve_or_create(
-                agent_id, ent.text, ent.entity_type
-            )
+            resolved, _ = entity_registry.resolve_or_create(agent_id, ent.text, ent.entity_type)
             entity_pairs.append((resolved.id, "mentioned"))
         except Exception:
             _LOG.warning(
@@ -404,9 +416,7 @@ def _write_km_entity_links(
         if involvement is None:
             continue
         try:
-            resolved, _ = entity_registry.resolve_or_create(
-                agent_id, span.text, EntityType.topic
-            )
+            resolved, _ = entity_registry.resolve_or_create(agent_id, span.text, EntityType.topic)
             entity_pairs.append((resolved.id, involvement))
         except Exception:
             _LOG.warning(

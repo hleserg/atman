@@ -472,9 +472,15 @@ class PostgresEntityRegistry(EntityRegistry):
                             alias_text,
                             learned_from_fact_id,
                         )
-                    _slog("entity_resolved", agent_id=str(agent_id), text=canonical_name,
-                          entity_type=entity_type.value, method="L1_exact",
-                          entity_id=str(hit.id), canonical=hit.canonical_name)
+                    _slog(
+                        "entity_resolved",
+                        agent_id=str(agent_id),
+                        text=canonical_name,
+                        entity_type=entity_type.value,
+                        method="L1_exact",
+                        entity_id=str(hit.id),
+                        canonical=hit.canonical_name,
+                    )
                     return hit, ResolutionMethod.L1_exact
 
             # L2 — embedding similarity
@@ -490,9 +496,15 @@ class PostgresEntityRegistry(EntityRegistry):
                             alias_text,
                             learned_from_fact_id,
                         )
-                    _slog("entity_resolved", agent_id=str(agent_id), text=canonical_name,
-                          entity_type=entity_type.value, method="L2_embedding",
-                          entity_id=str(near.id), canonical=near.canonical_name)
+                    _slog(
+                        "entity_resolved",
+                        agent_id=str(agent_id),
+                        text=canonical_name,
+                        entity_type=entity_type.value,
+                        method="L2_embedding",
+                        entity_id=str(near.id),
+                        canonical=near.canonical_name,
+                    )
                     return near, ResolutionMethod.L2_embedding
 
             # L3 — create new entity
@@ -556,9 +568,15 @@ class PostgresEntityRegistry(EntityRegistry):
                     learned_from_fact_id,
                 )
 
-            _slog("entity_resolved", agent_id=str(agent_id), text=canonical_name,
-                  entity_type=entity_type.value, method="L3_new",
-                  entity_id=str(created.id), canonical=created.canonical_name)
+            _slog(
+                "entity_resolved",
+                agent_id=str(agent_id),
+                text=canonical_name,
+                entity_type=entity_type.value,
+                method="L3_new",
+                entity_id=str(created.id),
+                canonical=created.canonical_name,
+            )
             return created, ResolutionMethod.L3_new
 
     def get_entity(self, entity_id: UUID) -> Entity | None:

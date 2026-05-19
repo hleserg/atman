@@ -572,10 +572,13 @@ class SessionManager:
             with self._lock:
                 self._journal_locks[context.session_id] = journal_lock
 
-        _slog("session_started", agent_id=str(agent_id),
-              session_id=str(context.session_id),
-              identity_id=str(identity.id),
-              snapshot_id=str(context.identity_snapshot_id))
+        _slog(
+            "session_started",
+            agent_id=str(agent_id),
+            session_id=str(context.session_id),
+            identity_id=str(identity.id),
+            snapshot_id=str(context.identity_snapshot_id),
+        )
         return context
 
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
@@ -851,11 +854,16 @@ class SessionManager:
             except Exception:
                 _LOG.warning(
                     "store_key_moment failed for %s — moment in journal, enrichment deferred",
-                    key_moment.id, exc_info=True,
+                    key_moment.id,
+                    exc_info=True,
                 )
-            _slog("key_moment_appended", session_id=str(session_id),
-                  agent_id=str(agent_id), moment_id=str(key_moment.id),
-                  what_happened=key_moment.what_happened[:120])
+            _slog(
+                "key_moment_appended",
+                session_id=str(session_id),
+                agent_id=str(agent_id),
+                moment_id=str(key_moment.id),
+                what_happened=key_moment.what_happened[:120],
+            )
 
     def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
         """Fire-and-forget enqueue of post-write enrichment jobs.
@@ -1046,10 +1054,7 @@ class SessionManager:
             self._state_store.store_key_moments(session_id, session_result.key_moments)
 
             # HLE-27 follow-up: schedule post-write enrichment after moments are persisted
-            if (
-                self._post_write_scheduler is not None
-                and session_result.identity_id is not None
-            ):
+            if self._post_write_scheduler is not None and session_result.identity_id is not None:
                 for moment in session_result.key_moments:
                     self._schedule_post_write(moment, session_result.identity_id)
 
@@ -1112,11 +1117,14 @@ class SessionManager:
             self._release_journal_file(journal_lock, unlink=True)
 
         final = session_result.model_copy(deep=True)
-        _slog("session_finished", session_id=str(session_id),
-              agent_id=str(final.identity_id),
-              close_reason=safe_close_reason,
-              key_moments=len(final.key_moments),
-              finished_at=str(final.finished_at))
+        _slog(
+            "session_finished",
+            session_id=str(session_id),
+            agent_id=str(final.identity_id),
+            close_reason=safe_close_reason,
+            key_moments=len(final.key_moments),
+            finished_at=str(final.finished_at),
+        )
         return final
 
     def _write_finish_journal_entry(self, session_result: SessionResult) -> None:

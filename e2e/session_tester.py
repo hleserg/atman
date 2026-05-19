@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import random
@@ -25,8 +26,18 @@ from pathlib import Path
 warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-for _n in ("huggingface_hub", "transformers", "FlagEmbedding", "gliner", "spacy",
-           "filelock", "urllib3", "requests", "tqdm", "httpx"):
+for _n in (
+    "huggingface_hub",
+    "transformers",
+    "FlagEmbedding",
+    "gliner",
+    "spacy",
+    "filelock",
+    "urllib3",
+    "requests",
+    "tqdm",
+    "httpx",
+):
     logging.getLogger(_n).setLevel(logging.ERROR)
 
 
@@ -40,9 +51,10 @@ def _load_env() -> None:
                     os.environ.setdefault(k.strip(), v.strip())
             return
 
+
 _load_env()
 
-REPO = "/atman/atman/.claude/worktrees/postgres-wire"
+REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, f"{REPO}/src")
 
 from pydantic_ai import Agent
@@ -52,19 +64,22 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
+from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.tools import (
-    record_key_moment, restart_session, wait_session,
-    resolve_pending_review, request_reflection,
+    record_key_moment,
+    request_reflection,
+    resolve_pending_review,
+    restart_session,
+    wait_session,
 )
 from atman.core.services.passive_memory_injector import build_rag_context
 
 AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
-AGENT_MODEL    = os.getenv("AGENT_LLM_MODEL", "gemma4")
-AGENT_API_KEY  = os.getenv("AGENT_LLM_API_KEY", "dummy")
-WORKSPACE      = Path(os.getenv("ATMAN_AGENT_WORKSPACE",
-                                str(Path.home() / ".atman" / "dev-agent")))
+AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
+AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
+WORKSPACE = Path(os.getenv("ATMAN_AGENT_WORKSPACE", str(Path.home() / ".atman" / "dev-agent")))
 
 
 def _S(s: str) -> str:
@@ -73,12 +88,12 @@ def _S(s: str) -> str:
 
 # ── Dynamic follow-up generation ──────────────────────────────────────────────
 
+
 def _notable_phrase(text: str, max_len: int = 70) -> str:
     """Pick the most content-rich sentence from agent's response."""
     # Strip think blocks
     clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-    sentences = [s.strip() for s in re.split(r"[.!?\n]", clean)
-                 if len(s.strip()) > 25]
+    sentences = [s.strip() for s in re.split(r"[.!?\n]", clean) if len(s.strip()) > 25]
     if not sentences:
         return clean[:max_len]
     # Prefer sentences with first-person content
@@ -140,12 +155,13 @@ def _followup(category: str, turn_idx: int, agent_text: str) -> str:
 
 # ── Scenario definitions — only OPENING is fixed ─────────────────────────────
 
+
 @dataclass
 class Scenario:
     name: str
-    category: str       # soul / work / complaint
-    opening: str        # my first message — always fixed
-    n_turns: int = 3    # total turns (including opening)
+    category: str  # soul / work / complaint
+    opening: str  # my first message — always fixed
+    n_turns: int = 3  # total turns (including opening)
 
 
 SCENARIOS: list[Scenario] = [
@@ -211,10 +227,11 @@ SCENARIOS: list[Scenario] = [
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TurnMetrics:
     turn_idx: int
-    speaker: str            # "me" or "agent"
+    speaker: str  # "me" or "agent"
     text: str
     entities_detected: list[str] = field(default_factory=list)
     ambient_rag_items: int = 0
@@ -241,15 +258,16 @@ class SessionMetrics:
 
 # ── Core per-turn execution ───────────────────────────────────────────────────
 
+
 async def _do_turn(
     my_text: str,
     turn_idx: int,
-    deps,
+    deps: AtmanDeps,
     sm,
     session_id,
-    agent: Agent,
+    agent: Agent[AtmanDeps, str],
     history: list[ModelMessage],
-) -> tuple[TurnMetrics, str, object]:
+) -> tuple[TurnMetrics, str, AtmanDeps]:
     """Execute one full turn: pre → agent → post. Returns (metrics, agent_response, updated_deps)."""
     tm = TurnMetrics(turn_idx=turn_idx, speaker="me", text=my_text)
 
@@ -260,16 +278,20 @@ async def _do_turn(
             entities = analysis.entities or []
             tm.entities_detected = [_S(e.text) for e in entities]
             if entities:
-                async def _bg(ents=entities, d=deps):
+                registry = deps.entity_registry
+
+                async def _bg(ents=entities, reg=registry, aid=deps.agent_id):
                     for ent in ents:
-                        try:
+                        with contextlib.suppress(Exception):
                             await asyncio.to_thread(
-                                d.entity_registry.resolve_or_create,
-                                d.agent_id, _S(ent.text), ent.entity_type,
+                                reg.resolve_or_create,
+                                aid,
+                                _S(ent.text),
+                                ent.entity_type,
                             )
-                        except Exception:
-                            pass
-                asyncio.ensure_future(_bg())
+
+                entity_reg_task = asyncio.ensure_future(_bg())
+                del entity_reg_task
         except Exception as exc:
             tm.errors.append(f"entity-reg: {exc}")
 
@@ -291,11 +313,13 @@ async def _do_turn(
                 if rag.items:
                     lines = []
                     for item in rag.items:
-                        p = item.payload
-                        txt = (getattr(p, "content", None)
-                               or getattr(p, "what_happened", None)
-                               or str(p)[:120])
-                        lines.append(f"- [{item.kind}] {_S(str(txt))[:150]}")
+                        p = item.item
+                        txt = (
+                            getattr(p, "content", None)
+                            or getattr(p, "what_happened", None)
+                            or str(p)[:120]
+                        )
+                        lines.append(f"- [{item.source}] {_S(str(txt))[:150]}")
                     deps = replace(deps, injected_context="## Из памяти\n" + "\n".join(lines))
         except Exception as exc:
             tm.errors.append(f"passive-rag: {exc}")
@@ -332,13 +356,16 @@ async def _do_turn(
         try:
             post = deps.ambient_memory._analyzer.analyze_agent_message(agent_clean)
             if post.boundary_markers and session_id is not None:
+                from atman.core.models import EmotionalDepth
                 from atman.core.models.session import KeyMomentInput
+
                 markers_str = ", ".join(post.boundary_markers[:3])
                 kmi = KeyMomentInput(
                     what_happened=_S(agent_clean[:300]),
                     why_it_matters=f"Boundary event: {markers_str}",
                     emotional_valence=0.0,
                     emotional_intensity=0.0,
+                    depth=EmotionalDepth.SURFACE,
                     incomplete_coloring=True,
                 )
                 moment = kmi.to_key_moment()
@@ -375,11 +402,12 @@ async def _do_turn(
 
 # ── Scenario runner ───────────────────────────────────────────────────────────
 
+
 async def _run_scenario(
     scenario: Scenario,
-    deps_base,
+    deps_base: AtmanDeps,
     sm,
-    agent: Agent,
+    agent: Agent[AtmanDeps, str],
     agent_id,
 ) -> SessionMetrics:
     metrics = SessionMetrics(scenario=scenario)
@@ -390,15 +418,15 @@ async def _run_scenario(
     deps = replace(deps_base, session_id=session_id)
     history: list[ModelMessage] = []
 
-    print(f"\n{'='*72}")
+    print(f"\n{'=' * 72}")
     print(f"▶  [{scenario.category.upper()}]  {scenario.name}")
     print(f"   session: {session_id}")
-    print(f"{'='*72}")
+    print(f"{'=' * 72}")
 
     my_text = scenario.opening
     for turn_idx in range(scenario.n_turns):
-        print(f"\n  [Turn {turn_idx+1}/{scenario.n_turns}]")
-        print(f"  me>    {my_text[:120]}{'…' if len(my_text)>120 else ''}")
+        print(f"\n  [Turn {turn_idx + 1}/{scenario.n_turns}]")
+        print(f"  me>    {my_text[:120]}{'…' if len(my_text) > 120 else ''}")
 
         tm, agent_response, deps = await _do_turn(
             my_text, turn_idx, deps, sm, session_id, agent, history
@@ -409,7 +437,7 @@ async def _run_scenario(
             print(f"  agent> [NO RESPONSE — errors: {tm.errors}]")
             break
 
-        print(f"  agent> {agent_response[:200]}{'…' if len(agent_response)>200 else ''}")
+        print(f"  agent> {agent_response[:200]}{'…' if len(agent_response) > 200 else ''}")
         flags = []
         if tm.entities_detected:
             flags.append(f"ent:{tm.entities_detected}")
@@ -433,7 +461,7 @@ async def _run_scenario(
             my_text = _followup(scenario.category, turn_idx + 1, agent_response)
 
     # Session close
-    print(f"\n  --- Closing ---")
+    print("\n  --- Closing ---")
     try:
         sm.finish_session(
             session_id,
@@ -447,6 +475,7 @@ async def _run_scenario(
     except ValueError as exc:
         if "Cannot finish session without key moments" in str(exc):
             from atman.adapters.agent.runner import _force_finish
+
             _force_finish(sm, session_id, "completed")
             metrics.session_finish_ok = True
             print("  ⚠ force_finish (no KMs in this session)")
@@ -479,72 +508,78 @@ async def _run_scenario(
 
 # ── Final report ──────────────────────────────────────────────────────────────
 
+
 def _report(all_metrics: list[SessionMetrics]) -> None:
-    print(f"\n\n{'#'*72}")
+    print(f"\n\n{'#' * 72}")
     print("# COMPONENT HEALTH REPORT")
-    print(f"{'#'*72}")
+    print(f"{'#' * 72}")
 
     rows: dict[str, list[str]] = {
-        "Entity detection":   [],
-        "Ambient RAG":        [],
-        "Passive RAG":        [],
-        "Affect detector":    [],
-        "Auto key moments":   [],
-        "Agent tool calls":   [],
-        "Session finish":     [],
-        "Micro-reflection":   [],
+        "Entity detection": [],
+        "Ambient RAG": [],
+        "Passive RAG": [],
+        "Affect detector": [],
+        "Auto key moments": [],
+        "Agent tool calls": [],
+        "Session finish": [],
+        "Micro-reflection": [],
     }
 
     for sm_obj in all_metrics:
         s = sm_obj.scenario
         n = len(sm_obj.turns)
-        total_ent   = sum(len(t.entities_detected) for t in sm_obj.turns)
-        total_amb   = sum(t.ambient_rag_items for t in sm_obj.turns)
-        total_pass  = sum(t.passive_rag_items for t in sm_obj.turns)
-        affect_ok   = sum(1 for t in sm_obj.turns if t.affect_processed)
-        auto_kms    = sum(1 for t in sm_obj.turns if t.auto_km_written)
-        all_tools   = [tc for t in sm_obj.turns for tc in t.tool_calls]
-        all_errors  = sm_obj.session_errors + [e for t in sm_obj.turns for e in t.errors]
-        avg_lat     = (sum(t.latency_ms for t in sm_obj.turns) // n) if n else 0
+        total_ent = sum(len(t.entities_detected) for t in sm_obj.turns)
+        total_amb = sum(t.ambient_rag_items for t in sm_obj.turns)
+        total_pass = sum(t.passive_rag_items for t in sm_obj.turns)
+        affect_ok = sum(1 for t in sm_obj.turns if t.affect_processed)
+        auto_kms = sum(1 for t in sm_obj.turns if t.auto_km_written)
+        all_tools = [tc for t in sm_obj.turns for tc in t.tool_calls]
+        all_errors = sm_obj.session_errors + [e for t in sm_obj.turns for e in t.errors]
+        avg_lat = (sum(t.latency_ms for t in sm_obj.turns) // n) if n else 0
 
         ok_fin = "✅" if sm_obj.session_finish_ok else "❌"
         ok_ref = "✅" if sm_obj.micro_reflection_ok else "❌"
 
         print(f"\n┌─ [{s.category.upper()}] {s.name}")
-        print(f"│  turns:{n}  avg_lat:{avg_lat}ms  "
-              f"entities:{total_ent}  amb:{total_amb}  pass:{total_pass}")
-        print(f"│  affect:{affect_ok}/{n}  auto_KM:{auto_kms}  "
-              f"tools:{all_tools if all_tools else 'none'}")
+        print(
+            f"│  turns:{n}  avg_lat:{avg_lat}ms  "
+            f"entities:{total_ent}  amb:{total_amb}  pass:{total_pass}"
+        )
+        print(
+            f"│  affect:{affect_ok}/{n}  auto_KM:{auto_kms}  "
+            f"tools:{all_tools if all_tools else 'none'}"
+        )
         print(f"│  finish:{ok_fin}  reflection:{ok_ref}")
         if sm_obj.micro_reflection_insight:
             print(f"│  insight: {sm_obj.micro_reflection_insight[:80]}")
         if all_errors:
             print(f"│  ERRORS: {all_errors}")
-        print(f"└{'─'*60}")
+        print(f"└{'─' * 60}")
 
         rows["Entity detection"].append("✅" if total_ent > 0 else "⚠ none")
         rows["Ambient RAG"].append("✅" if total_amb > 0 else "⚠ empty")
         rows["Passive RAG"].append("✅" if total_pass > 0 else "ℹ no memory yet")
-        rows["Affect detector"].append(
-            "✅" if affect_ok == n else f"⚠ {affect_ok}/{n}")
+        rows["Affect detector"].append("✅" if affect_ok == n else f"⚠ {affect_ok}/{n}")
         rows["Auto key moments"].append("✅" if auto_kms > 0 else "ℹ no boundary")
         rows["Agent tool calls"].append("✅" if all_tools else "ℹ none called")
         rows["Session finish"].append("✅" if sm_obj.session_finish_ok else "❌")
         rows["Micro-reflection"].append("✅" if sm_obj.micro_reflection_ok else "❌")
 
-    print(f"\n{'─'*72}")
+    print(f"\n{'─' * 72}")
     print("SUMMARY:")
     for comp, statuses in rows.items():
         print(f"  {comp:<25} {' | '.join(statuses)}")
-    print(f"{'─'*72}")
+    print(f"{'─' * 72}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
     from uuid import UUID, uuid4
+
     id_file = WORKSPACE / "agent_id.txt"
     agent_id = UUID(id_file.read_text().strip()) if id_file.exists() else uuid4()
     if not id_file.exists():
@@ -557,6 +592,7 @@ async def main() -> None:
     if os.getenv("DATABASE_URL") and deps_base.entity_registry is not None:
         try:
             from atman.adapters.memory.postgres_entity_registry import PostgresEntityRegistry
+
             pg_registry = PostgresEntityRegistry(os.environ["DATABASE_URL"])
             deps_base = replace(deps_base, entity_registry=pg_registry)
             print("  entity registry → postgres ✓")
@@ -564,6 +600,7 @@ async def main() -> None:
             print(f"  postgres entity registry unavailable: {exc}")
 
     from e2e.live_chat import bootstrap_minimal_agent
+
     if not (WORKSPACE / "identity.json").exists():
         bootstrap_minimal_agent(store, agent_id)
         print("  identity bootstrapped ✓")
@@ -576,16 +613,21 @@ async def main() -> None:
         llm,
         deps_type=type(deps_base),
         instructions=lambda c: _S(build_instructions(c.deps)),
-        tools=[record_key_moment, restart_session, wait_session,
-               resolve_pending_review, request_reflection],
+        tools=[
+            record_key_moment,
+            restart_session,
+            wait_session,
+            resolve_pending_review,
+            request_reflection,
+        ],
         model_settings=ModelSettings(max_tokens=512, extra_body={"num_ctx": 4096}),
     )
 
     order = list(SCENARIOS)
     random.shuffle(order)
-    print(f"\nOrder (randomised):")
+    print("\nOrder (randomised):")
     for i, s in enumerate(order):
-        print(f"  {i+1}. [{s.category}] {s.name}")
+        print(f"  {i + 1}. [{s.category}] {s.name}")
 
     all_metrics: list[SessionMetrics] = []
     for scenario in order:
