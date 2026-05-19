@@ -6,7 +6,7 @@
 
 | Component | Version | Purpose |
 |-----------|---------|---------|
-| Python | 3.11+ | Runtime |
+| Python | 3.12+ | Runtime |
 | [uv](https://github.com/astral-sh/uv) | latest | Environment and dependency management |
 | Docker + Docker Compose | 24+ | PostgreSQL (optional) |
 | llama.cpp (`llama-server`) or Ollama | — | LLM for reflections |
