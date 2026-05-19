@@ -12,6 +12,8 @@
 Запуск:
     PYTHONPATH=src OLLAMA_BASE_URL=http://localhost:11434/v1 \
         python3 e2e/scenarios/test_restart_with_handoff.py
+
+Note: ``log_experience`` was removed from agent tools; use ``record_key_moment``.
 """
 
 from __future__ import annotations

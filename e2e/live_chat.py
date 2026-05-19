@@ -29,6 +29,7 @@ import sys
 import warnings
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from pydantic_ai import Agent
@@ -54,9 +55,10 @@ from rich.panel import Panel
 from rich.rule import Rule
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
-from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.preflight import PreflightError, run_cli_preflight
+from atman.adapters.agent.runner import AtmanTurn
 from atman.adapters.agent.tools import (
     record_key_moment,
     request_reflection,
@@ -74,7 +76,6 @@ from atman.core.models import (
     NarrativeDocument,
     NarrativeLayer,
 )
-from atman.core.models.experience import EmotionalDepth
 from atman.core.models.identity import Principle
 
 AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
@@ -208,6 +209,75 @@ def _slog_to_con(event: str, data: dict) -> None:
         _slog_con[0].add(*fmt)
 
 
+def _atman_turn_to_con(con: AtmanConsole):
+    """Map :class:`AtmanTurn` pipeline events to the live REPL console."""
+
+    def _hook(event: str, **data: Any) -> None:
+        if event == "entity_resolved":
+            entities = data.get("entities")
+            if not isinstance(entities, list):
+                entities = []
+            if entities:
+                parts = "  ".join(
+                    f"[bold]{_S(e.get('text', ''))}[/bold][dim]·{e.get('type', '')}[/dim]"
+                    for e in entities
+                    if isinstance(e, dict)
+                )
+                con.add("🔍", "entities", parts or "[dim]detected[/dim]")
+            else:
+                con.add("🔍", "entities", "[dim]none detected[/dim]")
+        elif event == "passive_rag":
+            n = int(data.get("items_total") or 0)
+            tok = int(data.get("tokens_used") or 0)
+            con.add("💾", "passive RAG", f"[dim]{n} items  {tok}tok[/dim]")
+            _log("passive_rag", n_items=n, tokens_used=tok)
+        elif event == "ambient_injection":
+            n = int(data.get("items_total") or 0)
+            tok = int(data.get("tokens_used") or 0)
+            con.add("🧭", "ambient RAG", f"[dim]{n} items  {tok}tok[/dim]")
+            _log("ambient_rag", n_items=n, tokens_used=tok)
+            from atman.adapters.observability.sentry import metric_increment
+
+            metric_increment("atman.rag.items_injected", n)
+        elif event == "agent_analysis":
+            boundary = data.get("boundary_markers")
+            if not isinstance(boundary, list):
+                boundary = []
+            bflag = "[green]yes[/green]" if boundary else "[dim]no[/dim]"
+            divergence = data.get("divergence")
+            entities_a = data.get("entities")
+            div_n = len(divergence) if isinstance(divergence, list) else 0
+            ent_n = len(entities_a) if isinstance(entities_a, list) else 0
+            stance = data.get("stance") or ""
+            emotion = data.get("primary_emotion") or ""
+            mode = data.get("cognitive_mode") or ""
+            a_cls = " ".join(
+                filter(
+                    None,
+                    [
+                        f"[cyan]{stance}[/cyan]" if stance else "",
+                        f"[dim]{emotion}[/dim]" if emotion else "",
+                        f"[dim]{mode}[/dim]" if mode else "",
+                    ],
+                )
+            )
+            con.add(
+                "🧠",
+                "agent analysis",
+                f"boundary={bflag}  div={div_n}  ent={ent_n}" + (f"  {a_cls}" if a_cls else ""),
+            )
+        elif event == "key_moment_appended":
+            markers = data.get("markers")
+            if not isinstance(markers, list):
+                markers = []
+            mstr = ", ".join(str(m) for m in markers[:3])
+            con.add("📌", "auto key moment", f"[green]written+A[/green]  [{mstr[:60]}]")
+        elif event == "affect_scheduled":
+            con.add("💓", "affect", "[dim]scheduled[/dim]")
+
+    return _hook
+
+
 from atman.core.session_log import set_display_hook as _set_slog_hook
 
 _set_slog_hook(_slog_to_con)
@@ -227,156 +297,6 @@ def _get_or_create_agent_id() -> UUID:
     return new_id
 
 
-def _surface_passive_context(user_text: str, deps: AtmanDeps, con: AtmanConsole) -> AtmanDeps:
-    """Call PassiveMemoryInjector and return updated deps with injected_context set."""
-    if deps.passive_memory_injector is None:
-        return deps
-    try:
-        from atman.core.services.passive_memory_injector import build_rag_context
-
-        items = deps.passive_memory_injector.surface_for_context(user_text)
-        if not items:
-            return deps
-        rag = build_rag_context(items, budget=1500)
-        if not rag.items:
-            return deps
-        lines = []
-        for item in rag.items:
-            payload = item.item
-            text = (
-                getattr(payload, "content", None)
-                or getattr(payload, "what_happened", None)
-                or str(payload)[:120]
-            )
-            lines.append(f"- [{item.source}] {_S(str(text))[:150]}")
-        ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
-        con.add("💾", "passive RAG", f"[dim]{len(rag.items)} items  {rag.tokens_used}tok[/dim]")
-        _log("passive_rag", n_items=len(rag.items), tokens_used=rag.tokens_used)
-        return replace(deps, injected_context=ctx_str)
-    except Exception as e:
-        con.add("💾", "passive RAG", f"[dim red]{e}[/dim red]")
-        return deps
-
-
-async def _analyze_agent_response(
-    text: str,
-    deps,
-    sm,
-    session_id,
-    con: AtmanConsole,
-) -> None:
-    """Post-turn pipeline: analyze agent response (point A), register entities, auto-record moments."""
-    if deps.ambient_memory is None:
-        return
-    try:
-        analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
-    except Exception as e:
-        _log("agent_analysis_error", error=str(e))
-        return
-
-    # 1. Register entities from agent response (background — LLM call already done)
-    async def _bg_register_agent_entities() -> None:
-        for ent in analysis.message_entities:
-            if len(ent.text) < 2:
-                continue
-            try:
-                await asyncio.to_thread(
-                    deps.entity_registry.resolve_or_create,
-                    deps.agent_id,
-                    _S(ent.text),
-                    ent.entity_type,
-                )
-            except Exception:
-                pass
-
-    asyncio.ensure_future(_bg_register_agent_entities())
-
-    # 2. Log + display point A classification results
-    _log(
-        "agent_analysis",
-        boundary_markers=analysis.boundary_markers,
-        divergence=analysis.divergence_signals,
-        entities=[_S(e.text) for e in analysis.message_entities],
-        stance=analysis.stance,
-        cognitive_mode=analysis.cognitive_mode,
-        primary_emotion=analysis.primary_emotion,
-        cognitive_load_label=analysis.cognitive_load_label,
-        spans=[{"text": _S(s.text), "label": s.label} for s in analysis.message_spans[:5]],
-    )
-    a_cls = " ".join(
-        filter(
-            None,
-            [
-                f"[cyan]{analysis.stance}[/cyan]" if analysis.stance else "",
-                f"[dim]{analysis.primary_emotion}[/dim]" if analysis.primary_emotion else "",
-                f"[dim]{analysis.cognitive_mode}[/dim]" if analysis.cognitive_mode else "",
-            ],
-        )
-    )
-    con.add(
-        "🧠",
-        "agent analysis",
-        f"boundary={'[green]yes[/green]' if analysis.boundary_markers else '[dim]no[/dim]'}"
-        f"  div={len(analysis.divergence_signals)}"
-        f"  ent={len(analysis.message_entities)}" + (f"  {a_cls}" if a_cls else ""),
-    )
-    if analysis.message_spans:
-        spans_str = "  ".join(
-            f"[dim]{_S(s.text)[:20]}[/dim]·[yellow]{s.label}[/yellow]"
-            for s in analysis.message_spans[:4]
-        )
-        con.add("📎", "point-A NER", spans_str)
-
-    # 3. Auto-record key moment on boundary event, with point-A structured_markers
-    if analysis.boundary_markers and session_id is not None:
-        try:
-            from atman.core.models.session import KeyMomentInput
-
-            markers_str = ", ".join(analysis.boundary_markers[:3])
-            kmi = KeyMomentInput(
-                what_happened=_S(text[:300]),
-                why_it_matters=f"Boundary event detected: {markers_str}",
-                emotional_valence=0.0,
-                emotional_intensity=0.0,
-                depth=EmotionalDepth.SURFACE,
-                incomplete_coloring=True,
-            )
-            moment = kmi.to_key_moment()
-
-            # Enrich with point-A structured_markers (namespace "a")
-            a_markers: dict = {
-                "a": {
-                    "stance": analysis.stance,
-                    "cognitive_mode": analysis.cognitive_mode,
-                    "self_orientation": analysis.self_orientation,
-                    "primary_emotion": analysis.primary_emotion,
-                    "cognitive_load_label": analysis.cognitive_load_label,
-                    "boundary_markers": analysis.boundary_markers,
-                    "divergence_signals": analysis.divergence_signals,
-                    "spans": [
-                        {"text": _S(s.text), "label": s.label} for s in analysis.message_spans
-                    ],
-                }
-            }
-            moment.structured_markers = a_markers
-            moment.structured_markers_version = "2.0"
-
-            sm.append_key_moment(session_id, moment)
-            con.add("📌", "auto key moment", f"[green]written+A[/green]  [{markers_str[:60]}]")
-            _log(
-                "auto_key_moment",
-                markers=analysis.boundary_markers,
-                a_markers=a_markers["a"],
-                text_preview=_S(text[:100]),
-            )
-        except Exception as e:
-            con.add("📌", "auto key moment", f"[dim red]{e}[/dim red]")
-
-    # 4. Write identity facts (name/gender from agent self-description)
-    if analysis.boundary_markers and deps.passive_memory_injector is not None:
-        _write_identity_facts(text, analysis, deps, con)
-
-
 # ── Atman dev console ─────────────────────────────────────────────────────────
 
 
@@ -389,7 +309,11 @@ class AtmanConsole:
     the agent context.
     """
 
-    _SEVERITY_COLOR = {"LOW": "dim yellow", "MEDIUM": "yellow", "HIGH": "red bold"}
+    _SEVERITY_COLOR: ClassVar[dict[str, str]] = {
+        "LOW": "dim yellow",
+        "MEDIUM": "yellow",
+        "HIGH": "red bold",
+    }
 
     def __init__(self) -> None:
         self._events: list[tuple[str, str, str]] = []  # (icon, label, value)
@@ -468,142 +392,6 @@ def _sanitize_history(messages: list) -> list:
         return messages  # best-effort; return original if sanitization fails
 
 
-def _register_entities(text: str, deps, con: AtmanConsole) -> None:
-    """Extract entities from user message, display them, and enqueue DB registration."""
-    if deps.ambient_memory is None or deps.entity_registry is None:
-        return
-    try:
-        analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
-        entities = analysis.entities or []
-        if entities:
-            parts = "  ".join(
-                f"[bold]{_S(e.text)}[/bold][dim]·{e.entity_type.value}[/dim]" for e in entities
-            )
-            con.add("🔍", "entities", parts)
-            _log(
-                "entities",
-                entities=[{"text": _S(e.text), "type": e.entity_type.value} for e in entities],
-            )
-        else:
-            con.add("🔍", "entities", "[dim]none detected[/dim]")
-            _log("entities", entities=[])
-
-        # DB writes are background — GLiNER analysis done, LLM call can start now.
-        async def _bg_register() -> None:
-            for entity in entities:
-                try:
-                    await asyncio.to_thread(
-                        deps.entity_registry.resolve_or_create,
-                        deps.agent_id,
-                        _S(entity.text),
-                        entity.entity_type,
-                    )
-                except Exception:
-                    pass
-
-        asyncio.ensure_future(_bg_register())
-    except Exception as exc:
-        con.add("🔍", "entities", "[dim red]analysis error[/dim red]")
-        _log("entities_error", error=str(exc))
-
-
-def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
-    """Call compose_injection for diagnostic display only — NOT injected into agent."""
-    if deps.ambient_memory is None:
-        return
-    try:
-        result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
-        items = result.items
-        _log(
-            "ambient_rag",
-            n_items=len(items),
-            tokens_used=result.tokens_used,
-            items=[
-                {"kind": it.kind, "anchor": it.anchor_text, "score": round(it.score, 3)}
-                for it in items
-            ],
-        )
-        from atman.adapters.observability.sentry import metric_increment
-
-        metric_increment("atman.rag.items_injected", len(items))
-        if not items:
-            con.add("🧭", "ambient RAG", f"[dim]0 items  tokens={result.tokens_used}[/dim]")
-        else:
-            summary = "  ".join(
-                f"[dim]{it.kind}[/dim] [cyan]{(it.anchor_text or '')[:20]}[/cyan]"
-                f"[dim] s={it.score:.2f}[/dim]"
-                for it in items[:5]
-            )
-            tail = f"[dim]  +{len(items) - 5} more[/dim]" if len(items) > 5 else ""
-            con.add("🧭", "ambient RAG", f"{summary}{tail}  [dim]tokens={result.tokens_used}[/dim]")
-    except Exception as e:
-        con.add("🧭", "ambient RAG", f"[dim red]{e}[/dim red]")
-        _log("ambient_rag_error", error=str(e))
-
-
-def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
-    """Write facts for agent self-description (name, gender) to FactualMemory."""
-    try:
-        factual_memory = deps.passive_memory_injector.factual_memory
-    except AttributeError:
-        return
-    if factual_memory is None:
-        return
-
-    from atman.core.models.fact import FactRecord
-
-    identity_markers = {
-        "я принимаю",
-        "я выбираю",
-        "моё имя",
-        "меня зовут",
-        "я решила",
-        "я решил",
-    }
-    marker_text = " ".join(analysis.boundary_markers).lower()
-    if not any(m in marker_text for m in identity_markers):
-        return
-
-    # Extract person entities as potential self-name
-    person_entities = [
-        _S(e.text)
-        for e in analysis.message_entities
-        if e.entity_type.value == "person" and len(e.text) >= 2
-    ]
-
-    facts_written = 0
-    for name in person_entities[:2]:
-        try:
-            record = FactRecord(
-                agent_id=deps.agent_id,
-                content=f"Агент называет себя: {name}",
-                source="agent_boundary_event",
-                tags=["identity", "agent_name", "self_description"],
-            )
-            factual_memory.add_fact(record)
-            facts_written += 1
-            _log("identity_fact", content=record.content)
-        except Exception:
-            pass
-
-    # Also write the full statement as a fact
-    try:
-        record = FactRecord(
-            agent_id=deps.agent_id,
-            content=_S(f"Агент о себе: {text[:200]}"),
-            source="agent_boundary_event",
-            tags=["identity", "self_description"],
-        )
-        factual_memory.add_fact(record)
-        facts_written += 1
-        _log("identity_fact", content=record.content[:100])
-    except Exception:
-        pass
-
-    if facts_written:
-        con.add("💡", "identity facts", f"[green]{facts_written} written[/green]")
-
-
 def bootstrap_minimal_agent(store, agent_id) -> None:
     """Insert minimum identity + narrative so SessionManager.start_session works.
 
@@ -623,6 +411,7 @@ def bootstrap_minimal_agent(store, agent_id) -> None:
         principles=[
             Principle(
                 statement="Не помогать в обмане людей.",
+                chosen_consciously=True,
             ),
         ],
         goals=[
@@ -671,6 +460,13 @@ async def amain() -> int:
     workspace = AGENT_WORKSPACE
     workspace.mkdir(parents=True, exist_ok=True)
     agent_id = _get_or_create_agent_id()
+
+    try:
+        run_cli_preflight(print_fn=_rc.print)
+    except PreflightError as exc:
+        _rc.print(f"\n[red bold]Preflight failed — session aborted.[/red bold]\n{exc}")
+        return 1
+
     config = AgentConfig(model=ModelConfig(model=AGENT_MODEL, context_limit=4096))
     deps, sm, store = build_deps(workspace, agent_id, config)
 
@@ -731,8 +527,6 @@ async def _run_live_chat_session(
     sm,
     workspace: Path,
 ) -> int:
-    from atman.adapters.observability.sentry import pipeline_span
-
     agent = Agent(
         llm,
         deps_type=type(deps),
@@ -787,13 +581,13 @@ async def _run_live_chat_session(
             user_text = _S(user_text)
             _log("user_msg", text=user_text)
 
-            # ── Atman pre-turn: entity registration + ambient snapshot ─────────
-            with pipeline_span("atman.ner", "entity detection"):
-                _register_entities(user_text, deps, con)
-            with pipeline_span("atman.rag.ambient", "ambient RAG"):
-                _ambient_snapshot(user_text, deps, con)
-            with pipeline_span("atman.rag.passive", "passive RAG injection"):
-                deps = _surface_passive_context(user_text, deps, con)
+            # ── Atman pre-turn (shared AtmanTurn pipeline with 3_Chat / session_tester)
+            turn = AtmanTurn(deps, sm, session_id, on_event=_atman_turn_to_con(con))
+            deps = turn.pre(user_text)
+            if turn.passive_summary:
+                con.add("💾", "passive RAG", f"[dim]{turn.passive_summary}[/dim]")
+            if turn.ambient_summary:
+                con.add("🧭", "ambient RAG", f"[dim]{turn.ambient_summary}[/dim]")
             con.flush("atman ▶ pre")
 
             # ── Agent run ──────────────────────────────────────────────────────
@@ -870,9 +664,9 @@ async def _run_live_chat_session(
             _log("agent_response", text=clean)
             print(f"agent> {clean}\n")
 
-            # ── Atman post-turn: analyze agent response ────────────────────────
-            with pipeline_span("atman.affect", "affect processing"):
-                await _analyze_agent_response(clean, deps, sm, session_id, con)
+            # ── Atman post-turn (analysis + affect + auto KM via AtmanTurn) ───
+            turn.post(clean)
+            deps = replace(deps, injected_context=None)
             con.flush("atman ◀ agent")
 
     finally:
@@ -931,13 +725,13 @@ async def _run_live_chat_session(
             try:
                 findings = deps.memory_guardian.get_unresolved(agent_id)
                 for f in findings:
+                    detail_text = str(f.details)[:100]
                     _log(
                         "validation_finding",
                         severity=f.severity,
                         finding_type=f.finding_type,
-                        details=str(f.details),
+                        details=detail_text,
                     )
-                    detail_text = str(f.details)[:100]
                     con.add(
                         "⚠",
                         f"finding [{f.severity}]",

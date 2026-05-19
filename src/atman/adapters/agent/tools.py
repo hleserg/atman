@@ -148,6 +148,24 @@ async def record_key_moment(
         return f"Error recording key moment: {e!s}"
 
 
+async def log_experience(
+    ctx: RunContext[AtmanDeps],
+    what_happened: str,
+    why_it_matters: str = "",
+) -> str:
+    """Deprecated redirect — use ``record_key_moment`` for in-session coloring.
+
+    Kept so older prompts, docs, and e2e scripts that still reference
+    ``log_experience`` get a clear migration message instead of ImportError.
+    """
+    _ = ctx, what_happened, why_it_matters
+    return (
+        "The log_experience tool was removed. Use record_key_moment during the session "
+        "to capture emotionally colored key moments via AffectDetector. "
+        "Session-level experience is persisted automatically when the session finishes."
+    )
+
+
 def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:
     """
     Request immediate session restart.

@@ -21,7 +21,13 @@ def build_session_experience(
     session: Session,
     moments_for_session: list[KeyMoment],
 ) -> SessionExperience:
-    """Synthesize a :class:`SessionExperience` from a session + its moments."""
+    """Synthesize a :class:`SessionExperience` from a session + its moments.
+
+    ``SessionExperience.fact_refs`` is the union of fact IDs referenced by key
+    moments and ``session.unexamined_fact_refs`` (facts read/surfaced without a
+    colored moment). Downstream reflection should treat this as “all fact
+    interactions during the session”, not “only facts attached to key moments”.
+    """
     moment_ids = [m.id for m in moments_for_session]
 
     avg_intensity = 0.5
@@ -32,9 +38,13 @@ def build_session_experience(
         )
         has_profound = any(m.how_i_felt.depth.value == "profound" for m in moments_for_session)
 
+    # fact_refs: colored refs from key moments plus facts surfaced but not yet colored.
     fact_refs: list[UUID] = []
     for m in moments_for_session:
         fact_refs.extend(m.fact_refs)
+    for fid in session.unexamined_fact_refs:
+        if fid not in fact_refs:
+            fact_refs.append(fid)
     fact_refs = list(dict.fromkeys(fact_refs))
 
     overall_salience = max(m.salience for m in moments_for_session) if moments_for_session else 0.5

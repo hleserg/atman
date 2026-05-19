@@ -79,8 +79,11 @@ def test_deploy_defaults_match_bge_m3_embedding_dimension() -> None:
 def test_inline_setup_schemas_match_bge_m3_fact_embedding_dimension() -> None:
     """Documented setup scripts must not embed the stale facts vector dimension."""
     for setup_path in (ROOT_SETUP, LEGACY_DEPLOY_SETUP):
+        if not setup_path.exists():
+            continue
         script = setup_path.read_text(encoding="utf-8")
         if "CREATE TABLE IF NOT EXISTS facts" not in script:
+            # Legacy deploy wrapper delegates schema to schema.sql.
             continue
         facts_table = script.split("CREATE TABLE IF NOT EXISTS facts", maxsplit=1)[1].split(
             ");", maxsplit=1

@@ -15,6 +15,8 @@ demo_atman.py — Показательный двухсессионный про
 Лог автоматически сохраняется в e2e/demo_output.log.
 Модель по умолчанию: ollama:qwen3.5:9b
 Задать другую: ATMAN_MODEL=ollama:<name> python3 e2e/demo_atman.py
+
+Note: the legacy ``log_experience`` agent tool was removed; use ``record_key_moment`` instead.
 """
 
 from __future__ import annotations
