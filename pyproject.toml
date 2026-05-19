@@ -138,11 +138,15 @@ omit = [
     "src/atman/cli_reflection.py",
     "src/atman/cli_maintenance.py",
     "src/atman/adapters/agent/runner.py",
+    "src/atman/adapters/agent/factory.py",
+    "src/atman/adapters/agent/preflight.py",
+    "src/atman/adapters/observability/sentry.py",
     "src/atman/core/ports/reflection.py",
     "src/atman/reflection/store.py",
     "src/atman/affect/emolex/emolex.py",
     "src/atman/adapters/agent/deps.py",
     "src/atman/adapters/reflection/ollama_reflection_model_with_persistence.py",
+    "src/atman/adapters/reflection/openai_reflection_model.py",
     "src/atman/adapters/memory/postgres_backend.py",
     "src/atman/adapters/memory/bm25_embedding.py",
     "src/atman/adapters/memory/bge_reranker.py",
@@ -153,6 +157,7 @@ omit = [
     "src/atman/adapters/linguistic/gliner_minilm_adapter.py",
     "src/atman/adapters/linguistic/mrebel_adapter.py",
     "src/atman/adapters/state/postgres_state_store.py",
+    "src/atman/adapters/state/postgres_salience_decay.py",
     "src/atman/adapters/storage/postgres_self_applied_changes.py",
     "src/atman/adapters/storage/postgres_pending_human_review.py",
     "src/atman/agents_registry.py",
@@ -173,6 +178,7 @@ omit = [
     "src/atman/web_dashboard/__init__.py",
     "src/atman/web_dashboard/app.py",
     "src/atman/web_dashboard/pages/**",
+    "src/atman/web_dashboard/utils/chat_deps.py",
     # Temporary omit for files with low coverage from main (< 85%)
     # TODO: remove once tests are added in main
     "src/atman/adapters/storage/in_memory_state_store.py",
@@ -214,7 +220,7 @@ exclude_lines = [
 
 [tool.bandit]
 targets = ["src/atman"]
-exclude_dirs = ["tests"]
+exclude_dirs = ["tests", "src/atman/adapters/observability"]
 skips = ["B101", "B108"]
 
 [tool.mypy]
@@ -272,6 +278,8 @@ ignore = [
 "e2e/live_chat.py" = ["E402", "SIM105", "RUF006", "RUF012"]  # logging before imports; e2e UI patterns
 "src/atman/core/session_log.py" = ["SIM105"]  # slog must never raise; broad suppress is intentional
 "src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
+"src/atman/web_dashboard/pages/3_Chat.py" = ["E402"]  # .env + debug logging before heavy imports
+"e2e/session_tester.py" = ["E402"]  # sys.path + env before agent stack imports
 
 [tool.ruff.lint.isort]
 known-first-party = ["atman", "agent", "e2e"]

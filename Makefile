@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement session-test
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -133,6 +133,16 @@ demo-e2e-scenario:
 live-chat:
 	PYTHONPATH=. python3 -m e2e.live_chat
 
+# Streamlit chat UI — full debug panel, event log, DB tables, RAG viewer.
+# Opens at http://localhost:8502 (WSL2: also accessible via Windows localhost).
+chat-ui:
+	PYTHONPATH=$(shell pwd)/src:. python3 -m streamlit run src/atman/web_dashboard/app.py \
+		--server.port 8502 --server.headless true --server.address 0.0.0.0
+
+# Quick Rich-table view of agent's last 10 key moments, facts, top entities.
+show-agent:
+	PYTHONPATH=. python3 scripts/show_agent_data.py
+
 warmup-models:
 	CUDA_VISIBLE_DEVICES= PYTHONPATH=. .venv/bin/python scripts/warmup_native_models.py
 
@@ -234,3 +244,9 @@ codemap-translate:
 # Preview misplaced doc moves (dry-run).
 codemap-fix:
 	python3 -m scripts.codemap docs-fix --dry-run
+
+# Run 6 live scripted scenarios and report component health.
+# Requires: llama-server on :8081, PostgreSQL, NLP models (make warmup-models first).
+# See docs/development/SESSION_TESTER_RUNBOOK.md
+session-test:
+	PYTHONPATH=$(shell pwd)/src:. python3 e2e/session_tester.py

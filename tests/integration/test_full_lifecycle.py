@@ -36,9 +36,7 @@ from atman.core.models import (
     EmotionalDepth,
     KeyMomentInput,
 )
-from atman.core.models.experience import (
-    ReframingNote,
-)
+from atman.core.models.experience import ExperienceRecord, ReframingNote
 from atman.core.models.identity import Identity, IdentitySnapshot
 from atman.core.models.narrative import NarrativeDocument
 from atman.core.narrative_write_audit import NoOpNarrativeWriteAudit
@@ -50,7 +48,19 @@ from atman.core.services.reflection_service import (
     DailyReflectionService,
     MicroReflectionService,
 )
+from atman.core.services.session_experience_view import build_session_experience
 from atman.core.services.session_manager import SessionManager
+
+
+def _materialize_session_experience(store: FileStateStore, session_id: UUID) -> UUID:
+    """Persist a virtual SessionExperience shell for legacy reframing-note storage."""
+    session = store.get_session(session_id)
+    assert session is not None
+    moments = store.get_key_moments_for_session(session_id)
+    experience = build_session_experience(session, moments)
+    if store.get_experience(experience.id) is None:
+        store.create_experience(ExperienceRecord(experience=experience))
+    return experience.id
 
 
 class _StateStoreExperienceRepo:
@@ -234,7 +244,7 @@ def test_full_lifecycle_invariants():
         # Finish session - use a new clock for finish time
         finish_clock = FrozenClock(base_time + timedelta(minutes=20))
         session_manager._clock = finish_clock
-        session_result = session_manager.finish_session(
+        session_manager.finish_session(
             context.session_id,
             overall_emotional_tone=0.65,
             key_insight="Today I felt capable and connected",
@@ -242,28 +252,25 @@ def test_full_lifecycle_invariants():
             alignment_notes="Experience aligned with my values",
         )
 
-        # --- INVARIANT 1: Experience becomes immutable after finish ---
-        experience_id = session_result.eigenstate.session_id if session_result.eigenstate else None
-        assert experience_id is not None
+        # --- INVARIANT 1: Session artifacts are stable after finish ---
+        closed_session = store.get_session(context.session_id)
+        assert closed_session is not None
+        assert closed_session.status == "completed"
+        key_moments_count_before = len(store.get_key_moments_for_session(context.session_id))
 
-        from atman.core.services.session_manager import deterministic_session_experience_id
-
-        experience_id = deterministic_session_experience_id(context.session_id)
-
-        stored_experience_before = store.get_experience(experience_id)
-        assert stored_experience_before is not None
-        key_moments_count_before = len(stored_experience_before.experience.key_moment_ids)
-
-        # Try to finish session again - should not duplicate
+        # Try to finish session again - should not duplicate key moments
         with contextlib.suppress(Exception):
             session_manager.finish_session(context.session_id)
 
-        stored_experience_after = store.get_experience(experience_id)
-        assert stored_experience_after is not None
-        assert len(stored_experience_after.experience.key_moment_ids) == key_moments_count_before
+        key_moments_count_after = len(store.get_key_moments_for_session(context.session_id))
+        assert key_moments_count_after == key_moments_count_before
 
         # --- INVARIANT 4: identity_snapshot_id propagates correctly ---
-        assert stored_experience_after.experience.identity_snapshot_id == initial_snapshot_id
+        closed_after = store.get_session(context.session_id)
+        assert closed_after is not None
+        assert closed_after.identity_snapshot_id == initial_snapshot_id
+
+        experience_id = _materialize_session_experience(store, context.session_id)
 
         # --- Phase 2: Micro reflection updates narrative ---
         _StateStoreExperienceRepo(store)
@@ -392,23 +399,18 @@ def test_immutability_enforcement():
             key_insight="Test session",
         )
 
-        from atman.core.services.session_manager import deterministic_session_experience_id
+        experience_id = _materialize_session_experience(store, context.session_id)
 
-        experience_id = deterministic_session_experience_id(context.session_id)
-
-        # Get original experience
+        # Get original experience shell and backing key moment
         original = store.get_experience(experience_id)
         assert original is not None
-
-        # Verify we cannot modify the core experience data through the store
-        # (the experience itself is immutable in Pydantic, but verify storage contract)
         assert len(original.experience.key_moment_ids) == 1
         original_moment_id = original.experience.key_moment_ids[0]
         original_moment = store.get_key_moment(original_moment_id)
         assert original_moment is not None
         original_moment_text = original_moment.what_happened
 
-        # Try to retrieve again - should be unchanged
+        # Retrieve again — key moment text must be unchanged
         retrieved_again = store.get_experience(experience_id)
         assert retrieved_again is not None
         assert len(retrieved_again.experience.key_moment_ids) == 1

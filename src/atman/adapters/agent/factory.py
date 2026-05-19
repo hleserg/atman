@@ -85,16 +85,16 @@ class _NarrativeAdapter(NarrativeRepository):
         self._s = store
         self._agent_id = agent_id
 
-    def get_current(self):
+    def get_current(self) -> NarrativeDocument | None:
         return self._s.load_narrative(self._agent_id)
 
-    def get_history(self):
+    def get_history(self) -> list[NarrativeDocument]:
         return []
 
-    def update(self, narrative, *, expected_updated_at=None):
+    def update(self, narrative: NarrativeDocument, *, expected_updated_at=None) -> None:
         self._s.save_narrative(narrative, expected_updated_at=expected_updated_at)
 
-    def save(self, narrative):
+    def save(self, narrative: NarrativeDocument) -> NarrativeDocument:
         return self._s.save_narrative(narrative)
 
 

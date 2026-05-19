@@ -274,6 +274,7 @@ class KeyMomentInput(BaseModel):
             principles_questioned=self.principles_questioned,
             what_changed=self.what_changed,
             fact_refs=self.fact_refs,
+            incomplete_coloring=self.incomplete_coloring,
         )
 
     model_config = ConfigDict(
