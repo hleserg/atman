@@ -215,7 +215,7 @@ def metric_distribution(
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.distribution(name, value, unit=unit, tags=tags or {})
+        sentry_sdk.metrics.distribution(name, value, unit=unit, tags=tags or {})  # type: ignore[call-arg]
     except Exception:
         pass
 
@@ -227,7 +227,7 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.gauge(name, value, tags=tags or {})
+        sentry_sdk.metrics.gauge(name, value, tags=tags or {})  # type: ignore[call-arg]
     except Exception:
         pass
 
@@ -239,7 +239,7 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.incr(name, value, tags=tags or {})
+        sentry_sdk.metrics.incr(name, value, tags=tags or {})  # type: ignore[attr-defined]
     except Exception:
         pass
 
