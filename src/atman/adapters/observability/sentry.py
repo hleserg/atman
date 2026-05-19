@@ -5,9 +5,9 @@ Usage:
     All other helpers gracefully no-op when SENTRY_DSN is not set or sentry-sdk is missing.
 
 Environment variables:
-    SENTRY_DSN              — Sentry project DSN; if unset, all helpers are disabled
-    SENTRY_ENVIRONMENT      — "development" | "staging" | "production" (default: production)
-    SENTRY_TRACES_SAMPLE_RATE — float 0..1, default 0.2
+    SENTRY_DSN              ? Sentry project DSN; if unset, all helpers are disabled
+    SENTRY_ENVIRONMENT      ? "development" | "staging" | "production" (default: production)
+    SENTRY_TRACES_SAMPLE_RATE ? float 0..1, default 0.2
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def _init(dsn: str, environment: str = "production", release: str | None = None)
         from sentry_sdk.integrations.httpx import HttpxIntegration
         from sentry_sdk.integrations.logging import LoggingIntegration
     except ImportError:
-        _LOG.warning("sentry-sdk not installed — install sentry-sdk[httpx,asyncio] to enable")
+        _LOG.warning("sentry-sdk not installed ? install sentry-sdk[httpx,asyncio] to enable")
         return False
 
     sample_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.2"))
@@ -87,7 +87,7 @@ def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
         sentry_sdk.set_user({"id": agent_id})
         if session_id:
             sentry_sdk.set_tag("session_id", session_id)
-    except Exception:  # nosec B110 — observability helpers must never raise
+    except Exception:  # nosec B110 ? observability helpers must never raise
         pass
 
 
@@ -99,7 +99,7 @@ def set_session_tag(session_id: str) -> None:
         import sentry_sdk
 
         sentry_sdk.set_tag("session_id", session_id)
-    except Exception:  # nosec B110 — observability helpers must never raise
+    except Exception:  # nosec B110 ? observability helpers must never raise
         pass
 
 
@@ -111,11 +111,11 @@ def install_slog_breadcrumb_hook() -> None:
 
     Every ``slog()`` event becomes a Sentry breadcrumb automatically.
     Preserves any already-registered hook (e.g., the Rich-console hook in
-    live_chat.py) — both hooks receive the event in order.
+    live_chat.py) ? both hooks receive the event in order.
 
     Safe to call when Sentry is not initialized: the inner hook checks
     ``_initialized`` at call time and skips breadcrumb emission.
-    Idempotent — calling multiple times installs the hook only once.
+    Idempotent ? calling multiple times installs the hook only once.
     """
     global _slog_hook_installed
     if _slog_hook_installed:
@@ -126,25 +126,29 @@ def install_slog_breadcrumb_hook() -> None:
 
     def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
         if _initialized:
+            attrs = {k: str(v) for k, v in data.items() if k != "ts"}
+            attrs["event"] = event
             try:
-                import sentry_sdk
                 import sentry_sdk.logger as _sl
 
-                attrs = {k: str(v) for k, v in data.items() if k != "ts"}
-                attrs["event"] = event
                 if event == "job_failed":
-                    _sl.error("atman.{event}", event=event, attributes=attrs)
+                    _sl.error("atman.{event}", attributes=attrs)
                 elif event in ("session_error", "reflect_error"):
-                    _sl.warning("atman.{event}", event=event, attributes=attrs)
+                    _sl.warning("atman.{event}", attributes=attrs)
                 else:
-                    _sl.info("atman.{event}", event=event, attributes=attrs)
+                    _sl.info("atman.{event}", attributes=attrs)
+            except Exception:  # nosec B110 ? observability helpers must never raise
+                pass
+            try:
+                import sentry_sdk
+
                 sentry_sdk.add_breadcrumb(
                     category=f"atman.{event}",
                     message=event,
                     level="error" if event == "job_failed" else "info",
                     data=attrs,
                 )
-            except Exception:  # nosec B110 — observability helpers must never raise
+            except Exception:  # nosec B110 ? observability helpers must never raise
                 pass
         if _previous is not None:
             _previous(event, data)
@@ -162,7 +166,7 @@ def install_slog_breadcrumb_hook() -> None:
 def session_transaction(session_id: str, agent_id: str) -> Generator[None, None, None]:
     """Root Sentry transaction spanning the entire session lifecycle.
 
-    Wraps ``start_session`` → all turns → ``finish_session`` so every LLM
+    Wraps ``start_session`` ? all turns ? ``finish_session`` so every LLM
     call and NLP job appears as a child span in the same trace.
     """
     if not _initialized:
@@ -181,7 +185,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
 
 @contextmanager
 def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]:
-    """Child span for a pipeline stage (NER, RAG, affect, …). No-op when Sentry is off."""
+    """Child span for a pipeline stage (NER, RAG, affect, ?). No-op when Sentry is off."""
     if not _initialized:
         yield
         return
@@ -246,7 +250,7 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
             for k, v in extra.items():
                 scope.set_extra(k, str(v))
             sentry_sdk.capture_exception(exc)
-    except Exception:  # nosec B110 — observability helpers must never raise
+    except Exception:  # nosec B110 ? observability helpers must never raise
         pass
 
 
