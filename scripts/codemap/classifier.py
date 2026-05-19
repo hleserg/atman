@@ -65,7 +65,7 @@ _RULES: list[tuple[re.Pattern, str, str, float]] = [
     # Docs in repo root (except allowed files) — only single-component paths
     (
         re.compile(
-            r"^(?!README|MANIFEST|AGENTS|CLAUDE|LICENSE|CHANGELOG|CONTRIBUTING)[^/\\]+\.md$",
+            r"^(?!README|MANIFEST|AGENTS|CLAUDE|LICENSE|CHANGELOG|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY)[^/\\]+\.md$",
             re.IGNORECASE,
         ),
         "Docs in repo root should be under docs/ (except README/MANIFEST/AGENTS/CLAUDE)",
@@ -93,6 +93,8 @@ _ALLOWED_ROOT = frozenset(
         "LICENSE",
         "CHANGELOG.md",
         "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "SECURITY.md",
     }
 )
 
@@ -170,11 +172,12 @@ def apply_high_confidence_moves(
         if not src.exists():
             continue
 
+        if dest.exists():
+            log.warning("Skipping move: destination already exists: %s", dest)
+            continue
+
         if not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
-            if dest.exists():
-                log.warning("Skipping move: destination already exists: %s", dest)
-                continue
             src.rename(dest)
             log.info("Moved %s → %s", src, dest)
 
