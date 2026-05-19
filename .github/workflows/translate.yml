@@ -39,7 +39,9 @@ jobs:
       - name: Translate stale blocks
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m scripts.codemap translate --lang ru --only-stale
+        run: |
+          STALE_FLAG=$([[ "${{ inputs.only_stale }}" != "false" ]] && echo "--only-stale" || echo "")
+          python -m scripts.codemap translate --lang ru $STALE_FLAG
 
       - name: Commit translated blocks
         uses: stefanzweifel/git-auto-commit-action@v5

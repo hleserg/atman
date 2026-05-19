@@ -287,7 +287,7 @@ def main() -> int:
     # translate subcommand
     translate_p = subparsers.add_parser("translate", help="Phase 2: translate stale RU blocks")
     translate_p.add_argument("--lang", default="ru", choices=["ru"])
-    translate_p.add_argument("--only-stale", action="store_true", dest="only_stale", default=True)
+    translate_p.add_argument("--only-stale", action="store_true", dest="only_stale", default=False)
 
     # docs-fix subcommand
     docsfix_p = subparsers.add_parser("docs-fix", help="Move misplaced docs")

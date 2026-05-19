@@ -109,13 +109,12 @@ def classify_docs(repo_root: Path) -> list[MisplacedDoc]:
     exclude_dirs = {".git", ".venv", "node_modules", "__pycache__", ".codemap"}
 
     for md_file in repo_root.rglob("*.md"):
-        # Skip excluded dirs
-        if any(part in exclude_dirs for part in md_file.parts):
-            continue
-
         try:
             rel = md_file.relative_to(repo_root)
         except ValueError:
+            continue
+        # Skip excluded dirs (check relative parts to avoid false positives from absolute path)
+        if any(part in exclude_dirs for part in rel.parts):
             continue
 
         rel_str = str(rel)
