@@ -316,14 +316,110 @@ def cmd_inspect_invocations(args: list[str]) -> None:
 
     print_banner(f"Invocations: {skill.name}", subtitle=f"(last {last_n})")
     print_info(f"Skill ID: {skill.id}")
-    # Help text — not an executed query. The interpolated values are a UUID
-    # (validated by Pydantic upstream) and an int parsed from CLI args.
-    print_help_text(
-        "Full invocation history requires a direct DB query:\n"
-        "  SELECT * FROM public.skill_invocations\n"
-        f"   WHERE skill_id = '{skill.id}'\n"  # nosec B608
-        f"   ORDER BY started_at DESC LIMIT {last_n};"  # nosec B608
+
+    invocations = store.list_invocations_by_skill(skill.id, agent_id, limit=last_n)
+    if not invocations:
+        print_info("No invocations recorded yet.")
+        return
+
+    table = Table(box=box.ROUNDED, show_header=True, header_style="term.label", padding=(0, 1))
+    table.add_column("Started", style="term.dim")
+    table.add_column("Preliminary")
+    table.add_column("Final")
+    table.add_column("Agent marker")
+    table.add_column("Hints", justify="right")
+
+    for inv in invocations:
+        hints_count = len(inv.behavioral_hints) + len(inv.user_feedback_hints)
+        table.add_row(
+            inv.started_at.strftime("%Y-%m-%d %H:%M:%S"),
+            inv.preliminary_status or "—",
+            inv.final_status or "—",
+            inv.agent_marker or "—",
+            str(hints_count) if hints_count else "0",
+        )
+    console.print(table)
+
+
+def cmd_capture_manual(args: list[str]) -> None:
+    """atman-skills capture-manual --name <n> --description <d> --agent <uuid> [--instructions <i>]
+
+    Manually create a skill (draft status) — useful for debugging and testing.
+    Equivalent to the agent calling atman_skills_capture() in a session.
+    """
+    _require_enabled()
+
+    name: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+
+    rest = list(args)
+    for flag, attr in (
+        ("--name", "name"),
+        ("--description", "description"),
+        ("--instructions", "instructions"),
+    ):
+        if flag in rest:
+            idx = rest.index(flag)
+            if idx + 1 >= len(rest):
+                print_err(f"{flag} requires a value")
+                sys.exit(1)
+            if attr == "name":
+                name = rest[idx + 1]
+            elif attr == "description":
+                description = rest[idx + 1]
+            else:
+                instructions = rest[idx + 1]
+            rest = rest[:idx] + rest[idx + 2 :]
+
+    if not name or not description:
+        print_help_text(
+            "Usage: atman-skills capture-manual --name <n> --description <d> "
+            "--agent <uuid> [--instructions <i>]"
+        )
+        sys.exit(1)
+
+    agent_id, _ = _parse_agent_id(rest)
+    if agent_id == UUID(int=0):
+        print_err("--agent <uuid> is required for capture-manual")
+        sys.exit(1)
+
+    from pathlib import Path
+
+    from atman.config import settings as _settings
+    from atman.skills.in_memory_store import InMemorySkillStore
+    from atman.skills.manager import SkillManager
+    from atman.skills.projection import PydanticAgentProjector
+    from atman.skills.retriever import SkillRetriever
+
+    agents_root = Path(_settings.skills.skills_root).expanduser()
+
+    try:
+        store = _get_store(agent_id)
+    except Exception:
+        # Fallback for environments without a DB
+        store = InMemorySkillStore()
+
+    manager = SkillManager(
+        store=store,
+        retriever=SkillRetriever(store=store, embedding=None),
+        projector=PydanticAgentProjector(),
+        config=_settings.skills,
+        agents_root=agents_root,
     )
+
+    from uuid import uuid4
+
+    session_id = uuid4()
+
+    skill = manager.capture(
+        name=name,
+        description=description,
+        agent_id=agent_id,
+        session_id=session_id,
+        instructions=instructions,
+    )
+    print_ok(f"Captured skill '{skill.name}' (status=draft) → {skill.manifest_path}")
 
 
 def cmd_force_revise(args: list[str]) -> None:
@@ -527,6 +623,7 @@ _COMMANDS = {
     "pin": cmd_pin,
     "unpin": cmd_unpin,
     "archive": cmd_archive,
+    "capture-manual": cmd_capture_manual,
     "inspect-invocations": cmd_inspect_invocations,
     "force-revise": cmd_force_revise,
     "install-external": cmd_install_external,
@@ -543,6 +640,7 @@ Commands:
   pin <name> [--agent <uuid>]
   unpin <name> [--agent <uuid>]
   archive <name> [--agent <uuid>]
+  capture-manual --name <n> --description <d> --agent <uuid> [--instructions <i>]
   inspect-invocations <name> [--agent <uuid>] [--last N]
   force-revise <name> [--agent <uuid>]
   install-external <source> --agent <uuid> [--name <override>] [--dry-run] [--yes]

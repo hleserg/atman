@@ -63,6 +63,7 @@ def install_external(
     name_override: str | None = None,
     dry_run: bool = False,
     http_get: Callable[[str], bytes] | None = None,
+    entity_registry=None,
 ) -> InstallResult:
     """Install a skill from ``source`` for ``agent_id``.
 
@@ -152,10 +153,13 @@ def install_external(
         write_skill_md(manifest, target_root / "SKILL.md")
 
         now = datetime.now(UTC)
+        entity_id = _resolve_entity_id(
+            agent_id, manifest.name, manifest.description, entity_registry
+        )
         skill = Skill(
             id=uuid4(),
             agent_id=agent_id,
-            entity_id=uuid4(),
+            entity_id=entity_id,
             name=manifest.name,
             description=manifest.description,
             version=manifest.version,
@@ -196,6 +200,28 @@ def install_external(
             skill_id=skill.id,
             runtime_warning=runtime_warning,
         )
+
+
+# ── helpers ──────────────────────────────────────────────────────────────
+
+
+def _resolve_entity_id(agent_id: UUID, name: str, description: str, entity_registry) -> UUID:
+    """Register skill as an entity and return its UUID; falls back to uuid4()."""
+    if entity_registry is None:
+        return uuid4()
+    try:
+        from atman.core.models.entity import EntityType
+
+        entity, _ = entity_registry.resolve_or_create(
+            agent_id,
+            name,
+            EntityType.skill,
+            description=description,
+        )
+        return entity.id
+    except Exception as exc:
+        _log.warning("_resolve_entity_id: entity registration failed for '%s': %s", name, exc)
+        return uuid4()
 
 
 # ── source acquisition ────────────────────────────────────────────────────
