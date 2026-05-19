@@ -143,6 +143,13 @@ def build_deps(
     if config is None:
         config = AgentConfig()
 
+    # Initialize Sentry once at the composition root if SENTRY_DSN is configured.
+    # No-op when the env var is absent — all observability calls degrade gracefully.
+    from atman.adapters.observability.sentry import init_sentry_from_env, set_agent_scope
+
+    if init_sentry_from_env():
+        set_agent_scope(str(agent_id))
+
     workspace.mkdir(parents=True, exist_ok=True)
     state_store = _build_state_store(workspace, agent_id)
     identity_service = IdentityService(state_store)

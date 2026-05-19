@@ -62,15 +62,19 @@ def cmd_run(args: argparse.Namespace) -> int:
             args.batch_size,
             job_name or "all",
         )
+        from atman.adapters.observability.sentry import cron_checkin, init_sentry_from_env
+
+        init_sentry_from_env()
         try:
             while True:
-                if job_name is not None:
-                    jobs = queue.claim_batch(job_name=job_name, batch_size=args.batch_size)
-                    for job in jobs:
-                        worker._dispatch(job)
-                    count = len(jobs)
-                else:
-                    count = worker.run_once(batch_size=args.batch_size)
+                with cron_checkin("atman-maintenance"):
+                    if job_name is not None:
+                        jobs = queue.claim_batch(job_name=job_name, batch_size=args.batch_size)
+                        for job in jobs:
+                            worker._dispatch(job)
+                        count = len(jobs)
+                    else:
+                        count = worker.run_once(batch_size=args.batch_size)
                 _LOG.info("Processed %d jobs. Sleeping %ds.", count, args.interval)
                 time.sleep(args.interval)
         except KeyboardInterrupt:
