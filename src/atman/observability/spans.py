@@ -152,14 +152,21 @@ def job_scope(tags: dict[str, str]) -> Generator[None, None, None]:
         yield
         return
 
+    scope_cm = None
     try:
         import sentry_sdk
 
-        with sentry_sdk.isolation_scope() as scope:
-            for key, value in tags.items():
-                scope.set_tag(key, value)
-            yield
+        scope_cm = sentry_sdk.isolation_scope()
     except Exception:
+        pass
+
+    if scope_cm is None:
+        yield
+        return
+
+    with scope_cm as scope:
+        for key, value in tags.items():
+            scope.set_tag(key, value)
         yield
 
 
