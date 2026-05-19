@@ -42,9 +42,18 @@ from lib.affect.metrics import (  # noqa: E402
 from lib.affect.refusal_detector import score_refusal  # noqa: E402
 from lib.dto import DetectedEntity, RawSpan  # noqa: E402
 from lib.linguistic import GLiNERPlusMiniLMAnalyzer, detect_language  # noqa: E402
+from lib.observability import (  # noqa: E402
+    capture_silent_exception,
+    init_sentry_from_env,
+    traced,
+)
 from lib.relations import MRebelRelationExtractor  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+# Observability: no-op when SENTRY_DSN is unset. On the Space, set the secret
+# under Settings → Variables and secrets.
+init_sentry_from_env()
 
 _ANALYZER: GLiNERPlusMiniLMAnalyzer | None = None
 _REBEL: MRebelRelationExtractor | None = None
@@ -53,14 +62,22 @@ _REBEL: MRebelRelationExtractor | None = None
 def get_analyzer() -> GLiNERPlusMiniLMAnalyzer:
     global _ANALYZER
     if _ANALYZER is None:
-        _ANALYZER = GLiNERPlusMiniLMAnalyzer()
+        try:
+            _ANALYZER = GLiNERPlusMiniLMAnalyzer()
+        except Exception as exc:
+            capture_silent_exception(exc, context="get_analyzer.init")
+            raise
     return _ANALYZER
 
 
 def get_rebel() -> MRebelRelationExtractor:
     global _REBEL
     if _REBEL is None:
-        _REBEL = MRebelRelationExtractor()
+        try:
+            _REBEL = MRebelRelationExtractor()
+        except Exception as exc:
+            capture_silent_exception(exc, context="get_rebel.init")
+            raise
     return _REBEL
 
 
@@ -106,6 +123,7 @@ def spans_to_highlights(
     return segments
 
 
+@traced("nlp.point_a")
 def analyze_point_a(message: str, thinking: str, lang_choice: str):
     if not message.strip():
         return [], {}, "No boundary markers", "No divergence signals", "—"
@@ -142,6 +160,7 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
     return highlights, label_dict, boundary, divergence, meta
 
 
+@traced("nlp.point_k")
 def analyze_point_k(what_happened: str, why_it_matters: str):
     if not what_happened.strip() and not why_it_matters.strip():
         return [], {}, "—"
@@ -170,6 +189,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str):
     return highlights, summary, meta
 
 
+@traced("nlp.relations_mrebel")
 def analyze_relations(text: str):
     if not text.strip():
         return [], [], "Empty input."
@@ -193,6 +213,7 @@ def analyze_relations(text: str):
     return entity_highlights, rows, meta
 
 
+@traced("nlp.affect_rules")
 def analyze_affect(text: str, lang_choice: str):
     if not text.strip():
         return {}, {}, "—", "—", "—"

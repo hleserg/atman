@@ -145,18 +145,10 @@ EN_NEGATORS = {
     "nobody",
     "without",
     "cannot",
-    "cant",
-    "wont",
-    "dont",
-    "doesnt",
-    "didnt",
-    "isnt",
-    "arent",
-    "wasnt",
-    "werent",
-    "havent",
-    "hasnt",
 }
+# Apostrophe-free contraction forms ("wont", "dont", "doesnt", …) were removed:
+# tokenize() splits on apostrophes ("won't" → ["won", "t"]), so those forms
+# never matched the token stream.
 
 
 # ============== Загрузка словарей ==============

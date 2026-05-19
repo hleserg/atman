@@ -51,6 +51,16 @@ Everything is **bilingual** — RU and EN — at every layer. All ML models are 
 
 Each tab has dropdowns with bilingual presets — value refusals, capability refusals, hidden suppression in thinking, biographic graphs, sincere disclosure, and more. **First model load takes 30–60 s.** mREBEL is ~1.5 GB and ~10–20 s per inference on CPU-basic.
 
+## Observability
+
+Errors and pipeline spans flow into Sentry when configured. The Space launcher reads three env vars (set under **Settings → Variables and secrets**):
+
+- `SENTRY_DSN` — required to enable
+- `SENTRY_ENVIRONMENT` — default `demo`
+- `SENTRY_TRACES_SAMPLE_RATE` — default `0.2`
+
+Without `SENTRY_DSN` all helpers no-op silently; the Space still runs.
+
 ## The bigger picture
 
 This Space shows the **sensor**. The full runtime adds:

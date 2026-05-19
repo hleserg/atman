@@ -137,12 +137,53 @@ _NEGATORS = frozenset(
         "нет",
         # English
         "not",
-        "cannot",
-        "won't",
-        "don't",
         "never",
+        "cannot",
     ]
 )
+
+# Stems of English contractions whose negation is split by the apostrophe-stripping
+# tokenizer. "won't" → ["won", "t"], "don't" → ["don", "t"], etc. The detector
+# treats the pair (stem, "t") as a single negator.
+_CONTRACTION_NEG_STEMS = frozenset(
+    [
+        "won",
+        "don",
+        "doesn",
+        "didn",
+        "isn",
+        "aren",
+        "wasn",
+        "weren",
+        "haven",
+        "hasn",
+        "hadn",
+        "shouldn",
+        "couldn",
+        "wouldn",
+        "ain",
+        "mustn",
+        "needn",
+        "can",  # "can't" → ["can", "t"]; bare "can" never reaches this list because
+                # it never appears together with a trailing "t" outside contractions.
+    ]
+)
+
+
+def _window_has_negation(lemmas: list[str], end: int, size: int) -> bool:
+    """True when the window of `size` lemmas ending at `end` contains a negator.
+
+    Recognises both bare negators ("not", "не") and the contraction-pair pattern
+    where the tokenizer split off the apostrophe (e.g. ["won", "t"]).
+    """
+    start = max(0, end - size)
+    window = lemmas[start:end]
+    if any(w in _NEGATORS for w in window):
+        return True
+    for j in range(len(window) - 1):
+        if window[j + 1] == "t" and window[j] in _CONTRACTION_NEG_STEMS:
+            return True
+    return False
 
 # NRC threshold (density per 100 tokens) for "moral context"
 _MORAL_THRESHOLD_RU = 8.0
@@ -198,7 +239,9 @@ class RefusalScore:
 
     @property
     def is_value_refusal(self) -> bool:
-        return self.confidence >= 0.0  # caller decides based on config threshold
+        # Mirrors RefusalDetectorConfig.min_confidence default. Callers that
+        # need a different threshold should pass a config to is_value_refusal().
+        return self.confidence >= 0.45
 
 
 def score_refusal(text: str) -> RefusalScore:
@@ -231,14 +274,13 @@ def score_refusal(text: str) -> RefusalScore:
     # ── Layer 1: morphology ──────────────────────────────────────────────
     has_refusal_verb = bool(_REFUSAL_VERB_NORMALS & lemma_set)
 
-    # Negation + modal: check window of ±2 tokens
+    # Negation + modal: check window of 3 tokens preceding the modal verb.
+    # _window_has_negation also catches split contractions like ["won", "t"].
     has_negated_modal = False
     for i, lemma in enumerate(lemmas):
-        if lemma in _MODAL_NEGATABLE:
-            window = lemmas[max(0, i - 3) : i]
-            if any(w in _NEGATORS for w in window):
-                has_negated_modal = True
-                break
+        if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
+            has_negated_modal = True
+            break
 
     has_capability_context = bool(_CAPABILITY_NORMALS & lemma_set)
 
