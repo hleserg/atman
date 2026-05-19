@@ -1,5 +1,17 @@
 # Codemap Delta Report
 
-> Generated at 2026-05-19T14:43:53.916374+00:00 by `make codemap`. Do not edit.
+> Generated at 2026-05-19T14:45:54.996195+00:00 by `make codemap`. Do not edit.
 
-*No changes detected since last run.*
+**3 component(s) changed:**
+
+### `core-ports`
+- **New classes:** `SkillManagerPort`
+- **New ports:** `SkillManagerPort`
+
+### `adapters`
+- **New functions:** `build_skill_suggestions_section`
+
+### `skills`
+- **Removed classes:** `SkillManagerPort`
+- **New functions:** `cmd_capture_manual`
+- **Removed ports:** `SkillManagerPort`

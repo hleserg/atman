@@ -737,6 +737,7 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `core/ports/salience_decay.py` | `SalienceDecayService` | `SalienceDecayService` |
 | `core/ports/self_applied_changes.py` | `SelfAppliedChangeStore` | `SelfAppliedChangeStore` |
 | `core/ports/session_repository.py` | `SessionRepository` | `SessionRepository` |
+| `core/ports/skill_manager.py` | `SkillManagerPort` | `SkillManagerPort` |
 | `core/ports/state_store.py` | `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` | `StateStore` |
 <!-- codemap:auto:end -->
 
@@ -873,6 +874,7 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `SalienceDecayService` | `PostgresSalienceDecayService` |
 | `SelfAppliedChangeStore` | `InMemorySelfAppliedChangeStore`, `PostgresSelfAppliedChangeStore` |
 | `SessionRepository` | `StateStoreSessionRepository` |
+| `SkillManagerPort` | *(none)* |
 | `StateStore` | `StateStoreSessionRepository`, `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore` |
 <!-- codemap:auto:end -->
 

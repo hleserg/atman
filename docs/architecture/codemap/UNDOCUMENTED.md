@@ -26,6 +26,12 @@
 | `core/models/validation.py` | `DivergenceSeverity` |
 | `core/models/validation.py` | `DivergenceEvent` |
 
+## `core-ports`
+
+| File | Class |
+|------|-------|
+| `core/ports/skill_manager.py` | `SkillManagerPort` |
+
 ## `affect`
 
 | File | Class |
@@ -54,7 +60,6 @@
 | `skills/models.py` | `SkillInvocation` |
 | `skills/models.py` | `SuggestionStrength` |
 | `skills/models.py` | `SkillSuggestion` |
-| `skills/port.py` | `SkillManagerPort` |
 | `skills/projection.py` | `ProjectionAdapter` |
 | `skills/store.py` | `SkillStore` |
 
