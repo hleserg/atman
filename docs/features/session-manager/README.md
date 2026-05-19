@@ -12,7 +12,7 @@ Session Manager is the runtime that lives inside an active conversation. It trac
 
 **`SessionEvent`** — a single recorded event within a session. Can be a user message, agent response, tool call, internal observation, or any other notable occurrence.
 
-**`KeyMomentInput`** — the input schema for capturing a key moment during a session. Contains description, optional `FeltSense`, and salience score.
+**`KeyMomentInput`** — the input schema for capturing a key moment during a session. Required fields: `what_happened`, `emotional_valence`, `emotional_intensity`, `depth`, `why_it_matters`.
 
 **`SessionResult`** — the output of a completed session: summary, list of key moments, eigenstate, and timestamps.
 
@@ -30,12 +30,14 @@ Session Manager is the runtime that lives inside an active conversation. It trac
 
 ```python
 class SessionManager:
-    async def start_session(self, context: SessionContext) -> Session: ...
-    async def record_event(self, session_id: str, event: SessionEvent) -> None: ...
-    async def append_key_moment(self, session_id: str, input: KeyMomentInput) -> KeyMoment: ...
-    async def finish_session(self, session_id: str) -> SessionResult: ...
-    async def get_active_summary(self, session_id: str) -> ActiveSessionSummary | None: ...
+    def start_session(self, agent_id: UUID) -> SessionContext: ...
+    def record_event(self, session_id: UUID, event: SessionEvent) -> None: ...
+    def append_key_moment(self, session_id: UUID, moment: KeyMoment) -> None: ...
+    def append_key_moment_input(self, session_id: UUID, moment: KeyMomentInput) -> None: ...
+    def finish_session(self, session_id: UUID, overall_emotional_tone: float = 0.0, key_insight: str = "", close_reason: str | None = None) -> SessionResult: ...
 ```
+
+All methods are synchronous.
 
 `finish_session` produces an `Eigenstate` — a snapshot of the agent's cognitive and affective state at session end — which is persisted alongside the session result and feeds the next session's context.
 
@@ -63,22 +65,30 @@ make demo-session
 Programmatic usage:
 
 ```python
-context = SessionContext(agent_id="agent-001", session_id="sess-42")
-session = await session_manager.start_session(context)
+from uuid import UUID
 
-# During conversation
-await session_manager.record_event(session.session_id, SessionEvent(
-    type="user_message",
-    content="I've been struggling with this for weeks.",
+agent_id = UUID("...")
+
+# Start a session — returns SessionContext with identity_snapshot_id
+ctx = session_manager.start_session(agent_id)
+
+# During conversation — record events
+session_manager.record_event(ctx.session_id, SessionEvent(
+    session_id=ctx.session_id,
+    event_type="user_message",
+    description="I've been struggling with this for weeks.",
 ))
 
 # Agent decides this is significant
-await session_manager.append_key_moment(session.session_id, KeyMomentInput(
-    description="User disclosed prolonged struggle — high emotional weight.",
-    salience=0.9,
+session_manager.append_key_moment_input(ctx.session_id, KeyMomentInput(
+    what_happened="User disclosed prolonged struggle — high emotional weight.",
+    emotional_valence=-0.5,
+    emotional_intensity=0.9,
+    depth=EmotionalDepth.deep,
+    why_it_matters="User revealed vulnerability; builds rapport and trust.",
 ))
 
 # End of conversation
-result = await session_manager.finish_session(session.session_id)
+result = session_manager.finish_session(ctx.session_id)
 print(result.eigenstate)
 ```

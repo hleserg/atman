@@ -24,11 +24,12 @@ Factual Memory хранит проверяемые дискретные факт
 
 ```python
 class FactualMemory(ABC):
-    async def add(self, fact: FactRecord) -> str: ...
-    async def get(self, fact_id: str) -> FactRecord | None: ...
-    async def search(self, query: str, limit: int = 10) -> list[FactRecord]: ...
-    async def delete(self, fact_id: str) -> None: ...
-    async def list_all(self) -> list[FactRecord]: ...
+    def add_fact(self, record: FactRecord) -> FactRecord: ...
+    def get_fact(self, fact_id: UUID) -> FactRecord | None: ...
+    def search(self, query: str, limit: int = 10) -> list[FactRecord]: ...
+    def invalidate_fact(self, fact_id: UUID) -> bool: ...
+    def list_recent(self, limit: int = 10) -> list[FactRecord]: ...
+    def link(self, source_id: UUID, target_id: UUID, relation_type: str) -> bool: ...
 ```
 
 ## Конфигурация
@@ -39,7 +40,7 @@ class FactualMemory(ABC):
 |----------|--------|-----------|
 | `inmemory` | `InMemoryBackend` | Эфемерный, сбрасывается при перезапуске. Подходит для тестов. |
 | `file` | `FileBackend` | JSONL-файл в рабочей директории. По умолчанию. |
-| `postgres` | `PostgresFactualMemory` | Требует `ATMAN_DB_URL` и `atman[eval]`. |
+| `postgres` | `PostgresFactualMemory` | Требует `ATMAN_DB_URL`. |
 
 При использовании бэкенда `postgres` задайте одно из:
 
@@ -71,7 +72,7 @@ from atman.config import build_memory_backend
 backend = build_memory_backend()  # читает ATMAN_MEMORY_BACKEND из env
 
 fact = FactRecord(text="Алиса — ведущий инженер.", source="onboarding")
-fact_id = await backend.add(fact)
+stored = backend.add_fact(fact)
 
-results = await backend.search("ведущий инженер")
+results = backend.search("ведущий инженер")
 ```

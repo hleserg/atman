@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-05-19
 
+> **Russian version:** [ADR-001-production-isolation-ru.md](ADR-001-production-isolation-ru.md)
+
 ## Context
 
 Atman has two distinct user groups with different needs:

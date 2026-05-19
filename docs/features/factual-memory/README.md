@@ -24,11 +24,12 @@ The `FactualMemory` port defines:
 
 ```python
 class FactualMemory(ABC):
-    async def add(self, fact: FactRecord) -> str: ...
-    async def get(self, fact_id: str) -> FactRecord | None: ...
-    async def search(self, query: str, limit: int = 10) -> list[FactRecord]: ...
-    async def delete(self, fact_id: str) -> None: ...
-    async def list_all(self) -> list[FactRecord]: ...
+    def add_fact(self, record: FactRecord) -> FactRecord: ...
+    def get_fact(self, fact_id: UUID) -> FactRecord | None: ...
+    def search(self, query: str, limit: int = 10) -> list[FactRecord]: ...
+    def invalidate_fact(self, fact_id: UUID) -> bool: ...
+    def list_recent(self, limit: int = 10) -> list[FactRecord]: ...
+    def link(self, source_id: UUID, target_id: UUID, relation_type: str) -> bool: ...
 ```
 
 ## Configuration
@@ -39,7 +40,7 @@ Select the backend with the `ATMAN_MEMORY_BACKEND` environment variable:
 |-------|---------|-------|
 | `inmemory` | `InMemoryBackend` | Ephemeral, resets on restart. Suitable for tests. |
 | `file` | `FileBackend` | JSONL file in the workspace directory. Default. |
-| `postgres` | `PostgresFactualMemory` | Requires `ATMAN_DB_URL` and `atman[eval]`. |
+| `postgres` | `PostgresFactualMemory` | Requires `ATMAN_DB_URL`. |
 
 When using the `postgres` backend, set one of:
 
@@ -71,7 +72,7 @@ from atman.config import build_memory_backend
 backend = build_memory_backend()  # reads ATMAN_MEMORY_BACKEND from env
 
 fact = FactRecord(text="Alice is the lead engineer.", source="onboarding")
-fact_id = await backend.add(fact)
+stored = backend.add_fact(fact)
 
-results = await backend.search("lead engineer")
+results = backend.search("lead engineer")
 ```

@@ -12,7 +12,7 @@ Session Manager — это runtime, живущий внутри активног
 
 **`SessionEvent`** — единственное записанное событие в рамках сессии. Может быть сообщением пользователя, ответом агента, вызовом инструмента, внутренним наблюдением или любым другим примечательным событием.
 
-**`KeyMomentInput`** — входная схема для захвата key moment в ходе сессии. Содержит описание, опциональный `FeltSense` и оценку значимости (salience).
+**`KeyMomentInput`** — входная схема для захвата key moment в ходе сессии. Обязательные поля: `what_happened`, `emotional_valence`, `emotional_intensity`, `depth`, `why_it_matters`.
 
 **`SessionResult`** — вывод завершённой сессии: резюме, список key moments, eigenstate и временные метки.
 
@@ -30,12 +30,14 @@ Session Manager — это runtime, живущий внутри активног
 
 ```python
 class SessionManager:
-    async def start_session(self, context: SessionContext) -> Session: ...
-    async def record_event(self, session_id: str, event: SessionEvent) -> None: ...
-    async def append_key_moment(self, session_id: str, input: KeyMomentInput) -> KeyMoment: ...
-    async def finish_session(self, session_id: str) -> SessionResult: ...
-    async def get_active_summary(self, session_id: str) -> ActiveSessionSummary | None: ...
+    def start_session(self, agent_id: UUID) -> SessionContext: ...
+    def record_event(self, session_id: UUID, event: SessionEvent) -> None: ...
+    def append_key_moment(self, session_id: UUID, moment: KeyMoment) -> None: ...
+    def append_key_moment_input(self, session_id: UUID, moment: KeyMomentInput) -> None: ...
+    def finish_session(self, session_id: UUID, overall_emotional_tone: float = 0.0, key_insight: str = "", close_reason: str | None = None) -> SessionResult: ...
 ```
+
+Все методы синхронные.
 
 `finish_session` производит `Eigenstate` — снапшот когнитивного и аффективного состояния агента на момент окончания сессии, — который сохраняется вместе с результатом сессии и питает контекст следующей сессии.
 
@@ -63,22 +65,30 @@ make demo-session
 Программное использование:
 
 ```python
-context = SessionContext(agent_id="agent-001", session_id="sess-42")
-session = await session_manager.start_session(context)
+from uuid import UUID
 
-# В ходе разговора
-await session_manager.record_event(session.session_id, SessionEvent(
-    type="user_message",
-    content="Я борюсь с этим уже несколько недель.",
+agent_id = UUID("...")
+
+# Начало сессии — возвращает SessionContext с identity_snapshot_id
+ctx = session_manager.start_session(agent_id)
+
+# В ходе разговора — запись событий
+session_manager.record_event(ctx.session_id, SessionEvent(
+    session_id=ctx.session_id,
+    event_type="user_message",
+    description="Я борюсь с этим уже несколько недель.",
 ))
 
 # Агент решает, что это значимо
-await session_manager.append_key_moment(session.session_id, KeyMomentInput(
-    description="Пользователь раскрыл длительную борьбу — высокий эмоциональный вес.",
-    salience=0.9,
+session_manager.append_key_moment_input(ctx.session_id, KeyMomentInput(
+    what_happened="Пользователь раскрыл длительную борьбу — высокий эмоциональный вес.",
+    emotional_valence=-0.5,
+    emotional_intensity=0.9,
+    depth=EmotionalDepth.deep,
+    why_it_matters="Пользователь раскрыл уязвимость; важно для доверия.",
 ))
 
 # Конец разговора
-result = await session_manager.finish_session(session.session_id)
+result = session_manager.finish_session(ctx.session_id)
 print(result.eigenstate)
 ```

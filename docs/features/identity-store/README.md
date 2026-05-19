@@ -30,15 +30,18 @@ Identity Store is the agent's structured self-representation. It holds what the 
 
 ```python
 class IdentityService:
-    async def bootstrap(self, agent_id: str) -> Identity: ...
-    async def get(self, agent_id: str) -> Identity: ...
-    async def update(self, agent_id: str, patch: dict) -> Identity: ...
-    async def snapshot(self, agent_id: str) -> IdentitySnapshot: ...
-    async def apply_self_change(self, agent_id: str, change: dict) -> Identity: ...
-    async def revert_self_change(self, agent_id: str, snapshot_id: str) -> Identity: ...
+    def bootstrap_identity(self, agent_id: UUID) -> Identity: ...
+    def get_identity(self, agent_id: UUID) -> Identity | None: ...
+    def add_core_value(self, agent_id: UUID, value: CoreValue) -> Identity: ...
+    def add_principle(self, agent_id: UUID, principle: Principle) -> Identity: ...
+    def add_habit(self, agent_id: UUID, habit: Habit) -> Identity: ...
+    def add_goal(self, agent_id: UUID, goal: Goal) -> Identity: ...
+    def create_snapshot(self, agent_id: UUID, description: str) -> IdentitySnapshot: ...
+    def apply_self_change(self, agent_id: UUID, target_kind: SelfChangeTargetKind, payload: Any, source: SelfChangeSource) -> SelfAppliedChange: ...
+    def revert_self_change(self, agent_id: UUID, change_id: UUID) -> Identity: ...
 ```
 
-`apply_self_change` and `revert_self_change` are called by `DeepReflectionService` when the reflection model proposes changes to the agent's self-understanding.
+All methods are synchronous. `apply_self_change` and `revert_self_change` are called by `DeepReflectionService` when the reflection model proposes changes to the agent's self-understanding.
 
 Identity is persisted via the `StateStore` port.
 
@@ -65,22 +68,23 @@ python -m atman.cli_identity
 Programmatic usage:
 
 ```python
+from uuid import UUID
+
+agent_id = UUID("...")
+
 # Bootstrap a new agent identity
-identity = await identity_service.bootstrap(agent_id="agent-001")
+identity = identity_service.bootstrap_identity(agent_id)
 
 # Inspect current values
 for value in identity.core_values:
-    print(value.name, value.weight)
+    print(value.name, value.confidence)
 
 # Snapshot before reflection applies changes
-snapshot = await identity_service.snapshot(agent_id)
+snapshot = identity_service.create_snapshot(agent_id, description="pre-reflection")
 
-# Apply a reflection-driven self-change
-updated = await identity_service.apply_self_change(
+# Add a new principle
+identity = identity_service.add_principle(
     agent_id,
-    change={"add_habit": {"name": "Check assumptions early", "valence": "positive"}}
+    Principle(text="Always clarify before assuming.", source="reflection")
 )
-
-# Revert if needed
-reverted = await identity_service.revert_self_change(agent_id, snapshot.snapshot_id)
 ```

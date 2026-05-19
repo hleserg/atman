@@ -28,25 +28,38 @@ Experiences are the raw material for reflection. `MicroReflectionService` reads 
 
 ## Public API
 
-Experiences are stored and retrieved via `StateStore`:
+Key moments are stored via `StateStore`:
 
 ```python
 class StateStore(ABC):
-    async def save_key_moment(self, moment: KeyMoment) -> None: ...
-    async def get_key_moment(self, moment_id: str) -> KeyMoment | None: ...
-    async def list_key_moments(self, session_id: str) -> list[KeyMoment]: ...
-    async def save_session_experience(self, exp: SessionExperience) -> None: ...
-    async def get_session_experience(self, session_id: str) -> SessionExperience | None: ...
+    def create_key_moment(self, key_moment: KeyMoment) -> KeyMoment: ...
+    def store_key_moment(self, key_moment: KeyMoment) -> KeyMoment: ...  # idempotent upsert
+    def get_key_moment(self, moment_id: UUID) -> KeyMoment | None: ...
+    def list_key_moments(self, session_id: UUID | None = None) -> list[KeyMoment]: ...
+    def mark_moment_accessed(self, moment_id: UUID) -> None: ...
+```
+
+Session experiences (closed session views) are stored via `StateStore`:
+
+```python
+class StateStore(ABC):
+    def create_experience(self, record: ExperienceRecord) -> ExperienceRecord: ...
+    def get_experience(self, experience_id: UUID) -> ExperienceRecord | None: ...
+    def list_recent_experiences(self, limit: int = 10) -> list[ExperienceRecord]: ...
 ```
 
 Higher-level orchestration is in `ExperienceService`:
 
 ```python
 class ExperienceService:
-    async def capture_key_moment(self, session_id: str, input: KeyMomentInput) -> KeyMoment: ...
-    async def close_session(self, session_id: str) -> SessionExperience: ...
-    async def retrieve_recent(self, limit: int) -> list[SessionExperience]: ...
+    def create_experience(self, record: ExperienceRecord) -> ExperienceRecord: ...
+    def get_experience(self, experience_id: UUID) -> ExperienceRecord | None: ...
+    def add_reframing_note(self, experience_id: UUID, note: ReframingNote) -> ...: ...
+    def search_by_session(self, session_id: UUID, limit: int = 10) -> list[ExperienceRecord]: ...
+    def list_recent(self, limit: int = 10) -> list[ExperienceRecord]: ...
 ```
+
+All methods are synchronous.
 
 ## Configuration
 
@@ -71,17 +84,23 @@ python -m atman.cli_experience
 Programmatic usage:
 
 ```python
-# During a session — record a key moment
-moment_input = KeyMomentInput(
-    description="User shared a long-standing frustration about team communication.",
-    felt_sense=FeltSense(quality="heavy, important"),
-    salience=0.85,
-)
-moment = await experience_service.capture_key_moment(session_id, moment_input)
+from uuid import UUID
+from datetime import datetime, timezone
 
-# After session close — retrieve the experience
-exp = await experience_service.close_session(session_id)
+# Key moments are appended during a session via SessionManager
+session_manager.append_key_moment_input(session_id, KeyMomentInput(
+    what_happened="User shared a long-standing frustration about team communication.",
+    emotional_valence=-0.4,
+    emotional_intensity=0.8,
+    depth=EmotionalDepth.meaningful,
+    why_it_matters="Long-standing frustration signals a trust issue worth exploring.",
+))
 
-# Later — check how salient that moment still is
-current_salience = moment.calculate_current_salience(now=clock.now())
+# After session close — retrieve recent experiences
+experiences = experience_service.list_recent(limit=5)
+
+# Check current salience of a stored moment
+moment = state_store.get_key_moment(moment_id)
+current_salience = moment.calculate_current_salience(now=datetime.now(timezone.utc))
+moment.mark_accessed()
 ```
