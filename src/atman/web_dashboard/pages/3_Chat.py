@@ -217,7 +217,7 @@ def _S(s: str) -> str:
 def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
     """Wrap async run_stream() in a sync generator via queue+thread."""
     tok_q: queue.Queue[str | None] = queue.Queue()
-    holder: dict = {"result": None, "error": None}
+    holder: dict = {"new_messages": [], "error": None}
 
     async def _producer() -> None:
         try:
@@ -229,7 +229,8 @@ def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
             ) as streamed:
                 async for token in streamed.stream_text(delta=True):
                     tok_q.put(token)
-                holder["result"] = streamed
+                # Snapshot before __aexit__ — pydantic-ai may release buffers on exit.
+                holder["new_messages"] = list(streamed.new_messages())
         except Exception as exc:
             holder["error"] = exc
         finally:
@@ -693,14 +694,13 @@ def _handle_turn(prompt: str, msg_container) -> None:
 
     _LOG.info("[chat turn] agent response=%r", response_text[:80])
 
-    # Update pydantic history
-    streamed = holder.get("result")
-    if streamed is not None:
-        try:
-            new_msgs = _sanitize_history(list(streamed.new_messages()))
+    # Update pydantic history (captured inside run_stream context in producer thread)
+    try:
+        new_msgs = _sanitize_history(list(holder.get("new_messages") or []))
+        if new_msgs:
             history.extend(new_msgs)
-        except Exception:  # nosec B110
-            pass
+    except Exception:  # nosec B110
+        pass
 
     st.session_state.messages.append({"role": "assistant", "content": response_text})
 

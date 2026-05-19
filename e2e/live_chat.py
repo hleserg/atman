@@ -34,7 +34,7 @@ from typing import ClassVar
 from uuid import UUID, uuid4
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.messages import ModelMessage, ThinkingPart
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -266,6 +266,8 @@ async def _analyze_agent_response(
     sm,
     session_id,
     con: AtmanConsole,
+    *,
+    thinking: str | None = None,
 ) -> None:
     """Post-turn pipeline: analyze agent response (point A), register entities, auto-record moments."""
     if deps.ambient_memory is None:
@@ -377,6 +379,15 @@ async def _analyze_agent_response(
     # 4. Write identity facts (name/gender from agent self-description)
     if analysis.boundary_markers and deps.passive_memory_injector is not None:
         _write_identity_facts(text, analysis, deps, con)
+
+    # 5. Passive affect detector (parity with session_tester / AtmanTurn.post)
+    detector = getattr(sm, "affect_detector", None)
+    if detector is not None and session_id is not None:
+        try:
+            await detector.process(text, thinking=thinking, session_id=session_id)
+            con.add("💓", "affect", "[dim]processed[/dim]")
+        except Exception as exc:
+            con.add("💓", "affect", f"[dim red]{exc}[/dim red]")
 
 
 # ── Atman dev console ─────────────────────────────────────────────────────────
@@ -861,7 +872,15 @@ async def amain() -> int:
             print(f"agent> {clean}\n")
 
             # ── Atman post-turn: analyze agent response ────────────────────────
-            await _analyze_agent_response(clean, deps, sm, session_id, con)
+            _thinking: str | None = None
+            for msg in result.new_messages():
+                for part in getattr(msg, "parts", []):
+                    if isinstance(part, ThinkingPart) and part.content:
+                        _thinking = part.content
+                        break
+                if _thinking is not None:
+                    break
+            await _analyze_agent_response(clean, deps, sm, session_id, con, thinking=_thinking)
             con.flush("atman ◀ agent")
 
     finally:

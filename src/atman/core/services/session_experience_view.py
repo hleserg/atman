@@ -32,6 +32,7 @@ def build_session_experience(
         )
         has_profound = any(m.how_i_felt.depth.value == "profound" for m in moments_for_session)
 
+    # fact_refs: colored refs from key moments plus facts surfaced but not yet colored.
     fact_refs: list[UUID] = []
     for m in moments_for_session:
         fact_refs.extend(m.fact_refs)

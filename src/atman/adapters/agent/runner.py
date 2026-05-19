@@ -1404,6 +1404,9 @@ class AtmanTurn:
         # Populated by pre(); readable by UI for RAG display.
         self.passive_summary: str = ""
         self.ambient_summary: str = ""
+        # Populated by post() when boundary auto key moment is written.
+        self.auto_key_moment_written: bool = False
+        self.auto_key_moment_markers: list[str] = []
 
     def _emit(self, event: str, **data: Any) -> None:
         if self._on_event is not None:
@@ -1434,6 +1437,8 @@ class AtmanTurn:
     def post(self, agent_text: str) -> None:
         """Run post-turn pipeline (entity reg, auto key moment, identity facts, maintenance)."""
         _LOG.debug("[AtmanTurn.post] start  text=%r", agent_text[:80])
+        self.auto_key_moment_written = False
+        self.auto_key_moment_markers = []
         deps = self._deps
 
         self._analyze_response(agent_text, deps)
@@ -1760,6 +1765,8 @@ class AtmanTurn:
                     stance=analysis.stance,
                     primary_emotion=analysis.primary_emotion,
                 )
+                self.auto_key_moment_written = True
+                self.auto_key_moment_markers = list(analysis.boundary_markers)
             except Exception as exc:
                 _LOG.warning("[AtmanTurn] auto key moment failed: %s", exc, exc_info=True)
 

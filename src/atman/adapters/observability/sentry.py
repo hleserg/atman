@@ -215,7 +215,12 @@ def metric_distribution(
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=tags or {})
+        attrs = tags or {}
+        try:
+            sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=attrs)
+        except TypeError:
+            legacy_kwargs: dict[str, object] = {"unit": unit, "tags": attrs}
+            sentry_sdk.metrics.distribution(name, value, **legacy_kwargs)  # type: ignore[arg-type]
     except Exception:
         pass
 
@@ -227,7 +232,12 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.gauge(name, value, attributes=tags or {})
+        attrs = tags or {}
+        try:
+            sentry_sdk.metrics.gauge(name, value, attributes=attrs)
+        except TypeError:
+            legacy_kwargs: dict[str, object] = {"tags": attrs}
+            sentry_sdk.metrics.gauge(name, value, **legacy_kwargs)  # type: ignore[arg-type]
     except Exception:
         pass
 
@@ -239,7 +249,13 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
     try:
         import sentry_sdk
 
-        sentry_sdk.metrics.count(name, value, attributes=tags or {})
+        attrs = tags or {}
+        try:
+            sentry_sdk.metrics.count(name, value, attributes=attrs)
+        except (TypeError, AttributeError):
+            incr = getattr(sentry_sdk.metrics, "incr", None)
+            if incr is not None:
+                incr(name, value, **{"tags": attrs})  # type: ignore[arg-type]
     except Exception:
         pass
 
