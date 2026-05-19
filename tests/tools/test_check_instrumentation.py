@@ -13,6 +13,7 @@ import ast
 
 from check_instrumentation import (
     INSTRUMENTATION_MARKERS,
+    _load_allowlist,
     _qualified_name,
     main,
     scan_file,
@@ -233,6 +234,19 @@ def test_allowlist_by_function_name(tmp_path):
     )
     violations = scan_file(f, frozenset({"my_handler"}))
     assert violations == []
+
+
+def test_allowlist_ignores_indented_comments(tmp_path, monkeypatch):
+    """Indented lines starting with # must be treated as comments, not entries."""
+    allowlist_file = tmp_path / ".sentry-instrumentation-allowlist"
+    allowlist_file.write_text("adapters.real.entry\n  # indented comment\n  # another\n")
+    import check_instrumentation as ci
+
+    monkeypatch.setattr(ci, "ALLOWLIST_FILE", allowlist_file)
+    result = _load_allowlist()
+    assert "# indented comment" not in result
+    assert "# another" not in result
+    assert "adapters.real.entry" in result
 
 
 # ---------------------------------------------------------------------------

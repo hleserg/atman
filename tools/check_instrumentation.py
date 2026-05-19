@@ -78,7 +78,7 @@ def _load_allowlist() -> frozenset[str]:
     if not ALLOWLIST_FILE.exists():
         return frozenset()
     lines = ALLOWLIST_FILE.read_text().splitlines()
-    return frozenset(line.strip() for line in lines if line.strip() and not line.startswith("#"))
+    return frozenset(line.strip() for line in lines if line.strip() and not line.strip().startswith("#"))
 
 
 def _has_skip_file_comment(source: str) -> bool:

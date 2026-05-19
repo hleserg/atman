@@ -15,7 +15,7 @@ dependencies = [
     "httpx>=0.28.0",
     "psycopg[binary]>=3.2",
     "pyyaml>=6.0",
-    "sentry-sdk[asyncio,fastapi,starlette,httpx,anthropic,langchain,loguru]>=2.46,<3",
+    "sentry-sdk[asyncio,httpx]>=2.46,<3",
 ]
 
 [project.optional-dependencies]
