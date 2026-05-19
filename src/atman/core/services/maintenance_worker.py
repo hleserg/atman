@@ -92,10 +92,11 @@ class MaintenanceWorker:
         )
         with _isolation_scope() as scope:
             try:
-                scope.set_tag("job.name", job.job_name.value)
-                scope.set_tag("job.id", str(job.id))
-                if job.agent_id is not None:
-                    scope.set_tag("agent_id", str(job.agent_id))
+                if scope is not None:
+                    scope.set_tag("job.name", job.job_name.value)
+                    scope.set_tag("job.id", str(job.id))
+                    if job.agent_id is not None:
+                        scope.set_tag("agent_id", str(job.agent_id))
             except Exception:
                 pass
             try:
