@@ -87,6 +87,16 @@ def init_observability(level: str | None = None) -> None:
         LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
     ]
 
+    # Wire AnthropicIntegration when the anthropic package is installed.
+    # Guarded by try/except so the observability module stays importable in
+    # environments that don't have the anthropic extra (e.g. lean CI builds).
+    try:
+        from sentry_sdk.integrations.anthropic import AnthropicIntegration
+
+        integrations.append(AnthropicIntegration())
+    except ImportError:
+        pass
+
     common: dict[str, object] = {
         "dsn": dsn,
         "environment": os.getenv("SENTRY_ENVIRONMENT", "production"),

@@ -9,20 +9,28 @@ from __future__ import annotations
 from typing import Any
 
 ATMAN_EXTRA_KEYS: list[str] = [
+    # fact / memory content — may contain personal statements
     "memory_content",
     "memory_text",
+    "fact_payload",
+    "fact_content",
+    "content_excerpt",  # truncated fact content sent via slog breadcrumbs
+    # reflection / identity payloads — psychological data
     "reflection_text",
     "identity_payload",
-    "fact_payload",
+    "key_insight",
     "user_journal",
+    # LLM I/O — may contain personal conversations
     "embedding_input",
     "rerank_documents",
     "prompt",
     "prompt_text",
     "completion",
     "response_text",
+    # raw numeric payloads that should stay local
     "embedding",
     "vector",
+    # credentials
     "api_key",
     "authorization",
 ]

@@ -60,6 +60,7 @@ INSTRUMENTATION_MARKERS: frozenset[str] = frozenset(
         "db_span",
         "cron_span",
         "pipeline_span",
+        "job_scope",
         # legacy atman.adapters.observability.sentry helpers
         "session_transaction",
         "maintenance_job_span",

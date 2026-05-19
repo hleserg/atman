@@ -13,6 +13,7 @@ from typing import Any
 from typing_extensions import override
 
 from atman.core.ports.memory_reranker import MemoryReranker, SurfacedMemory
+from atman.observability.spans import ai_rerank_span
 
 logger = logging.getLogger(__name__)
 
@@ -79,28 +80,29 @@ class BgeReranker(MemoryReranker):
         """
         if not candidates:
             return []
-        model = self._get_model()
-        if model is None:
-            scored = [c.model_copy(update={"final_score": c.score}) for c in candidates]
+        with ai_rerank_span("bge", self._model_name, len(candidates), top_n):
+            model = self._get_model()
+            if model is None:
+                scored = [c.model_copy(update={"final_score": c.score}) for c in candidates]
+                scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
+                return scored[:top_n]
+
+            pairs = [[query, c.text] for c in candidates]
+            try:
+                raw_scores = model.compute_score(pairs, normalize=True)
+            except Exception:
+                logger.exception("BGE reranker inference failed for %d candidates", len(pairs))
+                scored = [c.model_copy(update={"final_score": c.score}) for c in candidates]
+                scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
+                return scored[:top_n]
+
+            # FlagReranker.compute_score may return a single float for one pair;
+            # normalise to list[float].
+            if isinstance(raw_scores, int | float):
+                raw_scores = [float(raw_scores)]
+            scored = [
+                c.model_copy(update={"final_score": float(s)})
+                for c, s in zip(candidates, raw_scores, strict=False)
+            ]
             scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
             return scored[:top_n]
-
-        pairs = [[query, c.text] for c in candidates]
-        try:
-            raw_scores = model.compute_score(pairs, normalize=True)
-        except Exception:
-            logger.exception("BGE reranker inference failed for %d candidates", len(pairs))
-            scored = [c.model_copy(update={"final_score": c.score}) for c in candidates]
-            scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
-            return scored[:top_n]
-
-        # FlagReranker.compute_score may return a single float for one pair;
-        # normalise to list[float].
-        if isinstance(raw_scores, int | float):
-            raw_scores = [float(raw_scores)]
-        scored = [
-            c.model_copy(update={"final_score": float(s)})
-            for c, s in zip(candidates, raw_scores, strict=False)
-        ]
-        scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
-        return scored[:top_n]

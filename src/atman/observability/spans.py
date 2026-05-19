@@ -141,6 +141,36 @@ def pipeline_span(op: str, description: str = "") -> Generator[Any, None, None]:
 
 
 @contextmanager
+def job_scope(tags: dict[str, str]) -> Generator[None, None, None]:
+    """Isolation scope for a background job, setting Sentry error-grouping tags.
+
+    Wraps the job body in sentry_sdk.isolation_scope() so each job's errors
+    are captured independently. Falls back to a no-op when observability is
+    off or sentry_sdk is unavailable.
+    """
+    if _observability_disabled():
+        yield
+        return
+
+    scope_cm = None
+    try:
+        import sentry_sdk
+
+        scope_cm = sentry_sdk.isolation_scope()
+    except Exception:
+        pass
+
+    if scope_cm is None:
+        yield
+        return
+
+    with scope_cm as scope:
+        for key, value in tags.items():
+            scope.set_tag(key, value)
+        yield
+
+
+@contextmanager
 def cron_span(monitor_slug: str) -> Generator[Any, None, None]:
     """Context manager that wraps a cron job body with a Sentry span.
 

@@ -35,7 +35,6 @@ jobs:
     name: Scan for uninstrumented functions
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true  # warn-only during P3.x rollout
 
     steps:
       - name: Checkout
@@ -47,22 +46,13 @@ jobs:
           python-version: "3.11"
 
       - name: Run instrumentation scanner
-        id: scan
-        run: |
-          python tools/check_instrumentation.py 2>&1 | tee scan_output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        run: python tools/check_instrumentation.py 2>&1 | tee scan_output.txt
 
-      - name: Upload scan results
-        if: always()
+      - name: Upload scan results on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: instrumentation-scan-${{ github.run_id }}
           path: scan_output.txt
+          if-no-files-found: ignore
           retention-days: 30
-
-      - name: Annotate violations as warnings
-        if: steps.scan.outputs.exit_code != '0'
-        run: |
-          echo "::warning::Sentry instrumentation violations found — see scan_output.txt artifact."
-          echo "These will become errors in P4.x once the allowlist burn-down is complete."
-          cat scan_output.txt

@@ -150,11 +150,11 @@ def install_slog_breadcrumb_hook() -> None:
                 import sentry_sdk.logger as _sl
 
                 if event == "job_failed":
-                    _sl.error("atman.{event}", attributes=attrs)
+                    _sl.error(f"atman.{event}", attributes=attrs)
                 elif event in ("session_error", "reflect_error"):
-                    _sl.warning("atman.{event}", attributes=attrs)
+                    _sl.warning(f"atman.{event}", attributes=attrs)
                 else:
-                    _sl.info("atman.{event}", attributes=attrs)
+                    _sl.info(f"atman.{event}", attributes=attrs)
             except Exception:  # nosec B110 ? observability helpers must never raise
                 pass
             try:

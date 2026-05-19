@@ -40,6 +40,7 @@ from atman.core.models.reflection import (
     StanceFormulationOutput,
 )
 from atman.core.ports.reflection import ReflectionModel
+from atman.observability.spans import ai_chat_span
 
 T = TypeVar("T", bound=pydantic.BaseModel)
 
@@ -95,15 +96,19 @@ class OpenAIReflectionModel(ReflectionModel):
         for attempt in range(self._config.max_retries):
             attempts = attempt + 1
             try:
-                response = self._client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                response_json = response.json()
+                with ai_chat_span("openai-compat", self._config.model, op_name="reflection") as span:
+                    if span is not None:
+                        span.set_data("reflection.output_model", output_model.__name__)
+                        span.set_data("reflection.attempt", attempt + 1)
+                    response = self._client.post(url, json=payload, headers=headers)
+                    response.raise_for_status()
+                    response_json = response.json()
 
-                content = response_json["choices"][0]["message"]["content"]
-                last_raw = content
+                    content = response_json["choices"][0]["message"]["content"]
+                    last_raw = content
 
-                parsed_json = json.loads(content)
-                return output_model.model_validate(parsed_json)
+                    parsed_json = json.loads(content)
+                    return output_model.model_validate(parsed_json)
             except (
                 json.JSONDecodeError,
                 pydantic.ValidationError,
