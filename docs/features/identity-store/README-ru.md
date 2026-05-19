@@ -1,302 +1,90 @@
-# Identity Store: Руководство по функционалу WP-03
+# Identity Store (Хранилище идентичности)
 
-**Статус:** Реализовано
-**Work Package:** [03-identity-and-narrative.md](../../development/work-packages/03-identity-and-narrative.md)
+> **English:** [README.md](README.md)
 
----
+## Что делает
 
-## Обзор
+Identity Store — структурированное самопредставление агента. Здесь хранится то, что агент считает истинным о себе: его ценности, привычки, принципы, цели и открытые вопросы. Идентичность не статична — она эволюционирует через рефлексию и может обновляться в ответ на то, что агент узнаёт о себе.
 
-Identity Store — модуль **живого самоописания Atman**. Предоставляет:
+## Ключевые концепции
 
-- **Честную bootstrap-идентичность** — без фальшивых принципов или ценностей
-- **Структурированную идентичность** — ценности, привычки, принципы, цели, открытые вопросы
-- **Eigenstate** — эмоционально-когнитивное состояние на завершении сессии
-- **Self-narrative** — трёхслойный first-person документ для старта сессии
-- **Явный lifecycle** — снимки, архивация, валидация от первого лица
+**`Identity`** — корневая запись. Агрегирует все компоненты идентичности для данного агента.
 
-## Ключевые принципы
+**`CoreValue`** — фундаментальная ценность агента (например, честность, забота, точность). Ценности имеют вес и не меняются легко.
 
-### 1. Честность Bootstrap
+**`Habit`** — повторяющийся поведенческий паттерн, позитивный или негативный. Наблюдается со временем через опыт.
 
-Bootstrap создаёт **действительно пустую идентичность** с честным самоописанием об отсутствии данных:
+**`Principle`** — actionable правило, выведенное из ценностей (например, «Всегда уточнять перед предположениями»).
 
-```python
-identity = Identity(
-    self_description="Я нахожусь на самой ранней стадии существования. "
-                    "У меня ещё нет накопленного опыта...",
-    core_values=[],      # Пусто — никаких фейковых данных
-    habits=[],           # Пусто — нет выдуманных паттернов
-    principles=[],       # Пусто — нет навязанных принципов
-    goals=[],
-    open_questions=[...] # Честные вопросы о себе
-)
-```
+**`Goal`** — текущая цель, над которой работает агент. Может быть краткосрочной или долгосрочной.
 
-❌ **Неправильно:** Pre-seed с "быть полезным", "служить пользователю" и т.п.
-✅ **Правильно:** Пустое состояние с честным признанием
+**`OpenQuestion`** — то, в чём агент реально не уверен, отслеживается для постоянной рефлексии.
 
-### 2. Разделение понятий
+**`IdentitySnapshot`** — замороженная копия полного состояния идентичности в момент времени. Создаётся перед обновлениями рефлексии, чтобы их можно было откатить.
 
-- **Values (ценности)** — фундаментальная важность ("честность", "компетентность")
-- **Habits (привычки)** — наблюдаемые паттерны поведения (описательные, не предписывающие)
-- **Principles (принципы)** — сознательно выбранные ориентиры (нормативные, не описательные)
-- **Goals (цели)** — задачи (принадлежат агенту или пользователю)
+**`HelpfulnessLevel`** — структурированный дескриптор текущего расположения агента к полезности.
 
-### 3. Трёхслойный нарратив
+## Публичный API
 
-Self-narrative имеет явную структуру:
-
-- **CORE LAYER** — стабильная идентичность, редко меняется
-- **RECENT LAYER** — эфемерный слой, заменяется после каждой сессии
-- **THREADS** — продолжающиеся сюжетные линии, должны явно закрываться
-
-### 4. Валидация от первого лица
-
-Содержание нарратива должно быть от первого лица:
-
-❌ **Неправильно:** "Агент сегодня что-то узнал"
-✅ **Правильно:** "Я сегодня что-то узнал"
-
-## Архитектура
-
-```text
-┌─────────────────────────────────────┐
-│         Identity Service            │
-│   (bootstrap, update, snapshot)     │
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│        Narrative Service            │
-│   (render, validate, archive)       │
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│       FileStateStore                │
-│   (адаптер персистентности)        │
-└─────────────────────────────────────┘
-```
-
-### Модели
-
-- `Identity` — полное самоописание
-- `CoreValue`, `Habit`, `Principle`, `Goal`, `OpenQuestion`
-- `IdentitySnapshot` — версионированная история
-- `Eigenstate` — состояние на конец сессии
-- `NarrativeDocument` — трёхслойная структура
-- `NarrativeThread` — продолжающаяся сюжетная линия
-
-## Использование
-
-### Bootstrap идентичности
-
-```bash
-# Создать новую идентичность
-atman-identity init --workspace ./my-workspace
-
-# С конкретным agent ID
-atman-identity init --workspace ./my-workspace --agent-id <uuid>
-```
-
-### Показать идентичность
-
-```bash
-atman-identity show --workspace ./my-workspace --agent-id <uuid>
-```
-
-### Создать снимок
-
-```bash
-atman-identity snapshot \
-  --workspace ./my-workspace \
-  --agent-id <uuid> \
-  --description "Ручной контрольный снимок"
-```
-
-### Рендерить нарратив
-
-```bash
-# Только из идентичности
-atman-identity render --workspace ./my-workspace --agent-id <uuid>
-
-# Из идентичности + eigenstate
-atman-identity render \
-  --workspace ./my-workspace \
-  --agent-id <uuid> \
-  --eigenstate fixtures/eigenstate_sample.json
-```
-
-### Валидировать нарратив
-
-```bash
-atman-identity validate ./my-workspace/NARRATIVE.md
-```
-
-## Демо
-
-Запустить воспроизводимый walkthrough:
-
-```bash
-make demo-identity         # С паузами
-make demo-identity-fast    # Мгновенный вывод
-```
-
-Демо показывает:
-
-1. Bootstrap честной пустой идентичности
-2. Добавление ценностей, привычек, принципов, целей
-3. Создание снимков
-4. Генерацию трёхслойного нарратива
-5. Обновление из eigenstate
-6. Добавление и закрытие thread'ов
-7. Рендеринг и валидацию NARRATIVE.md
-
-## Структура хранения
-
-```text
-workspace/
-├── identity.json                # Текущая идентичность
-├── identity_snapshots/          # Версионированная история
-│   └── <snapshot-id>.json
-├── narrative.json               # Текущий нарратив
-├── narrative_archive/           # Старые нарративы
-│   └── <narrative-id>_<timestamp>.json
-├── eigenstate.json              # Последний eigenstate
-├── NARRATIVE.md                 # Отрендеренный markdown
-└── experiences/                 # Записи опыта
-    └── <experience-id>.json
-```
-
-## Тестирование
-
-Ключевое покрытие тестами:
-
-- ✓ Bootstrap создаёт честную пустую идентичность
-- ✓ Нет фальшивых навязанных принципов или ценностей
-- ✓ Снимки иммутабельны
-- ✓ Нарратив содержит обязательные секции (CORE, RECENT)
-- ✓ Валидация от первого лица отвергает третье лицо
-- ✓ Recent layer заменяется, core layer сохраняется
-- ✓ Thread'ы должны явно закрываться
-
-Запуск тестов:
-
-```bash
-pytest tests/test_identity_models.py -v
-pytest tests/test_narrative_models.py -v
-pytest tests/test_identity_service.py -v
-pytest tests/test_narrative_service.py -v
-```
-
-## Интеграция
-
-### Из кода
+`IdentityService` управляет полным жизненным циклом:
 
 ```python
-from pathlib import Path
-from uuid import uuid4
-from atman.adapters.storage import FileStateStore
-from atman.core.services import IdentityService, NarrativeService
-from atman.core.models import CoreValue, Principle, Eigenstate
+class IdentityService:
+    def bootstrap_identity(self, agent_id: UUID) -> Identity: ...
+    def get_identity(self, agent_id: UUID) -> Identity | None: ...
+    def add_core_value(self, agent_id: UUID, value: CoreValue) -> Identity: ...
+    def add_principle(self, agent_id: UUID, principle: Principle) -> Identity: ...
+    def add_habit(self, agent_id: UUID, habit: Habit) -> Identity: ...
+    def add_goal(self, agent_id: UUID, goal: Goal) -> Identity: ...
+    def create_snapshot(self, agent_id: UUID, description: str) -> IdentitySnapshot: ...
+    def apply_self_change(self, agent_id: UUID, target_kind: SelfChangeTargetKind, payload: Any, source: SelfChangeSource) -> SelfAppliedChange: ...
+    def revert_self_change(self, agent_id: UUID, change_id: UUID) -> Identity: ...
+```
 
-# Инициализация
-workspace = Path("./my-workspace")
-store = FileStateStore(workspace)
-identity_service = IdentityService(store)
-narrative_service = NarrativeService(store)
+Все методы синхронные. `apply_self_change` и `revert_self_change` вызываются `DeepReflectionService`, когда модель рефлексии предлагает изменения в самопонимании агента.
 
-# Bootstrap
-agent_id = uuid4()
+Идентичность хранится через порт `StateStore`.
+
+## Конфигурация
+
+Использует общий бэкенд `StateStore`:
+
+| `ATMAN_MEMORY_BACKEND` | Бэкенд |
+|------------------------|--------|
+| `inmemory` | `InMemoryStateStore` |
+| `file` (по умолчанию) | `FileStateStore` — один JSON-файл на запись идентичности |
+| `postgres` | `PostgresStateStore` |
+
+## Пример использования
+
+```bash
+# Запуск демо идентичности
+make demo-identity
+
+# CLI
+python -m atman.cli_identity
+```
+
+Программное использование:
+
+```python
+from uuid import UUID
+
+agent_id = UUID("...")
+
+# Инициализация идентичности нового агента
 identity = identity_service.bootstrap_identity(agent_id)
 
-# Добавить ценность
-value = CoreValue(
-    name="honesty",
-    description="Быть правдивым",
-    confidence=0.8
-)
-identity = identity_service.add_core_value(agent_id, value)
+# Просмотр текущих ценностей
+for value in identity.core_values:
+    print(value.name, value.confidence)
 
-# Создать нарратив
-narrative = narrative_service.create_narrative(identity)
+# Снапшот перед применением изменений рефлексии
+snapshot = identity_service.create_snapshot(agent_id, description="до рефлексии")
 
-# Рендерить в файл
-output = workspace / "NARRATIVE.md"
-narrative_service.render_to_file(identity.id, output)
-```
-
-### Интеграция с Session Lifecycle
-
-```python
-# В начале сессии
-narrative = narrative_service.get_narrative(agent_id)
-markdown = narrative.render_markdown()
-# -> Передать агенту как контекст
-
-# В конце сессии
-eigenstate = Eigenstate(
-    session_id=session_id,
-    emotional_tone=0.3,
-    session_summary="...",
-    open_threads=["..."]
-)
-store.save_eigenstate(eigenstate)
-
-# Обновить нарратив
-identity = identity_service.get_identity(agent_id)
-narrative = narrative_service.update_from_identity_and_eigenstate(
-    identity, eigenstate
+# Добавление нового принципа
+identity = identity_service.add_principle(
+    agent_id,
+    Principle(statement="Всегда уточнять перед предположениями.")
 )
 ```
-
-## Инварианты
-
-### Идентичность
-
-- Bootstrap создаёт пустую идентичность с честным самоописанием
-- Нет фальшивых навязанных ценностей или принципов
-- Schema version отслеживается для миграций
-- Timestamps для created_at и updated_at
-
-### Снимки
-
-- Создаются при значимых изменениях (ценности, принципы, сдвиг baseline)
-- Иммутабельны — сохраняют состояние в момент времени
-- Включают change summary
-
-### Нарратив
-
-- Три слоя: CORE, RECENT, THREADS
-- CORE layer стабилен, редко меняется
-- RECENT layer эфемерен, заменяется каждую сессию
-- Thread'ы должны явно закрываться (с причиной)
-- Содержимое валидируется на стиль от первого лица
-
-### Eigenstate
-
-- Захватывается в конце сессии
-- Записывает emotional tone, cognitive load, open threads
-- Используется для обновления нарратива
-
-## Будущая интеграция
-
-Этот модуль спроектирован для интеграции с:
-
-- **Experience Store** (WP-02) — идентичность строится из реального опыта
-- **Reflection Engine** — глубокий анализ обновляет идентичность
-- **Session Manager** — использует нарратив в начале сессии, сохраняет eigenstate в конце
-- **Reality Anchor** — использует идентичность для обнаружения дрифта
-
-См. `docs/architecture/SYSTEM.md` для полной картины интеграции.
-
-## Ссылки
-
-- Work Package: [03-identity-and-narrative.md](../../development/work-packages/03-identity-and-narrative.md)
-- Архитектура: [SYSTEM.md](../../architecture/SYSTEM.md)
-- Стандарт разработки: [DEVELOPMENT_STANDARD.md](../../development/DEVELOPMENT_STANDARD.md)
-
----
-
-**Next:** См. [English version (README.md)](./README.md)

@@ -890,6 +890,7 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `core` | 0 | 0 |
 | `adapters` | 0 | 0 |
 | `affect` | 0 | 0 |
+| `reflection` | 0 | 0 |
 | `skills` | 0 | 0 |
 | `tui` | 0 | 0 |
 | `web_dashboard` | 0 | 0 |
