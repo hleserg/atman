@@ -210,14 +210,16 @@ def test_before_send_transaction_passes_normal(monkeypatch):
 def test_traces_sampler_boosts_gen_ai():
     from atman.observability.sampling import _traces_sampler
 
-    ctx = {"custom_sampling_context": {"gen_ai.operation.name": "chat"}}
+    # SDK 2.x: custom_sampling_context items are spread into the root dict
+    ctx = {"gen_ai.operation.name": "chat"}
     assert _traces_sampler(ctx) == 1.0
 
 
 def test_traces_sampler_boosts_ai_route():
     from atman.observability.sampling import _traces_sampler
 
-    ctx = {"transaction_context": {"name": "/api/agent/start"}}
+    # SDK 2.x: transaction name lives under span_context.name
+    ctx = {"span_context": {"name": "/api/agent/start"}}
     assert _traces_sampler(ctx) == 1.0
 
 
@@ -231,14 +233,15 @@ def test_traces_sampler_default():
 def test_traces_sampler_inherits_parent_true():
     from atman.observability.sampling import _traces_sampler
 
-    ctx = {"parent_sampled": True}
+    # SDK 2.x: parent_sampled lives under span_context.parent_sampled
+    ctx = {"span_context": {"parent_sampled": True}}
     assert _traces_sampler(ctx) == 1.0
 
 
 def test_traces_sampler_inherits_parent_false():
     from atman.observability.sampling import _traces_sampler
 
-    ctx = {"parent_sampled": False}
+    ctx = {"span_context": {"parent_sampled": False}}
     assert _traces_sampler(ctx) == 0.0
 
 

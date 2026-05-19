@@ -17,18 +17,21 @@ def _traces_sampler(sampling_context: dict[str, Any]) -> float:
 
     Boosted to 1.0 for AI operations; inherits parent decision when available;
     falls back to 0.1 for everything else.
-    """
-    custom: dict[str, Any] = sampling_context.get("custom_sampling_context", {})
-    transaction_context: dict[str, Any] = sampling_context.get("transaction_context", {})
 
-    if "gen_ai.operation.name" in custom:
+    sentry-sdk ≥ 2.x context layout:
+        {"span_context": {"name": ..., "parent_sampled": ..., ...},
+         <custom keys spread at root from custom_sampling_context>}
+    """
+    # In SDK 2.x, custom_sampling_context items are spread into the root dict.
+    if "gen_ai.operation.name" in sampling_context:
         return 1.0
 
-    name: str = transaction_context.get("name", "")
+    span_ctx: dict[str, Any] = sampling_context.get("span_context", {})
+    name: str = span_ctx.get("name", "")
     if any(route in name for route in _AI_ROUTES):
         return 1.0
 
-    parent_sampled: bool | None = sampling_context.get("parent_sampled")
+    parent_sampled: bool | None = span_ctx.get("parent_sampled")
     if parent_sampled is not None:
         return 1.0 if parent_sampled else 0.0
 
