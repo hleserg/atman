@@ -106,6 +106,23 @@ class SkillStore(Protocol):
         """Return invocations not yet processed by micro reflection."""
         ...
 
+    def list_invocations_by_skill(
+        self, skill_id: UUID, agent_id: UUID, limit: int = 20
+    ) -> list[SkillInvocation]:
+        """Return the most recent ``limit`` invocations for a skill, newest first."""
+        ...
+
+    def count_invocations_in_last_n_sessions(
+        self, skill_id: UUID, agent_id: UUID, n_sessions: int
+    ) -> int:
+        """Count distinct sessions in which the skill was invoked among the last
+        ``n_sessions`` sessions that *any* skill was used.
+
+        Used by auto-pin: fire when a skill has been used in ≥ threshold of
+        the most recent ``n_sessions`` sessions.
+        """
+        ...
+
     def set_final_status(self, invocation_id: UUID, final_status: str) -> None: ...
 
     def mark_processed(self, invocation_id: UUID) -> None: ...

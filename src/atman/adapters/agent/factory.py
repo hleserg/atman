@@ -405,6 +405,7 @@ def build_deps(
     skill_manager = _build_skill_manager(
         agent_id=agent_id,
         embedding_adapter=_embedding_adapter,
+        entity_registry=_entity_registry,
     )
 
     # HLE-30: in-memory ReflectionEventStore shared with the overload monitor
@@ -525,7 +526,7 @@ def _skills_enabled() -> bool:
     return _settings.skills.enabled
 
 
-def _build_skill_manager(agent_id: UUID, embedding_adapter):
+def _build_skill_manager(agent_id: UUID, embedding_adapter, entity_registry=None):
     """Assemble SkillManager with graceful fallback.
 
     Behaviour, in order of preference, when the skill loop is enabled:
@@ -583,6 +584,7 @@ def _build_skill_manager(agent_id: UUID, embedding_adapter):
             projector=PydanticAgentProjector(),
             config=_settings.skills,
             agents_root=_Path(_settings.skills.skills_root).expanduser(),
+            entity_registry=entity_registry,
         )
     except Exception:
         log.warning("Failed to build SkillManager — skill-loop disabled", exc_info=True)

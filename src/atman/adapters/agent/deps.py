@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from atman.core.services.reflection_overload_monitor import ReflectionOverloadMonitor
     from atman.core.services.reflection_service import MicroReflectionService
     from atman.core.services.session_manager import SessionManager
-    from atman.skills.port import SkillManagerPort
+    from atman.core.ports.skill_manager import SkillManagerPort
 
 
 @dataclass(frozen=True)

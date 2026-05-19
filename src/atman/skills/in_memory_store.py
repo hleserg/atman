@@ -205,6 +205,47 @@ class InMemorySkillStore:
             and inv.processed_at is None
         ]
 
+    def count_invocations_in_last_n_sessions(
+        self, skill_id: UUID, agent_id: UUID, n_sessions: int
+    ) -> int:
+        # Collect all sessions that had any invocation for this agent,
+        # ordered by their earliest timestamp (most recent first).
+        session_first_ts: dict[UUID, datetime] = {}
+        for inv in self._invocations.values():
+            if inv.agent_id != agent_id:
+                continue
+            if inv.session_id not in session_first_ts or inv.started_at < session_first_ts[inv.session_id]:
+                session_first_ts[inv.session_id] = inv.started_at
+
+        recent_sessions = {
+            sid
+            for sid, _ in sorted(session_first_ts.items(), key=lambda x: x[1], reverse=True)[
+                :n_sessions
+            ]
+        }
+        if not recent_sessions:
+            return 0
+
+        matched = {
+            inv.session_id
+            for inv in self._invocations.values()
+            if inv.skill_id == skill_id
+            and inv.agent_id == agent_id
+            and inv.session_id in recent_sessions
+        }
+        return len(matched)
+
+    def list_invocations_by_skill(
+        self, skill_id: UUID, agent_id: UUID, limit: int = 20
+    ) -> list[SkillInvocation]:
+        matches = [
+            inv
+            for inv in self._invocations.values()
+            if inv.skill_id == skill_id and inv.agent_id == agent_id
+        ]
+        matches.sort(key=lambda i: i.started_at, reverse=True)
+        return matches[:limit]
+
     def set_final_status(self, invocation_id: UUID, final_status: str) -> None:
         inv = self._invocations[invocation_id]
         self._invocations[invocation_id] = replace(inv, final_status=final_status)

@@ -55,6 +55,21 @@ def _extract_thinking_from_messages(messages: list) -> str | None:
     return "\n---\n".join(parts) if parts else None
 
 
+def _call_trigger_router_if_enabled(
+    user_text: str,
+    agent_id,
+    session_id,
+    skill_manager,
+) -> list:
+    """Call trigger_router and return suggestions; returns [] on any failure or when disabled."""
+    if skill_manager is None:
+        return []
+    try:
+        return skill_manager.trigger_router(user_text, agent_id, session_id) or []
+    except Exception:
+        return []
+
+
 async def _run_affect_detector(
     output: str,
     thinking: str | None,
@@ -822,6 +837,26 @@ class AtmanRunner:
                 if len(user_text.strip()) >= 4:
                     user_language = "ru" if _is_mostly_cyrillic(user_text) else "en"
 
+                # Collect behavioral hints from the incoming user message (§7 Phase 3).
+                # Signals like "ok", "works", "не работает" etc. are appended to open
+                # invocations from the previous turn before the agent runs again.
+                if deps.skill_manager is not None:
+                    with contextlib.suppress(Exception):
+                        deps.skill_manager.collect_behavioral_hints_from_message(
+                            user_text, deps.agent_id, session_id
+                        )
+
+                # Skill router: run trigger_router in parallel with memory retrieval
+                # (§4/§5 of skill-manager-design). Suggestions are appended to the
+                # injected_context for this turn only.
+                _suggestions = _call_trigger_router_if_enabled(
+                    user_text, deps.agent_id, session_id, deps.skill_manager
+                )
+                _skill_suggestions_text = ""
+                if _suggestions:
+                    from atman.adapters.agent.instructions import build_skill_suggestions_section
+                    _skill_suggestions_text = build_skill_suggestions_section(_suggestions)
+
                 # Surface relevant memories via RAG when PassiveMemoryInjector is wired.
                 # build_rag_context caps the result to rag_token_budget tokens.
                 _pmi = deps.passive_memory_injector
@@ -872,6 +907,23 @@ class AtmanRunner:
                             # History-based modes: capture the appended message so
                             # we can remove it before the next turn's injection.
                             _last_rag_history_msg = history[-1]
+
+                # Append skill suggestions (from trigger_router) to this turn's context.
+                if _skill_suggestions_text:
+                    _skill_extra = inject_memory(
+                        _skill_suggestions_text,
+                        mode=self._config.memory_injection_mode,
+                        history=history,
+                        prepend=False,
+                    )
+                    if _skill_extra is not None:
+                        _current_ctx = deps.injected_context or ""
+                        deps = replace(
+                            deps,
+                            injected_context=(
+                                f"{_current_ctx}\n{_skill_extra}" if _current_ctx else _skill_extra
+                            ),
+                        )
 
                 try:
                     result = await agent.run(

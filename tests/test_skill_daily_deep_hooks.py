@@ -196,6 +196,101 @@ class TestProcessDailySkills:
         assert "flaky" not in summary.high_priority_revisions
 
 
+# ── draft → active promotion ─────────────────────────────────────────────
+
+
+class TestDraftPromotion:
+    """process_daily_skills() promotes draft skills once success_count reaches threshold."""
+
+    def _make_draft(self, agent_id: UUID, name: str, success_count: int) -> Skill:
+        now = _now()
+        return Skill(
+            id=uuid4(),
+            agent_id=agent_id,
+            entity_id=uuid4(),
+            name=name,
+            description=name,
+            version="0.1.0",
+            kind=SkillKind.active,
+            status=SkillStatus.draft,
+            origin=SkillOrigin.in_session,
+            core=False,
+            session_scoped=False,
+            user_pinned=False,
+            auto_pinned=False,
+            invocations_count=success_count,
+            success_count=success_count,
+            failure_count=0,
+            last_used_at=None,
+            sessions_since_use=0,
+            revision_needed=False,
+            revision_priority=0,
+            last_revised_at=None,
+            manifest_inferred=False,
+            skill_root=Path(f"/tmp/{name}"),
+            manifest_path=Path(f"/tmp/{name}/SKILL.md"),
+            created_at=now,
+            updated_at=now,
+        )
+
+    def test_draft_promoted_when_threshold_reached(self, tmp_path: Path) -> None:
+        manager = _make_manager(tmp_path, draft_promote_min_successes=3)
+        agent_id = uuid4()
+        skill = self._make_draft(agent_id, "ready-skill", success_count=4)
+        manager._store.save_skill(skill)
+
+        summary = manager.process_daily_skills(agent_id)
+
+        assert "ready-skill" in summary.promoted_from_draft
+        refreshed = manager._store.get_skill_by_id(skill.id)
+        assert refreshed is not None
+        assert refreshed.status == SkillStatus.active
+
+    def test_draft_not_promoted_below_threshold(self, tmp_path: Path) -> None:
+        manager = _make_manager(tmp_path, draft_promote_min_successes=3)
+        agent_id = uuid4()
+        skill = self._make_draft(agent_id, "not-ready", success_count=2)
+        manager._store.save_skill(skill)
+
+        summary = manager.process_daily_skills(agent_id)
+
+        assert "not-ready" not in summary.promoted_from_draft
+        refreshed = manager._store.get_skill_by_id(skill.id)
+        assert refreshed is not None
+        assert refreshed.status == SkillStatus.draft
+
+    def test_exactly_at_threshold_is_promoted(self, tmp_path: Path) -> None:
+        manager = _make_manager(tmp_path, draft_promote_min_successes=3)
+        agent_id = uuid4()
+        skill = self._make_draft(agent_id, "exact-threshold", success_count=3)
+        manager._store.save_skill(skill)
+
+        summary = manager.process_daily_skills(agent_id)
+        assert "exact-threshold" in summary.promoted_from_draft
+
+    def test_promotion_and_revision_bump_in_same_run(self, tmp_path: Path) -> None:
+        manager = _make_manager(
+            tmp_path, draft_promote_min_successes=3, daily_revision_idle_bump_sessions=5
+        )
+        agent_id = uuid4()
+        draft = self._make_draft(agent_id, "draft-skill", success_count=5)
+        revision_skill = _make_skill(
+            agent_id, "needs-revision", revision_needed=True, sessions_since_use=10, revision_priority=1
+        )
+        manager._store.save_skill(draft)
+        manager._store.save_skill(revision_skill)
+
+        summary = manager.process_daily_skills(agent_id)
+
+        assert "draft-skill" in summary.promoted_from_draft
+        assert summary.revision_priority_bumped == 1
+
+    def test_empty_summary_has_promoted_from_draft_field(self, tmp_path: Path) -> None:
+        manager = _make_manager(tmp_path)
+        summary = manager.process_daily_skills(uuid4())
+        assert summary.promoted_from_draft == []
+
+
 # ── process_deep_skills ───────────────────────────────────────────────────
 
 

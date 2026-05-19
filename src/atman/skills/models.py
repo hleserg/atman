@@ -112,11 +112,13 @@ class DailySkillSummary:
     is already above the alert threshold and warrant operator attention in
     the daily summary. ``revision_priority_bumped`` counts how many skills
     received an idle-driven priority increment during this run.
+    ``promoted_from_draft`` lists skills promoted from draft → active this run.
     """
 
     revision_needed_count: int = 0
     revision_priority_bumped: int = 0
     high_priority_revisions: list[str] = field(default_factory=list)
+    promoted_from_draft: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

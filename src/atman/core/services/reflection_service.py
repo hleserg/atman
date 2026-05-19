@@ -17,7 +17,7 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from atman.skills.models import DailySkillSummary, DeepSkillSummary
-    from atman.skills.port import SkillManagerPort
+    from atman.core.ports.skill_manager import SkillManagerPort
 
 from atman.core.clock_impl import SystemClock, ensure_utc
 from atman.core.exceptions import NarrativePersistenceConflictError

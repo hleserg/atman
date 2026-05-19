@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from atman.skills.port import SkillManagerPort
+    from atman.core.ports.skill_manager import SkillManagerPort
 
 _log = logging.getLogger(__name__)
 

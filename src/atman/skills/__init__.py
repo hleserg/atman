@@ -21,7 +21,7 @@ from atman.skills.models import (
     SkillSuggestion,
 )
 from atman.skills.noop import NoopSkillManager, SkillsDisabledError
-from atman.skills.port import SkillManagerPort
+from atman.core.ports.skill_manager import SkillManagerPort
 
 __all__ = [
     "NoopSkillManager",
