@@ -42,6 +42,8 @@ def init_sentry_from_env() -> bool:
 
         level = os.getenv("ATMAN_OBS_LEVEL", "minimal")
         init_observability(level)
+        global _initialized
+        _initialized = True
         return True
     except Exception:
         pass

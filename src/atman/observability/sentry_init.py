@@ -106,7 +106,7 @@ def init_observability(level: str | None = None) -> None:
     elif level == "debug":
         common.update(
             {
-                "traces_sampler": _traces_sampler,
+                "traces_sample_rate": 1.0,  # 100 % in dev — full waterfall visible in Spotlight
                 "profiles_sample_rate": 0.1,
                 "max_breadcrumbs": 50,
                 "debug": False,
@@ -116,7 +116,7 @@ def init_observability(level: str | None = None) -> None:
     else:  # verbose
         common.update(
             {
-                "traces_sampler": _traces_sampler,
+                "traces_sample_rate": 1.0,  # 100 % in verbose — capture everything
                 "profiles_sample_rate": 1.0,
                 "max_breadcrumbs": 100,
                 "debug": True,

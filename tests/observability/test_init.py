@@ -148,6 +148,22 @@ def test_minimal_includes_traces_sampler(monkeypatch):
     assert "traces_sample_rate" not in kwargs
 
 
+def test_debug_uses_full_sample_rate(monkeypatch):
+    """debug level must use traces_sample_rate=1.0 (100% tracing for full dev waterfall)."""
+    mock = _run_init_mocked("debug", monkeypatch)
+    _, kwargs = mock.call_args
+    assert kwargs.get("traces_sample_rate") == 1.0
+    assert "traces_sampler" not in kwargs
+
+
+def test_verbose_uses_full_sample_rate(monkeypatch):
+    """verbose level must use traces_sample_rate=1.0 (100% tracing)."""
+    mock = _run_init_mocked("verbose", monkeypatch)
+    _, kwargs = mock.call_args
+    assert kwargs.get("traces_sample_rate") == 1.0
+    assert "traces_sampler" not in kwargs
+
+
 # ---------------------------------------------------------------------------
 # AC-5: before_send_transaction drops /health
 # ---------------------------------------------------------------------------
