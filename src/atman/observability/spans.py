@@ -4,19 +4,22 @@ Standard context managers wrapping sentry_sdk.start_span so every adapter
 and engine uses the same op names and attribute schema.  The CI scanner
 (tools/check_instrumentation.py) recognises these names as valid instrumentation.
 
-All helpers degrade gracefully when Sentry is not initialised — the SDK
-returns a no-op span automatically in that case.
-
-Recognised by the instrumentation scanner (P3.1) via INSTRUMENTATION_MARKERS:
-    ai_chat_span, ai_embeddings_span, ai_rerank_span, memory_span, db_span,
-    cron_span, pipeline_span
+When ``ATMAN_OBS_LEVEL=off``, helpers yield without importing ``sentry_sdk`` so the
+documented zero-overhead contract holds.  When observability is enabled but Sentry
+was not initialised (no DSN), the SDK returns a no-op span automatically.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+
+
+def _observability_disabled() -> bool:
+    """True when ATMAN_OBS_LEVEL opts out of any sentry_sdk import."""
+    return os.getenv("ATMAN_OBS_LEVEL", "minimal").strip().lower() == "off"
 
 
 @contextmanager
@@ -25,6 +28,10 @@ def ai_chat_span(provider: str, model: str, *, op_name: str = "chat") -> Generat
 
     Sets gen_ai.operation.name, gen_ai.provider.name, gen_ai.request.model.
     """
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     with sentry_sdk.start_span(op=f"gen_ai.{op_name}", name=f"{provider}/{model}") as span:
@@ -37,6 +44,10 @@ def ai_chat_span(provider: str, model: str, *, op_name: str = "chat") -> Generat
 @contextmanager
 def ai_embeddings_span(provider: str, model: str) -> Generator[Any, None, None]:
     """Span for an embedding call (single batch)."""
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     with sentry_sdk.start_span(op="gen_ai.embeddings", name=f"{provider}/{model}") as span:
@@ -51,6 +62,10 @@ def ai_rerank_span(
     provider: str, model: str, docs_in: int, top_n: int
 ) -> Generator[Any, None, None]:
     """Span for a reranking call."""
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     with sentry_sdk.start_span(op="gen_ai.rerank", name=f"{provider}/{model}") as span:
@@ -65,6 +80,10 @@ def ai_rerank_span(
 @contextmanager
 def memory_span(action: str, namespace: str, **data: Any) -> Generator[Any, None, None]:
     """Span for a memory operation (recall / store / extract / reflect / clarify)."""
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     with sentry_sdk.start_span(op=f"memory.{action}", name=f"{action}:{namespace}") as span:
@@ -84,6 +103,10 @@ def db_span(
     **data: Any,
 ) -> Generator[Any, None, None]:
     """Span for a database operation (postgresql / qdrant)."""
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     name = f"{system}.{operation}"
@@ -107,9 +130,13 @@ def pipeline_span(op: str, description: str = "") -> Generator[Any, None, None]:
     Use the specific helpers (ai_chat_span, memory_span, db_span) where possible.
     pipeline_span is the escape hatch for stages that don't map to a named helper.
     """
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
-    with sentry_sdk.start_span(op=op, description=description or op) as span:
+    with sentry_sdk.start_span(op=op, name=description or op) as span:
         yield span
 
 
@@ -120,6 +147,10 @@ def cron_span(monitor_slug: str) -> Generator[Any, None, None]:
     Unlike cron_checkin in adapters.observability.sentry, this emits a regular
     span suitable for inclusion in a parent transaction.
     """
+    if _observability_disabled():
+        yield None
+        return
+
     import sentry_sdk
 
     with sentry_sdk.start_span(op="cron", name=monitor_slug) as span:

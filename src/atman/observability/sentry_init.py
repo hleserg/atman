@@ -31,6 +31,13 @@ def is_enabled() -> bool:
     return _initialized
 
 
+def _normalize_level(level: str | None) -> str:
+    """Return a lowercase, stripped observability level name."""
+    if level is None:
+        return os.getenv("ATMAN_OBS_LEVEL", "minimal").strip().lower()
+    return level.strip().lower()
+
+
 def init_observability(level: str | None = None) -> None:
     """Initialise Sentry observability at the requested level.
 
@@ -40,10 +47,7 @@ def init_observability(level: str | None = None) -> None:
     """
     global _initialized, _current_level
 
-    if level is None:
-        level = os.getenv("ATMAN_OBS_LEVEL", "minimal").strip().lower()
-    else:
-        level = level.strip().lower()
+    level = _normalize_level(level)
 
     # True no-op — must not import sentry_sdk at all
     if level == "off":

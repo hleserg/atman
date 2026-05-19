@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
+import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +16,7 @@ from atman.observability.spans import (
     cron_span,
     db_span,
     memory_span,
+    pipeline_span,
 )
 
 
@@ -110,6 +114,15 @@ def test_cron_span(mock_sentry):
     span.set_data.assert_any_call("cron.monitor_slug", "atman-maintenance")
 
 
+def test_pipeline_span_uses_name_not_description(mock_sentry):
+    mock_start, _span = mock_sentry
+    with pipeline_span("atman.ner", "entity detection") as _:
+        pass
+    assert mock_start.call_args.kwargs["op"] == "atman.ner"
+    assert mock_start.call_args.kwargs["name"] == "entity detection"
+    assert "description" not in mock_start.call_args.kwargs
+
+
 # ---------------------------------------------------------------------------
 # AC-2: helpers do not raise when Sentry is uninitialised
 # ---------------------------------------------------------------------------
@@ -130,6 +143,34 @@ def test_memory_span_noop_when_uninit():
 def test_db_span_noop_when_uninit():
     with db_span("postgresql", "INSERT") as span:
         assert span is not None
+
+
+def test_span_helpers_skip_sentry_import_when_off(monkeypatch):
+    """ATMAN_OBS_LEVEL=off must not import sentry_sdk inside span helpers."""
+    monkeypatch.setenv("ATMAN_OBS_LEVEL", "off")
+    sentry_keys = [k for k in sys.modules if k.startswith("sentry_sdk")]
+    saved = {k: sys.modules.pop(k) for k in sentry_keys}
+    real_import = builtins.__import__
+    imported: list[str] = []
+
+    def tracking_import(
+        name: str,
+        globals: Any = None,
+        locals: Any = None,
+        fromlist: Any = (),
+        level: int = 0,
+    ) -> Any:
+        if name == "sentry_sdk" or name.startswith("sentry_sdk."):
+            imported.append(name)
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", tracking_import)
+    try:
+        with ai_chat_span("anthropic", "claude") as span:
+            assert span is None
+        assert imported == []
+    finally:
+        sys.modules.update(saved)
 
 
 # ---------------------------------------------------------------------------
