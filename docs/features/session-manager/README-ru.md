@@ -84,7 +84,7 @@ session_manager.append_key_moment_input(ctx.session_id, KeyMomentInput(
     what_happened="Пользователь раскрыл длительную борьбу — высокий эмоциональный вес.",
     emotional_valence=-0.5,
     emotional_intensity=0.9,
-    depth=EmotionalDepth.deep,
+    depth=EmotionalDepth.PROFOUND,
     why_it_matters="Пользователь раскрыл уязвимость; важно для доверия.",
 ))
 

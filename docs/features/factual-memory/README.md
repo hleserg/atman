@@ -71,7 +71,7 @@ from atman.config import build_memory_backend
 
 backend = build_memory_backend()  # reads ATMAN_MEMORY_BACKEND from env
 
-fact = FactRecord(text="Alice is the lead engineer.", source="onboarding")
+fact = FactRecord(content="Alice is the lead engineer.", source="onboarding")
 stored = backend.add_fact(fact)
 
 results = backend.search("lead engineer")

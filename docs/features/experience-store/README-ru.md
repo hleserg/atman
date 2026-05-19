@@ -92,7 +92,7 @@ session_manager.append_key_moment_input(session_id, KeyMomentInput(
     what_happened="Пользователь поделился давней frustration по поводу коммуникации в команде.",
     emotional_valence=-0.4,
     emotional_intensity=0.8,
-    depth=EmotionalDepth.meaningful,
+    depth=EmotionalDepth.MEANINGFUL,
     why_it_matters="Длительная frustration указывает на проблему доверия.",
 ))
 

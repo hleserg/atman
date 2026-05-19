@@ -92,7 +92,7 @@ session_manager.append_key_moment_input(session_id, KeyMomentInput(
     what_happened="User shared a long-standing frustration about team communication.",
     emotional_valence=-0.4,
     emotional_intensity=0.8,
-    depth=EmotionalDepth.meaningful,
+    depth=EmotionalDepth.MEANINGFUL,
     why_it_matters="Long-standing frustration signals a trust issue worth exploring.",
 ))
 
