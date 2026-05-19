@@ -1,6 +1,6 @@
 {
   "component_id": "core-models",
-  "recorded_at": "2026-05-19T16:56:34.424430+00:00",
+  "recorded_at": "2026-05-19T17:00:28.037953+00:00",
   "class_names": [
     "EntityType",
     "ResolutionMethod",
