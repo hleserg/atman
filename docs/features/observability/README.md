@@ -24,9 +24,44 @@ Single-entrypoint Sentry integration for Atman. Controls telemetry via
 See [`levels.md`](levels.md) for the full level matrix, PII denylist, and
 quick-start setup instructions.
 
+## Span helpers
+
+All helpers live in `atman.observability.spans` and degrade gracefully when
+Sentry is not initialised (no-op span returned by SDK).
+
+| Helper | Op name | Use when |
+|--------|---------|----------|
+| `ai_chat_span(provider, model)` | `gen_ai.chat` | LLM chat completion |
+| `ai_embeddings_span(provider, model)` | `gen_ai.embeddings` | embedding batch |
+| `ai_rerank_span(provider, model, docs, top_n)` | `gen_ai.rerank` | reranking |
+| `memory_span(action, namespace)` | `memory.<action>` | recall / store / reflect |
+| `db_span(system, operation, collection)` | `db` | postgres / qdrant queries |
+| `cron_span(monitor_slug)` | `cron` | scheduled job body |
+| `pipeline_span(op, description)` | custom | any other pipeline stage |
+
 ## Instrumentation scanner
 
 `tools/check_instrumentation.py` scans `src/atman/{handlers,adapters,agents,engines}/`
-for async functions without a span helper. Functions exempt from the requirement
-are listed in `.sentry-instrumentation-allowlist`; rationale is in
+for top-level public functions without a span helper. The CI job
+(`.github/workflows/sentry-instrumentation.yml`) runs in **hard-block mode** —
+a missing span is a build failure, not a warning.
+
+Functions exempt from the requirement are listed in
+`.sentry-instrumentation-allowlist`; rationale is in
 [`instrumentation-allowlist-rationale.md`](instrumentation-allowlist-rationale.md).
+
+## PII data flow
+
+Data that reaches Sentry and its safeguards:
+
+| Data | Where sent | Safeguard |
+|------|-----------|-----------|
+| Agent UUID | `scope.set_user({"id": ...})` | UUID only, no name/email |
+| `slog()` event keys (fact_id, agent_id, source) | Breadcrumbs | Non-personal metadata |
+| Fact content (first 120 chars) | Breadcrumb field `content` | Scrubbed by `fact_content` denylist key |
+| LLM model name | Span attribute | Not personal |
+| Exception stack traces | Error events | `send_default_pii=False`, `EventScrubber` |
+
+Never stored in Sentry: raw prompts, completions, embeddings, full fact text,
+reflection output, identity payloads. See `atman.observability.scrubbing` for
+the full denylist.

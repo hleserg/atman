@@ -50,10 +50,16 @@ All levels except `off` apply `EventScrubber` with the following denylist
 extending sentry-sdk's `DEFAULT_DENYLIST`:
 
 ```
-memory_content, memory_text, reflection_text, identity_payload,
-fact_payload, user_journal, embedding_input, rerank_documents,
-prompt, prompt_text, completion, response_text,
-embedding, vector, api_key, authorization
+# fact / memory content
+memory_content, memory_text, fact_payload, fact_content, content_excerpt,
+# reflection / identity
+reflection_text, identity_payload, key_insight, user_journal,
+# LLM I/O
+embedding_input, rerank_documents, prompt, prompt_text, completion, response_text,
+# raw payloads
+embedding, vector,
+# credentials
+api_key, authorization
 ```
 
 Set `ATMAN_SEND_PROMPTS=1` together with `debug` or `verbose` only in fully
