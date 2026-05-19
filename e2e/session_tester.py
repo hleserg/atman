@@ -58,16 +58,6 @@ _load_env()
 REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, f"{REPO}/src")
 
-# Strong refs for fire-and-forget entity registration (asyncio keeps weak refs only).
-_background_tasks: set[asyncio.Task[None]] = set()
-
-
-def _fire_and_forget(coro) -> None:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-
-
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -78,6 +68,7 @@ from atman.adapters.agent.config import AgentConfig, ModelConfig
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.runner import AtmanTurn
 from atman.adapters.agent.tools import (
     record_key_moment,
     request_reflection,
@@ -85,7 +76,6 @@ from atman.adapters.agent.tools import (
     restart_session,
     wait_session,
 )
-from atman.core.services.passive_memory_injector import build_rag_context
 
 AGENT_BASE_URL = os.getenv("AGENT_LLM_BASE_URL", "http://localhost:8081/v1")
 AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
@@ -95,6 +85,16 @@ WORKSPACE = Path(os.getenv("ATMAN_AGENT_WORKSPACE", str(Path.home() / ".atman" /
 
 def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
+
+
+def _item_count_from_summary(summary: str) -> int:
+    """Parse leading item count from AtmanTurn passive/ambient summary strings."""
+    if not summary or summary.startswith(("no ", "error")):
+        return 0
+    head = summary.split(",", 1)[0].split()[0]
+    with contextlib.suppress(ValueError):
+        return int(head)
+    return 0
 
 
 # ── Dynamic follow-up generation ──────────────────────────────────────────────
@@ -281,58 +281,30 @@ async def _do_turn(
 ) -> tuple[TurnMetrics, str, AtmanDeps]:
     """Execute one full turn: pre → agent → post. Returns (metrics, agent_response, updated_deps)."""
     tm = TurnMetrics(turn_idx=turn_idx, speaker="me", text=my_text)
+    rag_counts: dict[str, int] = {}
 
-    # Pre-turn: entities
-    if deps.ambient_memory is not None and deps.entity_registry is not None:
-        try:
-            analysis = deps.ambient_memory._analyzer.analyze_user_message(my_text)
-            entities = analysis.entities or []
-            tm.entities_detected = [_S(e.text) for e in entities]
-            if entities:
-                registry = deps.entity_registry
+    def _on_turn_event(event: str, **data: object) -> None:
+        if event == "entity_resolved":
+            for ent in data.get("entities") or []:  # type: ignore[union-attr]
+                text = ent.get("text", "")  # type: ignore[union-attr]
+                if text:
+                    tm.entities_detected.append(_S(str(text)))
+        elif event == "passive_rag":
+            rag_counts["passive"] = int(data.get("items_total", 0))  # type: ignore[arg-type]
+        elif event == "ambient_injection":
+            rag_counts["ambient"] = int(data.get("items_total", 0))  # type: ignore[arg-type]
 
-                async def _bg(ents=entities, reg=registry, aid=deps.agent_id):
-                    for ent in ents:
-                        with contextlib.suppress(Exception):
-                            await asyncio.to_thread(
-                                reg.resolve_or_create,
-                                aid,
-                                _S(ent.text),
-                                ent.entity_type,
-                            )
-
-                _fire_and_forget(_bg())
-        except Exception as exc:
-            tm.errors.append(f"entity-reg: {exc}")
-
-    # Pre-turn: ambient RAG
-    if deps.ambient_memory is not None:
-        try:
-            amb = deps.ambient_memory.compose_injection(my_text, agent_id=deps.agent_id)
-            tm.ambient_rag_items = len(amb.items)
-        except Exception as exc:
-            tm.errors.append(f"ambient-rag: {exc}")
-
-    # Pre-turn: passive RAG
-    if deps.passive_memory_injector is not None:
-        try:
-            items = deps.passive_memory_injector.surface_for_context(my_text)
-            if items:
-                rag = build_rag_context(items, budget=1500)
-                tm.passive_rag_items = len(rag.items)
-                if rag.items:
-                    lines = []
-                    for item in rag.items:
-                        p = item.item
-                        txt = (
-                            getattr(p, "content", None)
-                            or getattr(p, "what_happened", None)
-                            or str(p)[:120]
-                        )
-                        lines.append(f"- [{item.source}] {_S(str(txt))[:150]}")
-                    deps = replace(deps, injected_context="## Из памяти\n" + "\n".join(lines))
-        except Exception as exc:
-            tm.errors.append(f"passive-rag: {exc}")
+    turn = AtmanTurn(deps, sm, session_id, on_event=_on_turn_event)
+    try:
+        deps = turn.pre(my_text)
+        tm.passive_rag_items = rag_counts.get(
+            "passive", _item_count_from_summary(turn.passive_summary)
+        )
+        tm.ambient_rag_items = rag_counts.get(
+            "ambient", _item_count_from_summary(turn.ambient_summary)
+        )
+    except Exception as exc:
+        tm.errors.append(f"pre-turn: {exc}")
 
     # Agent run
     _MAX_HISTORY = 8
@@ -363,9 +335,6 @@ async def _do_turn(
 
     # Post-turn: shared AtmanTurn pipeline (analysis, auto KM, affect, refusal)
     try:
-        from atman.adapters.agent.runner import AtmanTurn
-
-        turn = AtmanTurn(deps, sm, session_id)
         turn.post(agent_clean)
         if turn.auto_key_moment_written:
             tm.auto_km_written = True
