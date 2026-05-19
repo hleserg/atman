@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -73,6 +74,46 @@ def test_atman_turn_pre_clears_stale_injected_context() -> None:
     turn = AtmanTurn(deps, sm, deps.session_id)
     out = turn.pre("hello")
     assert out.injected_context is None or "stale turn context" not in (out.injected_context or "")
+
+
+@dataclass
+class _FakeSkillSuggestion:
+    skill_name: str
+    card_text: str
+
+
+class _RecordingSkillManager:
+    def __init__(self) -> None:
+        self.trigger_router_calls: list[str] = []
+        self.hint_calls: list[str] = []
+        self._suggestions: list[_FakeSkillSuggestion] = []
+
+    def set_suggestions(self, suggestions: list[_FakeSkillSuggestion]) -> None:
+        self._suggestions = suggestions
+
+    def trigger_router(self, message: str, agent_id, session_id) -> list:
+        self.trigger_router_calls.append(message)
+        return self._suggestions
+
+    def collect_behavioral_hints_from_message(self, message, agent_id, session_id) -> None:
+        self.hint_calls.append(message)
+
+
+def test_atman_turn_pre_injects_skill_suggestions() -> None:
+    """pre() must wire skill-loop when skill_manager is on deps (Chat UI / session_tester)."""
+    deps, sm = _minimal_deps()
+    manager = _RecordingSkillManager()
+    manager.set_suggestions(
+        [_FakeSkillSuggestion(skill_name="code-review", card_text="Review code quality.")]
+    )
+    deps = replace(deps, skill_manager=manager)
+    turn = AtmanTurn(deps, sm, deps.session_id)
+    out = turn.pre("please run code-review on this patch")
+    assert manager.trigger_router_calls == ["please run code-review on this patch"]
+    assert manager.hint_calls == ["please run code-review on this patch"]
+    assert out.injected_context is not None
+    assert "code-review" in out.injected_context
+    assert "Релевантные навыки" in out.injected_context
 
 
 def test_atman_turn_post_schedules_affect_via_record_event() -> None:

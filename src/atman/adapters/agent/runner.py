@@ -1491,6 +1491,7 @@ class AtmanTurn:
         deps = self._register_user_entities(user_text, deps)
         deps = self._inject_passive_rag(user_text, deps)
         deps = self._inject_ambient(user_text, deps)
+        deps = self._inject_skill_suggestions(user_text, deps)
 
         _LOG.debug(
             "[AtmanTurn.pre] done  injected_context_len=%d  passive=%r  ambient=%r",
@@ -1690,6 +1691,35 @@ class AtmanTurn:
             _LOG.warning("[AtmanTurn] ambient_rag failed: %s", exc, exc_info=True)
             self.ambient_summary = f"error: {exc}"
             return deps
+
+    def _inject_skill_suggestions(self, text: str, deps: AtmanDeps) -> AtmanDeps:
+        """Behavioral hints + trigger_router suggestions (parity with AtmanRunner chat loop)."""
+        if deps.skill_manager is None or self._session_id is None:
+            _LOG.debug("[AtmanTurn] skill_suggestions skipped: no skill_manager or session_id")
+            return deps
+        with contextlib.suppress(Exception):
+            deps.skill_manager.collect_behavioral_hints_from_message(
+                text, deps.agent_id, self._session_id
+            )
+        suggestions = _call_trigger_router_if_enabled(
+            text, deps.agent_id, self._session_id, deps.skill_manager
+        )
+        if not suggestions:
+            return deps
+        try:
+            from atman.adapters.agent.instructions import build_skill_suggestions_section
+
+            section = build_skill_suggestions_section(suggestions)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] skill_suggestions failed: %s", exc, exc_info=True)
+            return deps
+        if not section:
+            return deps
+        existing = deps.injected_context or ""
+        merged = (existing + "\n" + section).strip() if existing else section
+        _LOG.debug("[AtmanTurn] skill_suggestions injected: len=%d", len(section))
+        self._emit("skill_suggestions", count=len(suggestions))
+        return replace(deps, injected_context=merged)
 
     # ── Post-turn steps ───────────────────────────────────────────────────────
 
