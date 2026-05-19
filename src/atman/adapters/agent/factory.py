@@ -11,7 +11,6 @@ so lean dev/test runs without a DB still work.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from uuid import UUID
@@ -87,12 +86,6 @@ class _NarrativeAdapter(NarrativeRepository):
         self._agent_id = agent_id
 
     def get_current(self) -> NarrativeDocument | None:
-        if isinstance(self._s, FileStateStore):
-            p = self._s.narrative_path
-            if not p.exists():
-                return None
-            with open(p, encoding="utf-8") as f:
-                return NarrativeDocument.model_validate(json.load(f))
         return self._s.load_narrative(self._agent_id)
 
     def get_history(self) -> list[NarrativeDocument]:

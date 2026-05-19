@@ -1415,7 +1415,8 @@ class AtmanTurn:
     def pre(self, user_text: str) -> AtmanDeps:
         """Run pre-turn pipeline; returns updated deps with injected_context set."""
         _LOG.debug("[AtmanTurn.pre] start  text=%r", user_text[:80])
-        deps = self._deps
+        # Per-turn RAG only — never accumulate prior turns' injected_context.
+        deps = replace(self._deps, injected_context=None)
 
         deps = self._register_user_entities(user_text, deps)
         deps = self._inject_passive_rag(user_text, deps)
@@ -1436,6 +1437,7 @@ class AtmanTurn:
         deps = self._deps
 
         self._analyze_response(agent_text, deps)
+        self._run_affect_and_refusal(agent_text)
         self._drain_maintenance(deps)
 
         _LOG.debug("[AtmanTurn.post] done")
@@ -1618,6 +1620,34 @@ class AtmanTurn:
             return deps
 
     # ── Post-turn steps ───────────────────────────────────────────────────────
+
+    def _run_affect_and_refusal(self, agent_text: str) -> None:
+        """Passive affect scoring + silent value-refusal key moments (parity with session_tester)."""
+        if self._session_id is None:
+            return
+        with contextlib.suppress(Exception):
+            _auto_record_refusal_if_needed(
+                output=agent_text,
+                session_manager=self._sm,
+                session_id=self._session_id,
+            )
+        import re
+
+        clean = re.sub(r"<think>.*?</think>", "", agent_text, flags=re.DOTALL).strip()
+        if not clean:
+            return
+        from atman.core.models.session import SessionEvent
+
+        event = SessionEvent(
+            session_id=self._session_id,
+            event_type="agent_response",
+            description=clean,
+        )
+        try:
+            self._sm.record_event(self._session_id, event)
+            self._emit("affect_scheduled", session_id=str(self._session_id))
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] record_event for affect failed: %s", exc)
 
     def _analyze_response(self, text: str, deps: AtmanDeps) -> None:
         if deps.ambient_memory is None:

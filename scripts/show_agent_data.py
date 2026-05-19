@@ -40,14 +40,18 @@ def _agent_serial(conn, agent_id: UUID) -> int | None:
 
 
 def _show_key_moments(conn, schema: str, agent_id: UUID) -> None:
+    import psycopg.sql as sql
+
     rows = conn.execute(
-        f"""
+        sql.SQL(
+            """
         SELECT id, what_happened, why_it_matters, salience, recorded_at
-        FROM {schema}.key_moments
+        FROM {}.key_moments
         WHERE agent_id = %s
         ORDER BY recorded_at DESC
         LIMIT 10
-        """,
+        """
+        ).format(sql.Identifier(schema)),
         [agent_id],
     ).fetchall()
     t = Table(
@@ -106,16 +110,21 @@ def _show_facts(conn, agent_id: UUID) -> None:
 
 
 def _show_entities(conn, schema: str, agent_id: UUID) -> None:
+    import psycopg.sql as sql
+
+    schema_ident = sql.Identifier(schema)
     rows = conn.execute(
-        f"""
+        sql.SQL(
+            """
         SELECT e.id, e.canonical_name, e.entity_type, COUNT(fe.fact_id) AS fact_cnt, e.first_seen_at
-        FROM {schema}.entities e
-        LEFT JOIN {schema}.fact_entities fe ON fe.entity_id = e.id
+        FROM {}.entities e
+        LEFT JOIN {}.fact_entities fe ON fe.entity_id = e.id
         WHERE e.agent_id = %s
         GROUP BY e.id, e.canonical_name, e.entity_type, e.first_seen_at
         ORDER BY fact_cnt DESC, e.first_seen_at DESC
         LIMIT 20
-        """,
+        """
+        ).format(schema_ident, schema_ident),
         [agent_id],
     ).fetchall()
     t = Table(

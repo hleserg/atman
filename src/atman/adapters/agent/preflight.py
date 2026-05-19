@@ -219,7 +219,7 @@ def run_streamlit_preflight() -> None:
             if success:
                 st.success("✅ Packages installed. Restarting Streamlit server…")
                 time.sleep(1)
-                os.execv(sys.executable, sys.argv)  # nosec B606
+                os.execv(sys.executable, [sys.executable, *sys.argv])  # nosec B606
                 # Never reached
             else:
                 st.session_state.pop("_preflight_installing", None)

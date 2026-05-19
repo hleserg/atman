@@ -15,17 +15,21 @@ from atman.core import session_log
 _LOG = logging.getLogger("atman.web_dashboard.utils.chat_deps")
 
 
+def _workspace_path() -> Path:
+    """Resolve agent workspace/vault path (same precedence everywhere in chat UI)."""
+    return Path(
+        os.getenv("ATMAN_AGENT_WORKSPACE", "")
+        or os.getenv("ATMAN_VAULT_PATH", "")
+        or str(Path.home() / ".atman" / "dev-agent")
+    )
+
+
 def _resolve_agent_id() -> UUID:
     raw = os.getenv("ATMAN_CURRENT_AGENT", "").strip()
     if raw:
         _LOG.debug("[chat_deps] agent_id from ATMAN_CURRENT_AGENT: %s", raw)
         return UUID(raw)
-    # Fall back through ATMAN_AGENT_WORKSPACE → ATMAN_VAULT_PATH → default
-    workspace = Path(
-        os.getenv("ATMAN_AGENT_WORKSPACE", "")
-        or os.getenv("ATMAN_VAULT_PATH", "")
-        or str(Path.home() / ".atman" / "dev-agent")
-    )
+    workspace = _workspace_path()
     id_file = workspace / "agent_id.txt"
     if id_file.exists():
         agent_id = UUID(id_file.read_text().strip())
@@ -48,11 +52,7 @@ def get_chat_deps():
     Same agent resolution as live_chat.py: ATMAN_CURRENT_AGENT or persisted agent_id.txt.
     """
     agent_id = _resolve_agent_id()
-    vault = Path(
-        os.getenv("ATMAN_VAULT_PATH", "")
-        or os.getenv("ATMAN_AGENT_WORKSPACE", "")
-        or str(Path.home() / ".atman" / "dev-agent")
-    )
+    vault = _workspace_path()
     vault.mkdir(parents=True, exist_ok=True)
     _LOG.debug("[chat_deps] building deps: agent_id=%s  vault=%s", agent_id, vault)
     return build_deps(vault, agent_id)

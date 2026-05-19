@@ -42,7 +42,8 @@ for _n in (
 
 
 def _load_env() -> None:
-    for p in [Path("/atman/atman/.env"), Path(".env")]:
+    repo_root = Path(__file__).resolve().parents[1]
+    for p in [repo_root / ".env", Path(".env")]:
         if p.exists():
             for line in p.read_text().splitlines():
                 line = line.strip()
