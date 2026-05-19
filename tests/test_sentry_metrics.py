@@ -41,6 +41,7 @@ def test_init_sentry_from_env_off_level_blocks_fallback_init(
     monkeypatch.setenv("SENTRY_DSN", "https://pub@fake.ingest.sentry.io/99")
     monkeypatch.setenv("ATMAN_OBS_LEVEL", "off")
     orig = sentry_mod._initialized
+    _real_import = __import__
     try:
         with (
             patch("atman.adapters.observability.sentry._init") as mock_init,
@@ -49,7 +50,7 @@ def test_init_sentry_from_env_off_level_blocks_fallback_init(
                 side_effect=lambda name, *a, **kw: (
                     (_ for _ in ()).throw(ImportError("simulated"))
                     if name == "atman.observability"
-                    else __import__(name, *a, **kw)
+                    else _real_import(name, *a, **kw)
                 ),
             ),
         ):

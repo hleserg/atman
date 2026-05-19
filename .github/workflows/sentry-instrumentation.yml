@@ -54,4 +54,5 @@ jobs:
         with:
           name: instrumentation-scan-${{ github.run_id }}
           path: scan_output.txt
+          if-no-files-found: ignore
           retention-days: 30
