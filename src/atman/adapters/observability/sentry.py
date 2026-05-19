@@ -86,7 +86,7 @@ def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
         sentry_sdk.set_user({"id": agent_id})
         if session_id:
             sentry_sdk.set_tag("session_id", session_id)
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -98,7 +98,7 @@ def set_session_tag(session_id: str) -> None:
         import sentry_sdk
 
         sentry_sdk.set_tag("session_id", session_id)
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -135,7 +135,7 @@ def install_slog_breadcrumb_hook() -> None:
                     level=level,
                     data={k: v for k, v in data.items() if k != "ts"},
                 )
-            except Exception:
+            except Exception:  # nosec B110 — observability helpers must never raise
                 pass
         if _previous is not None:
             _previous(event, data)
@@ -170,7 +170,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
             tx.set_tag("session_id", session_id)
             yield
             return
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
     yield
 
@@ -189,7 +189,7 @@ def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, N
             span.set_data("job_name", job_name)
             yield
             return
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
     yield
 
@@ -207,7 +207,7 @@ def reflection_span(reflection_type: str) -> Generator[None, None, None]:
             span.set_data("reflection_type", reflection_type)
             yield
             return
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
     yield
 
@@ -240,7 +240,7 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
             for k, v in extra.items():
                 scope.set_extra(k, str(v))
             sentry_sdk.capture_exception(exc)
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -259,7 +259,7 @@ def metric_distribution(
         import sentry_sdk
 
         sentry_sdk.metrics.distribution(name, value, unit=unit, attributes=tags or {})
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -271,7 +271,7 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
         import sentry_sdk
 
         sentry_sdk.metrics.gauge(name, value, attributes=tags or {})
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -283,7 +283,7 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
         import sentry_sdk
 
         sentry_sdk.metrics.count(name, value, attributes=tags or {})
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
 
 
@@ -310,6 +310,6 @@ def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
         with sentry_sdk.monitor(monitor_slug=monitor_slug):
             yield
         return
-    except Exception:
+    except Exception:  # nosec B110 — observability helpers must never raise
         pass
     yield
