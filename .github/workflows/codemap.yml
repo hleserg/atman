@@ -12,9 +12,10 @@ on:
   pull_request:
     paths:
       - "src/**"
-      - "docs/architecture/SYSTEM_MAP.md"
+      - "docs/**"
       - "README.md"
       - "AGENTS.md"
+      - ".cursor/rules/**"
 
 jobs:
   codemap-check:

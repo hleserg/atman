@@ -98,12 +98,12 @@ def _run_main(args: argparse.Namespace, repo_root: Path) -> int:
             file_count=len(files),
             schema_versions=all_schemas,
         )
-        old_snap = load_snapshot(comp_id)
+        old_snap = load_snapshot(comp_id, base=repo_root / ".codemap/snapshots")
         diff = diff_snapshots(old_snap, new_snap)
         diffs.append(diff)
 
         if not check_mode:
-            save_snapshot(new_snap)
+            save_snapshot(new_snap, base=repo_root / ".codemap/snapshots")
 
     # --- 2. Update SYSTEM_MAP.md ---
     system_map = repo_root / "docs" / "architecture" / "SYSTEM_MAP.md"
