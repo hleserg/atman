@@ -62,6 +62,7 @@ adapters.observability.sentry.init_sentry_from_env
 adapters.observability.sentry.set_agent_scope
 adapters.observability.sentry.set_session_tag
 adapters.observability.sentry.capture_silent_exception
+adapters.observability.sentry.install_slog_breadcrumb_hook
 adapters.observability.sentry.metric_distribution
 adapters.observability.sentry.metric_gauge
 adapters.observability.sentry.metric_increment

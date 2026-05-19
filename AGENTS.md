@@ -431,8 +431,6 @@ Rules:
   - **web-dashboard/**
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
-- **observability/**
-    - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
 - **ops/**
     - `README.md` — docs/ops — Operational Documentation
 - **pic/**

@@ -136,8 +136,6 @@ Every doc in `docs/architecture/`, `docs/design/`, `docs/ops/` needs a `-ru.md` 
   - **web-dashboard/**
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
-- **observability/**
-    - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
 - **ops/**
     - `README.md` — docs/ops — Operational Documentation
 - **pic/**

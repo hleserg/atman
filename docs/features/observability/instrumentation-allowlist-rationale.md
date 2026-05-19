@@ -70,6 +70,7 @@ why it is exempt from the Sentry instrumentation requirement.
 | `set_agent_scope` | Scope helper called before spans exist |
 | `set_session_tag` | Scope tag helper |
 | `capture_silent_exception` | Error reporter; instrumenting it would cause infinite loops |
+| `install_slog_breadcrumb_hook` | Installs a display hook; IS the observability plumbing, not a business operation |
 | `metric_distribution` | Metric emitter; part of the observability layer itself |
 | `metric_gauge` | Metric emitter |
 | `metric_increment` | Metric emitter |
