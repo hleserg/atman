@@ -164,6 +164,15 @@ def test_verbose_uses_full_sample_rate(monkeypatch):
     assert "traces_sampler" not in kwargs
 
 
+def test_enable_logs_is_always_set(monkeypatch):
+    """enable_logs=True must be passed to sentry_sdk.init for structured logging."""
+    for level in ("minimal", "debug", "verbose"):
+        mock = _run_init_mocked(level, monkeypatch)
+        _, kwargs = mock.call_args
+        assert kwargs.get("enable_logs") is True, f"enable_logs missing for level={level}"
+        mod._initialized = False  # reset for next iteration
+
+
 # ---------------------------------------------------------------------------
 # AC-5: before_send_transaction drops /health
 # ---------------------------------------------------------------------------

@@ -90,6 +90,7 @@ def init_observability(level: str | None = None) -> None:
         "before_send": _make_before_send(level),
         "before_send_transaction": _make_before_send_transaction(level),
         "send_default_pii": False,
+        "enable_logs": True,
     }
 
     if level == "minimal":

@@ -39,12 +39,13 @@ def init_sentry_from_env() -> bool:
         return False
     try:
         from atman.observability import init_observability
+        from atman.observability import is_enabled as obs_enabled
 
         level = os.getenv("ATMAN_OBS_LEVEL", "minimal")
         init_observability(level)
         global _initialized
-        _initialized = True
-        return True
+        _initialized = obs_enabled()
+        return _initialized
     except Exception:
         pass
     env = os.getenv("SENTRY_ENVIRONMENT", "production")
