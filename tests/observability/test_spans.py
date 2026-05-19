@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -152,10 +153,16 @@ def test_span_helpers_skip_sentry_import_when_off(monkeypatch):
     real_import = builtins.__import__
     imported: list[str] = []
 
-    def tracking_import(name: str, *args: object, **kwargs: object) -> object:
+    def tracking_import(
+        name: str,
+        globals: Any = None,
+        locals: Any = None,
+        fromlist: Any = (),
+        level: int = 0,
+    ) -> Any:
         if name == "sentry_sdk" or name.startswith("sentry_sdk."):
             imported.append(name)
-        return real_import(name, *args, **kwargs)
+        return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", tracking_import)
     try:
