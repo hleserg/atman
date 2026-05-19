@@ -782,7 +782,8 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 |------|----------------|-------|
 | `adapters/agent/config.py` | `ModelConfig`, `AgentConfig` |  |
 | `adapters/agent/deps.py` | `AtmanDeps` |  |
-| `adapters/agent/runner.py` | `AtmanRunner` |  |
+| `adapters/agent/preflight.py` | `PreflightError` |  |
+| `adapters/agent/runner.py` | `AtmanRunner`, `AtmanTurn` |  |
 | `adapters/agent/token_monitor.py` | `TokenMonitor`, `ContextLimitExceeded` |  |
 | `adapters/clock.py` | `FrozenClock` |  |
 | `adapters/linguistic/gliner_minilm_adapter.py` | `GLiNERPlusMiniLMAdapter` |  |

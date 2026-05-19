@@ -381,6 +381,7 @@ Rules:
     - `PLAYBOOK_MARKERS.md` — PLAYBOOK Markers Convention
     - `ROADMAP.md` — ATMAN — Роадмап (май 2026)
     - `SENTRY_SETUP.md` — Sentry — настройка мониторинга
+    - `SESSION_TESTER_RUNBOOK.md` — Session Tester Runbook
 - **features/**
   - **affect-detector/**
       - `README-ru.md` — Affect Detector (E21)
