@@ -94,7 +94,9 @@ def init_observability(level: str | None = None) -> None:
     if level == "minimal":
         common.update(
             {
-                "traces_sample_rate": 0.1,
+                # traces_sampler overrides sample_rate — AI ops always at 1.0,
+                # everything else falls back to 0.1 (see sampling._traces_sampler)
+                "traces_sampler": _traces_sampler,
                 "profiles_sample_rate": 0.0,
                 "max_breadcrumbs": 20,
                 "debug": False,

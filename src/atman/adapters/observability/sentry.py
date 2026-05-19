@@ -29,10 +29,22 @@ def is_enabled() -> bool:
 
 
 def init_sentry_from_env() -> bool:
-    """Read SENTRY_DSN from env and initialize the SDK.  Returns True on success."""
+    """Read SENTRY_DSN from env and initialize the SDK.  Returns True on success.
+
+    Delegates to ``atman.observability.init_observability`` so only one init
+    system is active.  Legacy callers can keep using this function.
+    """
     dsn = os.getenv("SENTRY_DSN", "").strip()
     if not dsn:
         return False
+    try:
+        from atman.observability import init_observability
+
+        level = os.getenv("ATMAN_OBS_LEVEL", "minimal")
+        init_observability(level)
+        return True
+    except Exception:
+        pass
     env = os.getenv("SENTRY_ENVIRONMENT", "production")
     return _init(dsn=dsn, environment=env)
 

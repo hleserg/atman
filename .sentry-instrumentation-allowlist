@@ -1,0 +1,83 @@
+# Sentry instrumentation allowlist — HLE-263 P3.5
+#
+# Functions listed here are exempt from the instrumentation scanner.
+# Each entry requires a one-line rationale in:
+#   docs/features/observability/instrumentation-allowlist-rationale.md
+#
+# Format: <dotted.module.function>   (relative to src/atman/, no .py suffix)
+# Lines starting with # are comments.  Blank lines are ignored.
+#
+# ---- Initial seed (pre-observability baseline, 2026-05-19) ----------------
+# These functions existed before the observability project landed.
+# They will be instrumented progressively via P2.x tasks and removed from
+# this list as each one is done.  DO NOT add new functions here without
+# a PR review and a rationale line in the rationale doc.
+
+# Dependency-injection / factory helpers (pure Python, no I/O)
+adapters.agent.factory.build_deps
+adapters.agent.factory.build_daily_reflection_service
+adapters.agent.factory.build_deep_reflection_service
+
+# Prompt / instruction builders (pure string assembly, no I/O)
+adapters.agent.instructions.build_instructions
+adapters.agent.instructions.build_memory_context
+adapters.agent.instructions.build_skill_suggestions_section
+adapters.reflection.prompts.build_reframing_messages
+adapters.reflection.prompts.build_pattern_messages
+adapters.reflection.prompts.build_narrative_messages
+adapters.reflection.prompts.build_stance_formulation_messages
+adapters.reflection.prompts.build_health_messages
+adapters.reflection.prompts.build_entity_relation_messages
+adapters.reflection.prompts.build_entity_merge_messages
+
+# Memory injection helper (pure assembly, wrapped by caller spans)
+adapters.agent.memory_injection.inject_memory
+
+# Formatting helpers (pure)
+adapters.agent.pending_reviews_context.format_pending_reviews_block
+
+# Preflight checks (startup-only, not on hot path)
+adapters.agent.preflight.check_nlp_packages
+adapters.agent.preflight.check_postgres
+adapters.agent.preflight.check_llm
+adapters.agent.preflight.is_warmup_needed
+adapters.agent.preflight.install_nlp
+adapters.agent.preflight.start_warmup_background
+adapters.agent.preflight.run_cli_preflight
+adapters.agent.preflight.run_streamlit_preflight
+
+# Agent tools (P2.x — will be instrumented when Anthropic/Cohere adapters land)
+adapters.agent.runner.chat
+adapters.agent.tools.record_key_moment
+adapters.agent.tools.log_experience
+adapters.agent.tools.restart_session
+adapters.agent.tools.wait_session
+adapters.agent.tools.resolve_pending_review
+adapters.agent.tools.request_reflection
+
+# Legacy sentry helpers — ARE the instrumentation layer, instrumenting them
+# would be circular
+adapters.observability.sentry.is_enabled
+adapters.observability.sentry.init_sentry_from_env
+adapters.observability.sentry.set_agent_scope
+adapters.observability.sentry.set_session_tag
+adapters.observability.sentry.capture_silent_exception
+adapters.observability.sentry.metric_distribution
+adapters.observability.sentry.metric_gauge
+adapters.observability.sentry.metric_increment
+adapters.observability.sentry.cron_checkin
+
+# Reflection factory (returns a model instance; no I/O)
+adapters.reflection.__init__.get_reflection_model
+
+# Fixture loaders (test/dev helpers, not on production hot path)
+adapters.reflection.fixture_loader.reflection_fixtures_dir
+adapters.reflection.fixture_loader.load_reflection_session_experiences
+adapters.reflection.fixture_loader.load_reflection_identity
+adapters.reflection.fixture_loader.anchor_session_experiences_to_utc_day_window
+
+# Storage helpers (thin wrappers — P2.8 will add parent business-op spans)
+adapters.storage._atomic_write.write_atomically
+adapters.storage.reflection_persistence_helper.persist_micro_reflection
+adapters.storage.reflection_persistence_helper.persist_daily_reflection
+adapters.storage.reflection_persistence_helper.persist_deep_reflection

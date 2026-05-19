@@ -697,7 +697,53 @@ governance_policy
 
 По возможности использовать **[uv](https://github.com/astral-sh/uv)** для окружения и запуска: `uv venv`, `uv pip install -e ".[dev]"`, **`uv run`** для `python`, `pytest`, `ruff`, `pyright` и других dev-команд — так проще воспроизводить шаги и не смешивать глобальный Python. Подробности и примеры — в **`AGENTS.md`** (раздел _uv — рекомендуемый workflow_). `pip` допустим, если `uv` недоступен.
 
-## 19. Ошибки и деградация
+## 19. Observability (Sentry)
+
+### Уровни (`ATMAN_OBS_LEVEL`)
+
+| Уровень | Назначение |
+|---------|-----------|
+| `off` | Полный no-op — sentry_sdk не импортируется. Дефолт для тестов и CI без DSN. |
+| `minimal` | Включает выборку трассировок (`_traces_sampler`) + PII-скрабинг. Продакшн-дефолт. |
+| `debug` | `minimal` + Spotlight + профили 10%. Для локальной отладки. |
+| `verbose` | `debug` + `attach_stacktrace=True` + локальные переменные + профили 100%. Только dev. |
+
+### Инициализация
+
+Единственный entrypoint — `from atman.observability import init_observability`. Вызывается один раз в точке входа (CLI `main()`, FastAPI `lifespan`). Старый `init_sentry_from_env()` делегирует к нему.
+
+### Инструментирование функций
+
+Каждая **публичная** top-level функция в `src/atman/{handlers,adapters,agents,engines}/` обязана содержать span. Допустимые escape-hatches:
+
+- `# sentry: skip` на строке `def` — с обязательным объяснением в комментарии рядом;
+- `# sentry: skip-file` в заголовке файла — для вспомогательных модулей без I/O;
+- запись в `.sentry-instrumentation-allowlist` — с ратиональным обоснованием в `docs/features/observability/instrumentation-allowlist-rationale.md`.
+
+**Нельзя** добавлять в allowlist новые функции без PR-ревью и строки-обоснования.
+
+### Span-хелперы
+
+Использовать хелперы из `atman.observability.spans`, не голый `sentry_sdk.start_span`:
+
+```python
+from atman.observability.spans import ai_chat_span, memory_span, db_span
+
+with ai_chat_span("anthropic", "claude-3-5-sonnet"):
+    ...
+
+with memory_span("recall", "facts"):
+    ...
+
+with db_span("postgresql", "SELECT", collection="sessions"):
+    ...
+```
+
+### PII
+
+Sentry Event Scrubber расширяет `DEFAULT_DENYLIST` полями памяти/промптов. При `ATMAN_OBS_LEVEL=off` или пустом `SENTRY_DSN` данные никуда не уходят.
+
+## 20. Ошибки и деградация
 
 Atman должен уметь честно работать в неполном режиме:
 

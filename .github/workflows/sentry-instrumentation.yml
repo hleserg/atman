@@ -1,0 +1,68 @@
+name: Sentry Instrumentation Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/atman/handlers/**"
+      - "src/atman/adapters/**"
+      - "src/atman/agents/**"
+      - "src/atman/engines/**"
+      - ".sentry-instrumentation-allowlist"
+      - "tools/check_instrumentation.py"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/atman/handlers/**"
+      - "src/atman/adapters/**"
+      - "src/atman/agents/**"
+      - "src/atman/engines/**"
+      - ".sentry-instrumentation-allowlist"
+      - "tools/check_instrumentation.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentry-instrumentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan for uninstrumented functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # warn-only during P3.x rollout
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run instrumentation scanner
+        id: scan
+        run: |
+          python tools/check_instrumentation.py 2>&1 | tee scan_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-scan-${{ github.run_id }}
+          path: scan_output.txt
+          retention-days: 30
+
+      - name: Annotate violations as warnings
+        if: steps.scan.outputs.exit_code != '0'
+        run: |
+          echo "::warning::Sentry instrumentation violations found — see scan_output.txt artifact."
+          echo "These will become errors in P4.x once the allowlist burn-down is complete."
+          cat scan_output.txt

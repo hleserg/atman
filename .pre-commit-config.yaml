@@ -44,3 +44,10 @@ repos:
         language: system
         pass_filenames: false
         files: \.(py|md)$
+
+      - id: sentry-instrumentation
+        name: Check Sentry instrumentation
+        entry: python tools/check_instrumentation.py
+        language: system
+        pass_filenames: false
+        files: ^src/atman/(handlers|adapters|agents|engines)/.*\.py$

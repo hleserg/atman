@@ -138,6 +138,16 @@ def test_minimal_includes_asyncio_integration(monkeypatch):
     assert any(isinstance(i, AsyncioIntegration) for i in integrations)
 
 
+def test_minimal_includes_traces_sampler(monkeypatch):
+    """minimal must include traces_sampler so AI ops are boosted to 1.0 in prod."""
+    from atman.observability.sampling import _traces_sampler
+
+    mock = _run_init_mocked("minimal", monkeypatch)
+    _, kwargs = mock.call_args
+    assert kwargs.get("traces_sampler") is _traces_sampler
+    assert "traces_sample_rate" not in kwargs
+
+
 # ---------------------------------------------------------------------------
 # AC-5: before_send_transaction drops /health
 # ---------------------------------------------------------------------------
