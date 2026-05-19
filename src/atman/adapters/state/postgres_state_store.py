@@ -53,8 +53,10 @@ from atman.core.models import (
     NarrativeDocument,
     ReframingNote,
 )
+from atman.core.models.entity import KeyMomentEntityLink
 from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
+from atman.core.session_log import slog as _slog
 
 
 def _row_to_session(row: Any) -> Session:
@@ -136,9 +138,7 @@ class PostgresStateStore(StateStore):
 
     NOT implemented (raise ``NotImplementedError``):
       - Experience operations (the v1 ``ExperienceRecord`` model — use
-        :class:`ExperienceViewRepository` or follow Этап 18 migration)
-      - Identity / Narrative / Eigenstate (still served by FileStateStore
-        in the file-deployment path; deferred for this adapter)
+        Session + KeyMoment or legacy FileStateStore for ExperienceRecord flows)
     """
 
     def __init__(
@@ -166,7 +166,11 @@ class PostgresStateStore(StateStore):
 
     def _get_conn(self) -> psycopg.Connection[Any]:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self._db_url, row_factory=dict_row)  # type: ignore[arg-type]
+            # autocommit=True: each conn.transaction() block is a proper BEGIN/COMMIT.
+            # Without this, a bare SELECT (e.g. in _schema_ident/_resolve_serial_id) starts
+            # an implicit transaction, causing subsequent conn.transaction() calls to create
+            # savepoints instead of full transactions — inserts would never be committed.
+            self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)  # type: ignore[arg-type]
         return self._conn
 
     def close(self) -> None:
@@ -649,6 +653,53 @@ class PostgresStateStore(StateStore):
             rows = cur.fetchall()
         return [_row_to_key_moment(r) for r in rows]
 
+    def save_key_moment_entity_links(
+        self,
+        moment_id: UUID,
+        agent_id: UUID,
+        links: list[KeyMomentEntityLink],
+    ) -> None:
+        """Write entity links for a key moment into agent_N.key_moment_entities.
+
+        Idempotent — uses ON CONFLICT DO NOTHING so safe to call multiple times.
+        """
+        if not links:
+            return
+        schema = self._resolve_schema_for_moment(moment_id)
+        if schema is None:
+            return
+        conn = self._get_conn()
+        with conn.transaction(), conn.cursor() as cur:
+            q = sql.SQL(
+                """
+                INSERT INTO {s}.key_moment_entities
+                    (key_moment_id, entity_id, agent_id, involvement,
+                     valence_toward_entity, intensity_toward_entity)
+                VALUES (%(km_id)s, %(eid)s, %(agent_id)s, %(involvement)s,
+                        %(valence)s, %(intensity)s)
+                ON CONFLICT DO NOTHING
+                """
+            ).format(s=schema)
+            for link in links:
+                cur.execute(
+                    q,
+                    {
+                        "km_id": link.key_moment_id,
+                        "eid": link.entity_id,
+                        "agent_id": agent_id,
+                        "involvement": link.involvement,
+                        "valence": link.valence_toward_entity,
+                        "intensity": link.intensity_toward_entity,
+                    },
+                )
+        _slog(
+            "km_entity_links_saved",
+            agent_id=str(agent_id),
+            moment_id=str(moment_id),
+            count=len(links),
+            entities=[(str(link.entity_id)[:8], link.involvement) for link in links],
+        )
+
     # ------------------------------------------------------------------
     # Experience operations — removed in v2 (KeyMoments are standalone)
     # ------------------------------------------------------------------
@@ -686,9 +737,9 @@ class PostgresStateStore(StateStore):
         schema = self._schema_ident(agent_id)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
-            q = sql.SQL(
-                "SELECT full_state FROM {s}.identity WHERE agent_id = %(aid)s"
-            ).format(s=schema)
+            q = sql.SQL("SELECT full_state FROM {s}.identity WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
             cur.execute(q, {"aid": agent_id})
             row = cur.fetchone()
         if row is None or not row["full_state"]:
@@ -698,12 +749,14 @@ class PostgresStateStore(StateStore):
     def save_identity(self, identity: Identity, expected_version: str | None = None) -> Identity:
         schema = self._schema_ident(identity.id)
         existing = self.load_identity(identity.id)
-        if expected_version is not None and existing is not None:
-            if existing.schema_version != expected_version:
-                raise ValueError(
-                    f"Version mismatch: expected {expected_version}, "
-                    f"got {existing.schema_version}"
-                )
+        if (
+            expected_version is not None
+            and existing is not None
+            and existing.schema_version != expected_version
+        ):
+            raise ValueError(
+                f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+            )
         conn = self._get_conn()
         state = Jsonb(identity.model_dump(mode="json"))
         with conn.transaction(), conn.cursor() as cur:
@@ -727,19 +780,22 @@ class PostgresStateStore(StateStore):
                     full_state         = EXCLUDED.full_state
                 """
             ).format(s=schema)
-            cur.execute(q, {
-                "id": identity.id,
-                "aid": identity.id,
-                "sd": identity.self_description,
-                "cv": Jsonb([v.model_dump(mode="json") for v in identity.core_values]),
-                "h":  Jsonb([v.model_dump(mode="json") for v in identity.habits]),
-                "pr": Jsonb([v.model_dump(mode="json") for v in identity.principles]),
-                "g":  Jsonb([v.model_dump(mode="json") for v in identity.goals]),
-                "oq": Jsonb([v.model_dump(mode="json") for v in identity.open_questions]),
-                "eb": identity.emotional_baseline,
-                "ua": identity.updated_at,
-                "st": state,
-            })
+            cur.execute(
+                q,
+                {
+                    "id": identity.id,
+                    "aid": identity.id,
+                    "sd": identity.self_description,
+                    "cv": Jsonb([v.model_dump(mode="json") for v in identity.core_values]),
+                    "h": Jsonb([v.model_dump(mode="json") for v in identity.habits]),
+                    "pr": Jsonb([v.model_dump(mode="json") for v in identity.principles]),
+                    "g": Jsonb([v.model_dump(mode="json") for v in identity.goals]),
+                    "oq": Jsonb([v.model_dump(mode="json") for v in identity.open_questions]),
+                    "eb": identity.emotional_baseline,
+                    "ua": identity.updated_at,
+                    "st": state,
+                },
+            )
         return identity
 
     def create_identity_snapshot(self, snapshot: IdentitySnapshot) -> IdentitySnapshot:
@@ -753,18 +809,19 @@ class PostgresStateStore(StateStore):
                 ON CONFLICT (id) DO NOTHING
                 """
             ).format(s=schema)
-            cur.execute(q, {
-                "id": snapshot.id,
-                "aid": snapshot.identity_id,
-                "at": snapshot.timestamp,
-                "desc": snapshot.description,
-                "st": Jsonb(snapshot.model_dump(mode="json")),
-            })
+            cur.execute(
+                q,
+                {
+                    "id": snapshot.id,
+                    "aid": snapshot.identity_id,
+                    "at": snapshot.timestamp,
+                    "desc": snapshot.description,
+                    "st": Jsonb(snapshot.model_dump(mode="json")),
+                },
+            )
         return snapshot
 
-    def list_identity_snapshots(
-        self, identity_id: UUID, limit: int = 10
-    ) -> list[IdentitySnapshot]:
+    def list_identity_snapshots(self, identity_id: UUID, limit: int = 10) -> list[IdentitySnapshot]:
         schema = self._schema_ident(identity_id)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
@@ -788,9 +845,9 @@ class PostgresStateStore(StateStore):
         schema = self._schema_ident(identity_id)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
-            q = sql.SQL(
-                "SELECT full_state FROM {s}.narrative WHERE agent_id = %(aid)s"
-            ).format(s=schema)
+            q = sql.SQL("SELECT full_state FROM {s}.narrative WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
             cur.execute(q, {"aid": identity_id})
             row = cur.fetchone()
         if row is None or not row["full_state"]:
@@ -805,15 +862,20 @@ class PostgresStateStore(StateStore):
     ) -> NarrativeDocument:
         schema = self._schema_ident(narrative.identity_id)
         existing = self.load_narrative(narrative.identity_id)
-        if expected_version is not None and existing is not None:
-            if existing.schema_version != expected_version:
-                raise ValueError(
-                    f"Version mismatch: expected {expected_version}, "
-                    f"got {existing.schema_version}"
-                )
-        if expected_updated_at is not None and existing is not None:
-            if existing.updated_at != expected_updated_at:
-                raise ValueError("Concurrent update detected (updated_at mismatch)")
+        if (
+            expected_version is not None
+            and existing is not None
+            and existing.schema_version != expected_version
+        ):
+            raise ValueError(
+                f"Version mismatch: expected {expected_version}, got {existing.schema_version}"
+            )
+        if (
+            expected_updated_at is not None
+            and existing is not None
+            and existing.updated_at != expected_updated_at
+        ):
+            raise ValueError("Concurrent update detected (updated_at mismatch)")
         conn = self._get_conn()
         state = Jsonb(narrative.model_dump(mode="json"))
         with conn.transaction(), conn.cursor() as cur:
@@ -835,17 +897,20 @@ class PostgresStateStore(StateStore):
                     finished_session_ids = EXCLUDED.finished_session_ids
                 """
             ).format(s=schema)
-            cur.execute(q, {
-                "id": narrative.id,
-                "aid": narrative.identity_id,
-                "iid": narrative.identity_id,
-                "cl": narrative.core_layer.content,
-                "rl": narrative.recent_layer.content,
-                "th": Jsonb([t.model_dump(mode="json") for t in narrative.threads]),
-                "ua": narrative.updated_at,
-                "st": state,
-                "fs": list(narrative.finished_session_ids),
-            })
+            cur.execute(
+                q,
+                {
+                    "id": narrative.id,
+                    "aid": narrative.identity_id,
+                    "iid": narrative.identity_id,
+                    "cl": narrative.core_layer.content,
+                    "rl": narrative.recent_layer.content,
+                    "th": Jsonb([t.model_dump(mode="json") for t in narrative.threads]),
+                    "ua": narrative.updated_at,
+                    "st": state,
+                    "fs": list(narrative.finished_session_ids),
+                },
+            )
         return narrative
 
     def archive_narrative(self, narrative_id: UUID, reason: str) -> None:
@@ -861,8 +926,9 @@ class PostgresStateStore(StateStore):
     # ------------------------------------------------------------------
 
     def save_eigenstate(self, eigenstate: Eigenstate) -> Eigenstate:
-        agent_id = eigenstate.identity_id or eigenstate.session_id
+        agent_id = eigenstate.identity_id
         if agent_id is None:
+            # session_id is not a public.agents row — cannot resolve agent_N schema.
             return eigenstate
         schema = self._schema_ident(agent_id)
         conn = self._get_conn()
@@ -879,16 +945,17 @@ class PostgresStateStore(StateStore):
         session_id: UUID | None = None,
         identity_id: UUID | None = None,
     ) -> Eigenstate | None:
-        agent_id = identity_id or session_id
-        if agent_id is None:
+        if identity_id is None:
+            # Callers must pass identity_id (agent UUID); session_id alone cannot
+            # resolve the per-agent schema in Postgres.
             return None
-        schema = self._schema_ident(agent_id)
+        schema = self._schema_ident(identity_id)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
-            q = sql.SQL(
-                "SELECT eigenstate FROM {s}.identity WHERE agent_id = %(aid)s"
-            ).format(s=schema)
-            cur.execute(q, {"aid": agent_id})
+            q = sql.SQL("SELECT eigenstate FROM {s}.identity WHERE agent_id = %(aid)s").format(
+                s=schema
+            )
+            cur.execute(q, {"aid": identity_id})
             row = cur.fetchone()
         if row is None or not row["eigenstate"]:
             return None

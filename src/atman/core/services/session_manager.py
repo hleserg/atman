@@ -37,11 +37,13 @@ from atman.core.exceptions import (
 from atman.core.models import (
     ActiveSessionSummary,
     Eigenstate,
+    ExperienceRecord,
     KeyMoment,
     KeyMomentInput,
     Session,
     SessionContext,
     SessionEvent,
+    SessionExperience,
     SessionResult,
 )
 from atman.core.ports.affect import AffectPort
@@ -70,6 +72,8 @@ _NARRATIVE_SAVE_RETRIES = 5
 
 _LOG = logging.getLogger(__name__)
 
+from atman.core.session_log import slog as _slog  # noqa: E402
+
 
 @dataclass(frozen=True, slots=True)
 class _FinishJournalMetadata:
@@ -91,6 +95,15 @@ def _session_finish_marker(session_id: UUID) -> str:
 def deterministic_session_experience_id(session_id: UUID) -> UUID:
     """Return a deterministic UUID derived from session_id (used by external callers)."""
     return uuid5(_SESSION_EXPERIENCE_ID_NS, str(session_id))
+
+
+def _experience_store_available(state_store: StateStore) -> bool:
+    """True when the store implements legacy ExperienceRecord persistence."""
+    try:
+        state_store.get_experience(deterministic_session_experience_id(UUID(int=0)))
+    except NotImplementedError:
+        return False
+    return True
 
 
 class SessionManager:
@@ -570,6 +583,13 @@ class SessionManager:
             with self._lock:
                 self._journal_locks[context.session_id] = journal_lock
 
+        _slog(
+            "session_started",
+            agent_id=str(agent_id),
+            session_id=str(context.session_id),
+            identity_id=str(identity.id),
+            snapshot_id=str(context.identity_snapshot_id),
+        )
         return context
 
     def record_event(self, session_id: UUID, event: SessionEvent) -> None:
@@ -808,6 +828,9 @@ class SessionManager:
 
             moment_with_time = moment.model_copy(update={"recorded_at": self._clock.now()})
             key_moment = moment_with_time.to_key_moment()
+            # Set session_id here so both the journal and any immediate DB write
+            # have the correct FK — to_key_moment() leaves it None.
+            key_moment.session_id = session_id
 
             if moment.incomplete_coloring:
                 session_result.incomplete_coloring = True
@@ -831,8 +854,27 @@ class SessionManager:
                     "fact_refs": [str(fid) for fid in key_moment.fact_refs],
                 },
             )
-            # NB: post-write enrichment scheduling deferred to finish_session;
-            # see comment in append_key_moment for the race-condition rationale.
+            # Write to DB immediately so moments survive a crash before finish_session.
+            # store_key_moment is an idempotent upsert — finish_session calling it
+            # again is safe. If the DB write fails we log and continue; the journal
+            # above is the crash-recovery fallback.
+            try:
+                self._state_store.store_key_moment(key_moment)
+                # Moment is now durable — safe to schedule post-write enrichment.
+                self._schedule_post_write(key_moment, agent_id)
+            except Exception:
+                _LOG.warning(
+                    "store_key_moment failed for %s — moment in journal, enrichment deferred",
+                    key_moment.id,
+                    exc_info=True,
+                )
+            _slog(
+                "key_moment_appended",
+                session_id=str(session_id),
+                agent_id=str(agent_id),
+                moment_id=str(key_moment.id),
+                what_happened=key_moment.what_happened[:120],
+            )
 
     def _schedule_post_write(self, moment: KeyMoment, agent_id: UUID) -> None:
         """Fire-and-forget enqueue of post-write enrichment jobs.
@@ -1011,19 +1053,19 @@ class SessionManager:
         unexamined_fact_refs: list[UUID] = list(session_result._facts_read - _colored_fact_ids)
 
         try:
-            # Save each KeyMoment — idempotent (skip if already exists for retry)
+            # Upsert each KeyMoment — idempotent; moments written in append_key_moment_input
+            # are already in DB, this is a no-op for them.  Moments from crashed/recovered
+            # sessions that arrived via journal replay may arrive here without prior DB write.
             for moment in session_result.key_moments:
-                if self._state_store.get_key_moment(moment.id) is None:
-                    self._state_store.create_key_moment(moment)
+                if moment.session_id is None:
+                    moment.session_id = session_id
+                self._state_store.store_key_moment(moment)
 
             # Store session→moments mapping
             self._state_store.store_key_moments(session_id, session_result.key_moments)
 
             # HLE-27 follow-up: schedule post-write enrichment after moments are persisted
-            if (
-                self._post_write_scheduler is not None
-                and session_result.identity_id is not None
-            ):
+            if self._post_write_scheduler is not None and session_result.identity_id is not None:
                 for moment in session_result.key_moments:
                     self._schedule_post_write(moment, session_result.identity_id)
 
@@ -1033,6 +1075,17 @@ class SessionManager:
                     self._inline_validator.check_key_moment(
                         moment, agent_id=session_result.identity_id
                     )
+
+            self._persist_legacy_session_experience(
+                session_id,
+                session_result,
+                safe_close_reason=safe_close_reason,
+                unexamined_fact_refs=unexamined_fact_refs,
+                key_insight=key_insight,
+                restart_reason=restart_reason,
+                user_language=user_language,
+                colored_fact_ids=_colored_fact_ids,
+            )
 
             eigenstate = self._create_eigenstate(session_result)
             session_result.eigenstate = eigenstate
@@ -1085,7 +1138,87 @@ class SessionManager:
         if journal_lock is not None:
             self._release_journal_file(journal_lock, unlink=True)
 
-        return session_result.model_copy(deep=True)
+        final = session_result.model_copy(deep=True)
+        _slog(
+            "session_finished",
+            session_id=str(session_id),
+            agent_id=str(final.identity_id),
+            close_reason=safe_close_reason,
+            key_moments=len(final.key_moments),
+            finished_at=str(final.finished_at),
+        )
+        return final
+
+    def _persist_legacy_session_experience(
+        self,
+        session_id: UUID,
+        session_result: SessionResult,
+        *,
+        safe_close_reason: (
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+        ),
+        unexamined_fact_refs: list[UUID],
+        key_insight: str,
+        restart_reason: str | None,
+        user_language: str,
+        colored_fact_ids: set[UUID],
+    ) -> None:
+        """Write SessionExperience for FileStateStore / in-memory adapters.
+
+        PostgresStateStore v2 stores sessions and key moments only; experience
+        operations raise NotImplementedError and are skipped here. Reflection on
+        Postgres uses Session + KeyMoment via StateStoreSessionRepository, not
+        ExperienceRecord rows.
+        """
+        if not _experience_store_available(self._state_store):
+            return
+
+        experience_id = deterministic_session_experience_id(session_id)
+        existing_record = self._state_store.get_experience(experience_id)
+        if existing_record is not None:
+            if existing_record.experience.session_id != session_id:
+                raise ValueError(
+                    f"Stored experience {experience_id} belongs to another session "
+                    f"({existing_record.experience.session_id}); refusing to proceed."
+                )
+            return
+
+        fact_refs_set: set[UUID] = set(colored_fact_ids)
+        fact_refs_set.update(session_result._facts_read)
+        key_moment_ids = [m.id for m in session_result.key_moments]
+
+        avg_emotional_intensity = 0.5
+        has_profound_moment = False
+        if session_result.key_moments:
+            from atman.core.models.experience import EmotionalDepth
+
+            avg_emotional_intensity = sum(
+                m.how_i_felt.emotional_intensity for m in session_result.key_moments
+            ) / len(session_result.key_moments)
+            has_profound_moment = any(
+                m.how_i_felt.depth == EmotionalDepth.PROFOUND for m in session_result.key_moments
+            )
+
+        experience = SessionExperience(
+            id=experience_id,
+            session_id=session_id,
+            timestamp=session_result.finished_at or self._clock.now(),
+            key_moment_ids=key_moment_ids,
+            unexamined_fact_refs=unexamined_fact_refs,
+            recorded_by="session_manager",
+            identity_snapshot_id=session_result.identity_snapshot_id,
+            importance=0.5,
+            salience=0.5,
+            avg_emotional_intensity=avg_emotional_intensity,
+            has_profound_moment=has_profound_moment,
+            incomplete_coloring=session_result.incomplete_coloring,
+            fact_refs=list(fact_refs_set),
+            close_reason=safe_close_reason,
+            agent_recap=key_insight or None,
+            restart_reason=restart_reason or "",
+            user_language=user_language,
+        )
+        self._state_store.create_experience(ExperienceRecord(experience=experience))
 
     def _write_finish_journal_entry(self, session_result: SessionResult) -> None:
         """Persist finish-time metadata before downstream artifacts can partially fail."""

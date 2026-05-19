@@ -1884,9 +1884,9 @@ def test_orphan_recovery_skips_currently_active_sessions(
     # Session A's journal should still exist (not treated as orphan)
     assert journal_path_a.exists()
 
-    # Key moments should NOT be stored yet for session A (active, not finished)
+    # Key moments are durable immediately (append_key_moment_input writes to store)
     moments_before = store.get_key_moments_for_session(context_a.session_id)
-    assert len(moments_before) == 0
+    assert len(moments_before) == 1
 
     # Finish session A properly
     manager.finish_session(context_a.session_id, close_reason="timeout_sleep")
@@ -2271,7 +2271,9 @@ def _deleted_test_unexamined_facts_excludes_facts_colored_across_multiple_moment
     assert exp_record.experience.unexamined_fact_refs == [fact_id_unexamined]
 
 
-def _deleted_test_unexamined_facts_aggregated_fact_refs_includes_all_facts(session_manager, temp_storage):
+def _deleted_test_unexamined_facts_aggregated_fact_refs_includes_all_facts(
+    session_manager, temp_storage
+):
     """E21.7: SessionExperience.fact_refs includes both colored and unexamined facts."""
     manager, agent_id = session_manager
     context = manager.start_session(agent_id)

@@ -35,7 +35,6 @@ from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.tools import (
-    log_experience,
     record_key_moment,
     restart_session,
     wait_session,
@@ -161,7 +160,7 @@ async def main() -> int:
         deps, session_manager, store = build_deps(workspace, agent_id, config)
         bootstrap(store, agent_id)
 
-        tool_funcs = (record_key_moment, log_experience, restart_session, wait_session)
+        tool_funcs = (record_key_moment, restart_session, wait_session)
         agent = Agent(
             MODEL,
             deps_type=type(deps),

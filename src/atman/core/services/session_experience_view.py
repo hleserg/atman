@@ -35,6 +35,9 @@ def build_session_experience(
     fact_refs: list[UUID] = []
     for m in moments_for_session:
         fact_refs.extend(m.fact_refs)
+    for fid in session.unexamined_fact_refs:
+        if fid not in fact_refs:
+            fact_refs.append(fid)
     fact_refs = list(dict.fromkeys(fact_refs))
 
     overall_salience = max(m.salience for m in moments_for_session) if moments_for_session else 0.5

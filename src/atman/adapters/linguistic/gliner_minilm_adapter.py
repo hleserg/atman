@@ -95,8 +95,22 @@ _POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
     "stance": ["committed", "tentative", "resistant", "exploring", "doubtful", "dismissive"],
     "cognitive_mode": ["analytical", "emotional", "mixed", "defensive"],
     "self_orientation": ["toward self", "toward other", "toward task", "toward meta"],
-    "primary_emotion": ["neutral", "anxious", "frustrated", "curious", "warm", "doubtful", "committed", "tired"],
-    "cognitive_load_label": ["low cognitive load", "manageable cognitive load", "high cognitive load", "overwhelmed"],
+    "primary_emotion": [
+        "neutral",
+        "anxious",
+        "frustrated",
+        "curious",
+        "warm",
+        "doubtful",
+        "committed",
+        "tired",
+    ],
+    "cognitive_load_label": [
+        "low cognitive load",
+        "manageable cognitive load",
+        "high cognitive load",
+        "overwhelmed",
+    ],
 }
 
 # Label normalisation for self_orientation (spaces → underscore)
@@ -124,11 +138,27 @@ _POINT_K_NER_LABELS: list[str] = [
 # Point K classification tasks
 _POINT_K_CLASSIFICATIONS: dict[str, list[str]] = {
     "agency_level": ["passive", "reactive", "proactive", "initiating"],
-    "confidence_in_self": ["low confidence", "moderate confidence", "high confidence", "inflated confidence"],
+    "confidence_in_self": [
+        "low confidence",
+        "moderate confidence",
+        "high confidence",
+        "inflated confidence",
+    ],
     "trust_signal_category": ["building trust", "stable trust", "wavering trust", "broken trust"],
-    "boundary_event_category": ["no boundary event", "boundary respected", "boundary tested", "boundary crossed", "boundary enforced"],
+    "boundary_event_category": [
+        "no boundary event",
+        "boundary respected",
+        "boundary tested",
+        "boundary crossed",
+        "boundary enforced",
+    ],
     "connection_quality": ["distant", "functional", "warm", "deep"],
-    "learning_signal": ["new understanding", "confirmed understanding", "rejected understanding", "confused"],
+    "learning_signal": [
+        "new understanding",
+        "confirmed understanding",
+        "rejected understanding",
+        "confused",
+    ],
     "growth_indicator": ["regression", "static", "progress", "breakthrough"],
     # cognitive_load (float) remains heuristic-based; no separate classification task
 }
@@ -170,12 +200,8 @@ _KEY_MOMENT_LEGACY_LABELS = [
 ]
 
 
-def _pick_top(scores: dict[str, float], threshold: float = 0.15) -> str | None:
-    """Return the label with the highest score above threshold, or None.
-
-    With multi_label=False (softmax), scores sum to 1. A lower threshold (0.15)
-    ensures the top label is returned unless the model is completely uncertain.
-    """
+def _pick_top(scores: dict[str, float], threshold: float = 0.5) -> str | None:
+    """Return the label with the highest score above threshold, or None."""
     if not scores:
         return None
     top_label, top_score = max(scores.items(), key=lambda kv: kv[1])
@@ -202,7 +228,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         minilm_model: str = "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
         device: str = "cpu",
         ner_threshold: float = 0.5,
-        classification_threshold: float = 0.15,
+        classification_threshold: float = 0.5,
     ) -> None:
         self._gliner_model = gliner_model
         self._minilm_model = minilm_model
@@ -336,15 +362,13 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         if classifier is None:
             return {}
         try:
-            result = classifier(text, candidate_labels, multi_label=False)
+            result = classifier(text, candidate_labels, multi_label=True)
         except Exception:
             logger.exception("Classification inference failed for text of length %d", len(text))
             return {}
         return dict(zip(result["labels"], result["scores"], strict=False))
 
-    def _classify_task(
-        self, text: str, task_name: str, candidates: list[str]
-    ) -> str | None:
+    def _classify_task(self, text: str, task_name: str, candidates: list[str]) -> str | None:
         """Run a single classification task and return the top label above threshold."""
         scores = self._run_classification(text, candidates)
         return _pick_top(scores, self._classification_threshold)
@@ -358,6 +382,10 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                 anchor_type = "topic"
             elif ent.entity_type == EntityType.place:
                 anchor_type = "location"
+            elif ent.entity_type == EntityType.organization:
+                anchor_type = "organization_ref"
+            elif ent.entity_type == EntityType.tool:
+                anchor_type = "tool_ref"
             else:
                 continue
             anchors.append(
@@ -460,7 +488,9 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         cognitive_load_high = len(thinking or "") > 2000 and len(all_entities) >= 5
 
         # Point A MiniLM classifications
-        def _classify(task_name: str, candidates: list[str], norm_map: dict | None = None) -> str | None:
+        def _classify(
+            task_name: str, candidates: list[str], norm_map: dict | None = None
+        ) -> str | None:
             result = self._classify_task(message, task_name, candidates)
             if result is not None and norm_map:
                 result = norm_map.get(result, result)
@@ -468,9 +498,15 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
 
         stance = _classify("stance", _POINT_A_CLASSIFICATIONS["stance"])
         cognitive_mode = _classify("cognitive_mode", _POINT_A_CLASSIFICATIONS["cognitive_mode"])
-        self_orientation = _classify("self_orientation", _POINT_A_CLASSIFICATIONS["self_orientation"], _SELF_ORIENTATION_MAP)
+        self_orientation = _classify(
+            "self_orientation", _POINT_A_CLASSIFICATIONS["self_orientation"], _SELF_ORIENTATION_MAP
+        )
         primary_emotion = _classify("primary_emotion", _POINT_A_CLASSIFICATIONS["primary_emotion"])
-        cognitive_load_label = _classify("cognitive_load_label", _POINT_A_CLASSIFICATIONS["cognitive_load_label"], _COGNITIVE_LOAD_MAP)
+        cognitive_load_label = _classify(
+            "cognitive_load_label",
+            _POINT_A_CLASSIFICATIONS["cognitive_load_label"],
+            _COGNITIVE_LOAD_MAP,
+        )
 
         language = self._detect_language(message)
 
@@ -523,24 +559,43 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             trust_signal = None
 
         topic_labels = [
-            label for label, score in legacy_scores.items()
+            label
+            for label, score in legacy_scores.items()
             if score > self._classification_threshold
         ]
 
         # Point K MiniLM classifications
-        def _k_classify(task: str, candidates: list[str], norm_map: dict | None = None) -> str | None:
+        def _k_classify(
+            task: str, candidates: list[str], norm_map: dict | None = None
+        ) -> str | None:
             result = self._classify_task(combined, task, candidates)
             if result is not None and norm_map:
                 result = norm_map.get(result, result)
             return result
 
         agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
-        confidence_in_self = _k_classify("confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP)
-        trust_signal_category = _k_classify("trust_signal_category", _POINT_K_CLASSIFICATIONS["trust_signal_category"], _TRUST_CAT_MAP)
-        boundary_event_category = _k_classify("boundary_event_category", _POINT_K_CLASSIFICATIONS["boundary_event_category"], _BOUNDARY_CAT_MAP)
-        connection_quality = _k_classify("connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"])
-        learning_signal = _k_classify("learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP)
-        growth_indicator = _k_classify("growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"])
+        confidence_in_self = _k_classify(
+            "confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP
+        )
+        trust_signal_category = _k_classify(
+            "trust_signal_category",
+            _POINT_K_CLASSIFICATIONS["trust_signal_category"],
+            _TRUST_CAT_MAP,
+        )
+        boundary_event_category = _k_classify(
+            "boundary_event_category",
+            _POINT_K_CLASSIFICATIONS["boundary_event_category"],
+            _BOUNDARY_CAT_MAP,
+        )
+        connection_quality = _k_classify(
+            "connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"]
+        )
+        learning_signal = _k_classify(
+            "learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP
+        )
+        growth_indicator = _k_classify(
+            "growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"]
+        )
 
         return KeyMomentAnalysis(
             entities=entities,

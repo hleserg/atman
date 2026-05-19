@@ -78,7 +78,7 @@ class ReflectionStore:
     def connect(self) -> None:
         """Establish database connection."""
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self.db_url)
+            self._conn = psycopg.connect(self.db_url, autocommit=True)
 
     def close(self) -> None:
         """Close database connection."""

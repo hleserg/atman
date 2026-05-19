@@ -40,7 +40,6 @@ from atman.adapters.agent.instructions import build_instructions, build_memory_c
 from atman.adapters.agent.memory_injection import inject_memory
 from atman.adapters.agent.runner import _force_finish
 from atman.adapters.agent.tools import (
-    log_experience,
     record_key_moment,
     restart_session,
     wait_session,
@@ -366,7 +365,7 @@ async def run_session(
     else:
         log.tag("ИНЖЕКЦИЯ ПАМЯТИ", "пропущена — identity отсутствует (bootstrap режим)")
 
-    tool_funcs = (record_key_moment, log_experience, restart_session, wait_session)
+    tool_funcs = (record_key_moment, restart_session, wait_session)
     agent = Agent(
         config.model.model,
         deps_type=type(deps),

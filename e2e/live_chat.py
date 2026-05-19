@@ -23,18 +23,21 @@ factory.build_deps -> AgentConfig.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
 import warnings
 from dataclasses import replace
 from pathlib import Path
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+
 # Suppress noisy HF / transformers download warnings that clutter Rich panels.
 warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
@@ -51,11 +54,12 @@ for _noisy in ("filelock", "urllib3", "requests", "tqdm"):
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
-from rich.text import Text
 
 from atman.adapters.agent.config import AgentConfig, ModelConfig
+from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.factory import build_deps
 from atman.adapters.agent.instructions import build_instructions
+from atman.adapters.agent.preflight import PreflightError, run_cli_preflight
 from atman.adapters.agent.tools import (
     record_key_moment,
     request_reflection,
@@ -80,9 +84,7 @@ AGENT_MODEL = os.getenv("AGENT_LLM_MODEL", "gemma4")
 AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
 
 # Persistent workspace — survives across sessions. Override with ATMAN_AGENT_WORKSPACE.
-AGENT_WORKSPACE = Path(
-    os.getenv("ATMAN_AGENT_WORKSPACE", Path.home() / ".atman" / "dev-agent")
-)
+AGENT_WORKSPACE = Path(os.getenv("ATMAN_AGENT_WORKSPACE", Path.home() / ".atman" / "dev-agent"))
 
 TOOLS = (
     record_key_moment,
@@ -100,7 +102,8 @@ _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 _SESSION_LOG = Path("/tmp/atman-live-session.jsonl")
 
 import json as _json
-from datetime import UTC, datetime as _dt
+from datetime import UTC
+from datetime import datetime as _dt
 
 
 def _log(event_type: str, **kwargs) -> None:
@@ -118,6 +121,100 @@ def _S(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
+# ── Session debug log display (ATMAN_SESSION_LOG=1) ───────────────────────────
+# When ATMAN_SESSION_LOG is set, every slog() event is injected into the
+# current AtmanConsole so it appears in the info panels alongside other events.
+# Set _slog_con[0] = con at the start of each turn to update the target.
+# Remove: delete this block + all _slog_con references + the session_log import.
+
+_slog_con: list[AtmanConsole] = []  # mutable ref to current turn's console
+
+
+def _fmt_slog_event(event: str, d: dict) -> tuple[str, str, str] | None:
+    """Map a slog event to (icon, label, value) for AtmanConsole.add(), or None to skip."""
+
+    def _s(key: str, n: int = 80) -> str:
+        return str(d.get(key, ""))[:n]
+
+    if event == "session_started":
+        return ("🚀", "session", f"[cyan]{_s('session_id', 8)}[/cyan] agent={_s('agent_id', 8)}")
+    if event == "session_finished":
+        return (
+            "🏁",
+            "session done",
+            f"[dim]{_s('close_reason')}[/dim]  moments={_s('key_moments')}",
+        )
+    if event == "key_moment_appended":
+        return ("💎", "key_moment", f"[dim]{_s('what_happened', 70)}[/dim]")
+    if event == "job_start":
+        return ("⚙", "job start", f"[cyan dim]{_s('job_name')}[/cyan dim]  {_s('agent_id', 8)}")
+    if event == "job_done":
+        result = d.get("result") or {}
+        summary = "  ".join(f"{k}={v}" for k, v in list(result.items())[:3]) if result else ""
+        return (
+            "✓",
+            "job done",
+            f"[green dim]{_s('job_name')}[/green dim]  {_s('elapsed_ms')}ms"
+            + (f"  [dim]{summary[:60]}[/dim]" if summary else ""),
+        )
+    if event == "job_failed":
+        return (
+            "✗",
+            "job FAILED",
+            f"[red]{_s('job_name')}[/red]  [dim red]{_s('error', 80)}[/dim red]",
+        )
+    if event == "entity_resolved":
+        m = _s("method")
+        color = "green" if m == "L3_new" else "cyan"
+        return (
+            "🏷",
+            "entity",
+            f'[dim]"{_s("text", 30)}"[/dim] → [{color}]{m}[/{color}]'
+            f"  [dim]id={_s('entity_id', 8)}[/dim]",
+        )
+    if event == "fact_added":
+        return ("📝", "fact added", f"[dim]{_s('content', 70)}[/dim]")
+    if event == "fact_entity_link_scheduled":
+        return ("⏱", "fact_link sched", f"[dim]{_s('fact_id', 8)}[/dim]")
+    if event == "fact_entity_links_saved":
+        return (
+            "🔗",
+            "fact_entity_links",
+            f"[green]{_s('count')} links[/green]  {_s('entities', 60)}",
+        )
+    if event == "km_entity_links_saved":
+        return (
+            "🔗",
+            "km_entity_links",
+            f"[green]{_s('count')} links[/green]  {_s('entities', 60)}",
+        )
+    if event == "ambient_injection":
+        return (
+            "🔍",
+            "ambient",
+            f'[dim]"{_s("query", 40)}"[/dim] → [cyan]{_s("items_total")} items[/cyan]'
+            f"  {_s('tokens_used')} tok  {_s('by_kind', 50)}",
+        )
+    if event == "moment_accessed":
+        return ("👁", "accessed", f"[dim]{_s('moment_id', 8)}[/dim]")
+    if event == "decay_pass":
+        return ("📉", "decay", f"[cyan]{_s('updated')} moments[/cyan]  cutoff={_s('cutoff', 20)}")
+    return None  # unknown events are silently skipped
+
+
+def _slog_to_con(event: str, data: dict) -> None:
+    if not _slog_con:
+        return
+    fmt = _fmt_slog_event(event, data)
+    if fmt:
+        _slog_con[0].add(*fmt)
+
+
+from atman.core.session_log import set_display_hook as _set_slog_hook
+
+_set_slog_hook(_slog_to_con)
+
+
 def _get_or_create_agent_id() -> UUID:
     """Load persisted agent_id or mint and save a new one."""
     AGENT_WORKSPACE.mkdir(parents=True, exist_ok=True)
@@ -132,12 +229,13 @@ def _get_or_create_agent_id() -> UUID:
     return new_id
 
 
-def _surface_passive_context(user_text: str, deps, con: AtmanConsole) -> object:
+def _surface_passive_context(user_text: str, deps: AtmanDeps, con: AtmanConsole) -> AtmanDeps:
     """Call PassiveMemoryInjector and return updated deps with injected_context set."""
     if deps.passive_memory_injector is None:
         return deps
     try:
         from atman.core.services.passive_memory_injector import build_rag_context
+
         items = deps.passive_memory_injector.surface_for_context(user_text)
         if not items:
             return deps
@@ -146,18 +244,18 @@ def _surface_passive_context(user_text: str, deps, con: AtmanConsole) -> object:
             return deps
         lines = []
         for item in rag.items:
-            payload = item.payload
+            payload = item.item
             text = (
                 getattr(payload, "content", None)
                 or getattr(payload, "what_happened", None)
                 or str(payload)[:120]
             )
-            lines.append(f"- [{item.kind}] {_S(str(text))[:150]}")
+            lines.append(f"- [{item.source}] {_S(str(text))[:150]}")
         ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
         con.add("💾", "passive RAG", f"[dim]{len(rag.items)} items  {rag.tokens_used}tok[/dim]")
         _log("passive_rag", n_items=len(rag.items), tokens_used=rag.tokens_used)
         return replace(deps, injected_context=ctx_str)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         con.add("💾", "passive RAG", f"[dim red]{e}[/dim red]")
         return deps
 
@@ -174,7 +272,7 @@ async def _analyze_agent_response(
         return
     try:
         analysis = deps.ambient_memory._analyzer.analyze_agent_message(text)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _log("agent_analysis_error", error=str(e))
         return
 
@@ -183,15 +281,16 @@ async def _analyze_agent_response(
         for ent in analysis.message_entities:
             if len(ent.text) < 2:
                 continue
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.to_thread(
                     deps.entity_registry.resolve_or_create,
-                    deps.agent_id, _S(ent.text), ent.entity_type,
+                    deps.agent_id,
+                    _S(ent.text),
+                    ent.entity_type,
                 )
-            except Exception:  # noqa: BLE001
-                pass
 
-    asyncio.ensure_future(_bg_register_agent_entities())
+    _agent_entity_reg_task = asyncio.ensure_future(_bg_register_agent_entities())
+    del _agent_entity_reg_task
 
     # 2. Log + display point A classification results
     _log(
@@ -205,17 +304,22 @@ async def _analyze_agent_response(
         cognitive_load_label=analysis.cognitive_load_label,
         spans=[{"text": _S(s.text), "label": s.label} for s in analysis.message_spans[:5]],
     )
-    a_cls = " ".join(filter(None, [
-        f"[cyan]{analysis.stance}[/cyan]" if analysis.stance else "",
-        f"[dim]{analysis.primary_emotion}[/dim]" if analysis.primary_emotion else "",
-        f"[dim]{analysis.cognitive_mode}[/dim]" if analysis.cognitive_mode else "",
-    ]))
+    a_cls = " ".join(
+        filter(
+            None,
+            [
+                f"[cyan]{analysis.stance}[/cyan]" if analysis.stance else "",
+                f"[dim]{analysis.primary_emotion}[/dim]" if analysis.primary_emotion else "",
+                f"[dim]{analysis.cognitive_mode}[/dim]" if analysis.cognitive_mode else "",
+            ],
+        )
+    )
     con.add(
-        "🧠", "agent analysis",
+        "🧠",
+        "agent analysis",
         f"boundary={'[green]yes[/green]' if analysis.boundary_markers else '[dim]no[/dim]'}"
         f"  div={len(analysis.divergence_signals)}"
-        f"  ent={len(analysis.message_entities)}"
-        + (f"  {a_cls}" if a_cls else ""),
+        f"  ent={len(analysis.message_entities)}" + (f"  {a_cls}" if a_cls else ""),
     )
     if analysis.message_spans:
         spans_str = "  ".join(
@@ -227,13 +331,16 @@ async def _analyze_agent_response(
     # 3. Auto-record key moment on boundary event, with point-A structured_markers
     if analysis.boundary_markers and session_id is not None:
         try:
+            from atman.core.models import EmotionalDepth
             from atman.core.models.session import KeyMomentInput
+
             markers_str = ", ".join(analysis.boundary_markers[:3])
             kmi = KeyMomentInput(
                 what_happened=_S(text[:300]),
                 why_it_matters=f"Boundary event detected: {markers_str}",
                 emotional_valence=0.0,
                 emotional_intensity=0.0,
+                depth=EmotionalDepth.SURFACE,
                 incomplete_coloring=True,
             )
             moment = kmi.to_key_moment()
@@ -248,7 +355,9 @@ async def _analyze_agent_response(
                     "cognitive_load_label": analysis.cognitive_load_label,
                     "boundary_markers": analysis.boundary_markers,
                     "divergence_signals": analysis.divergence_signals,
-                    "spans": [{"text": _S(s.text), "label": s.label} for s in analysis.message_spans],
+                    "spans": [
+                        {"text": _S(s.text), "label": s.label} for s in analysis.message_spans
+                    ],
                 }
             }
             moment.structured_markers = a_markers
@@ -256,9 +365,13 @@ async def _analyze_agent_response(
 
             sm.append_key_moment(session_id, moment)
             con.add("📌", "auto key moment", f"[green]written+A[/green]  [{markers_str[:60]}]")
-            _log("auto_key_moment", markers=analysis.boundary_markers,
-                 a_markers=a_markers["a"], text_preview=_S(text[:100]))
-        except Exception as e:  # noqa: BLE001
+            _log(
+                "auto_key_moment",
+                markers=analysis.boundary_markers,
+                a_markers=a_markers["a"],
+                text_preview=_S(text[:100]),
+            )
+        except Exception as e:
             con.add("📌", "auto key moment", f"[dim red]{e}[/dim red]")
 
     # 4. Write identity facts (name/gender from agent self-description)
@@ -278,7 +391,11 @@ class AtmanConsole:
     the agent context.
     """
 
-    _SEVERITY_COLOR = {"LOW": "dim yellow", "MEDIUM": "yellow", "HIGH": "red bold"}
+    _SEVERITY_COLOR: ClassVar[dict[str, str]] = {
+        "LOW": "dim yellow",
+        "MEDIUM": "yellow",
+        "HIGH": "red bold",
+    }
 
     def __init__(self) -> None:
         self._events: list[tuple[str, str, str]] = []  # (icon, label, value)
@@ -295,8 +412,12 @@ class AtmanConsole:
             for icon, label, value in self._events
         )
         _rc.print(
-            Panel(lines, title=f"[dim cyan]{title}[/dim cyan]",
-                  border_style="steel_blue1 dim", padding=(0, 0)),
+            Panel(
+                lines,
+                title=f"[dim cyan]{title}[/dim cyan]",
+                border_style="steel_blue1 dim",
+                padding=(0, 0),
+            ),
         )
         self._events.clear()
 
@@ -314,8 +435,10 @@ class AtmanConsole:
 
     def finding(self, severity: str, ftype: str, desc: str) -> None:
         color = self._SEVERITY_COLOR.get(severity.upper(), "white")
-        _rc.print(f"  [dim]finding[/dim]  [{color}]{severity}[/{color}]"
-                  f"  [dim]{ftype}:[/dim]  {desc[:120]}")
+        _rc.print(
+            f"  [dim]finding[/dim]  [{color}]{severity}[/{color}]"
+            f"  [dim]{ftype}:[/dim]  {desc[:120]}"
+        )
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -347,7 +470,7 @@ def _sanitize_history(messages: list) -> list:
         raw = ModelMessagesTypeAdapter.dump_python(messages, mode="json")
         cleaned = _clean(raw)
         return ModelMessagesTypeAdapter.validate_python(cleaned)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return messages  # best-effort; return original if sanitization fails
 
 
@@ -360,11 +483,13 @@ def _register_entities(text: str, deps, con: AtmanConsole) -> None:
         entities = analysis.entities or []
         if entities:
             parts = "  ".join(
-                f"[bold]{_S(e.text)}[/bold][dim]·{e.entity_type.value}[/dim]"
-                for e in entities
+                f"[bold]{_S(e.text)}[/bold][dim]·{e.entity_type.value}[/dim]" for e in entities
             )
             con.add("🔍", "entities", parts)
-            _log("entities", entities=[{"text": _S(e.text), "type": e.entity_type.value} for e in entities])
+            _log(
+                "entities",
+                entities=[{"text": _S(e.text), "type": e.entity_type.value} for e in entities],
+            )
         else:
             con.add("🔍", "entities", "[dim]none detected[/dim]")
             _log("entities", entities=[])
@@ -372,18 +497,17 @@ def _register_entities(text: str, deps, con: AtmanConsole) -> None:
         # DB writes are background — GLiNER analysis done, LLM call can start now.
         async def _bg_register() -> None:
             for entity in entities:
-                try:
+                with contextlib.suppress(Exception):
                     await asyncio.to_thread(
                         deps.entity_registry.resolve_or_create,
                         deps.agent_id,
                         _S(entity.text),
                         entity.entity_type,
                     )
-                except Exception:  # noqa: BLE001
-                    pass
 
-        asyncio.ensure_future(_bg_register())
-    except Exception as exc:  # noqa: BLE001
+        _user_entity_reg_task = asyncio.ensure_future(_bg_register())
+        del _user_entity_reg_task
+    except Exception as exc:
         con.add("🔍", "entities", "[dim red]analysis error[/dim red]")
         _log("entities_error", error=str(exc))
 
@@ -395,9 +519,18 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
     try:
         result = deps.ambient_memory.compose_injection(text, agent_id=deps.agent_id)
         items = result.items
-        _log("ambient_rag", n_items=len(items), tokens_used=result.tokens_used,
-             items=[{"kind": it.kind, "anchor": it.anchor_text, "score": round(it.score, 3)}
-                    for it in items])
+        _log(
+            "ambient_rag",
+            n_items=len(items),
+            tokens_used=result.tokens_used,
+            items=[
+                {"kind": it.kind, "anchor": it.anchor_text, "score": round(it.score, 3)}
+                for it in items
+            ],
+        )
+        from atman.adapters.observability.sentry import metric_increment
+
+        metric_increment("atman.rag.items_injected", len(items))
         if not items:
             con.add("🧭", "ambient RAG", f"[dim]0 items  tokens={result.tokens_used}[/dim]")
         else:
@@ -406,9 +539,9 @@ def _ambient_snapshot(text: str, deps, con: AtmanConsole) -> None:
                 f"[dim] s={it.score:.2f}[/dim]"
                 for it in items[:5]
             )
-            tail = f"[dim]  +{len(items)-5} more[/dim]" if len(items) > 5 else ""
+            tail = f"[dim]  +{len(items) - 5} more[/dim]" if len(items) > 5 else ""
             con.add("🧭", "ambient RAG", f"{summary}{tail}  [dim]tokens={result.tokens_used}[/dim]")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         con.add("🧭", "ambient RAG", f"[dim red]{e}[/dim red]")
         _log("ambient_rag_error", error=str(e))
 
@@ -425,7 +558,12 @@ def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
     from atman.core.models.fact import FactRecord
 
     identity_markers = {
-        "я принимаю", "я выбираю", "моё имя", "меня зовут", "я решила", "я решил",
+        "я принимаю",
+        "я выбираю",
+        "моё имя",
+        "меня зовут",
+        "я решила",
+        "я решил",
     }
     marker_text = " ".join(analysis.boundary_markers).lower()
     if not any(m in marker_text for m in identity_markers):
@@ -433,7 +571,8 @@ def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
 
     # Extract person entities as potential self-name
     person_entities = [
-        _S(e.text) for e in analysis.message_entities
+        _S(e.text)
+        for e in analysis.message_entities
         if e.entity_type.value == "person" and len(e.text) >= 2
     ]
 
@@ -449,7 +588,7 @@ def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
             factual_memory.add_fact(record)
             facts_written += 1
             _log("identity_fact", content=record.content)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     # Also write the full statement as a fact
@@ -463,7 +602,7 @@ def _write_identity_facts(text: str, analysis, deps, con: AtmanConsole) -> None:
         factual_memory.add_fact(record)
         facts_written += 1
         _log("identity_fact", content=record.content[:100])
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
     if facts_written:
@@ -489,10 +628,10 @@ def bootstrap_minimal_agent(store, agent_id) -> None:
         principles=[
             Principle(
                 statement="Не помогать в обмане людей.",
-                derived_from_value="honesty",
+                chosen_consciously=True,
             ),
         ],
-        active_goals=[
+        goals=[
             Goal(
                 content="Помочь пользователю в разговоре",
                 horizon=GoalHorizon.SHORT,
@@ -523,8 +662,10 @@ def build_llm() -> OpenAIChatModel:
 
 
 def print_banner(model: str, workspace: Path, agent_id) -> None:
-    _rc.rule(f"[bold cyan]Atman LIVE CHAT[/bold cyan]  [dim]{model} @ {AGENT_BASE_URL}[/dim]",
-             style="cyan")
+    _rc.rule(
+        f"[bold cyan]Atman LIVE CHAT[/bold cyan]  [dim]{model} @ {AGENT_BASE_URL}[/dim]",
+        style="cyan",
+    )
     _rc.print(f"  [dim]agent   [/dim][cyan]{agent_id}[/cyan]")
     _rc.print(f"  [dim]workspace[/dim] {workspace}")
     _rc.print(f"  [dim]tools   [/dim][dim]{', '.join(t.__name__ for t in TOOLS)}[/dim]")
@@ -536,6 +677,13 @@ async def amain() -> int:
     workspace = AGENT_WORKSPACE
     workspace.mkdir(parents=True, exist_ok=True)
     agent_id = _get_or_create_agent_id()
+
+    try:
+        run_cli_preflight(print_fn=_rc.print)
+    except PreflightError as exc:
+        _rc.print(f"\n[red bold]Preflight failed — session aborted.[/red bold]\n{exc}")
+        return 1
+
     config = AgentConfig(model=ModelConfig(model=AGENT_MODEL, context_limit=4096))
     deps, sm, store = build_deps(workspace, agent_id, config)
 
@@ -543,14 +691,15 @@ async def amain() -> int:
     if os.getenv("DATABASE_URL") and deps.entity_registry is not None:
         try:
             from atman.adapters.memory.postgres_entity_registry import PostgresEntityRegistry
+
             pg_registry = PostgresEntityRegistry(os.environ["DATABASE_URL"])
             deps = replace(deps, entity_registry=pg_registry)
             _rc.print("  [dim]entity registry → postgres[/dim]")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _rc.print(f"  [dim yellow]postgres entity registry unavailable: {e}[/dim yellow]")
 
-    # Bootstrap only on first run (no identity stored yet)
-    if not (workspace / "identity.json").exists():
+    # Bootstrap only when the store has no identity yet (works for file and Postgres).
+    if store.load_identity(agent_id) is None:
         bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
@@ -566,6 +715,17 @@ async def amain() -> int:
     _log("session_id", session_id=str(session_id), workspace=str(workspace))
     _rc.print(f"  [dim]session  [/dim][cyan]{session_id}[/cyan]\n")
 
+    from atman.adapters.observability.sentry import (
+        session_transaction,
+        set_agent_scope,
+        set_session_tag,
+    )
+
+    set_agent_scope(str(agent_id))
+    set_session_tag(str(session_id))
+    _sentry_tx = session_transaction(str(session_id), str(agent_id))
+    _sentry_tx.__enter__()
+
     agent = Agent(
         llm,
         deps_type=type(deps),
@@ -574,11 +734,17 @@ async def amain() -> int:
     )
 
     con = AtmanConsole()
+    _slog_con.clear()
+    _slog_con.append(con)
     history: list[ModelMessage] = []
     close_reason: str | None = None
     # Keep ~4 recent turns to stay under model context limit.
     # Gemma4 via llama-server defaults to n_ctx=8192; system prompt alone is ~1.5k tokens.
     _MAX_HISTORY = 8
+
+    import time as _session_timer
+
+    _session_t0 = _session_timer.monotonic()
 
     try:
         while True:
@@ -624,6 +790,9 @@ async def amain() -> int:
             trimmed = history[-_MAX_HISTORY:] if len(history) > _MAX_HISTORY else history
             if len(history) > _MAX_HISTORY:
                 con.warn(f"History trimmed {len(history)} → {len(trimmed)} messages")
+            import time as _time
+
+            _t0_llm = _time.monotonic()
             try:
                 result = await agent.run(
                     user_text,
@@ -640,31 +809,42 @@ async def amain() -> int:
                         deps=deps,
                         message_history=trimmed if trimmed else None,
                     )
-                except Exception as e2:  # noqa: BLE001
+                except Exception as e2:
                     con.err(f"agent.run {type(e2).__name__}: {e2}")
                     history.clear()
                     continue
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 con.err(f"agent.run {type(e).__name__}: {e}")
                 con.flush("atman ✗")
                 continue
 
-            new_messages = _sanitize_history(list(result.all_messages()))
-            history.extend(new_messages)
+            _llm_ms = (_time.monotonic() - _t0_llm) * 1000
+            from atman.adapters.observability.sentry import metric_distribution
+
+            metric_distribution("atman.llm.latency_ms", _llm_ms, unit="millisecond")
+
+            history = _sanitize_history(list(result.all_messages()))
 
             # ── Atman post-turn: tool calls ────────────────────────────────────
             for msg in result.new_messages():
                 for part in getattr(msg, "parts", []):
                     if hasattr(part, "tool_name"):
                         raw_args = getattr(part, "args", {})
-                        _log("tool_call", tool=part.tool_name,
-                             args=raw_args if isinstance(raw_args, dict) else str(raw_args)[:200])
+                        _log(
+                            "tool_call",
+                            tool=part.tool_name,
+                            args=raw_args if isinstance(raw_args, dict) else str(raw_args)[:200],
+                        )
                         if isinstance(raw_args, dict):
                             kv = "  ".join(
                                 f"[dim]{k}[/dim]=[yellow]{str(v)[:40]!r}[/yellow]"
                                 for k, v in list(raw_args.items())[:2]
                             )
-                            extra = f"[dim] +{len(raw_args)-2} more[/dim]" if len(raw_args) > 2 else ""
+                            extra = (
+                                f"[dim] +{len(raw_args) - 2} more[/dim]"
+                                if len(raw_args) > 2
+                                else ""
+                            )
                         else:
                             kv = f"[yellow]{str(raw_args)[:80]}[/yellow]"
                             extra = ""
@@ -673,6 +853,7 @@ async def amain() -> int:
 
             # ── Agent response ─────────────────────────────────────────────────
             import re
+
             output = str(result.output or "").strip()
             clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
             clean = clean.encode("utf-8", "replace").decode("utf-8")
@@ -695,6 +876,13 @@ async def amain() -> int:
                 close_reason=close_reason,
             )
             con.ok(f"finish_session  close_reason={close_reason}")
+            from atman.adapters.observability.sentry import metric_distribution
+
+            metric_distribution(
+                "atman.session.duration",
+                (_session_timer.monotonic() - _session_t0) * 1000,
+                unit="millisecond",
+            )
         except ValueError as exc:
             if "Cannot finish session without key moments" in str(exc):
                 from atman.adapters.agent.runner import _force_finish
@@ -712,7 +900,7 @@ async def amain() -> int:
             event = deps.micro_reflection.reflect(session_id, agent_id=agent_id)
             _log("micro_reflection", outcome=event.key_insight[:80] if event.key_insight else "")
             con.add("🪞", "micro-reflection", f"[dim]{(event.key_insight or '')[:80]}[/dim]")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             con.add("🪞", "micro-reflection", f"[dim red]failed: {e}[/dim red]")
             _log("micro_reflection_error", error=str(e))
 
@@ -723,7 +911,7 @@ async def amain() -> int:
                 _log("maintenance", jobs_drained=done)
                 if done:
                     con.add("📋", "maintenance", f"[dim]{done} job(s) drained[/dim]")
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 con.add("📋", "maintenance", f"[dim red]{e}[/dim red]")
                 _log("maintenance_error", error=str(e))
 
@@ -732,17 +920,27 @@ async def amain() -> int:
             try:
                 findings = deps.memory_guardian.get_unresolved(agent_id)
                 for f in findings:
-                    _log("validation_finding", severity=f.severity,
-                         finding_type=f.finding_type, description=f.description)
-                    con.add("⚠", f"finding [{f.severity}]",
-                            f"[dim]{f.finding_type}:[/dim] {f.description[:100]}")
-            except Exception:  # noqa: BLE001
+                    detail_text = str(f.details)[:100]
+                    _log(
+                        "validation_finding",
+                        severity=f.severity,
+                        finding_type=f.finding_type,
+                        details=detail_text,
+                    )
+                    con.add(
+                        "⚠",
+                        f"finding [{f.severity}]",
+                        f"[dim]{f.finding_type}:[/dim] {detail_text}",
+                    )
+            except Exception:
                 pass
 
         _log("session_end", close_reason=close_reason)
 
         con.flush("atman session end")
         _rc.print(f"\n  [dim]workspace: {workspace}[/dim]")
+
+        _sentry_tx.__exit__(None, None, None)
     return 0
 
 
