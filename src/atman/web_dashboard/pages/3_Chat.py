@@ -513,7 +513,8 @@ def _fmt_event(ev: dict) -> str:
     event = ev["event"]
     d = ev.get("data", {})
     icon = _EVENT_ICONS.get(event, "·")
-    ts = ev.get("ts", "")[-8:]
+    ts_raw = ev.get("ts", "")
+    ts = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
 
     def _s(k, n=60):
         return str(d.get(k, ""))[:n]

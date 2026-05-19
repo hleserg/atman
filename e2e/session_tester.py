@@ -5,8 +5,8 @@ Each scenario: I send the opening, read what the agent actually said, craft a fo
 based on their real response. No fixed script after turn 1.
 
 Usage:
-    cd /atman/atman/.claude/worktrees/postgres-wire
-    PYTHONPATH=src:. python3 /root/.claude/jobs/7cefcecf/session_tester.py
+    make session-test
+    # or: PYTHONPATH=src:. python3 e2e/session_tester.py
 """
 
 from __future__ import annotations
@@ -57,6 +57,16 @@ _load_env()
 
 REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, f"{REPO}/src")
+
+# Strong refs for fire-and-forget entity registration (asyncio keeps weak refs only).
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
@@ -291,8 +301,7 @@ async def _do_turn(
                                 ent.entity_type,
                             )
 
-                entity_reg_task = asyncio.ensure_future(_bg())
-                del entity_reg_task
+                _fire_and_forget(_bg())
         except Exception as exc:
             tm.errors.append(f"entity-reg: {exc}")
 
