@@ -602,7 +602,7 @@ async def main() -> None:
 
     from e2e.live_chat import bootstrap_minimal_agent
 
-    if not (WORKSPACE / "identity.json").exists():
+    if store.load_identity(agent_id) is None:
         bootstrap_minimal_agent(store, agent_id)
         print("  identity bootstrapped ✓")
 
