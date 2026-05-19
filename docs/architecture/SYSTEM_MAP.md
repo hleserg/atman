@@ -116,6 +116,7 @@ All paths are absolute relative to the repository root.
 
 ### 1.5. Adapters (`src/atman/adapters/`)
 
+<!-- codemap:auto:start section="modules-cli" -->
 | File | Implements port | Behavior |
 |------|-----------------|----------|
 | `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | no persistence; `search()` returns results sorted by salience DESC (so `limit` truncation keeps the most important facts) |
@@ -174,6 +175,7 @@ All paths are absolute relative to the repository root.
 | `adapters/agent/preflight.py` (`run_cli_preflight`, `run_streamlit_preflight`, `check_nlp_packages`, `install_nlp`, `_streamlit_restart_argv`) | — | Session preflight gate: required NLP packages (optional install + process restart), PostgreSQL reachability, LLM endpoint probe; non-blocking model warmup in background; Streamlit variant uses `st.stop()` on hard failures and `_streamlit_restart_argv()` for `python -m streamlit run …` relaunch after NLP install |
 | `adapters/agent/runner.py` (`AtmanTurn`, `AtmanRunner`, `chat`, `_force_finish`, `_check_restart_requested`, `_do_restart`, `_build_restart_package`, `_check_token_usage`, `_start_stdin_reader`, `_stop_stdin_reader`, `_handle_menu_mode`, `_handle_free_time_mode`, `_call_trigger_router_if_enabled`) | — | **`AtmanTurn`**: per-turn pre/post pipeline for host agents (Streamlit `3_Chat.py`, `session_tester.py`) — clears `injected_context` each turn, passive/ambient RAG, skill behavioral hints + `trigger_router` suggestions via `_inject_skill_suggestions`, response analysis, auto key moments, `record_event` → AffectDetector, value-refusal capture, maintenance drain; signal-aware session lifecycle wrapper with restart loop, token monitoring, and timeout/menu (E22.2, E22.3, E22.5, E22.6); token monitoring: progressive warnings at 70/80/90%, force-close at 95% (`_check_token_usage`); queue-based stdin reader (no race on timeout); restart detection: sentinel → finish session with `close_reason="restart"` → build package (key moments + reason + tail) → new session with updated `AtmanDeps`; session timeout → menu mode (reflect/wait/sleep/save_to_memory/free_time); SIGTERM/KeyboardInterrupt/EOFError/SystemExit → graceful `_force_finish()`; creates minimal `KeyMoment` if empty; preserves exit codes; **R11.7** at session start surfaces top unresolved `PendingHumanReviewInbox` items as the first system message and conditionally registers `resolve_pending_review` / `request_reflection` tools when their backing dependencies are present in `AtmanDeps`; **opt-2**: initialises `SessionWorkingMemory` + `SessionCache` per session; calls `surface_for_context()` + `build_rag_context(budget=rag_token_budget)` before each `agent.run()`; clears all session caches in `finally` block; calls `la.clear_session_cache()` on `LinguisticAnalyzer` if present; **WP-08 v2 / PR #604**: before each turn calls `skill_manager.collect_behavioral_hints_from_message(user_text, …)` (errors suppressed) then `_call_trigger_router_if_enabled` → `build_skill_suggestions_section` → append via `inject_memory` (ephemeral like RAG; removes prior skill history message even when the current turn has no suggestions) |
 | `agents_registry.py` (`AgentsRegistry`) | — | PostgreSQL-backed registry of agent instances (app/admin DB URLs); used by `src/run_agent.py` |
+<!-- codemap:auto:end -->
 
 ### 1.5b. Optional local coding agent (**not** in core wheel — `atman_agent_cli/`)
 
@@ -888,7 +890,6 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `core` | 0 | 0 |
 | `adapters` | 0 | 0 |
 | `affect` | 0 | 0 |
-| `reflection` | 0 | 0 |
 | `skills` | 0 | 0 |
 | `tui` | 0 | 0 |
 | `web_dashboard` | 0 | 0 |
