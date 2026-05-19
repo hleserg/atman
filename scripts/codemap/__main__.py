@@ -51,6 +51,7 @@ def _run_main(args: argparse.Namespace, repo_root: Path) -> int:
     """Run the full codemap update pipeline."""
     from .extractor.ast_walker import walk_directory
     from .renderer.delta import write_delta_report
+    from .renderer.endpoints import write_endpoints
     from .renderer.startup_deps import write_startup_deps
     from .renderer.system_map import update_system_map
     from .renderer.test_env import write_test_env
@@ -119,6 +120,7 @@ def _run_main(args: argparse.Namespace, repo_root: Path) -> int:
     if not check_mode:
         write_startup_deps(repo_root)
         write_test_env(repo_root)
+        write_endpoints(repo_root, component_files)
         write_undocumented(component_files, repo_root)
         write_delta_report(diffs, run_ts, repo_root)
 
