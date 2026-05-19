@@ -10,6 +10,7 @@ Provides commands for:
 """
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -249,6 +250,9 @@ COMMANDS = {
 
 def main():
     """CLI entry point."""
+    from atman.observability import init_observability
+
+    init_observability(os.getenv("ATMAN_OBS_LEVEL", "minimal"))
     print_banner("Atman Experience Store CLI", "Type 'experience help' for available commands")
 
     storage_path = Path.home() / ".atman" / "experiences.jsonl"

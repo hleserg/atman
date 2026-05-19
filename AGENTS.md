@@ -451,6 +451,13 @@ Rules:
   - **identity-store/**
       - `README-ru.md` — Identity Store (Хранилище идентичности)
       - `README.md` — Identity Store
+  - **observability/**
+      - `README-ru.md` — Observability (Sentry)
+      - `README.md` — Observability (Sentry)
+      - `instrumentation-allowlist-rationale.md` — Instrumentation allowlist rationale
+      - `levels.md` — Observability levels — ATMAN_OBS_LEVEL
+      - `spotlight-ru.md` — Spotlight — локальный UI для разработки
+      - `spotlight.md` — Spotlight — local dev observability UI
   - **reflection-engine/**
       - `README-ru.md` — Движок рефлексии
       - `README.md` — Reflection Engine
