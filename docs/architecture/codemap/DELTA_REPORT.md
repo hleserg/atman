@@ -1,6 +1,6 @@
 # Codemap Delta Report
 
-> Generated at 2026-05-19T14:45:54.996195+00:00 by `make codemap`. Do not edit.
+> Generated at 2026-05-19T14:46:46.523824+00:00 by `make codemap`. Do not edit.
 
 **3 component(s) changed:**
 
