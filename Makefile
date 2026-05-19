@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -32,7 +32,7 @@ audit:
 	pip-audit -r /tmp/_atman_reqs.txt
 	@rm -f /tmp/_atman_reqs.txt
 
-check: lint format typecheck security lint-boundary test
+check: lint format typecheck security lint-boundary check-eval-deps-placement test
 	@echo ""
 	@echo "All checks passed."
 
@@ -150,10 +150,13 @@ playbook-audit:
 # ===== Eval / Production isolation =====
 # (added by setup_prod_eval_boundary.sh — see docs/architecture/PROD_EVAL_BOUNDARY.md)
 
-.PHONY: lint-boundary verify-prod-isolation eval-db-init eval-db-migrate eval-db-downgrade eval-db-test eval-up eval-down
+.PHONY: lint-boundary check-eval-deps-placement verify-prod-isolation eval-db-init eval-db-migrate eval-db-downgrade eval-db-test eval-up eval-down
 
 lint-boundary:
 	python3 -c "from importlinter.cli import lint_imports_command; lint_imports_command()"
+
+check-eval-deps-placement:
+	bash scripts/infra/check_eval_deps_placement.sh
 
 verify-prod-isolation:
 	bash scripts/infra/verify_prod_isolation.sh
