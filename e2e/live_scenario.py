@@ -14,6 +14,8 @@
             Проверяем: контекст сессии 1 инжектируется, value alignment работает.
   Сессия 3: Короткое рефлексивное завершение.
             Проверяем: narrative накапливает опыт, unexamined_fact_refs.
+
+Note: ``log_experience`` was removed from agent tools; use ``record_key_moment``.
 """
 
 from __future__ import annotations

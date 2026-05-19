@@ -16,6 +16,7 @@ from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.agent.instructions import build_instructions
 from atman.adapters.agent.token_monitor import ContextLimitExceeded, TokenMonitor
 from atman.adapters.agent.tools import (
+    log_experience,
     record_key_moment,
     restart_session,
     wait_session,
@@ -28,6 +29,7 @@ __all__ = [
     "ModelConfig",
     "TokenMonitor",
     "build_instructions",
+    "log_experience",
     "record_key_moment",
     "restart_session",
     "wait_session",

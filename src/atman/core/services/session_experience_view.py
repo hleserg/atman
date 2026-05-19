@@ -21,7 +21,13 @@ def build_session_experience(
     session: Session,
     moments_for_session: list[KeyMoment],
 ) -> SessionExperience:
-    """Synthesize a :class:`SessionExperience` from a session + its moments."""
+    """Synthesize a :class:`SessionExperience` from a session + its moments.
+
+    ``SessionExperience.fact_refs`` is the union of fact IDs referenced by key
+    moments and ``session.unexamined_fact_refs`` (facts read/surfaced without a
+    colored moment). Downstream reflection should treat this as “all fact
+    interactions during the session”, not “only facts attached to key moments”.
+    """
     moment_ids = [m.id for m in moments_for_session]
 
     avg_intensity = 0.5

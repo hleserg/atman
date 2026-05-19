@@ -840,97 +840,111 @@ rollback plan
 
 ## 24. Структура репозитория
 
-Каждый файл должен лежать в строго определённом месте. Правило простое: не знаешь куда — спроси. Не придумывай новые папки без необходимости.
+Каждый файл должен лежать в строго определённом месте.
+Полная спецификация структуры `docs/` — в `docs/design/DESIGN_docs_structure.md`.
+Правило простое: не знаешь куда — смотри таблицу ниже или спроси.
 
 ### Корень репозитория `/`
 
 Только то, что GitHub и инструменты ожидают найти в корне:
 
 ```text
-README.md          — точка входа для людей (+ README-ru.md для русской версии)
-AGENTS.md          — инструкции для агентов
-.gitignore
-.gitattributes
-pyproject.toml     — конфигурация Python-пакета
-.github/           — шаблоны PR/issues, GitHub Actions workflows, Dependabot
-src/               — исполняемый код
-tests/             — тесты
+README.md / README-ru.md   — точка входа для людей
+MANIFEST.md / MANIFEST-ru.md
+AGENTS.md                  — инструкции для агентов (только EN)
+CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md / LICENSE
+Makefile
+pyproject.toml / uv.lock
+.gitignore / .gitattributes / .markdownlint.json / .pre-commit-config.yaml
+.github/                   — Actions workflows, шаблоны PR/issues
+.cursor/                   — правила для Cursor
+src/                       — исполняемый код
+tests/                     — тесты
+e2e/                       — end-to-end сценарии
+fixtures/                  — тестовые фикстуры
+reports/                   — отчёты о сессиях и реализации
+scripts/                   — служебные скрипты (codemap, docs, eval)
 ```
 
-Запрещено класть в корень: манифесты, отчёты, HTML-файлы сайта, скрипты-демо, исследования, дополнительные README для отдельных модулей и **пошаговые инструкции по фичам** (демо, CLI, walkthrough) — они живут только под `docs/`.
+Запрещено класть в корень: design-документы, отчёты, HTML-файлы сайта,
+скрипты-демо, исследования, work packages, README к отдельным модулям.
 
-### `/docs` — вся документация и сайт
-
-GitHub Pages читает из `/docs`. Всё для сайта и для людей — сюда.
+### `/docs` — вся документация
 
 ```text
 docs/
-  CNAME                        — домен GitHub Pages (atmanai.dev)
-  index.html, document.html    — лендинг и просмотр документов
-  pic/                         — ассеты сайта (логотип и т.д.)
-  content/                     — копии для `document.html`: с корня `README.md` / `README-ru.md` / `MANIFEST.md` / `MANIFEST-ru.md`, из `docs/architecture/` — `SYSTEM.md` / `SYSTEM-ru.md`; копирование всегда **с перезаписью** существующих файлов в `docs/content/` (см. правило для `README.md` ниже); удобно: `make sync-site-content`
-  architecture/                — SYSTEM.md, ADR, архитектурные решения
-  development/                 — DEVELOPMENT_STANDARD.md, work packages
-  research/                    — исследования, эксперименты, GPT-диалоги
-  ideas/                       — гипотезы, ещё не взятые в работу
-  features/                    — по одной подпапке на фичу (см. ниже)
+  architecture/            — ЧТО такое система (стабильное, прорецензированное)
+    SYSTEM.md / -ru.md
+    SYSTEM_MAP.md / -ru.md   ← авто-обновляется кодмапом
+    ADR/                     ← Architecture Decision Records (ADR-NNN-title.md)
+    codemap/                 ← авто-генерируется скриптом, не редактировать руками
+      STARTUP_DEPS.md / -ru.md
+      TEST_ENV.md / -ru.md
+      ENDPOINTS.md / -ru.md
+      DELTA_REPORT.md / -ru.md
+      UNDOCUMENTED.md / -ru.md
+
+  design/                  — КАК строим конкретные вещи (эволюционирует)
+    DESIGN_*.md / -ru.md
+    *-design.md / -ru.md
+
+  development/             — процесс и стандарты
+    DEVELOPMENT_STANDARD.md (этот файл)
+    work-packages/           ← ТЗ на реализацию, NN-name.md
+
+  features/                — пользовательские гайды по фичам
+    <slug>/
+      README.md / README-ru.md
+
+  ops/                     — как запускать и эксплуатировать Atman
+    УСТАНОВКА.md
+    ...
+
+  research/                — что изучалось; нет обязательства действовать
+  ideas/                   — гипотезы, ещё не в работе
+  archive/                 — устаревшее; только git mv, не удалять
+
+  content/                 — копии для GitHub Pages; НЕ редактировать вручную
+    README.md / -ru.md
+    MANIFEST.md / -ru.md
+    SYSTEM.md / -ru.md
+    SYSTEM_MAP.md / -ru.md
+
+  (ассеты сайта)
+    CNAME / index.html / document.html / demo.html / pic/
 ```
 
-### `/docs/features/<slug-фичи>/` — инструкции по фиче (демо, использование)
+### Быстрая таблица: куда класть новый документ
 
-Для каждой **существенной реализованной фичи** (work package, новый CLI, новый
-публичный контракт), которую нужно показать без чтения кода:
-
-- создать каталог `docs/features/<slug>/`, где `<slug>` — короткое имя в стиле
-  `experience-store`, `factual-memory` (латиница, дефисы);
-- положить пару **`README.md`** (основной язык — английский) и **`README-ru.md`**
-  (русский перевод по смыслу);
-- обе версии обновлять синхронно: сначала правки в `README.md`, затем в
-  `README-ru.md`;
-- не дублировать эти материалы в корне репозитория.
-
-Примеры: Factual Memory → [`docs/features/factual-memory/README.md`](../features/factual-memory/README.md); Experience Store → [`docs/features/experience-store/README.md`](../features/experience-store/README.md).
-
-### `/docs/architecture` — архитектурные документы
-
-- `SYSTEM.md` — главный архитектурный документ (+ `-ru.md` версия)
-- ADR (Architecture Decision Records) — если принимается важное архитектурное решение, оно фиксируется здесь
-- Черновики и устаревшие версии помечать суффиксом даты или `0.00` и не удалять без явного решения
-
-### `/docs/development` — рабочие соглашения
-
-- `DEVELOPMENT_STANDARD.md` — этот документ
-- `work-packages/` — технические задания на реализацию
-
-### `/docs/research` — исследования
-
-Всё что изучалось, но не стало архитектурным решением: сравнения библиотек, эксперименты, диалоги с другими LLM, отчёты интеграций.
-
-### `/docs/ideas` — гипотезы
-
-Идеи которые ещё не взяты в работу. Файл в идеях — не задача и не обязательство.
-
-### `/reports` — отчёты о сессиях
-
-Структурированные отчёты о рабочих сессиях по шаблону `reports/sessions/TEMPLATE.md`.
-
-### Манифест — исключение
-
-`MANIFEST.md` (и его переводы) остаётся в корне — это лицо проекта, которое GitHub отображает на главной странице репозитория. Это единственное исключение из правила «только технические файлы в корне».
+| Создаёшь... | Папка |
+|-------------|-------|
+| Архитектурное решение (принято, стабильно) | `docs/architecture/ADR/ADR-NNN-title.md` |
+| Design doc (в процессе, эволюционирует) | `docs/design/DESIGN_*.md` |
+| Гайд для пользователя фичи | `docs/features/<slug>/README.md` + `README-ru.md` |
+| ТЗ на реализацию (work package) | `docs/development/work-packages/NN-name.md` |
+| Операционный runbook (установка, мониторинг) | `docs/ops/` |
+| Исследование, сравнение, эксперимент | `docs/research/` |
+| Гипотеза, ещё не в работе | `docs/ideas/` |
+| Отчёт о реализации / сессии | `reports/` |
 
 ### Правила для агентов
 
-- Создал новый документ — проверь в какую папку он относится по этой схеме
-- Документация к work package — в `docs/development/work-packages/`, не в корне
-- Инструкции по фиче (демо, CLI, инварианты) — в **`docs/features/<slug>/`** как **`README.md`** + **`README-ru.md`**, не в корне
-- Карта системы — **`docs/architecture/SYSTEM_MAP.md`** + **`SYSTEM_MAP-ru.md`**; обновляется в том же PR, что и код (см. §26)
-- Отчёт о реализации (`IMPLEMENTATION_REPORT.md`) — в `reports/`
-- Скрипты-демо (`demo.py`, `full_demo.sh`) — в `src/` или удалить после завершения работы
-- Файлы сайта — в `docs/` (`index.html`, `document.html`, `pic/`, `CNAME`), не в корне репозитория
-- **`README.md`**: любое изменение английского README обязывает **сначала** обновить **`README-ru.md`** (русская версия по смыслу). **Затем** скопировать **`README.md`** и **`README-ru.md`** в **`docs/content/`**, **заменив** лежащие там одноимённые файлы (не оставлять устаревших копий). Практически: после правок пары выполни `make sync-site-content` — она перезаписывает копии в `docs/content/`.
-- Правили **`MANIFEST.md`** / **`MANIFEST-ru.md`** или **`docs/architecture/SYSTEM.md`** / **`SYSTEM-ru.md`** — синхронизируй пару языков, затем **`make sync-site-content`** (копии в `docs/content/` перезаписываются).
-- Не создавать новые папки в корне без явного решения в PR
-- Для установки зависимостей и запуска проверок по возможности использовать **uv** (`uv venv`, `uv pip install`, `uv run …`); см. раздел «Локальная разработка: uv» выше и `AGENTS.md`
+- **Создал новый документ** — найди строку в таблице выше; не знаешь — спроси.
+- **Не создавай новые папки** в корне и в `docs/` без явного решения в PR.
+- **Не редактируй `docs/content/`** — файлы там перезаписываются автоматически.
+- **Не кладёт в `docs/archive/`** — туда только переносят через `git mv`.
+- **Feature guide** (`docs/features/<slug>/`) — только пара `README.md` + `README-ru.md`.
+- **Work package** — только в `docs/development/work-packages/`, имя `NN-name.md`.
+- **ADR** — только в `docs/architecture/ADR/`, имя `ADR-NNN-short-title.md`.
+- **Design doc** — префикс `DESIGN_` или суффикс `-design.md`.
+- **Двуязычность**: `docs/architecture/`, `docs/design/`, `docs/ops/` требуют `-ru.md` пару.
+  EN пишется первым, RU — следом. `docs/research/` и `docs/ideas/` — RU опционально.
+- **`SYSTEM_MAP.md`**: обновляется кодмапом автоматически (§1 таблицы).
+  §2–§5 (сценарии, edge cases, регрессии) — обновлять руками в том же PR, что и код.
+- **`README.md` / `MANIFEST.md` / `SYSTEM.md`**: правишь EN → сразу синхронизируй RU →
+  запусти `make sync-site-content` (обновит `docs/content/`).
+- **Скрипты-демо** (`demo.py`, `full_demo.sh`) — в `src/` или удалить после merge.
+- **`uv`**: для установки и запуска предпочитать `uv run`, `uv pip install`.
 
 ## 25. Checklist перед началом новой задачи
 
@@ -1039,3 +1053,89 @@ fact -> experience -> reflection -> identity/narrative/skill
 
 Если цепочку нельзя восстановить, утверждение должно быть помечено как
 гипотеза, uncertainty или presentation text, но не как устойчивое знание Atman.
+## 28. Документация: когда создавать и что писать
+
+### 28.1 Обязательные артефакты при merge PR
+
+Каждый PR, который добавляет или меняет поведение системы, обязан включать:
+
+| Изменение в коде | Обязательный doc-артефакт |
+|------------------|--------------------------|
+| Новый work package / компонент | `docs/development/work-packages/NN-name.md` |
+| Реализованная фича (публичный CLI / API) | `docs/features/<slug>/README.md` + `README-ru.md` |
+| Архитектурное решение (breaking change, новый сервис) | `docs/architecture/ADR/ADR-NNN-title.md` |
+| Новый порт, адаптер, сервис | обновление `SYSTEM_MAP.md` (§1 маркеры, §2 проводка) |
+| Новая CLI-команда | обновление `docs/architecture/codemap/ENDPOINTS.md` (авто при `make codemap`) |
+| Новая env-переменная | обновление `.env.example` + `docs/architecture/codemap/STARTUP_DEPS.md` |
+
+PR без нужного doc-артефакта не готов к merge. Исключение: правки в тестах,
+опечатки, рефакторинг без изменения публичного контракта — можно указать
+`docs: N/A — internal refactor` в описании PR.
+
+### 28.2 Язык документов
+
+- `docs/architecture/`, `docs/design/`, `docs/ops/` — **EN канонический**, RU следом.
+- `docs/features/<slug>/README.md` — **EN канонический**, `README-ru.md` следом.
+- `docs/development/work-packages/` — **RU** (агент пишет ТЗ на русском для понимания).
+- `docs/research/`, `docs/ideas/` — любой язык, RU-пара опциональна.
+- `AGENTS.md` — только **EN** (агенты работают на английском).
+- `MANIFEST.md`, `SYSTEM.md` — **EN + RU**, оба файла обязательны.
+
+### 28.3 Что писать в design doc (docs/design/)
+
+Минимальная структура `DESIGN_*.md`:
+
+```markdown
+# Design — <Title>
+
+> **Type:** Design document
+> **Status:** Draft | Review | Decided
+> **Date:** YYYY-MM-DD
+> **Location:** docs/design/DESIGN_<name>.md
+
+## 1. Problem
+<Что не работает или чего не хватает — конкретно.>
+
+## 2. Decision
+<Что делаем. Достаточно конкретно чтобы агент мог реализовать без уточнений.>
+
+## 3. Out of scope
+<Что явно НЕ входит в это решение.>
+
+## 4. Open questions
+<Что ещё не решено. Если пусто — удалить раздел.>
+```
+
+Когда design принят → ADR в `docs/architecture/ADR/`.
+
+### 28.4 Что писать в ADR (docs/architecture/ADR/)
+
+```markdown
+# ADR-NNN — <Short title>
+
+**Status:** Proposed | Accepted | Deprecated | Superseded by ADR-NNN
+**Date:** YYYY-MM-DD
+
+## Context
+## Decision
+## Alternatives considered
+## Consequences
+## Migration impact
+```
+
+ADR обязателен (см. §22) при: новом обязательном сервисе, breaking schema change,
+смене lifecycle, смене storage boundary, новом типе памяти.
+
+### 28.5 Авто-обновление документации
+
+Скрипт `make codemap` обновляет автоматически:
+- `docs/architecture/SYSTEM_MAP.md` — §1 таблицы (модули, порты, адаптеры)
+- `docs/architecture/codemap/*` — STARTUP_DEPS, TEST_ENV, ENDPOINTS, DELTA, UNDOCUMENTED
+- `README.md` — roadmap-блок и список готовых компонентов
+- `AGENTS.md` и `.cursor/rules` — блок с картой документации
+
+Агент **не должен** редактировать эти блоки вручную — правки будут перезаписаны.
+Блоки обёрнуты маркерами `<!-- codemap:auto:start ... -->`.
+
+Запускать перед коммитом: `make codemap`. CI упадёт если маркеры устарели.
+
