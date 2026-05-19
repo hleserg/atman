@@ -335,7 +335,7 @@ def test_worker_lingvo_idempotent_when_markers_present() -> None:
         ),
         why_it_matters="why",
         structured_markers=pre_filled,
-        structured_markers_version="1.0",
+        structured_markers_version="2.0",
     )
     store.store_key_moments(uuid4(), [moment])
 
@@ -349,7 +349,7 @@ def test_worker_lingvo_idempotent_when_markers_present() -> None:
     assert refreshed is not None
     # Point-K markers already present under "k" — worker must not overwrite
     assert refreshed.structured_markers == pre_filled
-    assert refreshed.structured_markers_version == "1.0"
+    assert refreshed.structured_markers_version == "2.0"
     skipped = queue.list_jobs(status=JobStatus.skipped, agent_id=agent)
     assert len(skipped) == 1
 
