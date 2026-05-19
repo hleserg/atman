@@ -800,6 +800,7 @@ class AtmanRunner:
             # Tracks the last RAG message appended to history (assistant_message /
             # user_message modes) so it can be removed before the next turn's injection.
             _last_rag_history_msg: object = None
+            _last_skill_history_msg: object = None
 
             while True:
                 print_prompt("You: ")
@@ -855,6 +856,7 @@ class AtmanRunner:
                 _skill_suggestions_text = ""
                 if _suggestions:
                     from atman.adapters.agent.instructions import build_skill_suggestions_section
+
                     _skill_suggestions_text = build_skill_suggestions_section(_suggestions)
 
                 # Surface relevant memories via RAG when PassiveMemoryInjector is wired.
@@ -907,9 +909,18 @@ class AtmanRunner:
                             # History-based modes: capture the appended message so
                             # we can remove it before the next turn's injection.
                             _last_rag_history_msg = history[-1]
+                else:
+                    # Without PMI there is no per-turn reset above — clear stale skill text.
+                    deps = replace(deps, injected_context=_base_injected_context)
 
                 # Append skill suggestions (from trigger_router) to this turn's context.
                 if _skill_suggestions_text:
+                    if _last_skill_history_msg is not None:
+                        with contextlib.suppress(ValueError):
+                            history.remove(_last_skill_history_msg)
+                        _last_skill_history_msg = None
+
+                    _history_len_before_skills = len(history)
                     _skill_extra = inject_memory(
                         _skill_suggestions_text,
                         mode=self._config.memory_injection_mode,
@@ -924,6 +935,8 @@ class AtmanRunner:
                                 f"{_current_ctx}\n{_skill_extra}" if _current_ctx else _skill_extra
                             ),
                         )
+                    elif len(history) > _history_len_before_skills:
+                        _last_skill_history_msg = history[-1]
 
                 try:
                     result = await agent.run(

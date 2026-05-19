@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from atman.skills.models import DailySkillSummary, DeepSkillSummary
     from atman.core.ports.skill_manager import SkillManagerPort
+    from atman.skills.models import DailySkillSummary, DeepSkillSummary
 
 from atman.core.clock_impl import SystemClock, ensure_utc
 from atman.core.exceptions import NarrativePersistenceConflictError
@@ -622,6 +622,8 @@ class DailyReflectionService:
                 notes += (
                     f" skill_revision_high_priority={len(skill_summary.high_priority_revisions)}"
                 )
+            if skill_summary.promoted_from_draft:
+                notes += f" skill_promoted_from_draft={len(skill_summary.promoted_from_draft)}"
 
         key_insight_parts = [f"Daily reflection: {len(patterns_detected)} patterns detected"]
         if agent_reasons:
@@ -633,6 +635,9 @@ class DailyReflectionService:
         if skill_summary is not None and skill_summary.high_priority_revisions:
             joined = ", ".join(skill_summary.high_priority_revisions[:3])
             key_insight_parts.append(f"Skills needing revision: {joined}")
+        if skill_summary is not None and skill_summary.promoted_from_draft:
+            joined = ", ".join(skill_summary.promoted_from_draft[:3])
+            key_insight_parts.append(f"Skills promoted from draft: {joined}")
         key_insight = ". ".join(key_insight_parts)
 
         event = ReflectionEvent(

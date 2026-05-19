@@ -753,6 +753,12 @@ def build_daily_reflection_service(
         state_store=state_store, divergence_event_store=divergence_event_store
     )
 
+    from atman.config import build_embedding_adapter
+
+    skill_manager = _build_skill_manager(
+        agent_id, build_embedding_adapter(), entity_registry=entity_registry
+    )
+
     return DailyReflectionService(
         session_repo=session_repo,
         identity_repo=identity_repo,
@@ -770,6 +776,7 @@ def build_daily_reflection_service(
         ),
         findings_triage=FindingsTriage(guardian=guardian),
         reflection_request_queue=InMemoryReflectionRequestQueue(),
+        skill_manager=skill_manager,
         agent_id=agent_id,
     )
 
@@ -817,6 +824,12 @@ def build_deep_reflection_service(
         state_store=state_store, divergence_event_store=divergence_event_store
     )
 
+    from atman.config import build_embedding_adapter
+
+    skill_manager = _build_skill_manager(
+        agent_id, build_embedding_adapter(), entity_registry=entity_registry
+    )
+
     return DeepReflectionService(
         session_repo=session_repo,
         identity_repo=identity_repo,
@@ -844,5 +857,6 @@ def build_deep_reflection_service(
             reflection_model=model,
         ),
         reflection_request_queue=InMemoryReflectionRequestQueue(),
+        skill_manager=skill_manager,
         agent_id=agent_id,
     )

@@ -532,14 +532,7 @@ class PostgresSkillStore:
         with self._conn(agent_id) as conn:
             row = conn.execute(
                 """
-                WITH recent_sessions AS (
-                    SELECT DISTINCT session_id
-                    FROM public.skill_invocations
-                    WHERE agent_id = %s
-                    ORDER BY session_id
-                    -- order by the earliest started_at for each session
-                ),
-                ranked AS (
+                WITH ranked AS (
                     SELECT session_id,
                            MIN(started_at) AS first_ts
                     FROM public.skill_invocations
@@ -553,7 +546,7 @@ class PostgresSkillStore:
                 JOIN ranked r ON si.session_id = r.session_id
                 WHERE si.skill_id = %s AND si.agent_id = %s
                 """,
-                [agent_id, agent_id, n_sessions, skill_id, agent_id],
+                [agent_id, n_sessions, skill_id, agent_id],
             ).fetchone()
         return int(row[0]) if row else 0
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess  # nosec B404
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,10 +34,18 @@ from atman.skills.projection import ProjectionAdapter
 from atman.skills.retriever import SkillRetriever
 from atman.skills.store import SkillStore
 
+_log = logging.getLogger(__name__)
+
+
+def _message_contains_hint_pattern(text_lower: str, pattern: str) -> bool:
+    """Match short tokens on word boundaries to avoid false positives (e.g. 'no' in 'know')."""
+    if len(pattern) <= 4:
+        return bool(re.search(rf"(?<!\w){re.escape(pattern)}(?!\w)", text_lower))
+    return pattern in text_lower
+
+
 if TYPE_CHECKING:
     from atman.core.ports.entity_registry import EntityRegistry
-
-_log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -688,13 +697,14 @@ class SkillManager:
         hint: str | None = None
 
         for pattern in self._POSITIVE_PATTERNS:
-            if pattern in text_lower:
-                hint = "user_positive_signal"
+            if _message_contains_hint_pattern(text_lower, pattern):
+                # Substrings must match _determine_final_status (helped / didnt_help).
+                hint = "user_helped_signal"
                 break
         if hint is None:
             for pattern in self._NEGATIVE_PATTERNS:
-                if pattern in text_lower:
-                    hint = "user_negative_signal"
+                if _message_contains_hint_pattern(text_lower, pattern):
+                    hint = "user_didnt_help_signal"
                     break
 
         if hint is None:
