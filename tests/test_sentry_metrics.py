@@ -34,6 +34,31 @@ def test_init_sentry_from_env_off_level_returns_false(monkeypatch: pytest.Monkey
         sentry_mod._initialized = orig
 
 
+def test_init_sentry_from_env_off_level_blocks_fallback_init(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ATMAN_OBS_LEVEL=off must prevent legacy _init() even when new module import fails."""
+    monkeypatch.setenv("SENTRY_DSN", "https://pub@fake.ingest.sentry.io/99")
+    monkeypatch.setenv("ATMAN_OBS_LEVEL", "off")
+    orig = sentry_mod._initialized
+    try:
+        with patch("atman.adapters.observability.sentry._init") as mock_init:
+            # Force the try-block to raise so we hit the fallback path
+            with patch(
+                "builtins.__import__",
+                side_effect=lambda name, *a, **kw: (
+                    (_ for _ in ()).throw(ImportError("simulated"))
+                    if name == "atman.observability"
+                    else __import__(name, *a, **kw)
+                ),
+            ):
+                result = sentry_mod.init_sentry_from_env()
+        mock_init.assert_not_called()
+        assert result is False
+    finally:
+        sentry_mod._initialized = orig
+
+
 def test_metric_increment_falls_back_when_count_missing() -> None:
     incr = MagicMock()
     metrics = MagicMock()

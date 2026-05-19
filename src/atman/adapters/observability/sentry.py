@@ -48,6 +48,9 @@ def init_sentry_from_env() -> bool:
         return _initialized
     except Exception:
         pass
+    # Honour explicit opt-out even when the new module failed to import.
+    if os.getenv("ATMAN_OBS_LEVEL", "").strip().lower() == "off":
+        return False
     env = os.getenv("SENTRY_ENVIRONMENT", "production")
     return _init(dsn=dsn, environment=env)
 
