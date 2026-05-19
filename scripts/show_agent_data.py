@@ -108,11 +108,11 @@ def _show_facts(conn, agent_id: UUID) -> None:
 def _show_entities(conn, schema: str, agent_id: UUID) -> None:
     rows = conn.execute(
         f"""
-        SELECT e.id, e.name, e.entity_type, COUNT(fe.fact_id) AS fact_cnt, e.first_seen_at
+        SELECT e.id, e.canonical_name, e.entity_type, COUNT(fe.fact_id) AS fact_cnt, e.first_seen_at
         FROM {schema}.entities e
         LEFT JOIN {schema}.fact_entities fe ON fe.entity_id = e.id
         WHERE e.agent_id = %s
-        GROUP BY e.id, e.name, e.entity_type, e.first_seen_at
+        GROUP BY e.id, e.canonical_name, e.entity_type, e.first_seen_at
         ORDER BY fact_cnt DESC, e.first_seen_at DESC
         LIMIT 20
         """,
