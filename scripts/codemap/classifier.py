@@ -170,8 +170,6 @@ def apply_high_confidence_moves(
         if not src.exists():
             continue
 
-        moves.append((doc.path, str(dest.relative_to(repo_root))))
-
         if not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
             if dest.exists():
@@ -179,5 +177,7 @@ def apply_high_confidence_moves(
                 continue
             src.rename(dest)
             log.info("Moved %s → %s", src, dest)
+
+        moves.append((doc.path, str(dest.relative_to(repo_root))))
 
     return moves
