@@ -101,3 +101,32 @@ def test_atman_turn_pre_does_not_retain_stale_context_on_second_turn() -> None:
     assert second.injected_context is None or "turn-one context" not in (
         second.injected_context or ""
     )
+
+
+def test_atman_turn_on_event_receives_pipeline_events() -> None:
+    """on_event hook receives passive_rag events when injector surfaces items."""
+    from dataclasses import replace
+    from unittest.mock import MagicMock
+
+    from atman.core.models.fact import FactRecord
+    from atman.core.services.passive_memory_injector import SurfacedMemoryItem
+
+    deps, sm = _minimal_deps()
+    injector = MagicMock()
+    injector.surface_for_context.return_value = [
+        SurfacedMemoryItem(
+            item=FactRecord(content="remembered fact", source="test"),
+            source="similarity",
+            score=0.9,
+        )
+    ]
+    deps = replace(deps, passive_memory_injector=injector)
+    seen: list[str] = []
+    turn = AtmanTurn(
+        deps,
+        sm,
+        deps.session_id,
+        on_event=lambda event, **_: seen.append(event),
+    )
+    turn.pre("hello")
+    assert "passive_rag" in seen

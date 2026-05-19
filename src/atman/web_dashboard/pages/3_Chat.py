@@ -229,7 +229,7 @@ def _stream_agent(prompt: str, deps, history: list, agent, model_settings):
             ) as streamed:
                 async for token in streamed.stream_text(delta=True):
                     tok_q.put(token)
-                # Snapshot before __aexit__ — pydantic-ai may release buffers on exit.
+                # Snapshot new_messages before __aexit__ (Devin: avoid post-exit buffer loss).
                 holder["new_messages"] = list(streamed.new_messages())
         except Exception as exc:
             holder["error"] = exc

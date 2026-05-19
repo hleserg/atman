@@ -18,6 +18,7 @@ Both raise / call st.stop() if a REQUIRED check fails and cannot be auto-fixed.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess  # nosec B404 — trusted dev install/warmup helpers
 import sys
@@ -48,6 +49,27 @@ def _pg_url() -> str:
 
 def _repo_root() -> str:
     return str(Path(__file__).resolve().parents[4])
+
+
+def _streamlit_restart_argv() -> list[str]:
+    """Build a restart argv that works for ``python -m streamlit run …`` launches."""
+    argv = [sys.executable, *sys.argv]
+    if len(argv) >= 3 and argv[1] == "-m" and argv[2] == "streamlit":
+        return argv
+    if len(argv) >= 2 and argv[1] in ("run", "hello"):
+        return argv
+    with contextlib.suppress(Exception):
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is not None and getattr(ctx, "main_script_path", None):
+            script = str(ctx.main_script_path)
+            extra = [a for a in sys.argv[1:] if a not in (script, "run")]
+            return [sys.executable, "-m", "streamlit", "run", script, *extra]
+    script = os.getenv("STREAMLIT_SCRIPT_PATH", "").strip()
+    if script:
+        return [sys.executable, "-m", "streamlit", "run", script]
+    return argv
 
 
 # ── Shared checks ─────────────────────────────────────────────────────────────
@@ -219,7 +241,7 @@ def run_streamlit_preflight() -> None:
             if success:
                 st.success("✅ Packages installed. Restarting Streamlit server…")
                 time.sleep(1)
-                os.execv(sys.executable, [sys.executable, *sys.argv])  # nosec B606
+                os.execv(sys.executable, _streamlit_restart_argv())  # nosec B606
                 # Never reached
             else:
                 st.session_state.pop("_preflight_installing", None)
