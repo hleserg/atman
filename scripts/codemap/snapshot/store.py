@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -48,10 +48,12 @@ def save_snapshot(snapshot: ComponentSnapshot, base: Path = SNAPSHOTS_DIR) -> No
     base.mkdir(parents=True, exist_ok=True)
     path = _snapshot_path(snapshot.component_id, base)
     try:
-        path.write_text(json.dumps(asdict(snapshot), indent=2, ensure_ascii=False), encoding="utf-8")
+        path.write_text(
+            json.dumps(asdict(snapshot), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
     except Exception as exc:
         log.warning("Failed to save snapshot %s: %s", path, exc)
 
 
 def now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()

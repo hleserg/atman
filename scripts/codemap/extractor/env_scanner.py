@@ -48,9 +48,7 @@ def scan_config_file(config_path: Path) -> list[EnvVar]:
             elif isinstance(base, ast.Attribute):
                 base_names.append(base.attr)
 
-        is_settings = any(
-            "Settings" in b or b in ("BaseSettings", "BaseModel") for b in base_names
-        )
+        is_settings = any("Settings" in b or b in ("BaseSettings", "BaseModel") for b in base_names)
         if not is_settings:
             continue
 

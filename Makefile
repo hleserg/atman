@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix
 
 lint:
 	ruff check src/ tests/ e2e/
@@ -201,3 +201,32 @@ typecheck-agent-cli:
 
 agent-check-prep: agent-cli-lint typecheck-agent-cli agent-smoke agent-preflight
 	@echo "Agent prep gates done (scripts + permissive pyright + smoke + preflight)."
+
+# ===== Living Codemap =====
+# Update all codemap:auto blocks (SYSTEM_MAP.md, AGENTS.md, .cursor/rules, ancillary reports).
+codemap:
+	python3 -m scripts.codemap --no-coverage --lang en
+
+# CI gate: exit 1 if any tracked file is stale.
+codemap-check:
+	python3 -m scripts.codemap --no-coverage --lang en --check
+
+# Update README.md codemap markers only.
+codemap-readme:
+	python3 -m scripts.codemap readme --lang en
+
+# Update AGENTS.md and .cursor/rules/docs-placement.mdc.
+codemap-agents:
+	python3 -m scripts.codemap agents --lang en
+
+# Report stale RU blocks (no writes).
+codemap-flag-stale-ru:
+	python3 -m scripts.codemap flag-stale-ru
+
+# Phase 2: translate stale RU blocks (requires ANTHROPIC_API_KEY).
+codemap-translate:
+	python3 -m scripts.codemap translate --lang ru --only-stale
+
+# Preview misplaced doc moves (dry-run).
+codemap-fix:
+	python3 -m scripts.codemap docs-fix --dry-run

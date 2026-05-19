@@ -1,0 +1,45 @@
+name: Sync Content
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "README-ru.md"
+      - "MANIFEST.md"
+      - "MANIFEST-ru.md"
+      - "docs/architecture/SYSTEM.md"
+      - "docs/architecture/SYSTEM-ru.md"
+      - "docs/research/**"
+
+jobs:
+  sync-content:
+    name: Sync canonical docs to docs/content/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install project (dev deps)
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run codemap (update markers before sync)
+        run: python -m scripts.codemap --no-coverage --lang en
+
+      - name: Sync site content
+        run: make sync-site-content
+
+      - name: Commit synced content
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: sync docs/content/ from canonical sources"
+          file_pattern: "docs/content/** docs/architecture/codemap/** .codemap/snapshots/**"

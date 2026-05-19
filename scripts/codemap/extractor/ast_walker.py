@@ -96,10 +96,9 @@ def _get_base_names(bases: list[ast.expr]) -> list[str]:
             names.append(base.id)
         elif isinstance(base, ast.Attribute):
             names.append(base.attr)
-        elif isinstance(base, ast.Subscript):
+        elif isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name):
             # e.g. Protocol[T]
-            if isinstance(base.value, ast.Name):
-                names.append(base.value.id)
+            names.append(base.value.id)
     return names
 
 
@@ -119,9 +118,8 @@ def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
             if isinstance(func, ast.Attribute):
                 if func.attr == "command":
                     return True
-            elif isinstance(func, ast.Name):
-                if func.id == "command":
-                    return True
+            elif isinstance(func, ast.Name) and func.id == "command":
+                return True
         elif isinstance(decorator, ast.Attribute):
             if decorator.attr == "command":
                 return True
@@ -151,11 +149,10 @@ def _extract_external_imports(tree: ast.Module) -> list[str]:
                 top = alias.name.split(".")[0]
                 if top in KNOWN_EXTERNAL_PACKAGES:
                     found.add(top)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                top = node.module.split(".")[0]
-                if top in KNOWN_EXTERNAL_PACKAGES:
-                    found.add(top)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top = node.module.split(".")[0]
+            if top in KNOWN_EXTERNAL_PACKAGES:
+                found.add(top)
     return sorted(found)
 
 
@@ -218,20 +215,17 @@ def walk_file(path: Path) -> FileMetadata:
                 # Extract method names from the protocol
                 methods = []
                 for item in node.body:
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        if not item.name.startswith("_") or item.name in (
-                            "__init__",
-                        ):
-                            methods.append(item.name)
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                        not item.name.startswith("_") or item.name == "__init__"
+                    ):
+                        methods.append(item.name)
                 meta.ports.append(PortInfo(name=node.name, methods=methods))
 
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.name.startswith("_"):
                 continue
             is_cli = _has_cli_decorator(node)
-            meta.public_functions.append(
-                FunctionInfo(name=node.name, is_cli_command=is_cli)
-            )
+            meta.public_functions.append(FunctionInfo(name=node.name, is_cli_command=is_cli))
             if is_cli:
                 meta.cli_commands.append(node.name)
 

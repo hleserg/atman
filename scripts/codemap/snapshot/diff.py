@@ -35,11 +35,17 @@ class SnapshotDiff:
         if self.added_classes:
             lines.append(f"- **New classes:** {', '.join(f'`{c}`' for c in self.added_classes)}")
         if self.removed_classes:
-            lines.append(f"- **Removed classes:** {', '.join(f'`{c}`' for c in self.removed_classes)}")
+            lines.append(
+                f"- **Removed classes:** {', '.join(f'`{c}`' for c in self.removed_classes)}"
+            )
         if self.added_functions:
-            lines.append(f"- **New functions:** {', '.join(f'`{f}`' for f in self.added_functions)}")
+            lines.append(
+                f"- **New functions:** {', '.join(f'`{f}`' for f in self.added_functions)}"
+            )
         if self.removed_functions:
-            lines.append(f"- **Removed functions:** {', '.join(f'`{f}`' for f in self.removed_functions)}")
+            lines.append(
+                f"- **Removed functions:** {', '.join(f'`{f}`' for f in self.removed_functions)}"
+            )
         if self.added_ports:
             lines.append(f"- **New ports:** {', '.join(f'`{p}`' for p in self.added_ports)}")
         if self.removed_ports:

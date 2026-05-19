@@ -670,3 +670,45 @@ PrincipleRevisionAdvisor — пересмотр принципов
 5. **Починили регрессию** — добавьте строку в §5.1 (хеш коммита + тема) и добавьте regression-тест в `tests/`.
 6. **Написали новые тесты** — привяжите их к разделу карты, который они покрывают (§1 → unit, §2 → integration, §3 → system/e2e, §4 → edge cases, §5 → регрессии). В описании PR явно укажите эту привязку.
 7. **Двуязычная синхронизация** — `SYSTEM_MAP.md` — канонический английский. Сначала правится он, затем синхронизируется `SYSTEM_MAP-ru.md`. То же правило, что и для `README.md`/`README-ru.md`, `MANIFEST.md`/`MANIFEST-ru.md`, `SYSTEM.md`/`SYSTEM-ru.md`.
+
+---
+
+## 9. Автогенерируемые сводки (Living Codemap)
+
+> Разделы ниже пересоздаются командой `make codemap` (AST-анализ). Не редактировать вручную.
+
+### 9.1 Domain models — краткий индекс
+
+<!-- codemap:auto:start section="modules-domain-models" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
+### 9.2 Порты — краткий индекс
+
+<!-- codemap:auto:start section="modules-ports" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
+### 9.3 Сервисы — краткий индекс
+
+<!-- codemap:auto:start section="modules-services" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
+### 9.4 Адаптеры — краткий индекс
+
+<!-- codemap:auto:start section="modules-adapters" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
+### 9.5 Матрица порт–адаптер
+
+<!-- codemap:auto:start section="port-adapter-matrix" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
+
+### 9.6 Количество TODO/FIXME по компонентам
+
+<!-- codemap:auto:start section="todos" lang="ru" -->
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->
