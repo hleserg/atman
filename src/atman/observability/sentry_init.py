@@ -6,7 +6,7 @@ Level is read from ATMAN_OBS_LEVEL env var when not passed explicitly.
 Levels
 ------
 off       — no-op; sentry_sdk is never imported; zero overhead
-minimal   — errors only, 10 % trace sampling, no profiling  (prod default)
+minimal   — errors + AI-route traces at 100 %, 10 % elsewhere, no profiling  (prod default)
 debug     — 100 % tracing + profiling + Spotlight  (dev default)
 verbose   — debug + SDK self-logging + attach_stacktrace + locals
 """

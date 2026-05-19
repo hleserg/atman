@@ -67,7 +67,7 @@ pip install -e ".[dev]"
 
 # Copy example env
 cp .env.example .env
-# Edit SENTRY_DSN if you want SaaS ingestion; leave blank for Spotlight-only
+# Edit SENTRY_DSN — required even for Spotlight-only (use a local/fake DSN)
 
 # Start Spotlight local UI
 make spotlight   # runs: npx @spotlightjs/spotlight
