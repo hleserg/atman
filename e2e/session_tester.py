@@ -339,7 +339,7 @@ async def _do_turn(
         return tm, "", replace(deps, injected_context=None)
 
     tm.latency_ms = int((time.perf_counter() - t0) * 1000)
-    history.extend(list(result.all_messages()))
+    history.extend(list(result.new_messages()))
 
     # Tool calls
     for msg in result.new_messages():

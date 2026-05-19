@@ -123,7 +123,7 @@ def _pg_url() -> str:
     """Build postgres URL from POSTGRES_* vars (superuser — bypasses RLS)."""
     u = os.getenv("POSTGRES_USER", "")
     if not u:
-        return os.getenv("DATABASE_URL", "")
+        return os.getenv("ATMAN_DB_URL") or os.getenv("DATABASE_URL", "")
     return (
         f"postgresql://{u}:{os.getenv('POSTGRES_PASSWORD', '')}"
         f"@{os.getenv('POSTGRES_HOST', 'localhost')}"
@@ -708,7 +708,9 @@ def _handle_turn(prompt: str, msg_container) -> None:
     if response_text:
         turn.post(response_text)
 
-    st.session_state.deps = deps
+    # RAG context is per-turn; pre() rebuilds it next message. Do not persist
+    # injected_context in session state or the system prompt grows without bound.
+    st.session_state.deps = replace(deps, injected_context=None)
     st.session_state.pydantic_history = history
     _fetch_key_moments.clear()
     _fetch_facts.clear()
