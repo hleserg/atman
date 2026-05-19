@@ -97,8 +97,9 @@ class OpenAIReflectionModel(ReflectionModel):
             attempts = attempt + 1
             try:
                 with ai_chat_span("openai-compat", self._config.model, op_name="reflection") as span:
-                    span.set_data("reflection.output_model", output_model.__name__)
-                    span.set_data("reflection.attempt", attempt + 1)
+                    if span is not None:
+                        span.set_data("reflection.output_model", output_model.__name__)
+                        span.set_data("reflection.attempt", attempt + 1)
                     response = self._client.post(url, json=payload, headers=headers)
                     response.raise_for_status()
                     response_json = response.json()

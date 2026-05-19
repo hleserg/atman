@@ -97,7 +97,8 @@ class FlagEmbeddingAdapter(EmbeddingPort):
         Returns list of 1024-dimensional float vectors.
         """
         with ai_embeddings_span("bge", self._model_name) as span:
-            span.set_data("embeddings.batch_size", len(texts))
+            if span is not None:
+                span.set_data("embeddings.batch_size", len(texts))
             model = self._get_model()
             output = model.encode(
                 texts,
@@ -127,8 +128,9 @@ class FlagEmbeddingAdapter(EmbeddingPort):
         Used by RAGIndex._hybrid_search() in atman_agent_cli.
         """
         with ai_embeddings_span("bge", self._model_name) as span:
-            span.set_data("embeddings.batch_size", len(texts))
-            span.set_data("embeddings.mode", "hybrid")
+            if span is not None:
+                span.set_data("embeddings.batch_size", len(texts))
+                span.set_data("embeddings.mode", "hybrid")
             model = self._get_model()
             output = model.encode(
                 texts,

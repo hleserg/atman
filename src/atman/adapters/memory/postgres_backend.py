@@ -420,7 +420,8 @@ class PostgresFactualMemory(FactualMemory):
         where_sql = " AND ".join(conditions) if conditions else "TRUE"
 
         with db_span("postgresql", "query", collection="facts") as span:
-            span.set_data("db.query.mode", "vector" if (query and vec is not None) else "text" if query else "salience")
+            if span is not None:
+                span.set_data("db.query.mode", "vector" if (query and vec is not None) else "text" if query else "salience")
             with conn.cursor() as cur:
                 rows = self._load_rows(cur, where_sql, params, order_sql, limit)
             conn.commit()
