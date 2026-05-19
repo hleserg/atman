@@ -46,7 +46,7 @@ jobs:
           python-version: "3.11"
 
       - name: Run instrumentation scanner
-        run: python tools/check_instrumentation.py
+        run: python tools/check_instrumentation.py 2>&1 | tee scan_output.txt
 
       - name: Upload scan results on failure
         if: failure()
