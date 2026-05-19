@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
+# Make scripts importable
+import sys
 import textwrap
 from pathlib import Path
 
 import pytest
 
-# Make scripts importable
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scripts.codemap.extractor.ast_walker import (
-    ClassInfo,
     FileMetadata,
-    FunctionInfo,
-    PortInfo,
-    TodoItem,
     walk_directory,
     walk_file,
 )

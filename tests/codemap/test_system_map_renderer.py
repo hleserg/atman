@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scripts.codemap.renderer.system_map import (
@@ -15,7 +13,6 @@ from scripts.codemap.renderer.system_map import (
     inject_marker,
     update_system_map,
 )
-
 
 SAMPLE_MAP = """\
 # System Map
@@ -83,7 +80,7 @@ class TestReplaceBlocks:
             old content
             <!-- codemap:auto:end -->
         """)
-        result, changed = _replace_blocks(text, tmp_path, COMPONENTS, check_mode=True)
+        result, _changed = _replace_blocks(text, tmp_path, COMPONENTS, check_mode=True)
         # Content not changed in text (check mode only reports)
         assert "old content" in result
 
@@ -91,9 +88,7 @@ class TestReplaceBlocks:
         """A known section gets replaced with AST-generated content."""
         models_dir = tmp_path / "src" / "atman" / "core" / "models"
         models_dir.mkdir(parents=True)
-        (models_dir / "fact.py").write_text(
-            "class FactRecord:\n    \"\"\"Fact.\"\"\"\n    pass\n"
-        )
+        (models_dir / "fact.py").write_text('class FactRecord:\n    """Fact."""\n    pass\n')
 
         text = textwrap.dedent("""\
             <!-- codemap:auto:start section="modules-domain-models" -->
@@ -109,9 +104,7 @@ class TestReplaceBlocks:
         """Running twice produces no further changes."""
         models_dir = tmp_path / "src" / "atman" / "core" / "models"
         models_dir.mkdir(parents=True)
-        (models_dir / "fact.py").write_text(
-            "class FactRecord:\n    pass\n"
-        )
+        (models_dir / "fact.py").write_text("class FactRecord:\n    pass\n")
 
         text = textwrap.dedent("""\
             <!-- codemap:auto:start section="modules-domain-models" -->
@@ -145,12 +138,14 @@ class TestUpdateSystemMap:
         (models_dir / "fact.py").write_text("class FactRecord:\n    pass\n")
 
         sm = tmp_path / "SYSTEM_MAP.md"
-        sm.write_text(textwrap.dedent("""\
+        sm.write_text(
+            textwrap.dedent("""\
             # System Map
             <!-- codemap:auto:start section="modules-domain-models" -->
             old
             <!-- codemap:auto:end -->
-        """))
+        """)
+        )
 
         changed = update_system_map(sm, tmp_path, COMPONENTS)
         assert changed
