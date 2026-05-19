@@ -49,9 +49,7 @@ def _render_port_adapter_matrix(
     for fm in adapter_files:
         for cls in fm.public_classes:
             for port in port_names:
-                # heuristic: adapter class name contains port name stem or bases reference it
-                port_stem = port.replace("Port", "").replace("Store", "").replace("ABC", "")
-                if port_stem.lower() in cls.name.lower() or port in cls.bases:
+                if port in cls.bases:
                     adapter_impl[port].append(cls.name)
 
     if not port_names:
@@ -60,7 +58,7 @@ def _render_port_adapter_matrix(
     lines = ["| Port | Implementations |", "|------|----------------|"]
     for port in port_names:
         impls = adapter_impl.get(port, [])
-        impl_str = ", ".join(f"`{i}`" for i in impls[:5]) if impls else "*(none)*"
+        impl_str = ", ".join(f"`{i}`" for i in impls) if impls else "*(none)*"
         lines.append(f"| `{port}` | {impl_str} |")
     return "\n".join(lines)
 

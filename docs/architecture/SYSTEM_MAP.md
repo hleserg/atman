@@ -844,7 +844,7 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 |------|----------------|
 | `AffectPort` | *(none)* |
 | `AppendKeyMomentFn` | *(none)* |
-| `ClockPort` | `FrozenClock` |
+| `ClockPort` | *(none)* |
 | `DivergenceEventStore` | `InMemoryDivergenceEventStore` |
 | `EmbeddingPort` | `BM25EmbeddingAdapter`, `FlagEmbeddingAdapter`, `MockEmbeddingAdapter`, `OllamaEmbeddingAdapter` |
 | `EntityRegistry` | `InMemoryEntityRegistry`, `PostgresEntityRegistry` |
@@ -864,18 +864,18 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `NarrativeRepository` | *(none)* |
 | `NarrativeWriteAuditPort` | *(none)* |
 | `PatternStore` | `InMemoryPatternStore` |
-| `ReflectionEventStore` | `InMemoryReflectionEventStore`, `ReflectionEvent` |
+| `ReflectionEventStore` | `InMemoryReflectionEventStore` |
 | `ReflectionEventPersistenceObserver` | *(none)* |
 | `HealthAssessmentStore` | `InMemoryHealthAssessmentStore` |
 | `ReflectionModel` | `MockReflectionModel`, `OpenAIReflectionModel` |
 | `ReflectionOverloadAlertSink` | `CompositeOverloadAlertSink`, `InMemoryOverloadAlertSink`, `LoggingOverloadAlertSink` |
 | `ReflectionRequestQueue` | `InMemoryReflectionRequestQueue` |
-| `ReflectionStore` | `OllamaReflectionError`, `MockReflectionModel`, `OpenAIReflectionModel`, `InMemoryReflectionStore`, `InMemoryReflectionRequestQueue` |
+| `ReflectionStore` | `InMemoryReflectionStore` |
 | `SalienceDecayService` | `PostgresSalienceDecayService` |
 | `SelfAppliedChangeStore` | `InMemorySelfAppliedChangeStore`, `PostgresSelfAppliedChangeStore` |
-| `SessionRepository` | `StateStoreSessionRepository` |
+| `SessionRepository` | *(none)* |
 | `SkillManagerPort` | *(none)* |
-| `StateStore` | `StateStoreSessionRepository`, `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore` |
+| `StateStore` | `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore`, `JsonlExperienceStore` |
 <!-- codemap:auto:end -->
 
 ### 9.6 TODO/FIXME counts per component
