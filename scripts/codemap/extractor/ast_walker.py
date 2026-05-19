@@ -103,7 +103,7 @@ def _get_base_names(bases: list[ast.expr]) -> list[str]:
 
 
 def _is_protocol(bases: list[str]) -> bool:
-    return "Protocol" in bases
+    return "Protocol" in bases or "ABC" in bases
 
 
 def _is_pydantic(bases: list[str]) -> bool:

@@ -715,28 +715,28 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 |------|----------------|-------|
 | `core/ports/affect.py` | `AffectPort`, `AppendKeyMomentFn` | `AffectPort`, `AppendKeyMomentFn` |
 | `core/ports/clock.py` | `ClockPort` | `ClockPort` |
-| `core/ports/divergence_events.py` | `DivergenceEventStore` |  |
+| `core/ports/divergence_events.py` | `DivergenceEventStore` | `DivergenceEventStore` |
 | `core/ports/embedding.py` | `EmbeddingPort` | `EmbeddingPort` |
-| `core/ports/entity_registry.py` | `EntityRegistry` |  |
-| `core/ports/entity_relation_store.py` | `EntityRelationStore` |  |
-| `core/ports/entity_relations.py` | `ExtractedRelation`, `EntityRelationExtractor` |  |
-| `core/ports/entity_stance.py` | `EntityStanceStore` |  |
-| `core/ports/linguistic.py` | `AmbientAnchor`, `DetectedEntity`, `RawSpan`, `UserMessageAnalysis`, `AgentMessageAnalysis`, `KeyMomentAnalysis` |  |
-| `core/ports/maintenance_queue.py` | `MaintenanceQueue` |  |
-| `core/ports/memory_backend.py` | `FactualMemory` |  |
-| `core/ports/memory_guardian.py` | `MemoryGuardian` |  |
+| `core/ports/entity_registry.py` | `EntityRegistry` | `EntityRegistry` |
+| `core/ports/entity_relation_store.py` | `EntityRelationStore` | `EntityRelationStore` |
+| `core/ports/entity_relations.py` | `ExtractedRelation`, `EntityRelationExtractor` | `EntityRelationExtractor` |
+| `core/ports/entity_stance.py` | `EntityStanceStore` | `EntityStanceStore` |
+| `core/ports/linguistic.py` | `AmbientAnchor`, `DetectedEntity`, `RawSpan`, `UserMessageAnalysis`, `AgentMessageAnalysis`, `KeyMomentAnalysis` | `LinguisticAnalyzer` |
+| `core/ports/maintenance_queue.py` | `MaintenanceQueue` | `MaintenanceQueue` |
+| `core/ports/memory_backend.py` | `FactualMemory` | `FactualMemory` |
+| `core/ports/memory_guardian.py` | `MemoryGuardian` | `MemoryGuardian` |
 | `core/ports/memory_middleware.py` | `MemoryContext`, `MemoryMiddlewarePort` | `MemoryMiddlewarePort` |
-| `core/ports/memory_reranker.py` | `SurfacedMemory`, `MemoryReranker` |  |
-| `core/ports/memory_usage_log.py` | `UsageType`, `MemoryUsageRecord`, `MemoryUsageLog` |  |
-| `core/ports/pending_human_review.py` | `PendingHumanReviewInbox` |  |
+| `core/ports/memory_reranker.py` | `SurfacedMemory`, `MemoryReranker` | `MemoryReranker` |
+| `core/ports/memory_usage_log.py` | `UsageType`, `MemoryUsageRecord`, `MemoryUsageLog` | `MemoryUsageLog` |
+| `core/ports/pending_human_review.py` | `PendingHumanReviewInbox` | `PendingHumanReviewInbox` |
 | `core/ports/reflection.py` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort`, `PatternStore`, `ReflectionEventStore` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort` |
-| `core/ports/reflection_overload_alert.py` | `ReflectionOverloadSeverity`, `ReflectionOverloadAlertSink` |  |
-| `core/ports/reflection_request_queue.py` | `ReflectionRequestQueue` |  |
-| `core/ports/reflection_store.py` | `ReflectionStore` |  |
-| `core/ports/salience_decay.py` | `SalienceDecayService` |  |
-| `core/ports/self_applied_changes.py` | `SelfAppliedChangeStore` |  |
+| `core/ports/reflection_overload_alert.py` | `ReflectionOverloadSeverity`, `ReflectionOverloadAlertSink` | `ReflectionOverloadAlertSink` |
+| `core/ports/reflection_request_queue.py` | `ReflectionRequestQueue` | `ReflectionRequestQueue` |
+| `core/ports/reflection_store.py` | `ReflectionStore` | `ReflectionStore` |
+| `core/ports/salience_decay.py` | `SalienceDecayService` | `SalienceDecayService` |
+| `core/ports/self_applied_changes.py` | `SelfAppliedChangeStore` | `SelfAppliedChangeStore` |
 | `core/ports/session_repository.py` | `SessionRepository` | `SessionRepository` |
-| `core/ports/state_store.py` | `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` |  |
+| `core/ports/state_store.py` | `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` | `StateStore` |
 <!-- codemap:auto:end -->
 
 ### 9.3 Services — quick index
@@ -843,14 +843,36 @@ Treat the map as part of the code: it goes out of date the moment a PR forgets t
 | `AffectPort` | *(none)* |
 | `AppendKeyMomentFn` | *(none)* |
 | `ClockPort` | `FrozenClock` |
+| `DivergenceEventStore` | `InMemoryDivergenceEventStore` |
 | `EmbeddingPort` | `BM25EmbeddingAdapter`, `FlagEmbeddingAdapter`, `MockEmbeddingAdapter`, `OllamaEmbeddingAdapter` |
+| `EntityRegistry` | `InMemoryEntityRegistry`, `PostgresEntityRegistry` |
+| `EntityRelationStore` | `InMemoryEntityRelationStore` |
+| `EntityRelationExtractor` | `MRebelRelationAdapter` |
+| `EntityStanceStore` | `InMemoryEntityStanceStore`, `PostgresEntityStanceStore` |
+| `LinguisticAnalyzer` | `GLiNERPlusMiniLMAdapter`, `NoOpLinguisticAnalyzer` |
+| `MaintenanceQueue` | `InMemoryMaintenanceQueue`, `PostgresMaintenanceQueue` |
+| `FactualMemory` | `FileBackend`, `InMemoryBackend`, `PostgresFactualMemory` |
+| `MemoryGuardian` | `InMemoryMemoryGuardian` |
 | `MemoryMiddlewarePort` | *(none)* |
+| `MemoryReranker` | `BgeReranker`, `NoOpReranker` |
+| `MemoryUsageLog` | `InMemoryUsageLog` |
+| `PendingHumanReviewInbox` | `InMemoryPendingHumanReviewInbox`, `PostgresPendingHumanReviewInbox` |
 | `ExperienceRepository` | *(none)* |
 | `IdentityRepository` | *(none)* |
 | `NarrativeRepository` | *(none)* |
 | `NarrativeWriteAuditPort` | *(none)* |
+| `PatternStore` | `InMemoryPatternStore` |
+| `ReflectionEventStore` | `InMemoryReflectionEventStore`, `ReflectionEvent` |
 | `ReflectionEventPersistenceObserver` | *(none)* |
+| `HealthAssessmentStore` | `InMemoryHealthAssessmentStore` |
+| `ReflectionModel` | `MockReflectionModel`, `OpenAIReflectionModel` |
+| `ReflectionOverloadAlertSink` | `CompositeOverloadAlertSink`, `InMemoryOverloadAlertSink`, `LoggingOverloadAlertSink` |
+| `ReflectionRequestQueue` | `InMemoryReflectionRequestQueue` |
+| `ReflectionStore` | `OllamaReflectionError`, `MockReflectionModel`, `OpenAIReflectionModel`, `InMemoryReflectionStore`, `InMemoryReflectionRequestQueue` |
+| `SalienceDecayService` | `PostgresSalienceDecayService` |
+| `SelfAppliedChangeStore` | `InMemorySelfAppliedChangeStore`, `PostgresSelfAppliedChangeStore` |
 | `SessionRepository` | `StateStoreSessionRepository` |
+| `StateStore` | `StateStoreSessionRepository`, `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore` |
 <!-- codemap:auto:end -->
 
 ### 9.6 TODO/FIXME counts per component

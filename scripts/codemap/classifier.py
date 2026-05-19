@@ -174,6 +174,9 @@ def apply_high_confidence_moves(
 
         if not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                log.warning("Skipping move: destination already exists: %s", dest)
+                continue
             src.rename(dest)
             log.info("Moved %s → %s", src, dest)
 

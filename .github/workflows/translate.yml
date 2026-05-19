@@ -39,6 +39,7 @@ jobs:
       - name: Translate stale blocks
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ONLY_STALE: ${{ inputs.only_stale }}
         run: |
           STALE_FLAG=$([[ "$ONLY_STALE" != "false" ]] && echo "--only-stale" || echo "")
           python -m scripts.codemap translate --lang ru $STALE_FLAG
