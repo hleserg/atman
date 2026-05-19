@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 from atman.adapters.agent.deps import AtmanDeps
@@ -79,11 +78,12 @@ def test_atman_turn_pre_clears_stale_injected_context() -> None:
 def test_atman_turn_post_schedules_affect_via_record_event() -> None:
     """post() records agent_response so SessionManager can run AffectDetector."""
     deps, sm = _minimal_deps()
-    sm.record_event = MagicMock()  # type: ignore[method-assign]
+    assert deps.session_id is not None
     turn = AtmanTurn(deps, sm, deps.session_id)
     turn.pre("hi")
     turn.post("Agent reply without thinking tags.")
-    assert sm.record_event.called
-    _session_id, event = sm.record_event.call_args[0]
-    assert event.event_type == "agent_response"
-    assert "Agent reply" in event.description
+    active = sm.get_active_session(deps.session_id)
+    assert active is not None
+    agent_events = [e for e in active.events if e.event_type == "agent_response"]
+    assert agent_events
+    assert "Agent reply" in agent_events[-1].description

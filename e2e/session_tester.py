@@ -59,7 +59,7 @@ REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, f"{REPO}/src")
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import ModelMessage, ThinkingPart
+from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
@@ -352,50 +352,18 @@ async def _do_turn(
     agent_clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
     agent_clean = _S(agent_clean)
 
-    # Post-turn: affect + auto KM
-    if deps.ambient_memory is not None:
-        try:
-            post = deps.ambient_memory._analyzer.analyze_agent_message(agent_clean)
-            if post.boundary_markers and session_id is not None:
-                from atman.core.models import EmotionalDepth
-                from atman.core.models.session import KeyMomentInput
+    # Post-turn: shared AtmanTurn pipeline (analysis, auto KM, affect, refusal)
+    try:
+        from atman.adapters.agent.runner import AtmanTurn
 
-                markers_str = ", ".join(post.boundary_markers[:3])
-                kmi = KeyMomentInput(
-                    what_happened=_S(agent_clean[:300]),
-                    why_it_matters=f"Boundary event: {markers_str}",
-                    emotional_valence=0.0,
-                    emotional_intensity=0.0,
-                    depth=EmotionalDepth.SURFACE,
-                    incomplete_coloring=True,
-                )
-                moment = kmi.to_key_moment()
-                moment.structured_markers = {
-                    "a": {
-                        "stance": post.stance,
-                        "cognitive_mode": post.cognitive_mode,
-                        "boundary_markers": post.boundary_markers,
-                        "divergence_signals": post.divergence_signals,
-                    }
-                }
-                moment.structured_markers_version = "2.0"
-                sm.append_key_moment(session_id, moment)
-                tm.auto_km_written = True
-                tm.auto_km_markers = post.boundary_markers
-
-            # Passive affect detector
-            detector = getattr(sm, "affect_detector", None)
-            if detector is not None:
-                thinking = None
-                for msg in result.new_messages():
-                    for part in getattr(msg, "parts", []):
-                        if isinstance(part, ThinkingPart) and part.content:
-                            thinking = part.content
-                            break
-                await detector.process(agent_clean, thinking=thinking, session_id=session_id)
-                tm.affect_processed = True
-        except Exception as exc:
-            tm.errors.append(f"post-turn: {exc}")
+        turn = AtmanTurn(deps, sm, session_id)
+        turn.post(agent_clean)
+        if turn.auto_key_moment_written:
+            tm.auto_km_written = True
+            tm.auto_km_markers = turn.auto_key_moment_markers
+        tm.affect_processed = getattr(sm, "affect_detector", None) is not None
+    except Exception as exc:
+        tm.errors.append(f"post-turn: {exc}")
 
     deps = replace(deps, injected_context=None)
     return tm, agent_clean, deps
