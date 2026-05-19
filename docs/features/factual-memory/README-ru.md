@@ -1,587 +1,77 @@
-# Atman — Factual Memory Adapter
+# Factual Memory (Фактическая память)
 
 > **English:** [README.md](README.md)
 
-Минимальный, запускаемый слой factual memory для AI-агента. Предоставляет единый порт для записи, чтения и поиска проверяемых фактов без интерпретаций.
+## Что делает
 
-## Демо одной командой
+Factual Memory хранит проверяемые дискретные факты о мире — то, что агент знает как истину о людях, местах, событиях или о себе. Это не интерпретации, не чувства, не нарратив: это проверяемые утверждения.
 
-Из корня репозитория (после `pip install -e ".[dev]"`):
+Факты сохраняются между сессиями. При начале новой сессии `PassiveMemoryInjector` инжектирует релевантные факты в контекст агента через embedding similarity и BM25 поиск.
 
-```bash
-make demo-factual
+## Ключевые концепции
+
+**`FactRecord`** — единственный проверяемый факт. Содержит текст факта, источник, достоверность и временные метки. Имеет версию схемы для совместимости.
+
+**`Relation`** — типизированная направленная связь между двумя сущностями (например, `Человек A работает_в Компания B`). Хранится вместе с фактами и используется реестром сущностей для построения рассуждений о связях.
+
+**Порт `FactualMemory`** — интерфейс, который реализуют все бэкенды. Доменная логика зависит только от этого интерфейса, никогда от конкретного бэкенда.
+
+**Обнаружение конфликтов** — `ConflictDetector` может сканировать факты на предмет противоречий и выводить их для разрешения.
+
+## Публичный API
+
+Порт `FactualMemory` определяет:
+
+```python
+class FactualMemory(ABC):
+    async def add(self, fact: FactRecord) -> str: ...
+    async def get(self, fact_id: str) -> FactRecord | None: ...
+    async def search(self, query: str, limit: int = 10) -> list[FactRecord]: ...
+    async def delete(self, fact_id: str) -> None: ...
+    async def list_all(self) -> list[FactRecord]: ...
 ```
 
-Эквивалент: `python3 src/demo.py` — демонстрация InMemory и FileBackend на файле `/tmp/atman_demo_facts.jsonl` (файл удаляется в конце).
+## Конфигурация
 
-`make demo-factual` по умолчанию делает короткие паузы между шагами (`ATMAN_DEMO_PACE=1`). Мгновенный вывод: `make demo-factual-fast` или `ATMAN_DEMO_PACE=off python3 src/demo.py`. Вывод в консоль — **Rich** через `atman.term` (см. **`AGENTS.md`**).
+Выберите бэкенд через переменную окружения `ATMAN_MEMORY_BACKEND`:
 
-Интерактивный CLI: `python3 -m atman.cli` или установленная команда `atman`. Бэкенд выбирает `atman.config.build_memory_backend()`; по умолчанию используется file backend (`~/.atman/facts.jsonl`), чтобы локальные запуски не требовали PostgreSQL.
+| Значение | Бэкенд | Примечания |
+|----------|--------|-----------|
+| `inmemory` | `InMemoryBackend` | Эфемерный, сбрасывается при перезапуске. Подходит для тестов. |
+| `file` | `FileBackend` | JSONL-файл в рабочей директории. По умолчанию. |
+| `postgres` | `PostgresFactualMemory` | Требует `ATMAN_DB_URL` и `atman[eval]`. |
 
-## Обзор
-
-Factual Memory Adapter - это фундамент системы памяти Atman. Он:
-
-- Хранит **только факты и связи** (без эмоциональной окраски)
-- Явно отделяет `fact.content` от любых выводов
-- Обеспечивает валидацию (запрещает пустой content/source)
-- Расширяем под embeddings/graph memory (но не требует их)
-
-## Установка
-
-Требования: Python ≥ 3.12
+При использовании бэкенда `postgres` задайте одно из:
 
 ```bash
-# Клонировать репозиторий
-git clone https://github.com/hleserg/atman.git
-cd atman
-
-# Рекомендуется uv: окружение и установка
-uv venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-uv pip install -e ".[dev]"
-
-# Запуск без активации venv: uv run pytest tests/ -v, uv run python src/demo.py
-# Fallback: pip install -e ".[dev]"
+ATMAN_DB_URL=postgresql://atman:secret@localhost:5432/atman
+# или
+DATABASE_URL=postgresql://atman:secret@localhost:5432/atman
 ```
 
-Подробнее про **uv** (`uv run`, `uv pip` и т.д.) — в корневом **`AGENTS.md`**, раздел *uv — рекомендуемый workflow*.
+## Пример использования
 
-## Быстрый старт
-
-### CLI (интерактивный режим)
+Запуск интерактивного REPL:
 
 ```bash
 atman
 ```
 
-Примеры команд:
-
-```text
-atman> add "Пользователь попросил реализовать память" session_1 task request
-✓ Факт добавлен
-
-atman> search "пользователь" --tags task
-✓ Найдено фактов: 1
-
-atman> recent 5
-✓ Последние 5 фактов
-
-atman> help
-# Полная справка по командам
-```
-
-### Использование в коде
-
-#### In-Memory Backend (для тестов)
-
-```python
-from atman.adapters.memory import InMemoryBackend
-from atman.core.models import FactRecord
-
-# Создать backend
-memory = InMemoryBackend()
-
-# Добавить факт
-fact = FactRecord(
-    content="Пользователь попросил реализовать factual memory",
-    source="session_2024_01_15",
-    tags=["task", "request"]
-)
-added = memory.add_fact(fact)
-
-# Получить факт
-retrieved = memory.get_fact(added.id)
-print(retrieved.content)
-
-# Искать по тексту
-results = memory.search(query="пользователь")
-
-# Искать по тегам
-results = memory.search(tags=["task"])
-
-# Создать связь
-fact2 = memory.add_fact(FactRecord(
-    content="Задача выполнена",
-    source="session_2024_01_15"
-))
-memory.link(added.id, fact2.id, "led_to")
-
-# Получить последние факты
-recent = memory.list_recent(limit=10)
-```
-
-#### File Backend (персистентное хранилище)
-
-```python
-from atman.adapters.memory import FileBackend
-from pathlib import Path
-
-# Создать file backend
-storage_path = Path.home() / '.atman' / 'facts.jsonl'
-memory = FileBackend(storage_path)
-
-# Использование аналогично InMemoryBackend
-fact = FactRecord(content="Факт", source="test")
-memory.add_fact(fact)
-
-# Данные сохраняются автоматически
-# При следующем запуске они будут загружены
-```
-
-## Выбор бэкенда
-
-CLI и общие entrypoint'ы вызывают `atman.config.build_memory_backend()`. Значение по умолчанию — `file`, для локальной разработки и тестов без внешних сервисов. Для одного процесса выбор можно переопределить через `ATMAN_MEMORY_BACKEND`.
-
-```python
-# src/atman/config.py
-class MemorySettings(BaseModel):
-    backend: str = "file"
-    file_path: str = "~/.atman/facts.jsonl"
-```
-
-| Значение | Класс | Когда использовать |
-|---|---|---|
-| `"file"` | `FileBackend` | Локальная работа без PostgreSQL |
-| `"inmemory"` | `InMemoryBackend` | Быстрые unit-тесты, прототипирование |
-| `"postgres"` | `PostgresFactualMemory` | Деплой или интеграционные тесты с RLS и SQL-хранилищем |
-
-Фабрика `build_memory_backend()` из `atman.config` создаёт нужный экземпляр. Пример запуска с PostgreSQL:
+Запуск демо:
 
 ```bash
-ATMAN_MEMORY_BACKEND=postgres DATABASE_URL=postgresql://atman_app:...@localhost:5432/atman atman
+make demo-factual
 ```
 
-При прямом создании адаптера `PostgresFactualMemory` берёт URL из аргумента `db_url`, затем `ATMAN_DB_URL`, затем `DATABASE_URL`, затем из локального значения по умолчанию.
-
-## PostgreSQL бэкенд
-
-### Требования
-
-- PostgreSQL с расширениями `vector` и `pg_trgm`
-- `psycopg[binary]` (входит в `.[dev]` / `.[eval]`; для продакшн-профиля с PostgreSQL добавьте зависимость явно)
-- Применённая миграция `migrations/versions/0002_create_facts_table.sql`
-
-### Подключение
-
-`DATABASE_URL` читается из `.env` через pydantic-settings:
-
-```
-DATABASE_URL=postgresql://atman_app:PASSWORD@localhost:5432/atman
-```
-
-### Применить миграцию (один раз)
-
-```bash
-# Через Docker (если PostgreSQL в контейнере)
-docker exec atman-postgres psql -U atman -d atman \
-    -f /dev/stdin < migrations/versions/0002_create_facts_table.sql
-
-# Или напрямую если psql доступен
-psql "$ATMAN_ADMIN_DATABASE_URL" -f migrations/versions/0002_create_facts_table.sql
-```
-
-### Роли PostgreSQL
-
-Система использует две роли:
-
-| Роль | Назначение | Суперпользователь |
-|---|---|---|
-| `atman` | Владелец таблиц, миграции | Да |
-| `atman_app` | Приложение, `DATABASE_URL` | **Нет** |
-
-Разделение ролей критично: PostgreSQL суперпользователь обходит RLS безусловно, поэтому приложение должно подключаться как `atman_app`.
-
-Роль `atman_app` создаётся автоматически миграцией. Пароль устанавливается скриптом деплоя.
-
-### Семантический поиск и graceful degradation
-
-`PostgresFactualMemory` принимает опциональный `EmbeddingPort`:
+Программное использование:
 
 ```python
-from atman.adapters.memory.postgres_backend import PostgresFactualMemory
-from atman.adapters.memory.ollama_embedding import OllamaEmbeddingAdapter
+from atman.config import build_memory_backend
 
-mem = PostgresFactualMemory(
-    db_url="postgresql://atman_app:...@localhost:5432/atman",
-    embedding=OllamaEmbeddingAdapter(),   # опционально
-)
+backend = build_memory_backend()  # читает ATMAN_MEMORY_BACKEND из env
+
+fact = FactRecord(text="Алиса — ведущий инженер.", source="onboarding")
+fact_id = await backend.add(fact)
+
+results = await backend.search("ведущий инженер")
 ```
-
-- Если `embedding` передан и провайдер доступен → поиск через `halfvec(1024)` BGE-M3 cosine similarity (HNSW индекс)
-- Если embedding-провайдер недоступен или упал → автоматический fallback на `ILIKE` текстовый поиск, `warnings.warn`
-- Факты без эмбеддинга хранятся нормально, метрика `facts_without_embedding` считает их
-
-### Row-Level Security (RLS)
-
-Каждый агент видит только свои факты. Изоляция реализована на уровне PostgreSQL:
-
-```sql
-CREATE POLICY facts_isolation ON public.facts
-    USING (agent_id = NULLIF(current_setting('atman.current_agent', TRUE), '')::UUID);
-```
-
-Перед каждым запросом адаптер устанавливает контекст:
-```python
-conn.execute("SELECT set_config('atman.current_agent', %s, true)", [agent_id])
-```
-
-`agent_id` берётся из переменной окружения `ATMAN_CURRENT_AGENT`.
-
-## Архитектура
-
-### Модели данных
-
-#### FactRecord
-
-Проверяемый факт без интерпретаций.
-
-```python
-class FactRecord:
-    id: UUID                    # Уникальный идентификатор
-    content: str                # Содержание факта (не пустое)
-    source: str                 # Источник факта (не пустой)
-    tags: list[str]             # Теги для категоризации
-    relations: list[Relation]   # Связи с другими фактами
-    created_at: datetime        # Время создания
-    metadata: dict[str, Any]    # Дополнительные метаданные
-```
-
-#### Relation
-
-Связь между двумя фактами.
-
-```python
-class Relation:
-    target_id: UUID       # ID связанного факта
-    relation_type: str    # Тип связи (caused_by, related_to, etc.)
-    created_at: datetime
-    metadata: dict[str, Any]
-```
-
-### Порт FactualMemory
-
-Единый интерфейс для всех реализаций:
-
-```python
-class FactualMemory(ABC):
-    def add_fact(record: FactRecord) -> FactRecord
-    def get_fact(fact_id: UUID) -> FactRecord | None
-    def search(query: str | None, tags: list[str] | None, limit: int) -> list[FactRecord]
-    def link(source_id: UUID, target_id: UUID, relation_type: str) -> bool
-    def list_recent(limit: int) -> list[FactRecord]
-```
-
-### Адаптеры
-
-#### InMemoryBackend
-
-- Хранит факты в памяти (словарь)
-- Не персистентен
-- Идеален для unit-тестов и прототипирования
-- Методы: `clear()`, `count()`
-
-#### FileBackend
-
-- Использует JSONL формат (JSON Lines)
-- Персистентное хранилище
-- Автоматическая загрузка при старте
-- Автоматическое сохранение при изменениях
-- Подходит для локального запуска без внешних сервисов
-
-#### PostgresFactualMemory
-
-- Реализует тот же порт `FactualMemory` поверх PostgreSQL
-- Использует RLS по `agent_id`; приложение должно подключаться не суперпользователем (`atman_app`)
-- Поддерживает опциональный `EmbeddingPort` и fallback на `ILIKE`, если embedding-провайдер недоступен
-- Требует миграцию `migrations/versions/0002_create_facts_table.sql`
-
-## Примеры использования
-
-### Пример 1: Базовая работа с фактами
-
-```python
-from atman.adapters.memory import InMemoryBackend
-from atman.core.models import FactRecord
-
-memory = InMemoryBackend()
-
-# Добавить несколько фактов
-fact1 = memory.add_fact(FactRecord(
-    content="Пользователь попросил добавить функцию X",
-    source="session_001",
-    tags=["request", "feature"]
-))
-
-fact2 = memory.add_fact(FactRecord(
-    content="Функция X была реализована",
-    source="session_002",
-    tags=["done", "feature"]
-))
-
-fact3 = memory.add_fact(FactRecord(
-    content="Пользователь подтвердил работу функции X",
-    source="session_003",
-    tags=["confirmation", "feature"]
-))
-
-# Создать связи
-memory.link(fact1.id, fact2.id, "led_to")
-memory.link(fact2.id, fact3.id, "led_to")
-
-# Найти все факты о feature
-feature_facts = memory.search(tags=["feature"])
-print(f"Найдено фактов о фиче: {len(feature_facts)}")
-
-# Получить последние события
-recent = memory.list_recent(limit=5)
-for fact in recent:
-    print(f"[{fact.created_at}] {fact.content}")
-```
-
-### Пример 2: Отслеживание принятых решений
-
-```python
-from atman.adapters.memory import FileBackend
-from atman.core.models import FactRecord
-from pathlib import Path
-
-memory = FileBackend(Path("decisions.jsonl"))
-
-# Записать решение
-decision = memory.add_fact(FactRecord(
-    content="Решено использовать JSONL для хранения фактов",
-    source="architecture_discussion_2024_01_15",
-    tags=["decision", "architecture", "storage"],
-    metadata={
-        "rationale": "Простота, читаемость, не требует внешних зависимостей",
-        "alternatives": ["SQLite", "mem0", "in-memory only"]
-    }
-))
-
-# Позже найти все архитектурные решения
-arch_decisions = memory.search(tags=["decision", "architecture"])
-```
-
-### Пример 3: Построение цепочки причинно-следственных связей
-
-```python
-from atman.adapters.memory import InMemoryBackend
-from atman.core.models import FactRecord
-
-memory = InMemoryBackend()
-
-# Цепочка событий
-cause = memory.add_fact(FactRecord(
-    content="Пользователь сообщил об ошибке в модуле X",
-    source="issue_123",
-    tags=["bug", "report"]
-))
-
-investigation = memory.add_fact(FactRecord(
-    content="Найдена причина: некорректная валидация входных данных",
-    source="debugging_session",
-    tags=["bug", "analysis"]
-))
-
-fix = memory.add_fact(FactRecord(
-    content="Реализована правильная валидация",
-    source="commit_abc123",
-    tags=["bug", "fix"]
-))
-
-verification = memory.add_fact(FactRecord(
-    content="Пользователь подтвердил исправление",
-    source="issue_123",
-    tags=["bug", "verification"]
-))
-
-# Построить цепочку
-memory.link(cause.id, investigation.id, "led_to")
-memory.link(investigation.id, fix.id, "led_to")
-memory.link(fix.id, verification.id, "led_to")
-
-# Проверить связи
-fact = memory.get_fact(cause.id)
-print(f"Факт имеет {len(fact.relations)} связей")
-```
-
-## Тестирование
-
-```bash
-# Запустить все тесты
-pytest
-
-# Запустить с выводом
-pytest -v
-
-# Запустить конкретный тест
-pytest tests/test_models.py::test_fact_record_creation
-
-# Интеграция PostgreSQL (нужны тестовые URL/БД)
-pytest tests/integration/test_postgres_facts.py -v
-
-# Запустить тесты с покрытием
-pytest --cov=atman --cov-report=html
-```
-
-### Структура тестов
-
-- `tests/test_models.py` - тесты моделей данных
-- `tests/test_in_memory_backend.py` - тесты InMemoryBackend
-- `tests/test_file_backend.py` - тесты FileBackend
-- `tests/test_backend_interface.py` - общие тесты для всех backend'ов
-- `tests/integration/test_postgres_facts.py` - интеграционные тесты PostgreSQL backend
-
-Все тесты проверяют:
-
-- ✅ CRUD операции с фактами
-- ✅ Поиск по тексту и тегам
-- ✅ Создание связей между фактами
-- ✅ Получение последних фактов
-- ✅ Валидацию входных данных
-- ✅ Неизменяемость возвращаемых данных (immutability)
-- ✅ Персистентность (для FileBackend)
-
-## Границы реализации
-
-### Что делает этот пакет
-
-✅ Хранит только факты и связи
-✅ Отделяет `fact.content` от выводов
-✅ Валидирует пустой content/source
-✅ Поддерживает теги и метаданные
-✅ Создает связи между фактами
-✅ Работает локально без внешних сервисов
-
-### Что НЕ делает этот пакет
-
-❌ Не добавляет эмоциональную окраску
-❌ Не выводит привычки, принципы, навыки
-❌ Не строит идентичность
-❌ Не делает рефлексию
-❌ Не требует mem0 или другие внешние сервисы
-
-Эти функции реализуются в других компонентах Atman поверх этого фундамента.
-
-## Расширяемость
-
-Пакет спроектирован с учетом будущего расширения:
-
-### Embeddings и семантический поиск
-
-PostgreSQL backend уже поддерживает опциональный `EmbeddingPort`. Будущие backend'ы могут реализовать тот же порт иначе:
-
-```python
-class VectorBackend(FactualMemory):
-    def __init__(self, embedding_model):
-        self.embeddings = {}
-        self.model = embedding_model
-
-    def search(self, query, tags=None, limit=10):
-        # Семантический поиск через embeddings
-        query_vector = self.model.embed(query)
-        # ... поиск по косинусной близости
-```
-
-### Graph Memory
-
-Можно добавить адаптер с графовой БД:
-
-```python
-class Neo4jBackend(FactualMemory):
-    def link(self, source_id, target_id, relation_type):
-        # Создать ребро в графе
-        self.graph.create_edge(source_id, target_id, relation_type)
-
-    def find_path(self, from_id, to_id):
-        # Поиск пути между фактами
-        return self.graph.shortest_path(from_id, to_id)
-```
-
-### Интеграция с mem0
-
-```python
-from mem0 import Memory
-
-class Mem0Backend(FactualMemory):
-    def __init__(self, user_id):
-        self.memory = Memory()
-        self.user_id = user_id
-
-    def add_fact(self, record):
-        # Добавить в mem0
-        self.memory.add(record.content, user_id=self.user_id)
-```
-
-## Зависимость от других пакетов
-
-Следующие work packages будут использовать Factual Memory Adapter:
-
-- **02. Experience Store** - строит опыт поверх фактов
-- **03. Identity Store** - опирается на factual memory для устойчивости
-- **04. Reflection Engine** - анализирует уже записанные факты
-- **05. Session Manager** - записывает факты в процессе сессии
-
-## Философия дизайна
-
-1. **Простота** - минимальный API, понятные концепции
-2. **Изоляция** - нет зависимостей от других компонентов Atman
-3. **Расширяемость** - легко добавить новые backend'ы
-4. **Тестируемость** - все можно протестировать без внешних сервисов
-5. **Честность** - не смешивает факты и интерпретации
-
-## Структура проекта
-
-```text
-atman/
-├── src/atman/
-│   ├── __init__.py
-│   ├── cli.py                          # CLI для ручной проверки
-│   ├── config.py                       # выбор backend'а и env-настройки
-│   ├── core/
-│   │   ├── models/
-│   │   │   ├── __init__.py
-│   │   │   └── fact.py                 # FactRecord, Relation
-│   │   └── ports/
-│   │       ├── __init__.py
-│   │       └── memory_backend.py       # FactualMemory интерфейс
-│   └── adapters/
-│       └── memory/
-│           ├── __init__.py
-│           ├── in_memory_backend.py    # In-memory реализация
-│           ├── file_backend.py         # File-based реализация
-│           └── postgres_backend.py     # PostgreSQL + RLS + optional embeddings
-├── migrations/
-│   └── versions/
-│       └── 0002_create_facts_table.sql # PostgreSQL схема facts/fact_relations
-├── tests/
-│   ├── __init__.py
-│   ├── test_models.py
-│   ├── test_in_memory_backend.py
-│   ├── test_file_backend.py
-│   ├── test_backend_interface.py
-│   └── integration/test_postgres_facts.py
-├── pyproject.toml
-└── docs/features/factual-memory/   # README.md + README-ru.md (это руководство)
-```
-
-## Связанные документы
-
-- Техзадание: [`../../development/work-packages/01-factual-memory-adapter.md`](../../development/work-packages/01-factual-memory-adapter.md)
-- Архитектура: [`../../architecture/SYSTEM-ru.md`](../../architecture/SYSTEM-ru.md)
-- Стандарт разработки: [`../../development/DEVELOPMENT_STANDARD.md`](../../development/DEVELOPMENT_STANDARD.md)
-
-## Лицензия
-
-См. LICENSE в корне репозитория.
-
-## Вклад в разработку
-
-См. [`../../development/DEVELOPMENT_STANDARD.md`](../../development/DEVELOPMENT_STANDARD.md).
-
----
-
-**Статус**: ✅ MVP готов
-**Версия**: 0.1.0
-**Последнее обновление**: 2026-05-01
