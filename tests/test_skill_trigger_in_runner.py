@@ -13,9 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-import pytest
-
-
 # ── build_skill_suggestions_section unit tests ───────────────────────────────
 
 

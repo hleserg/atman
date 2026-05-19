@@ -6,7 +6,7 @@ Import from the canonical location instead:
 
 import warnings
 
-from atman.core.ports.skill_manager import SkillManagerPort  # noqa: F401
+from atman.core.ports.skill_manager import SkillManagerPort
 
 warnings.warn(
     "atman.skills.port is deprecated; import SkillManagerPort from "

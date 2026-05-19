@@ -282,6 +282,7 @@ class SkillManager:
             return uuid4()
         try:
             from atman.core.models.entity import EntityType
+
             entity, _ = self._entity_registry.resolve_or_create(
                 agent_id,
                 name,
@@ -621,17 +622,49 @@ class SkillManager:
     # ── Behavioral hint collection (§7 Phase 3) ──────────────────────────────
 
     # Positive patterns: short affirmations and acknowledgements
-    _POSITIVE_PATTERNS = frozenset([
-        "ok", "ок", "окей", "спасибо", "благодарю", "thanks", "thank you",
-        "работает", "работало", "сработало", "works", "worked", "great",
-        "отлично", "хорошо", "good", "perfect", "yes", "да", "👍",
-    ])
+    _POSITIVE_PATTERNS = frozenset(
+        [
+            "ok",
+            "ок",
+            "окей",
+            "спасибо",
+            "благодарю",
+            "thanks",
+            "thank you",
+            "работает",
+            "работало",
+            "сработало",
+            "works",
+            "worked",
+            "great",
+            "отлично",
+            "хорошо",
+            "good",
+            "perfect",
+            "yes",
+            "да",
+            "👍",
+        ]
+    )
     # Negative patterns: explicit rejection or repetition of the same request
-    _NEGATIVE_PATTERNS = frozenset([
-        "нет", "no", "не работает", "not working", "wrong", "неверно",
-        "неправильно", "ошибка", "error", "broken", "failed", "fail",
-        "не то", "not that",
-    ])
+    _NEGATIVE_PATTERNS = frozenset(
+        [
+            "нет",
+            "no",
+            "не работает",
+            "not working",
+            "wrong",
+            "неверно",
+            "неправильно",
+            "ошибка",
+            "error",
+            "broken",
+            "failed",
+            "fail",
+            "не то",
+            "not that",
+        ]
+    )
 
     def collect_behavioral_hints_from_message(
         self,

@@ -153,7 +153,9 @@ def install_external(
         write_skill_md(manifest, target_root / "SKILL.md")
 
         now = datetime.now(UTC)
-        entity_id = _resolve_entity_id(agent_id, manifest.name, manifest.description, entity_registry)
+        entity_id = _resolve_entity_id(
+            agent_id, manifest.name, manifest.description, entity_registry
+        )
         skill = Skill(
             id=uuid4(),
             agent_id=agent_id,
@@ -209,8 +211,12 @@ def _resolve_entity_id(agent_id: UUID, name: str, description: str, entity_regis
         return uuid4()
     try:
         from atman.core.models.entity import EntityType
+
         entity, _ = entity_registry.resolve_or_create(
-            agent_id, name, EntityType.skill, description=description,
+            agent_id,
+            name,
+            EntityType.skill,
+            description=description,
         )
         return entity.id
     except Exception as exc:

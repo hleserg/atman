@@ -354,7 +354,11 @@ def cmd_capture_manual(args: list[str]) -> None:
     instructions: str | None = None
 
     rest = list(args)
-    for flag, attr in (("--name", "name"), ("--description", "description"), ("--instructions", "instructions")):
+    for flag, attr in (
+        ("--name", "name"),
+        ("--description", "description"),
+        ("--instructions", "instructions"),
+    ):
         if flag in rest:
             idx = rest.index(flag)
             if idx + 1 >= len(rest):
@@ -405,6 +409,7 @@ def cmd_capture_manual(args: list[str]) -> None:
     )
 
     from uuid import uuid4
+
     session_id = uuid4()
 
     skill = manager.capture(

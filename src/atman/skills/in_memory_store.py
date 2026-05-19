@@ -214,7 +214,10 @@ class InMemorySkillStore:
         for inv in self._invocations.values():
             if inv.agent_id != agent_id:
                 continue
-            if inv.session_id not in session_first_ts or inv.started_at < session_first_ts[inv.session_id]:
+            if (
+                inv.session_id not in session_first_ts
+                or inv.started_at < session_first_ts[inv.session_id]
+            ):
                 session_first_ts[inv.session_id] = inv.started_at
 
         recent_sessions = {
