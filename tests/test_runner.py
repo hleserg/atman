@@ -935,6 +935,37 @@ def test_build_wake_up_message_interrupted(
     assert "внешним сигналом" in msg
 
 
+def test_build_wake_up_message_menu_timeout(
+    session_manager: SessionManager,
+    identity_with_narrative: Identity,
+) -> None:
+    """Test wake-up message for menu_timeout close_reason."""
+    from atman.adapters.agent.config import AgentConfig, ModelConfig
+    from atman.adapters.agent.runner import AtmanRunner
+
+    ctx = session_manager.start_session(identity_with_narrative.id)
+    moment = KeyMomentInput(
+        what_happened="Menu timed out",
+        emotional_valence=0.0,
+        emotional_intensity=0.3,
+        depth=EmotionalDepth.SURFACE,
+        why_it_matters="Inactivity menu expired",
+    )
+    session_manager.append_key_moment_input(ctx.session_id, moment)
+    session_manager.finish_session(ctx.session_id, close_reason="menu_timeout")
+
+    closed = _closed_session(session_manager._state_store, ctx.session_id)
+
+    runner = AtmanRunner(
+        workspace=Path("/tmp"),
+        agent_id=identity_with_narrative.id,
+        config=AgentConfig(model=ModelConfig(model="test")),
+    )
+    msg = runner._build_wake_up_message(closed)
+    assert msg is not None
+    assert "таймаут" in msg.lower() or "timed out" in msg.lower()
+
+
 def test_build_wake_up_message_no_close_reason(
     session_manager: SessionManager,
     identity_with_narrative: Identity,

@@ -1,0 +1,29 @@
+---
+description: Documentation placement rules for Atman. Apply when creating or moving documentation files.
+globs: ["docs/**", "*.md"]
+alwaysApply: false
+---
+
+## Documentation Placement
+
+When creating or modifying documentation, always place files correctly:
+
+- Architecture decisions (stable) → `docs/architecture/ADR/`
+- Design docs (evolving) → `docs/design/DESIGN_*.md`
+- Feature guides → `docs/features/<slug>/README.md` + `README-ru.md`
+- Work packages → `docs/development/work-packages/`
+- Ops runbooks → `docs/ops/`
+- Research → `docs/research/`
+- Ideas → `docs/ideas/`
+
+Never:
+- Create docs in repo root (only README/MANIFEST/AGENTS allowed there)
+- Edit files in `docs/content/` (auto-overwritten on sync)
+- Edit blocks between `<!-- codemap:auto:start -->` and `<!-- codemap:auto:end -->`
+
+Every doc in `docs/architecture/`, `docs/design/`, `docs/ops/` needs a `-ru.md` pair.
+
+<!-- codemap:auto:start section="docs-structure" -->
+## Current Docs Map
+<!-- Updated automatically by `make codemap`. Do not edit. -->
+<!-- codemap:auto:end -->

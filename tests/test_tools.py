@@ -17,7 +17,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RunUsage
 
-from atman.adapters.agent import record_key_moment, restart_session, wait_session
+from atman.adapters.agent import log_experience, record_key_moment, restart_session, wait_session
 from atman.adapters.agent.deps import AtmanDeps
 from atman.adapters.reflection.mock_reflection_model import MockReflectionModel
 from atman.adapters.storage import InMemoryExperienceStore, InMemoryStateStore
@@ -104,6 +104,18 @@ def _create_deps_with_session(agent_id: UUID) -> tuple[AtmanDeps, UUID]:
     )
 
     return deps, session_ctx.session_id
+
+
+class TestLogExperience:
+    """Deprecated log_experience redirect stub."""
+
+    async def test_log_experience_returns_migration_message(self) -> None:
+        agent_id = uuid4()
+        deps, _session_id = _create_deps_with_session(agent_id)
+        ctx = _make_run_context(deps)
+        result = await log_experience(ctx, what_happened="something happened")
+        assert "log_experience tool was removed" in result
+        assert "record_key_moment" in result
 
 
 class TestRecordKeyMoment:

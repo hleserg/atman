@@ -420,10 +420,13 @@ class SessionExperience(BaseModel):
         description="Reflection notes added over time - never replaces original",
     )
 
-    # FACT REFERENCES (E24.2) - aggregated from all key moments
+    # FACT REFERENCES (E24.2) - aggregated from key moments + unexamined reads
     fact_refs: list[UUID] = Field(
         default_factory=list,
-        description="IDs of all facts accessed during this session (deduplicated)",
+        description=(
+            "Deduped fact IDs touched during the session: refs from key moments plus "
+            "session.unexamined_fact_refs (facts surfaced/read but not yet colored)"
+        ),
     )
 
     @field_validator("importance", "salience")
