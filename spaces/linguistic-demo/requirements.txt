@@ -1,0 +1,8 @@
+gradio>=4.44.0
+gliner>=0.2
+transformers>=4.51.3,<5.0
+torch>=2.2
+sentencepiece>=0.2
+pymorphy3>=2.0.2
+pydantic>=2.0.0
+numpy>=1.26
