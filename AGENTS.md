@@ -322,6 +322,7 @@ Rules:
 <!-- Updated automatically by `make codemap`. Do not edit. -->
 - **architecture/**
   - **ADR/**
+      - `ADR-001-production-isolation-ru.md` — ADR-001 — Изоляция продакшена (пространство имён eval)
       - `ADR-001-production-isolation.md` — ADR-001 — Production Isolation (eval namespace)
       - `README.md` — Architecture Decision Records
   - **codemap/**
@@ -430,6 +431,8 @@ Rules:
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
 - **ops/**
+    - `INSTALLATION-ru.md` — Установка Atman
+    - `INSTALLATION.md` — Installing Atman
     - `README.md` — docs/ops — Operational Documentation
     - `SENTRY_SETUP-ru.md` — Настройка Sentry
     - `SENTRY_SETUP.md` — Sentry Setup
