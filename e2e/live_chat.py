@@ -97,16 +97,11 @@ TOOLS = (
 _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 
 
-def _default_session_log_path() -> Path:
-    override = os.environ.get("ATMAN_LIVE_SESSION_LOG")
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".atman" / "live-session.jsonl"
-
+from e2e.session_log_path import resolve_session_log_path
 
 # Fixed-path session log — Claude (or any tail -f consumer) can watch this file
 # to see the full conversation + all Atman internal events in real time.
-_SESSION_LOG = _default_session_log_path()
+_SESSION_LOG = resolve_session_log_path()
 
 import json as _json
 from datetime import UTC
@@ -227,7 +222,7 @@ def _atman_turn_to_con(con: AtmanConsole):
                 entities = []
             if entities:
                 parts = "  ".join(
-                    f"[bold]{_S(e.get('text', ''))}[/bold][dim]·{e.get('type', '')}[/dim]"
+                    f"[bold]{_sanitize_utf8_for_log(e.get('text', ''))}[/bold][dim]·{e.get('type', '')}[/dim]"
                     for e in entities
                     if isinstance(e, dict)
                 )
@@ -538,7 +533,7 @@ async def _run_live_chat_session(
     agent = Agent(
         llm,
         deps_type=type(deps),
-        instructions=lambda c: _S(build_instructions(c.deps)),
+        instructions=lambda c: _sanitize_utf8_for_log(build_instructions(c.deps)),
         tools=TOOLS,
     )
 
@@ -586,7 +581,7 @@ async def _run_live_chat_session(
                 _rc.print(f"  {workspace}")
                 continue
 
-            user_text = _S(user_text)
+            user_text = _sanitize_utf8_for_log(user_text)
             _log("user_msg", text=user_text)
 
             # ── Atman pre-turn (shared AtmanTurn pipeline with 3_Chat / session_tester)

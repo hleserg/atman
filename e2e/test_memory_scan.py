@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -24,14 +23,13 @@ from uuid import UUID, uuid4
 from rich.console import Console
 from rich.table import Table
 
+from e2e.session_log_path import resolve_session_log_path
+
 _rc = Console(highlight=False)
 
 
 def _default_session_log_path() -> Path:
-    override = os.environ.get("ATMAN_LIVE_SESSION_LOG")
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".atman" / "live-session.jsonl"
+    return resolve_session_log_path()
 
 
 SESSION_LOG = _default_session_log_path()

@@ -119,6 +119,7 @@ class OpenAIReflectionModel(ReflectionModel):
                 KeyError,
                 IndexError,
                 ValueError,
+                pydantic.ValidationError,
             ):
                 if attempt == self._config.max_retries - 1:
                     raise OllamaReflectionError(attempts=attempts, last_raw=last_raw) from None

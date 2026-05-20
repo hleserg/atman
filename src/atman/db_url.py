@@ -37,13 +37,19 @@ def require_password_in_database_url(url: str) -> str:
     return url
 
 
-def with_password_if_missing(url: str, *, password: str = "atman") -> str:
-    """Return URL unchanged if password present; otherwise inject ``password``."""
+def with_password_if_missing(url: str, *, password: str | None = None) -> str:
+    """Return URL unchanged if password present; otherwise inject dev password."""
     parsed = urlparse(url)
     if parsed.scheme.startswith("postgres") and parsed.password is None:
+        resolved_password = password or os.environ.get("ATMAN_DB_PASSWORD")
+        if resolved_password is None:
+            resolved_password = urlparse(DEFAULT_DEV_DATABASE_URL).password
+        if resolved_password is None:
+            msg = "Database URL missing password and ATMAN_DB_PASSWORD is unset"
+            raise ValueError(msg)
         host = parsed.hostname or "localhost"
         port = f":{parsed.port}" if parsed.port else ""
-        netloc = f"{parsed.username or 'atman'}:{password}@{host}{port}"
+        netloc = f"{parsed.username or 'atman'}:{resolved_password}@{host}{port}"
         parsed = parsed._replace(netloc=netloc)
         return urlunparse(parsed)
     return url

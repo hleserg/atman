@@ -17,6 +17,8 @@ from typing import Any
 from .config import AgentConfig
 from .main_watcher import CommitEvent
 
+_CHANGESETS_JSONL_NAME = "changesets.jsonl"
+
 
 @dataclass
 class WorkSession:
@@ -532,7 +534,7 @@ class AgentMemory:
             "pr_number": event.pr_number,
             "pr_title": event.pr_title or "",
         }
-        changesets_file = self.cfg.memory_path / "changesets.jsonl"
+        changesets_file = self.cfg.memory_path / _CHANGESETS_JSONL_NAME
         with open(changesets_file, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -544,7 +546,7 @@ class AgentMemory:
         from dataclasses import asdict
 
         record = asdict(changeset)
-        changesets_file = self.cfg.memory_path / "changesets.jsonl"
+        changesets_file = self.cfg.memory_path / _CHANGESETS_JSONL_NAME
         with open(changesets_file, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -553,7 +555,7 @@ class AgentMemory:
         Return recent changesets, newest first.
         Agent uses this to understand what's landed in main since it last looked.
         """
-        changesets_file = self.cfg.memory_path / "changesets.jsonl"
+        changesets_file = self.cfg.memory_path / _CHANGESETS_JSONL_NAME
         if not changesets_file.exists():
             return []
         records = []

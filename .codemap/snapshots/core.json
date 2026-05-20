@@ -1,6 +1,6 @@
 {
   "component_id": "core",
-  "recorded_at": "2026-05-19T19:20:35.443490+00:00",
+  "recorded_at": "2026-05-20T12:54:05.585555+00:00",
   "class_names": [
     "SystemClock",
     "AtmanError",
@@ -187,6 +187,7 @@
   ],
   "function_names": [
     "ensure_utc",
+    "validate_enqueue_payload",
     "daily_reflection_run_key_empty_day",
     "daily_reflection_run_key_no_identity",
     "daily_reflection_run_key_for_identity",

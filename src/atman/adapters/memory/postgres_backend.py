@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
+from atman.db_url import resolve_database_url
+
 if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
@@ -161,12 +163,7 @@ class PostgresFactualMemory(FactualMemory):
                 "psycopg is required for PostgresFactualMemory. "
                 "Install with: pip install 'psycopg[binary]'"
             )
-        self.db_url = (
-            db_url
-            or os.environ.get("ATMAN_DB_URL")
-            or os.environ.get("DATABASE_URL")
-            or "postgresql://atman:atman@localhost:5432/atman"
-        )
+        self.db_url = resolve_database_url(db_url)
         self._embedding = embedding
         self._post_write_scheduler = post_write_scheduler
         self._conn: psycopg.Connection[Any] | None = None

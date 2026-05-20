@@ -141,17 +141,13 @@ def main() -> int:
     payload["agent_cli_layout_ok"] = layout_agent
     payload["core_atman_ok"] = layout_core
 
-    if args.json:
-        pass
-    else:
+    if not args.json:
         out("[preflight] Atman agent CLI")
 
     # ordered checks per spec
 
     msg_py = f"Python: {py_ver} [{'OK' if py_ok else 'FAIL — need ≥3.12'}]"
-    if args.json:
-        pass
-    else:
+    if not args.json:
         out(msg_py)
 
     msg_layout = (

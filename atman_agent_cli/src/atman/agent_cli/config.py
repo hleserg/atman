@@ -10,6 +10,14 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_DOT_ATMAN_DIRNAME = ".atman"
+_GITHUB_JSON_ACCEPT_HEADER = "application/vnd.github+json"
+
+# Textual TUI selectors / shared message fragments (Sonar S1192).
+TUI_SEL_CHAT_WIDGET = "#chat-widget"
+TUI_SEL_TABS = "#tabs"
+TUI_CHAT_THINKING_LINE = "\n[bold cyan]◆ Thinking...[/bold cyan]"
+
 
 @dataclass
 class AgentConfig:
@@ -43,10 +51,10 @@ class AgentConfig:
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     rag_top_k: int = 50  # BGE-M3 candidates
     rag_top_n: int = 5  # after reranker
-    index_path: Path = field(default_factory=lambda: Path.home() / ".atman" / "agent_index")
+    index_path: Path = field(default_factory=lambda: Path.home() / _DOT_ATMAN_DIRNAME / "agent_index")
 
     # ── Memory (Atman) ────────────────────────────────────────────────
-    memory_path: Path = field(default_factory=lambda: Path.home() / ".atman" / "agent_memory")
+    memory_path: Path = field(default_factory=lambda: Path.home() / _DOT_ATMAN_DIRNAME / "agent_memory")
 
     # ── Babysit ───────────────────────────────────────────────────────
     babysit_poll_interval: int = 30  # seconds
@@ -61,7 +69,7 @@ class AgentConfig:
     context_critical_ratio: float = 0.90
 
     # ── UI ────────────────────────────────────────────────────────────
-    history_file: Path = field(default_factory=lambda: Path.home() / ".atman" / "agent_history")
+    history_file: Path = field(default_factory=lambda: Path.home() / _DOT_ATMAN_DIRNAME / "agent_history")
 
     def __post_init__(self) -> None:
         self.repo_path = Path(self.repo_path)
@@ -113,7 +121,7 @@ class AgentConfig:
 
     @property
     def github_headers(self) -> dict[str, str]:
-        h = {"Accept": "application/vnd.github+json"}
+        h = {"Accept": _GITHUB_JSON_ACCEPT_HEADER}
         if self.github_token:
             h["Authorization"] = f"Bearer {self.github_token}"
         return h

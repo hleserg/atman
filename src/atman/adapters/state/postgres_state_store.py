@@ -15,7 +15,6 @@ and caches the mapping.
 
 from __future__ import annotations
 
-import os
 import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -57,6 +56,7 @@ from atman.core.models.entity import KeyMomentEntityLink
 from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
 from atman.core.session_log import slog as _slog
+from atman.db_url import resolve_database_url
 
 
 def _row_to_session(row: Any) -> Session:
@@ -153,12 +153,7 @@ class PostgresStateStore(StateStore):
         if psycopg is None:
             raise ImportError("psycopg not installed. Install with: pip install 'psycopg[binary]'")
 
-        self._db_url = (
-            db_url
-            or os.environ.get("ATMAN_DB_URL")
-            or os.environ.get("DATABASE_URL")
-            or "postgresql://atman:atman@localhost:5432/atman"
-        )
+        self._db_url = resolve_database_url(db_url)
         self._conn: psycopg.Connection[Any] | None = None
         self._fixed_serial_id: int | None = serial_id
         self._serial_cache: dict[UUID, int] = {}

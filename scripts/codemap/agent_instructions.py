@@ -130,7 +130,7 @@ def update_agent_instructions(
 
     Returns True if any file was changed (or would change in check mode).
     """
-    docs_map = _build_docs_map(repo_root, lang=lang)
+    docs_map = _build_docs_map(repo_root, _lang=lang)
     any_changed = False
 
     targets = [

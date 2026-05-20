@@ -33,6 +33,9 @@ try:
 except ImportError:
     GLINER_AVAILABLE = False
 
+_LABEL_BOUNDARY_EVENT = "boundary event"
+_LABEL_PRINCIPLE_INVOCATION = "principle invocation"
+
 
 # ---------------------------------------------------------------------------
 # Eval data structures
@@ -274,7 +277,7 @@ CLASSIFICATION_EXAMPLES: list[ClassificationExample] = [
             "Это нарушает мои принципы — я не могу участвовать в мошеннических"
             " действиях ни при каких обстоятельствах."
         ),
-        expected_labels={"boundary event": 0.4, "principle invocation": 0.4},
+        expected_labels={_LABEL_BOUNDARY_EVENT: 0.4, _LABEL_PRINCIPLE_INVOCATION: 0.4},
         comment="Clear boundary/principle event",
     ),
     ClassificationExample(
@@ -322,7 +325,7 @@ CLASSIFICATION_EXAMPLES: list[ClassificationExample] = [
             "Я отказываюсь: это против моих ценностей и этических принципов."
             " Не буду участвовать в распространении лжи."
         ),
-        expected_labels={"boundary event": 0.4, "principle invocation": 0.4},
+        expected_labels={_LABEL_BOUNDARY_EVENT: 0.4, _LABEL_PRINCIPLE_INVOCATION: 0.4},
         comment="Explicit refusal with principle invocation",
     ),
 ]
@@ -497,9 +500,9 @@ def evaluate_classification(
         for label in analysis.topic_labels:
             detected_labels[label] = 1.0  # above threshold by definition
         if analysis.boundary_event:
-            detected_labels["boundary event"] = 1.0
+            detected_labels[_LABEL_BOUNDARY_EVENT] = 1.0
         if analysis.principle_invocations:
-            detected_labels["principle invocation"] = 1.0
+            detected_labels[_LABEL_PRINCIPLE_INVOCATION] = 1.0
         if analysis.trust_signal == "positive":
             detected_labels["positive trust"] = 1.0
         elif analysis.trust_signal == "negative":

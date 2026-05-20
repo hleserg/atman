@@ -1,7 +1,6 @@
 """PostgreSQL adapter for MaintenanceQueue with SKIP LOCKED claim semantics."""
 
 import json
-import os
 import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -29,6 +28,7 @@ else:
 
 from atman.core.models.maintenance import JobName, JobStatus, MaintenanceJob
 from atman.core.ports.maintenance_queue import MaintenanceQueue, validate_enqueue_payload
+from atman.db_url import resolve_database_url
 
 
 def _coerce_dict(value: Any) -> dict[str, Any]:
@@ -151,12 +151,7 @@ class PostgresMaintenanceQueue(MaintenanceQueue):
         if psycopg is None:
             raise ImportError("psycopg not installed. Install with: pip install 'psycopg[binary]'")
 
-        self._db_url = (
-            db_url
-            or os.environ.get("ATMAN_DB_URL")
-            or os.environ.get("DATABASE_URL")
-            or "postgresql://atman:atman@localhost:5432/atman"
-        )
+        self._db_url = resolve_database_url(db_url)
         self._conn: psycopg.Connection[Any] | None = None
 
     def _get_conn(self) -> "psycopg.Connection[Any]":

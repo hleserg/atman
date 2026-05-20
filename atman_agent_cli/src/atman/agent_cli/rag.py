@@ -17,6 +17,8 @@ import numpy as np
 
 from .config import AgentConfig
 
+_RAG_META_JSON = "meta.json"
+
 if TYPE_CHECKING:
     from .providers import ProviderRouter
 
@@ -414,7 +416,7 @@ class RAGIndex:
         return n_upd
 
     def check_staleness(self) -> bool:
-        meta_obj = self.index_path / "meta.json"
+        meta_obj = self.index_path / _RAG_META_JSON
         if not meta_obj.exists():
             return True
         try:
@@ -659,7 +661,7 @@ class RAGIndex:
                 np.asarray(self._embeddings, dtype=np.float32),
             )
 
-        (self.index_path / "meta.json").write_text(
+        (self.index_path / _RAG_META_JSON).write_text(
             json.dumps({"chunk_count": len(self._chunks), "built_at": time.time()}),
             encoding="utf-8",
         )
@@ -731,7 +733,7 @@ class RAGIndex:
 
     @property
     def stats(self) -> dict[str, Any]:
-        mf = self.index_path / "meta.json"
+        mf = self.index_path / _RAG_META_JSON
         bt = None
         if mf.exists():
             try:

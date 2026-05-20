@@ -13,6 +13,8 @@ from lib.dto import DetectedEntity, ExtractedRelation
 
 logger = logging.getLogger(__name__)
 
+_OBJ_TYPE_MARKER = "<obj_type>"
+
 try:
     from transformers import pipeline as _hf_pipeline  # type: ignore[import-untyped]
 
@@ -110,10 +112,10 @@ def parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
             _, _, rest = rest.partition("<subj_type>")
         if "<obj>" in rest:
             obj_part, _, relation_part = rest.partition("<obj>")
-            if "<obj_type>" in relation_part:
-                _, _, relation_part = relation_part.partition("<obj_type>")
-        elif "<obj_type>" in rest:
-            obj_part, _, relation_part = rest.partition("<obj_type>")
+            if _OBJ_TYPE_MARKER in relation_part:
+                _, _, relation_part = relation_part.partition(_OBJ_TYPE_MARKER)
+        elif _OBJ_TYPE_MARKER in rest:
+            obj_part, _, relation_part = rest.partition(_OBJ_TYPE_MARKER)
         else:
             continue
         subj_text = subj_part.strip()

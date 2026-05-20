@@ -210,7 +210,7 @@ _components.html(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _S(s: str) -> str:
+def _sanitize_utf8_for_log(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
@@ -598,7 +598,7 @@ def _initialize() -> None:
     agent = Agent(
         llm,
         deps_type=type(deps),
-        instructions=lambda c: _S(build_instructions(c.deps)),
+        instructions=lambda c: _sanitize_utf8_for_log(build_instructions(c.deps)),
         tools=tool_funcs,
     )
 
