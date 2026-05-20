@@ -37,7 +37,7 @@ def init_sentry_from_env() -> bool:
     dsn = os.getenv("SENTRY_DSN", "").strip()
     if not dsn:
         return False
-    try:
+    with suppress(Exception):
         from atman.observability import init_observability
         from atman.observability import is_enabled as obs_enabled
 
@@ -46,8 +46,6 @@ def init_sentry_from_env() -> bool:
         global _initialized
         _initialized = obs_enabled()
         return _initialized
-    except Exception:
-        pass
     # Honour explicit opt-out even when the new module failed to import.
     if os.getenv("ATMAN_OBS_LEVEL", "").strip().lower() == "off":
         return False
