@@ -525,7 +525,7 @@ class TestMaintenanceWorker:
         worker.run_once()
 
         assert len(saved) == 1
-        assert saved[0].confidence == 0.9
+        assert saved[0].confidence == pytest.approx(0.9)
 
 
 def test_decay_pass_high_importance_decays_slower_than_low() -> None:

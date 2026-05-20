@@ -79,29 +79,36 @@ def _event_message(event: dict[str, Any]) -> str:
     return str(event.get("message") or "")
 
 
-def _iter_stack_frame_paths(event: dict[str, Any], hint: dict[str, Any]) -> list[str]:
+def _frame_paths_from_event(event: dict[str, Any]) -> list[str]:
     paths: list[str] = []
     exception = event.get("exception")
-    if isinstance(exception, dict):
-        for exc_value in exception.get("values") or []:
-            if not isinstance(exc_value, dict):
+    if not isinstance(exception, dict):
+        return paths
+    for exc_value in exception.get("values") or []:
+        if not isinstance(exc_value, dict):
+            continue
+        stacktrace = exc_value.get("stacktrace")
+        if not isinstance(stacktrace, dict):
+            continue
+        for frame in stacktrace.get("frames") or []:
+            if not isinstance(frame, dict):
                 continue
-            stacktrace = exc_value.get("stacktrace")
-            if not isinstance(stacktrace, dict):
-                continue
-            for frame in stacktrace.get("frames") or []:
-                if not isinstance(frame, dict):
-                    continue
-                for key in ("abs_path", "filename", "module"):
-                    value = frame.get(key)
-                    if value:
-                        paths.append(str(value))
-
-    exc_info = hint.get("exc_info")
-    if isinstance(exc_info, tuple) and len(exc_info) >= 3 and exc_info[2] is not None:
-        for summary in traceback.extract_tb(exc_info[2]):
-            paths.append(summary.filename)
+            for key in ("abs_path", "filename", "module"):
+                value = frame.get(key)
+                if value:
+                    paths.append(str(value))
     return paths
+
+
+def _frame_paths_from_hint(hint: dict[str, Any]) -> list[str]:
+    exc_info = hint.get("exc_info")
+    if not isinstance(exc_info, tuple) or len(exc_info) < 3 or exc_info[2] is None:
+        return []
+    return [summary.filename for summary in traceback.extract_tb(exc_info[2])]
+
+
+def _iter_stack_frame_paths(event: dict[str, Any], hint: dict[str, Any]) -> list[str]:
+    return _frame_paths_from_event(event) + _frame_paths_from_hint(hint)
 
 
 def _stack_frame_in_tests(event: dict[str, Any], hint: dict[str, Any]) -> bool:

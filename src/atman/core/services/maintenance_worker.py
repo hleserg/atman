@@ -323,14 +323,7 @@ class MaintenanceWorker:
                     "fact entity resolve failed for %r (fact %s)", ent.text, fact_id, exc_info=True
                 )
 
-        # Deduplicate (entity_id, role) — keep highest confidence
-        best_by_key: dict[tuple[UUID, str], FactEntityLink] = {}
-        for link in entity_links:
-            key = (link.entity_id, link.role)
-            prev = best_by_key.get(key)
-            if prev is None or link.confidence > prev.confidence:
-                best_by_key[key] = link
-        unique_links = list(best_by_key.values())
+        unique_links = _dedupe_fact_entity_links(entity_links)
 
         save_fn = getattr(self._factual_memory, "save_fact_entity_links", None)
         if save_fn is None:
@@ -366,6 +359,17 @@ class MaintenanceWorker:
             _LOG.warning("entity lookup failed for %r", entity.text, exc_info=True)
             return None
         return matches[0].id if matches else None
+
+
+def _dedupe_fact_entity_links(links: list[FactEntityLink]) -> list[FactEntityLink]:
+    """Keep one link per (entity_id, role) with the highest confidence."""
+    best_by_key: dict[tuple[UUID, str], FactEntityLink] = {}
+    for link in links:
+        key = (link.entity_id, link.role)
+        prev = best_by_key.get(key)
+        if prev is None or link.confidence > prev.confidence:
+            best_by_key[key] = link
+    return list(best_by_key.values())
 
 
 def _require_moment_payload(job: MaintenanceJob) -> tuple[UUID, UUID]:
