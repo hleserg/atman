@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -817,8 +818,8 @@ class SessionManager:
                 raise SessionAlreadyFinishedError(f"Session {session_id} already finished")
 
             if (
-                moment.emotional_valence == 0.0
-                and moment.emotional_intensity == 0.0
+                math.isclose(moment.emotional_valence, 0.0)
+                and math.isclose(moment.emotional_intensity, 0.0)
                 and not moment.incomplete_coloring
             ):
                 raise ValueError(

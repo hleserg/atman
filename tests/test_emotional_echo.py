@@ -201,7 +201,7 @@ def test_build_context_summary_truncation_only_for_long_text(now: datetime):
 
 def test_get_dominant_emotional_tone_zero_when_empty(now: datetime):
     service = EmotionalEcho(state_store=InMemoryStateStore())
-    assert service.get_dominant_emotional_tone(current_time=now) == 0.0
+    assert service.get_dominant_emotional_tone(current_time=now) == pytest.approx(0.0)
 
 
 def test_get_dominant_emotional_tone_weighted_average(now: datetime):

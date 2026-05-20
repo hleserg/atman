@@ -550,7 +550,7 @@ async def _run_live_chat_session(
     try:
         while True:
             try:
-                user_text = input("you> ").strip()
+                user_text = (await asyncio.to_thread(input, "you> ")).strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 close_reason = "interrupted"

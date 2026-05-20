@@ -12,6 +12,8 @@ Covers Devin Review fixes for PR #414:
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from atman.adapters.memory.bm25_embedding import BM25EmbeddingAdapter
@@ -37,7 +39,7 @@ class TestBM25EmbeddingAdapter:
         """English text produces a non-empty BM25 vector (regression baseline)."""
         vec = adapter.embed("the quick brown fox jumps over the lazy dog")
         assert len(vec) == adapter.dimension()
-        assert any(v != 0.0 for v in vec)
+        assert any(not math.isclose(v, 0.0) for v in vec)
 
     @pytest.mark.parametrize(
         "text",
@@ -61,7 +63,7 @@ class TestBM25EmbeddingAdapter:
 
         vec = adapter.embed(text)
         assert len(vec) == adapter.dimension()
-        assert any(v != 0.0 for v in vec)
+        assert any(not math.isclose(v, 0.0) for v in vec)
 
     def test_tokenizer_drops_underscores_and_short_tokens(
         self, adapter: BM25EmbeddingAdapter
@@ -83,7 +85,7 @@ class TestBM25EmbeddingAdapter:
 
     def test_similarity_zero_vectors_returns_zero(self, adapter: BM25EmbeddingAdapter) -> None:
         """Zero-norm vectors get a defined similarity of 0.0."""
-        assert adapter.similarity([0.0, 0.0], [0.0, 0.0]) == 0.0
+        assert adapter.similarity([0.0, 0.0], [0.0, 0.0]) == pytest.approx(0.0)
 
     def test_similarity_identical_vectors(self, adapter: BM25EmbeddingAdapter) -> None:
         """Cosine similarity of a non-zero vector with itself is ``1.0``."""
@@ -158,7 +160,7 @@ class TestBM25EmbeddingAdapter:
         # Length is determined by the size of the corpus vocabulary.
         assert len(vec) == len(adapter._vocab) > 0
         # The query token isn't in the vocabulary -> the vector is all zero.
-        assert all(v == 0.0 for v in vec)
+        assert all(v == pytest.approx(0.0) for v in vec)
 
     def test_embed_with_corpus_unique_token_has_weight(self, adapter: BM25EmbeddingAdapter) -> None:
         corpus = ["alpha beta gamma", "alpha delta epsilon"]
@@ -167,8 +169,8 @@ class TestBM25EmbeddingAdapter:
         assert any(v > 0.0 for v in vec)
 
     def test_idf_returns_zero_for_unknown_term(self, adapter: BM25EmbeddingAdapter) -> None:
-        """Unknown terms have IDF == 0.0 (no doc-frequency)."""
-        assert adapter._idf("never-seen") == 0.0
+        """Unknown terms have zero IDF (no doc-frequency)."""
+        assert adapter._idf("never-seen") == pytest.approx(0.0)
 
     def test_tf_weight_handles_zero_avg_doc_len(self, adapter: BM25EmbeddingAdapter) -> None:
         """When the corpus is empty, ``avg_doc_len`` is 0 and we return raw

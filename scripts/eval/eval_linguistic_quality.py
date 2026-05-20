@@ -12,6 +12,7 @@ Usage:
 Requires linguistic extra: pip install -e ".[linguistic]"
 """
 
+import math
 from __future__ import annotations
 
 import argparse
@@ -357,7 +358,7 @@ class NERResult:
     @property
     def f1(self) -> float:
         p, r = self.precision, self.recall
-        if p + r == 0.0:
+        if math.isclose(p + r, 0.0):
             return 0.0
         return 2 * p * r / (p + r)
 

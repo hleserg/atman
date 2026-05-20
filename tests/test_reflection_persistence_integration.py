@@ -46,6 +46,7 @@ def test_persist_micro_reflection_after_session():
     )
 
     # Verify persistence
+    assert record is not None
     assert record.id is not None
     assert record.level == ReflectionLevel.MICRO
     assert record.session_id == session_id
@@ -90,6 +91,7 @@ def test_persist_daily_reflection_pattern_detection():
     )
 
     # Verify persistence
+    assert record is not None
     assert record.id is not None
     assert record.level == ReflectionLevel.DAILY
     assert record.session_id is None  # Not used for daily
@@ -210,6 +212,7 @@ def test_persist_reflection_with_reframing_notes():
         model_provider="ollama",
     )
 
+    assert record is not None
     assert record.reframing_note_ids == note_ids
 
     # Verify retrieval

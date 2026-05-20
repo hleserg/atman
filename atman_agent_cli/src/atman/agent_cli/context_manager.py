@@ -18,6 +18,7 @@ Tail gives immediate conversational continuity.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
@@ -465,7 +466,7 @@ Return JSON with these exact fields:
 
 Return only valid JSON, no markdown."""
 
-        raw = router.analyze(prompt)
+        raw = await asyncio.to_thread(router.analyze, prompt)
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:

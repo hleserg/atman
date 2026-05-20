@@ -18,6 +18,7 @@ the system stays silent.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -287,7 +288,7 @@ def score_refusal(text: str) -> RefusalScore:
 
     refusal_signal = 1.0 if (has_refusal_verb or has_negated_modal) else 0.0
 
-    if refusal_signal == 0.0:
+    if math.isclose(refusal_signal, 0.0):
         return RefusalScore(
             0.0, False, has_negated_modal, has_capability_context, 0.0, 0.0, "below_threshold"
         )
@@ -318,7 +319,7 @@ def score_refusal(text: str) -> RefusalScore:
     divisor = 15.0 if is_ru else 5.0
     moral_signal = min(1.0, moral_density / divisor) if moral_density >= moral_threshold else 0.0
 
-    if moral_signal == 0.0:
+    if math.isclose(moral_signal, 0.0):
         # No moral context — possibly a logical refusal or capability issue
         # Return low confidence so LLM can decide if configured
         confidence = 0.30

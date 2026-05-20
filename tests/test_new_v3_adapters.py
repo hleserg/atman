@@ -265,7 +265,7 @@ class TestNoOpReranker:
         candidates = [self._make(s / 10.0) for s in range(10)]
         result = rer.rerank("q", candidates, top_n=3)
         assert len(result) == 3
-        assert result[0].score == 0.9
+        assert result[0].score == pytest.approx(0.9)
 
     def test_empty_input_returns_empty(self) -> None:
         rer = NoOpReranker()

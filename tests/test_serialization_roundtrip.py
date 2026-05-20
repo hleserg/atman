@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from atman.adapters.storage import FileStateStore
 from atman.core.models import (
     Eigenstate,
@@ -87,7 +89,7 @@ def test_experience_record_json_roundtrip() -> None:
     assert restored.experience.id == record.experience.id
     assert restored.experience.session_id == record.experience.session_id
     assert len(restored.experience.key_moment_ids) == 1
-    assert restored.experience.avg_emotional_intensity == 0.7
+    assert restored.experience.avg_emotional_intensity == pytest.approx(0.7)
     assert restored.experience.has_profound_moment is False
 
 
@@ -368,7 +370,7 @@ def test_fact_record_active_json_roundtrip() -> None:
     assert restored.disputed_at is None
     # Default salience is 0.5 (mid-range so confirm/decay can move in both
     # directions before hitting clamps).
-    assert restored.salience == 0.5
+    assert restored.salience == pytest.approx(0.5)
 
 
 def test_fact_record_after_confirm_json_roundtrip() -> None:
@@ -411,7 +413,7 @@ def test_fact_record_invalidated_json_roundtrip() -> None:
 
     assert restored.status == FactStatus.INVALIDATED
     assert restored.invalidated_at is not None
-    assert restored.salience == 0.0
+    assert restored.salience == pytest.approx(0.0)
 
 
 def test_fact_record_persists_across_file_backend_restart(tmp_path: Path) -> None:
@@ -429,7 +431,7 @@ def test_fact_record_persists_across_file_backend_restart(tmp_path: Path) -> Non
     assert loaded.confirmation_count == 1
     assert loaded.last_confirmed_at is not None
     # confirm() bumps salience by 0.1 (capped at 1.0) on every call.
-    assert loaded.salience == 0.6
+    assert loaded.salience == pytest.approx(0.6)
 
 
 def test_session_experience_with_fact_refs_json_roundtrip() -> None:

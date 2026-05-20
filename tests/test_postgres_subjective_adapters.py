@@ -69,6 +69,7 @@ def test_postgres_pending_inbox_enqueue_sets_agent_in_context(agent_id: UUID) ->
         question="Should I add this principle?",
     )
     review = inbox.enqueue(draft)
+    assert review is not None
     assert review.context.get("agent_id") == str(agent_id)
     mock_conn.commit.assert_called()
 
@@ -137,4 +138,5 @@ def test_postgres_pending_inbox_resolve_commits(agent_id: UUID) -> None:
         note="ok",
         resolved_at=datetime.now(UTC),
     )
+    assert resolved is not None
     assert resolved.is_resolved

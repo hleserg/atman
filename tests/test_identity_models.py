@@ -38,7 +38,7 @@ def test_core_value_creation():
 
     assert value.name == "honesty"
     assert value.description == "Being truthful even when uncomfortable"
-    assert value.confidence == 0.8
+    assert value.confidence == pytest.approx(0.8)
     assert 0.0 <= value.confidence <= 1.0
 
 
@@ -67,7 +67,7 @@ def test_habit_creation():
     )
 
     assert habit.statement == "I tend to over-explain when uncertain"
-    assert habit.frequency == 0.7
+    assert habit.frequency == pytest.approx(0.7)
     assert habit.helpfulness == HelpfulnessLevel.MIXED
 
 
@@ -143,7 +143,7 @@ def test_identity_emotional_baseline_validation():
     """Test emotional baseline validation."""
     # Valid range
     identity = Identity(emotional_baseline=0.5)
-    assert identity.emotional_baseline == 0.5
+    assert identity.emotional_baseline == pytest.approx(0.5)
 
     # Invalid range
     with pytest.raises((ValueError, Exception)):

@@ -152,7 +152,7 @@ def test_dimension_caches_after_first_probe():
 
 def test_similarity_zero_vector_returns_zero():
     adapter = OllamaEmbeddingAdapter(base_url="http://localhost:11434")
-    assert adapter.similarity([0.0, 0.0], [0.1, 0.2]) == 0.0
+    assert adapter.similarity([0.0, 0.0], [0.1, 0.2]) == pytest.approx(0.0)
 
 
 def test_similarity_dimension_mismatch_raises():

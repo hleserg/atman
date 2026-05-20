@@ -56,7 +56,7 @@ def test_row_to_key_moment_round_trips_basic_fields() -> None:
     )
     assert moment.values_touched == ["reliability"]
     assert moment.principles_confirmed == ["test_storage_boundaries"]
-    assert moment.salience == 1.0
+    assert moment.salience == pytest.approx(1.0)
 
 
 def test_row_to_key_moment_drops_embedding_column() -> None:

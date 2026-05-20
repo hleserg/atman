@@ -171,7 +171,12 @@ class PostWriteScheduler:
             return
 
         async def _run() -> None:
-            self.schedule_for_key_moment(moment, agent_id, scheduled_at=scheduled_at)
+            await asyncio.to_thread(
+                self.schedule_for_key_moment,
+                moment,
+                agent_id,
+                scheduled_at=scheduled_at,
+            )
 
         # Keep a strong reference in the instance-level set until the task
         # completes — a local variable goes out of scope on return, and

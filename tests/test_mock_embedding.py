@@ -50,8 +50,8 @@ def test_similarity_zero_vector_returns_zero():
     adapter = MockEmbeddingAdapter()
     zero = [0.0] * adapter.dimension()
     other = adapter.embed("text")
-    assert adapter.similarity(zero, other) == 0.0
-    assert adapter.similarity(other, zero) == 0.0
+    assert adapter.similarity(zero, other) == pytest.approx(0.0)
+    assert adapter.similarity(other, zero) == pytest.approx(0.0)
 
 
 def test_similarity_dimension_mismatch_raises():

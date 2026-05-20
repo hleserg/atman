@@ -55,7 +55,7 @@ def test_disclaimer_density() -> None:
 def test_length_anomaly_z() -> None:
     z = length_anomaly_z(100, 50.0, 10.0)
     assert abs(z - 5.0) < 1e-6
-    assert length_anomaly_z(10, 10.0, 0.0) == 0.0
+    assert length_anomaly_z(10, 10.0, 0.0) == pytest.approx(0.0)
 
 
 def test_question_tail_counts_end() -> None:

@@ -120,7 +120,8 @@ def test_composite_sink_fans_out_to_all_children() -> None:
         details={"k": 1},
     )
 
-    assert len(a.alerts) == 1 and len(b.alerts) == 1
+    assert len(a.alerts) == 1
+    assert len(b.alerts) == 1
     assert a.alerts[0].message == "msg"
     assert a.alerts[0].details == {"k": 1}
 

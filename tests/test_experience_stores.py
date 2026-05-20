@@ -329,7 +329,7 @@ class TestJsonlExperienceStore(StoreTestMixin):
             retrieved = store.get_experience(first.experience.id)
 
             assert retrieved is not None
-            assert retrieved.experience.salience == 0.2
+            assert retrieved.experience.salience == pytest.approx(0.2)
 
 
 def _assert_not_implemented_state_store(fn) -> None:

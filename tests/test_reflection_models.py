@@ -29,7 +29,7 @@ def test_pattern_candidate_creation() -> None:
 
     assert pattern.pattern_type == PatternType.BEHAVIOR
     assert pattern.status == PatternStatus.CANDIDATE
-    assert pattern.confidence == 0.7
+    assert pattern.confidence == pytest.approx(0.7)
     assert pattern.detected_by == ReflectionLevel.DAILY
 
 
@@ -63,7 +63,7 @@ def test_criterion_assessment_creation() -> None:
     )
 
     assert assessment.criterion == JahodaCriterion.POSITIVE_SELF_ATTITUDE
-    assert assessment.score == 0.7
+    assert assessment.score == pytest.approx(0.7)
     assert len(assessment.evidence) == 2
     assert len(assessment.concerns) == 1
 
@@ -117,7 +117,7 @@ def test_health_assessment_complete() -> None:
     )
 
     assert len(assessment.criteria) == 6
-    assert assessment.overall_score == 0.6
+    assert assessment.overall_score == pytest.approx(0.6)
     assert assessment.summary == "Test assessment"
 
 
@@ -198,8 +198,8 @@ def test_pattern_candidate_confidence_at_boundary_zero_and_one():
         detected_by=ReflectionLevel.DEEP,
         confidence=1.0,
     )
-    assert low.confidence == 0.0
-    assert high.confidence == 1.0
+    assert low.confidence == pytest.approx(0.0)
+    assert high.confidence == pytest.approx(1.0)
 
     with pytest.raises(Exception, match="confidence"):
         PatternCandidate(

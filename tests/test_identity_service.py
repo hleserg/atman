@@ -12,6 +12,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+import pytest
+
 from atman.adapters.storage import FileStateStore
 from atman.core.models import CoreValue, Goal, GoalHorizon, Habit, OpenQuestion, Principle
 from atman.core.services import IdentityService
@@ -193,7 +195,7 @@ def test_update_emotional_baseline():
 
         # Update baseline
         updated = service.update_emotional_baseline(agent_id, 0.3)
-        assert updated.emotional_baseline == 0.3
+        assert updated.emotional_baseline == pytest.approx(0.3)
 
 
 def test_update_emotional_baseline_significant_change_creates_snapshot():

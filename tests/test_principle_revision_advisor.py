@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from atman.core.models.identity import Identity, Principle
 from atman.core.models.reflection import (
     PatternCandidate,
@@ -90,5 +92,5 @@ def test_find_similar_principle_by_word_overlap() -> None:
 
 def test_word_overlap_empty_branch() -> None:
     adv = PrincipleRevisionAdvisor()
-    assert adv._word_overlap([], ["a"]) == 0.0
-    assert adv._word_overlap(["a"], []) == 0.0
+    assert adv._word_overlap([], ["a"]) == pytest.approx(0.0)
+    assert adv._word_overlap(["a"], []) == pytest.approx(0.0)

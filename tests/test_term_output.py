@@ -151,11 +151,13 @@ def test_demo_pace_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("ATMAN_DEMO_PACE", "1")
     term_mod.demo_pace()
-    assert len(slept) == 1 and 0 < slept[0] <= 3.0
+    assert len(slept) == 1
+    assert slept[0] > 0
+    assert slept[0] <= 3.0
 
     monkeypatch.setenv("ATMAN_DEMO_PACE", "99")
     term_mod.demo_pace()
-    assert slept[-1] == 3.0
+    assert slept[-1] == pytest.approx(3.0)
 
     monkeypatch.setenv("ATMAN_DEMO_PACE", "off")
     term_mod.demo_pace()

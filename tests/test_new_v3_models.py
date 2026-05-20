@@ -221,7 +221,7 @@ def test_entity_relation_creation():
     assert rel.from_entity_id == a
     assert rel.to_entity_id == b
     assert rel.relation_type == "friend_of"
-    assert rel.confidence == 1.0
+    assert rel.confidence == pytest.approx(1.0)
     assert rel.since is None
     assert rel.until is None
 
@@ -240,7 +240,7 @@ def test_entity_relation_with_dates():
     )
     assert rel.since == date(2020, 1, 1)
     assert rel.until == date(2024, 12, 31)
-    assert rel.confidence == 0.85
+    assert rel.confidence == pytest.approx(0.85)
 
 
 def test_entity_relation_self_reference_rejected():
@@ -401,11 +401,11 @@ def test_entity_stance_full_fields():
         confidence=0.9,
         is_provisional=False,
     )
-    assert stance.valence == 0.5
-    assert stance.intensity == 0.8
+    assert stance.valence == pytest.approx(0.5)
+    assert stance.intensity == pytest.approx(0.8)
     assert stance.formed_in_reflection_id == rid
     assert stance.based_on_moment_ids == mids
-    assert stance.confidence == 0.9
+    assert stance.confidence == pytest.approx(0.9)
     assert stance.is_provisional is False
 
 
@@ -426,7 +426,7 @@ def test_fact_entity_link_allowed_roles(role):
         role=role,
     )
     assert link.role == role
-    assert link.confidence == 1.0
+    assert link.confidence == pytest.approx(1.0)
 
 
 def test_fact_entity_link_invalid_role():
@@ -515,8 +515,8 @@ def test_key_moment_entity_link_full():
         valence_toward_entity=0.3,
         intensity_toward_entity=0.7,
     )
-    assert link.valence_toward_entity == 0.3
-    assert link.intensity_toward_entity == 0.7
+    assert link.valence_toward_entity == pytest.approx(0.3)
+    assert link.intensity_toward_entity == pytest.approx(0.7)
 
 
 def test_key_moment_entity_link_frozen():

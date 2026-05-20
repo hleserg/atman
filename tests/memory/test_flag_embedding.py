@@ -164,7 +164,7 @@ class TestFlagEmbeddingAdapter:
         vec_zero = [0.0] * 1024
         vec_normal = [1.0] * 1024
         sim = self.adapter.similarity(vec_zero, vec_normal)
-        assert sim == 0.0
+        assert sim == pytest.approx(0.0)
 
 
 class TestFlagEmbeddingAdapterAvailability:

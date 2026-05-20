@@ -26,7 +26,7 @@ def test_ambient_anchor_minimal():
     )
     assert anchor.anchor_type == "topic"
     assert anchor.text == "weather"
-    assert anchor.confidence == 0.8
+    assert anchor.confidence == pytest.approx(0.8)
     assert anchor.entity_type is None
     assert anchor.span is None
 
@@ -76,7 +76,7 @@ def test_detected_entity_minimal():
     )
     assert de.text == "Alice"
     assert de.entity_type is EntityType.person
-    assert de.confidence == 0.9
+    assert de.confidence == pytest.approx(0.9)
     assert de.span is None
 
 
@@ -192,7 +192,7 @@ def test_key_moment_analysis_defaults():
     ana = KeyMomentAnalysis()
     assert ana.entities == []
     assert ana.topic_labels == []
-    assert ana.cognitive_load == 0.0
+    assert ana.cognitive_load == pytest.approx(0.0)
     assert ana.boundary_event is False
     assert ana.trust_signal is None
     assert ana.principle_invocations == []
@@ -210,7 +210,7 @@ def test_key_moment_analysis_full():
     )
     assert ana.entities == [de]
     assert ana.topic_labels == ["work", "stress"]
-    assert ana.cognitive_load == 0.6
+    assert ana.cognitive_load == pytest.approx(0.6)
     assert ana.boundary_event is True
     assert ana.trust_signal == "positive"
     assert ana.principle_invocations == ["honesty"]
@@ -249,7 +249,7 @@ def test_surfaced_memory_minimal():
     assert isinstance(mem.key_moment_id, UUID)
     assert mem.key_moment_id == kmid
     assert mem.text == "what happened"
-    assert mem.score == 0.5
+    assert mem.score == pytest.approx(0.5)
     assert mem.final_score is None
     assert mem.source == "dense"
 
@@ -262,7 +262,7 @@ def test_surfaced_memory_with_final_score():
         final_score=0.9,
         source="entity_join",
     )
-    assert mem.final_score == 0.9
+    assert mem.final_score == pytest.approx(0.9)
 
 
 def test_surfaced_memory_score_bounds():
@@ -285,8 +285,8 @@ def test_surfaced_memory_score_bounds():
 def test_surfaced_memory_score_boundaries_inclusive():
     m0 = SurfacedMemory(key_moment_id=uuid4(), text="x", score=0.0, source="dense")
     m1 = SurfacedMemory(key_moment_id=uuid4(), text="x", score=1.0, source="dense")
-    assert m0.score == 0.0
-    assert m1.score == 1.0
+    assert m0.score == pytest.approx(0.0)
+    assert m1.score == pytest.approx(1.0)
 
 
 def test_surfaced_memory_frozen():

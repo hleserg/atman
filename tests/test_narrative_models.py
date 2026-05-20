@@ -35,8 +35,8 @@ def test_eigenstate_creation():
     )
 
     assert 0.2 <= eigenstate.emotional_tone <= 0.4
-    assert eigenstate.emotional_intensity == 0.6
-    assert eigenstate.cognitive_load == 0.7
+    assert eigenstate.emotional_intensity == pytest.approx(0.6)
+    assert eigenstate.cognitive_load == pytest.approx(0.7)
     assert len(eigenstate.open_threads) == 1
 
 

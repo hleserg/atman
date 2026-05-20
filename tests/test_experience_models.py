@@ -33,8 +33,8 @@ class TestFeltSense:
         felt = FeltSense(
             emotional_valence=0.5, emotional_intensity=0.7, depth=EmotionalDepth.MEANINGFUL
         )
-        assert felt.emotional_valence == 0.5
-        assert felt.emotional_intensity == 0.7
+        assert felt.emotional_valence == pytest.approx(0.5)
+        assert felt.emotional_intensity == pytest.approx(0.7)
         assert felt.depth == EmotionalDepth.MEANINGFUL
 
     def test_emotional_valence_boundaries(self):
@@ -90,7 +90,7 @@ class TestKeyMoment:
         )
 
         assert moment.what_happened == "User asked a difficult question"
-        assert moment.how_i_felt.emotional_valence == 0.3
+        assert moment.how_i_felt.emotional_valence == pytest.approx(0.3)
         assert "honesty" in moment.values_touched
         assert "admit_uncertainty" in moment.principles_confirmed
 
@@ -140,8 +140,8 @@ class TestSessionExperience:
 
         assert exp.id is not None
         assert len(exp.key_moment_ids) == 1
-        assert exp.importance == 0.6
-        assert exp.salience == 0.8
+        assert exp.importance == pytest.approx(0.6)
+        assert exp.salience == pytest.approx(0.8)
         assert exp.access_count == 0
         assert exp.incomplete_coloring is False
 

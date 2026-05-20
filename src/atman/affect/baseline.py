@@ -92,7 +92,7 @@ class RollingBaseline:
     def z_scores(self, metrics: dict[str, float]) -> dict[str, float]:
         """Population z-scores vs rolling history (current row not yet in history)."""
         if len(self._history) < 2:
-            return {k: 0.0 for k in METRIC_KEYS}
+            return dict.fromkeys(METRIC_KEYS, 0.0)
         out: dict[str, float] = {}
         for key in METRIC_KEYS:
             vals = [h[key] for h in self._history if key in h]

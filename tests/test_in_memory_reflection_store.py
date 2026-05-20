@@ -154,7 +154,7 @@ def test_health_assessment_store_get_latest() -> None:
 
     latest = store.get_latest()
     assert latest is not None
-    assert latest.overall_score == 0.8
+    assert latest.overall_score == pytest.approx(0.8)
     assert store.get(a2.id) == a2
 
 

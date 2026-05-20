@@ -281,10 +281,10 @@ def test_invariant_fact_salience_in_unit_interval_after_confirm_and_invalidate()
     for _ in range(50):
         fact.confirm()
         assert 0.0 <= fact.salience <= 1.0
-    assert fact.salience == 1.0
+    assert fact.salience == pytest.approx(1.0)
 
     fact.invalidate(reason="zero")
-    assert fact.salience == 0.0
+    assert fact.salience == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +316,7 @@ def test_invariant_fact_invalidate_zeros_salience() -> None:
     fact.invalidate(reason="superseded by experiment")
 
     assert fact.status == FactStatus.INVALIDATED
-    assert fact.salience == 0.0
+    assert fact.salience == pytest.approx(0.0)
     assert fact.invalidated_at is not None
     assert fact.invalidation_note == "superseded by experiment"
 

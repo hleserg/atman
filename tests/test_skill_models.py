@@ -132,7 +132,7 @@ class TestManifestParsing:
         assert manifest.kind == SkillKind.active
         assert manifest.origin == SkillOrigin.in_session
         assert "розетка" in manifest.triggers_keywords
-        assert manifest.min_confidence == 0.7
+        assert manifest.min_confidence == pytest.approx(0.7)
         assert "requests>=2.31" in manifest.dependencies_python_packages
         assert manifest.runtime_entry == "scripts/run.py"
         assert manifest.runtime_sandbox == "subprocess"
@@ -178,5 +178,5 @@ class TestManifestParsing:
         assert parsed.kind == SkillKind.passive
         assert parsed.origin == SkillOrigin.reflection_pattern
         assert "foo" in parsed.triggers_keywords
-        assert parsed.min_confidence == 0.8
+        assert parsed.min_confidence == pytest.approx(0.8)
         assert "Do stuff." in parsed.body

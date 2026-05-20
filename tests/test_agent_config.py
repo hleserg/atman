@@ -168,7 +168,7 @@ class TestAgentConfig:
         assert config.enable_experience_search is True
         assert config.enable_key_moments is True
         assert config.model.model == "test"
-        assert config.model.temperature == 0.7
+        assert config.model.temperature == pytest.approx(0.7)
         assert config.model.max_tokens == 8192
 
     def test_custom_config(self):
@@ -202,7 +202,7 @@ class TestModelConfig:
         config = ModelConfig()
 
         assert config.model == "test"
-        assert config.temperature == 0.7
+        assert config.temperature == pytest.approx(0.7)
         assert config.max_tokens == 8192
 
     def test_openai_model(self):
@@ -210,7 +210,7 @@ class TestModelConfig:
         config = ModelConfig(model="openai:gpt-4o", temperature=0.5, max_tokens=1000)
 
         assert config.model == "openai:gpt-4o"
-        assert config.temperature == 0.5
+        assert config.temperature == pytest.approx(0.5)
         assert config.max_tokens == 1000
 
     def test_anthropic_model(self):
@@ -221,7 +221,7 @@ class TestModelConfig:
         )
 
         assert config.model == "anthropic:claude-3-5-sonnet-20241022"
-        assert config.temperature == 0.8
+        assert config.temperature == pytest.approx(0.8)
 
     def test_ollama_model(self):
         """Test configuring Ollama model."""
