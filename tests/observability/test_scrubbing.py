@@ -41,6 +41,30 @@ def test_before_send_passes_event():
     assert result is event
 
 
+def test_before_send_drops_reflection_overload_logger():
+    fn = _make_before_send("minimal")
+    event = {"logger": "atman.reflection.overload", "message": "reflection overload: too deep"}
+    assert fn(event, {}) is None
+
+
+def test_before_send_drops_pytest_stack_frames():
+    fn = _make_before_send("minimal")
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [
+                            {"filename": "tests/test_post_write_wiring.py", "lineno": 108},
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    assert fn(event, {}) is None
+
+
 def test_before_send_transaction_drops_health():
     fn = _make_before_send_transaction("minimal")
     for route in _HEALTH_ROUTES:
