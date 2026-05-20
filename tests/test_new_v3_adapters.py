@@ -583,3 +583,48 @@ def test_file_state_store_store_key_moment_updates_session_file(tmp_path) -> Non
     moments = store.get_key_moments_for_session(session_id)
     assert len(moments) == 1
     assert moments[0].salience == pytest.approx(0.42)
+
+
+def test_file_state_store_store_key_moment_recovers_from_corrupt_session_file(
+    tmp_path,
+) -> None:
+    from atman.adapters.storage.file_state_store import FileStateStore
+
+    store = FileStateStore(tmp_path)
+    session_id = uuid4()
+    session_file = store.key_moments_dir / f"{session_id}_moments.json"
+    session_file.write_text("not-json", encoding="utf-8")
+    m = KeyMoment(
+        what_happened="initial",
+        how_i_felt=FeltSense(
+            emotional_valence=0.0, emotional_intensity=0.5, depth=EmotionalDepth.SURFACE
+        ),
+        why_it_matters="reason",
+        session_id=session_id,
+        salience=0.42,
+    )
+    store.store_key_moment(m)
+    moments = store.get_key_moments_for_session(session_id)
+    assert len(moments) == 1
+    assert moments[0].salience == pytest.approx(0.42)
+
+
+def test_file_state_store_list_recent_skips_corrupt_session_files(tmp_path) -> None:
+    import warnings
+
+    from atman.adapters.storage.file_state_store import FileStateStore
+    from atman.core.models.session import Session
+
+    store = FileStateStore(tmp_path)
+    agent_id = uuid4()
+    corrupt = store.sessions_dir / "corrupt.json"
+    corrupt.write_text("{invalid", encoding="utf-8")
+    store.create_session(Session(agent_id=agent_id))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        recent = store.list_recent_sessions(agent_id)
+
+    assert len(recent) == 1
+    assert recent[0].agent_id == agent_id
+    assert any("corrupted session file" in str(w.message) for w in caught)

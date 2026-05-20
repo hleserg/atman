@@ -40,3 +40,22 @@ def test_validate_session_log_path_allows_under_atman_home(
     base.mkdir()
     allowed = base / "live-session.jsonl"
     assert validate_session_log_path(allowed) == allowed.resolve()
+
+
+def test_resolve_session_log_env_rejects_invalid_basename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("e2e.session_log_path._ATMAN_HOME", tmp_path / ".atman")
+    monkeypatch.setenv("ATMAN_LIVE_SESSION_LOG", ".hidden.jsonl")
+    with pytest.raises(ValueError, match="Invalid session log filename"):
+        resolve_session_log_path()
+
+
+def test_validate_session_log_path_rejects_invalid_basename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("e2e.session_log_path._ATMAN_HOME", tmp_path / ".atman")
+    base = (tmp_path / ".atman").resolve()
+    base.mkdir()
+    with pytest.raises(ValueError, match="Invalid session log filename"):
+        validate_session_log_path(base / "-bad.jsonl")
