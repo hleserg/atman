@@ -251,6 +251,7 @@ Cloud agents only see repo files: put demo instructions in **this file**, the **
 
 - Изменили **`README.md`** → сначала обновите **`README-ru.md`**, затем **`make sync-site-content`** (копии `README.md` и `README-ru.md` в **`docs/content/`** перезаписываются). Аналогично держите пары в актуальном виде для **`MANIFEST*`** и **`SYSTEM*`**, затем тот же `make sync-site-content`.
 - Изменили **`docs/architecture/SYSTEM_MAP.md`** → синхронизируйте **`SYSTEM_MAP-ru.md`** (правило то же, что и для пары `README`/`README-ru`); `make sync-site-content` карту не копирует.
+- Изменили что-либо в **`src/atman/affect/`** (emolex / metrics / refusal_detector) → запустите **`make sync-demo-affect`** чтобы обновить вендорированную копию в **`spaces/linguistic-demo/lib/affect/`** (HF Space-демка). CI проверяет дрейф через **`make check-demo-affect-drift`** (входит в `make check`) — PR упадёт, если копии разошлись.
 - PR-шаблон находится в `.github/pull_request_template.md` — используйте его при создании PR.
 - Pre-commit хуки настроены в `.pre-commit-config.yaml` (ruff, pyright, bandit).
 - `Makefile` содержит все проверки: `make check` запускает полный набор, `make test-fast` — параллельные тесты.
