@@ -7,7 +7,7 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
-from atman.affect.emolex.emolex import EMOTION_KEYS, emotion_score, tokenize
+from lib.affect.emolex.emolex import EMOTION_KEYS, emotion_score, tokenize
 
 RU_HEDGES = frozenset(
     {

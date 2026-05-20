@@ -51,6 +51,10 @@ eggs/
 .eggs/
 lib/
 lib64/
+!spaces/linguistic-demo/lib/
+!spaces/linguistic-demo/lib/**/
+!spaces/linguistic-demo/lib/**/*.py
+!spaces/linguistic-demo/lib/**/*.json
 parts/
 sdist/
 var/

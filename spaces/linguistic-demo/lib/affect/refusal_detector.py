@@ -22,8 +22,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from atman.affect.emolex.emolex import _lemma_ru_cached as lemmatize
-from atman.affect.emolex.emolex import emotion_score, tokenize
+from lib.affect.emolex.emolex import _lemma_ru_cached as lemmatize
+from lib.affect.emolex.emolex import emotion_score, tokenize
 
 # ---------------------------------------------------------------------------
 # Normalized forms — value refusal vocabulary

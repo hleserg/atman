@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement session-test spotlight help
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content sync-demo-affect check-demo-affect-drift docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement session-test spotlight help
 
 .DEFAULT_GOAL := help
 
@@ -32,6 +32,10 @@ help:
 	@echo "  Eval"
 	@echo "    eval-list      list available benchmarks"
 	@echo "    eval-run       run noop benchmark"
+	@echo ""
+	@echo "  HF Space demo"
+	@echo "    sync-demo-affect          mirror src/atman/affect into spaces/linguistic-demo"
+	@echo "    check-demo-affect-drift   CI gate against forgotten manual propagation"
 
 # Starts Spotlight local dev UI (port 8969). See docs/features/observability/spotlight.md.
 spotlight:
@@ -69,11 +73,22 @@ audit:
 	pip-audit -r /tmp/_atman_reqs.txt
 	@rm -f /tmp/_atman_reqs.txt
 
-check: lint format typecheck security lint-boundary check-eval-deps-placement test
+check: lint format typecheck security lint-boundary check-eval-deps-placement check-demo-affect-drift test
 	@echo ""
 	@echo "All checks passed."
 
 all: check audit
+
+# Sync vendored affect subset in spaces/linguistic-demo/lib/affect/
+# from canonical src/atman/affect/. Rewrites `from atman.affect...`
+# imports to `from lib.affect...` so the HF Space resolves them.
+sync-demo-affect:
+	./scripts/sync_demo_affect.sh
+
+# Fail when spaces/linguistic-demo/lib/affect/ drifts from src/atman/affect/.
+# Run by `make check` and by CI to catch forgotten manual propagations.
+check-demo-affect-drift:
+	./scripts/check_demo_affect_drift.sh
 
 # Copies canonical EN + RU sources into docs/content/ for GitHub Pages (document.html).
 # English: README.md, MANIFEST.md, docs/architecture/SYSTEM.md — Russian: *-ru.md counterparts.
