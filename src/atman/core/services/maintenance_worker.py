@@ -123,9 +123,9 @@ class MaintenanceWorker:
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:
-            return _DispatchOutcome.DONE, self._run_decay(job)
+            return self._run_decay(job)
         if job.job_name == JobName.memory_guardian_scan:
-            return _DispatchOutcome.DONE, self._run_guardian(job)
+            return self._run_guardian(job)
         if job.job_name == JobName.mrebel_extract:
             return self._run_mrebel(job)
         if job.job_name == JobName.lingvo_enrich:
@@ -138,9 +138,10 @@ class MaintenanceWorker:
         self._queue.mark_skipped(job.id, reason="unknown job type")
         return _DispatchOutcome.SKIPPED, None
 
-    def _run_decay(self, job: MaintenanceJob) -> dict:
+    def _run_decay(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if self._decay is None:
-            raise RuntimeError("SalienceDecayService not configured")
+            self._queue.mark_skipped(job.id, reason="salience decay not configured")
+            return _DispatchOutcome.SKIPPED, None
         # agent_id is a top-level field on MaintenanceJob — not in payload.
         if job.agent_id is None:
             raise ValueError(f"salience_decay job {job.id} requires agent_id")
@@ -148,11 +149,12 @@ class MaintenanceWorker:
         cutoff_str = job.payload.get("cutoff")
         cutoff = datetime.fromisoformat(cutoff_str) if cutoff_str else datetime.now(UTC)
         count = self._decay.decay_pass(agent_id, cutoff=cutoff)
-        return {"updated": count}
+        return _DispatchOutcome.DONE, {"updated": count}
 
-    def _run_guardian(self, job: MaintenanceJob) -> dict:
+    def _run_guardian(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if self._guardian is None:
-            raise RuntimeError("MemoryGuardian not configured")
+            self._queue.mark_skipped(job.id, reason="memory guardian not configured")
+            return _DispatchOutcome.SKIPPED, None
         if job.agent_id is None:
             raise ValueError(f"memory_guardian_scan job {job.id} requires agent_id")
         agent_id = job.agent_id
@@ -166,7 +168,7 @@ class MaintenanceWorker:
         )
         for f in findings:
             self._guardian.write_finding(f)
-        return {"findings": len(findings)}
+        return _DispatchOutcome.DONE, {"findings": len(findings)}
 
     def _run_mrebel(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         """Async relation-extraction for a single KeyMoment (HLE-28).
