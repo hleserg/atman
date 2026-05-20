@@ -6,6 +6,7 @@ never reach Sentry SaaS: memory contents, reflections, embeddings, prompts.
 
 from __future__ import annotations
 
+import traceback
 from typing import Any
 
 ATMAN_EXTRA_KEYS: list[str] = [
@@ -98,8 +99,6 @@ def _iter_stack_frame_paths(event: dict[str, Any], hint: dict[str, Any]) -> list
 
     exc_info = hint.get("exc_info")
     if isinstance(exc_info, tuple) and len(exc_info) >= 3 and exc_info[2] is not None:
-        import traceback
-
         for summary in traceback.extract_tb(exc_info[2]):
             paths.append(summary.filename)
     return paths
@@ -110,7 +109,7 @@ def _stack_frame_in_tests(event: dict[str, Any], hint: dict[str, Any]) -> bool:
 
 
 def _is_operational_error_log(event: dict[str, Any]) -> bool:
-    if _event_level(event) != "error":
+    if _event_level(event) not in ("error", "fatal"):
         return False
     message = _event_message(event)
     return any(marker in message for marker in _OPERATIONAL_ERROR_MESSAGE_MARKERS)

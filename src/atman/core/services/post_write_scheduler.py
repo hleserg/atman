@@ -205,5 +205,5 @@ def _log_task_exception(task: asyncio.Task[None]) -> None:
         _LOG.warning(
             "post-write enrichment task failed: %s",
             exc,
-            exc_info=exc,
+            exc_info=True,
         )

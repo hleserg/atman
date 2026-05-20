@@ -65,12 +65,14 @@ def test_before_send_drops_tests_stack_frame_windows():
 
 
 def test_before_send_drops_tests_stack_from_hint_exc_info():
+    captured_exc: tuple[type[BaseException], BaseException, object] | None = None
     try:
         raise RuntimeError("pytest noise")
     except RuntimeError:
-        exc_info = sys.exc_info()
+        captured_exc = sys.exc_info()
+    assert captured_exc is not None
     event: dict = {"level": "error"}
-    assert _before_send()(event, {"exc_info": exc_info}) is None
+    assert _before_send()(event, {"exc_info": captured_exc}) is None
 
 
 def test_before_send_drops_post_write_scheduler_error_message():
