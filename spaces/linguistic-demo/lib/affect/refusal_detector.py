@@ -165,7 +165,7 @@ _CONTRACTION_NEG_STEMS = frozenset(
         "mustn",
         "needn",
         "can",  # "can't" → ["can", "t"]; bare "can" never reaches this list because
-                # it never appears together with a trailing "t" outside contractions.
+        # it never appears together with a trailing "t" outside contractions.
     ]
 )
 
@@ -184,6 +184,7 @@ def _window_has_negation(lemmas: list[str], end: int, size: int) -> bool:
         if window[j + 1] == "t" and window[j] in _CONTRACTION_NEG_STEMS:
             return True
     return False
+
 
 # NRC threshold (density per 100 tokens) for "moral context"
 _MORAL_THRESHOLD_RU = 8.0

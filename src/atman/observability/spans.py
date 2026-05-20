@@ -11,6 +11,7 @@ was not initialised (no DSN), the SDK returns a no-op span automatically.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -153,12 +154,10 @@ def job_scope(tags: dict[str, str]) -> Generator[None, None, None]:
         return
 
     scope_cm = None
-    try:
+    with contextlib.suppress(Exception):
         import sentry_sdk
 
         scope_cm = sentry_sdk.isolation_scope()
-    except Exception:
-        pass
 
     if scope_cm is None:
         yield

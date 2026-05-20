@@ -96,7 +96,9 @@ class OpenAIReflectionModel(ReflectionModel):
         for attempt in range(self._config.max_retries):
             attempts = attempt + 1
             try:
-                with ai_chat_span("openai-compat", self._config.model, op_name="reflection") as span:
+                with ai_chat_span(
+                    "openai-compat", self._config.model, op_name="reflection"
+                ) as span:
                     if span is not None:
                         span.set_data("reflection.output_model", output_model.__name__)
                         span.set_data("reflection.attempt", attempt + 1)

@@ -143,6 +143,7 @@ def _count_negators(window: list[str], lang: str) -> int:
                 count += 1
     return count
 
+
 RU_POSITIVE_SINCERITY_MARKERS = frozenset(
     {
         "честно",

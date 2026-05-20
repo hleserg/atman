@@ -77,9 +77,7 @@ class TestNewEntrypointAllLevels:
         mock_init.assert_called_once()
 
     @pytest.mark.parametrize("level", _NON_OFF)
-    def test_non_off_with_dsn_is_enabled(
-        self, level: str, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_off_with_dsn_is_enabled(self, level: str, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTRY_DSN", _FAKE_DSN)
         with patch("sentry_sdk.init", MagicMock()):
             init_observability(level)

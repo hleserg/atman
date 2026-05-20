@@ -372,9 +372,7 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
             if consumed[j]:
                 continue
             prev = lemmas[j]
-            if prev in negs:
-                negated = not negated
-            elif (
+            if prev in negs or (
                 lang == "en"
                 and prev == "t"
                 and j - 1 >= max(0, i - window)
