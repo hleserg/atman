@@ -498,7 +498,7 @@ class TestMaintenanceWorker:
         factual.get_fact.return_value = fact
         saved: list = []
 
-        def _save(_fact_id: UUID, _agent_id: UUID, links: list) -> None:
+        def _save(_fact_id, _agent_id, links: list) -> None:
             saved.extend(links)
 
         factual.save_fact_entity_links = _save
