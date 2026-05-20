@@ -379,6 +379,7 @@ Rules:
   - **ADR/**
       - `ADR-001-production-isolation-ru.md` — ADR-001 — Изоляция продакшена (пространство имён eval)
       - `ADR-001-production-isolation.md` — ADR-001 — Production Isolation (eval namespace)
+      - `ADR-002-full-ai-monitoring.md`
       - `README.md` — Architecture Decision Records
   - **codemap/**
       - `DELTA_REPORT.md` — Codemap Delta Report
