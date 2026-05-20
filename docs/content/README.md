@@ -5,10 +5,10 @@
 > **Continuous Identity for Your Agents**
 
 [![CI](https://github.com/hleserg/atman/actions/workflows/ci.yml/badge.svg)](https://github.com/hleserg/atman/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/hleserg/atman/graph/badge.svg?token=1S9D9U8QZP)](https://codecov.io/github/hleserg/atman)
+[![CodeFactor](https://www.codefactor.io/repository/github/hleserg/atman/badge)](https://www.codefactor.io/repository/github/hleserg/atman)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-
-**Tests:** 1764 passing, 138 skipped (`pytest tests/` on `main`; see CI workflow above).
 
 [[ru](README-ru.md)] — *Russian version*
 
@@ -60,20 +60,27 @@ Under the hood — seven components: store of lived experiences, reflection engi
 ● Research              ✅ Complete
 ● Design                ✅ Complete
 ● Prototyping           ← We are here
-  ├─ Factual Memory     ✅ Implemented (v0.1.0)
-  ├─ Experience Store   ✅ Implemented (WP02)
-  ├─ Identity Store     ✅ Implemented (WP03)
-  ├─ Reflection Engine  ✅ Implemented (WP04)
-  ├─ Session Manager    ✅ Implemented (WP05)
+  ├─ Factual Memory     ✅ Stable (v0.1.0)
+  ├─ Experience Store   ✅ Stable (WP02)
+  ├─ Session Manager    🔧 High readiness — debugging (current focus)
+  ├─ Reflection Engine  🔧 Medium readiness — in development
+  ├─ Skill Manager      🔧 Medium readiness — in development
+  ├─ Identity Store     🔧 Low readiness — in development
   └─ CI & test coverage ✅ GitHub Actions on `main`/PRs (`make check`, pytest-cov ≥90%)
-○ First implementation
+○ First production slice
 ○ Integration
 ○ Evolution
 ```
 
-### Ready components
+**Honest snapshot (May 2026):** memory foundations (facts + first-hand experience) are usable on their own. **Session**, **reflection**, **identity**, and **skills** already have prototype code, demos, and tests — but the full “continuous identity” loop is **not production-ready** yet. Right now the team is on **Session Manager**: integration and debugging before wider onboarding.
+
+Readiness legend: **high** = core path exists, hardening in progress · **medium** = substantial prototype, gaps in integration · **low** = early slice, needs more work before it carries the product story.
+
+### Component status
 
 - 🌐 **Site — terminal demos:** [atmanai.dev/demo.html](https://atmanai.dev/demo.html) (RU/EN toggle matches the main landing)
+
+#### Stable foundations
 
 **✅ Factual Memory Adapter** ([PR #73](https://github.com/hleserg/atman/pull/73))
 Minimal layer for storing verifiable facts without interpretations.
@@ -93,23 +100,30 @@ First-hand lived experience: `SessionExperience`, `KeyMoment`, salience decay, r
 - 📚 [Guide (EN)](docs/features/experience-store/README.md) · [RU](docs/features/experience-store/README-ru.md)
 - ▶️ Demo: `make demo-experience` or `python3 src/demo_experience_store.py` (`make demo-experience-fast` for instant output)
 
-**✅ Identity Store** (work package 03)
-Honest bootstrap identity, eigenstate, three-layer self-narrative, snapshots, CLI.
+#### In active development
 
-- 📚 [Guide (EN)](docs/features/identity-store/README.md) · [RU](docs/features/identity-store/README-ru.md)
-- ▶️ Demo: `make demo-identity` or `python3 src/demo_identity.py` (`make demo-identity-fast` for instant output)
+**🔧 Session Manager** (work package 05) — **high readiness · current focus**
+Real-time session runtime: first-hand experience coloring, key moments with mandatory emotional marking, eigenstate generation, narrative updates. Prototype is in place; active work is wiring, edge cases, and debugging before a broader audience.
 
-**✅ Reflection Engine** (work package 04)
-Micro / daily / deep reflection, patterns, narrative revision hooks, Jahoda health assessment, principle advisor.
+- 📚 [Guide (EN)](docs/features/session-manager/README.md) · [RU](docs/features/session-manager/README-ru.md)
+- ▶️ Demo: `make demo-session` or `python3 src/demo_session_manager.py` (`make demo-session-fast` for instant output)
+
+**🔧 Reflection Engine** (work package 04) — **medium readiness**
+Micro / daily / deep reflection, patterns, narrative revision hooks, Jahoda health assessment, principle advisor. Runnable demos and tests; not yet a dependable between-session “inner life” for production agents.
 
 - 📚 [Guide (EN)](docs/features/reflection-engine/README.md) · [RU](docs/features/reflection-engine/README-ru.md)
 - ▶️ Demo: `make demo-reflection` or `python3 src/demo_reflection.py` (`make demo-reflection-fast` for instant output)
 
-**✅ Session Manager** (work package 05)
-Real-time session runtime: first-hand experience coloring, key moments with mandatory emotional marking, eigenstate generation, narrative updates.
+**🔧 Skill Manager** (work package 08) — **medium readiness**
+Transferable skills layer (design + backlog; implementation in progress). Expect API and storage shape to move as session and reflection paths stabilize.
 
-- 📚 [Guide (EN)](docs/features/session-manager/README.md) · [RU](docs/features/session-manager/README-ru.md)
-- ▶️ Demo: `make demo-session` or `python3 src/demo_session_manager.py` (`make demo-session-fast` for instant output)
+- 📚 Design notes: [`docs/archive/2026-05/skill-manager-design.md`](docs/archive/2026-05/skill-manager-design.md)
+
+**🔧 Identity Store** (work package 03) — **low readiness**
+Honest bootstrap identity, eigenstate, three-layer self-narrative, snapshots, CLI. Useful for experiments; still early relative to the session-centric path we are hardening now.
+
+- 📚 [Guide (EN)](docs/features/identity-store/README.md) · [RU](docs/features/identity-store/README-ru.md)
+- ▶️ Demo: `make demo-identity` or `python3 src/demo_identity.py` (`make demo-identity-fast` for instant output)
 
 ```bash
 # Quick start (install + interactive factual CLI)
