@@ -6,6 +6,23 @@ from uuid import UUID
 
 from atman.core.models.maintenance import JobName, JobStatus, MaintenanceJob
 
+# Job types that require a ``key_moment_id`` key in their payload.
+_MOMENT_SCOPED_JOBS: frozenset[JobName] = frozenset(
+    {JobName.mrebel_extract, JobName.lingvo_enrich}
+)
+
+
+def validate_enqueue_payload(job_name: JobName, payload: dict) -> None:
+    """Raise ValueError if a moment-scoped job is missing ``key_moment_id`` in its payload.
+
+    Call this at the start of every ``MaintenanceQueue.enqueue()`` implementation
+    so that structurally invalid jobs are rejected before they enter the queue.
+    """
+    if job_name in _MOMENT_SCOPED_JOBS and not payload.get("key_moment_id"):
+        raise ValueError(
+            f"{job_name.value} job requires 'key_moment_id' in payload, got: {list(payload.keys())}"
+        )
+
 
 class MaintenanceQueue(ABC):
     """Abstract port for a durable maintenance job queue."""

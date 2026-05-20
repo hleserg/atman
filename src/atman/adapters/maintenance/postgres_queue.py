@@ -28,7 +28,7 @@ else:
         )
 
 from atman.core.models.maintenance import JobName, JobStatus, MaintenanceJob
-from atman.core.ports.maintenance_queue import MaintenanceQueue
+from atman.core.ports.maintenance_queue import MaintenanceQueue, validate_enqueue_payload
 
 
 def _coerce_dict(value: Any) -> dict[str, Any]:
@@ -195,6 +195,7 @@ class PostgresMaintenanceQueue(MaintenanceQueue):
         Enqueue a job. If ``run_key`` matches an existing pending/running job,
         return that existing row (idempotent).
         """
+        validate_enqueue_payload(job_name, payload or {})
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
             if run_key is not None:
