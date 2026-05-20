@@ -323,13 +323,13 @@ class MaintenanceWorker:
                 )
 
         # Deduplicate (entity_id, role) — keep highest confidence
-        seen_er: set[tuple[UUID, str]] = set()
-        unique_links: list[FactEntityLink] = []
+        best_by_key: dict[tuple[UUID, str], FactEntityLink] = {}
         for link in entity_links:
             key = (link.entity_id, link.role)
-            if key not in seen_er:
-                seen_er.add(key)
-                unique_links.append(link)
+            prev = best_by_key.get(key)
+            if prev is None or link.confidence > prev.confidence:
+                best_by_key[key] = link
+        unique_links = list(best_by_key.values())
 
         save_fn = getattr(self._factual_memory, "save_fact_entity_links", None)
         if save_fn is None:
