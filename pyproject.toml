@@ -15,7 +15,7 @@ dependencies = [
     "httpx>=0.28.0",
     "psycopg[binary]>=3.2",
     "pyyaml>=6.0",
-    "sentry-sdk[httpx,asyncio]>=2.35.0",
+    "sentry-sdk[asyncio,httpx]>=2.46,<3",
 ]
 
 [project.optional-dependencies]
@@ -244,7 +244,8 @@ typeCheckingMode = "standard"
 # Lazy exports via __getattr__ (e.g. atman.affect) legitimately list names in __all__.
 reportUnsupportedDunderAll = "none"
 venvPath = "."
-include = ["src", "tests", "e2e"]
+include = ["src", "tests", "e2e", "tools"]
+extraPaths = ["tools"]
 exclude = ["src/atman/reflection/store.py", "src/atman/affect/emolex/emolex.py"]
 
 [tool.ruff]

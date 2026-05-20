@@ -8,6 +8,7 @@ CLI для работы с Factual Memory Adapter.
 - Просмотра последних фактов
 """
 
+import os
 from uuid import UUID
 
 from atman.config import build_memory_backend, settings
@@ -203,6 +204,9 @@ COMMANDS = {
 
 def main() -> None:
     """Точка входа CLI."""
+    from atman.observability import init_observability
+
+    init_observability(os.getenv("ATMAN_OBS_LEVEL", "minimal"))
     print_banner("Atman Factual Memory CLI", "Введите 'help' для справки")
 
     print_info(f"Используется backend: {settings.memory.backend}\n")

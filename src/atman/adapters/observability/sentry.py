@@ -29,9 +29,27 @@ def is_enabled() -> bool:
 
 
 def init_sentry_from_env() -> bool:
-    """Read SENTRY_DSN from env and initialize the SDK.  Returns True on success."""
+    """Read SENTRY_DSN from env and initialize the SDK.  Returns True on success.
+
+    Delegates to ``atman.observability.init_observability`` so only one init
+    system is active.  Legacy callers can keep using this function.
+    """
     dsn = os.getenv("SENTRY_DSN", "").strip()
     if not dsn:
+        return False
+    try:
+        from atman.observability import init_observability
+        from atman.observability import is_enabled as obs_enabled
+
+        level = os.getenv("ATMAN_OBS_LEVEL", "minimal").strip().lower()
+        init_observability(level)
+        global _initialized
+        _initialized = obs_enabled()
+        return _initialized
+    except Exception:
+        pass
+    # Honour explicit opt-out even when the new module failed to import.
+    if os.getenv("ATMAN_OBS_LEVEL", "").strip().lower() == "off":
         return False
     env = os.getenv("SENTRY_ENVIRONMENT", "production")
     return _init(dsn=dsn, environment=env)
@@ -78,7 +96,7 @@ def _init(dsn: str, environment: str = "production", release: str | None = None)
 
 def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
     """Tag all subsequent events in this scope with agent_id / session_id."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -93,7 +111,7 @@ def set_agent_scope(agent_id: str, session_id: str | None = None) -> None:
 
 def set_session_tag(session_id: str) -> None:
     """Update session_id tag mid-session (call after start_session returns)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -125,18 +143,18 @@ def install_slog_breadcrumb_hook() -> None:
     _previous = get_display_hook()
 
     def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
-        if _initialized:
+        if _sentry_sdk_active():
             attrs = {k: str(v) for k, v in data.items() if k != "ts"}
             attrs["event"] = event
             try:
                 import sentry_sdk.logger as _sl
 
                 if event == "job_failed":
-                    _sl.error("atman.{event}", attributes=attrs)
+                    _sl.error(f"atman.{event}", attributes=attrs)
                 elif event in ("session_error", "reflect_error"):
-                    _sl.warning("atman.{event}", attributes=attrs)
+                    _sl.warning(f"atman.{event}", attributes=attrs)
                 else:
-                    _sl.info("atman.{event}", attributes=attrs)
+                    _sl.info(f"atman.{event}", attributes=attrs)
             except Exception:  # nosec B110 ? observability helpers must never raise
                 pass
             try:
@@ -169,7 +187,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
     Wraps ``start_session`` ? all turns ? ``finish_session`` so every LLM
     call and NLP job appears as a child span in the same trace.
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -186,7 +204,7 @@ def session_transaction(session_id: str, agent_id: str) -> Generator[None, None,
 @contextmanager
 def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]:
     """Child span for a pipeline stage (NER, RAG, affect, ?). No-op when Sentry is off."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -198,7 +216,7 @@ def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]
 @contextmanager
 def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, None, None]:
     """Child span for a single maintenance job execution."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -212,7 +230,7 @@ def maintenance_job_span(job_name: str, agent_id: str = "") -> Generator[None, N
 @contextmanager
 def reflection_span(reflection_type: str) -> Generator[None, None, None]:
     """Span for a single reflection run (micro / daily / deep)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk
@@ -239,7 +257,7 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
             _LOG.debug("risky_call failed", exc_info=True)
             capture_silent_exception(e, context="risky_call", session_id=str(sid))
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     try:
         import sentry_sdk
@@ -296,7 +314,7 @@ def metric_distribution(
     name: str, value: float, unit: str = "none", tags: dict[str, str] | None = None
 ) -> None:
     """Emit a distribution metric (histograms, latencies, sizes)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_distribution(name, value, unit, _metric_tags(tags))
@@ -304,7 +322,7 @@ def metric_distribution(
 
 def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) -> None:
     """Emit a gauge metric (queue depths, counts at a point in time)."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_gauge(name, value, _metric_tags(tags))
@@ -312,7 +330,7 @@ def metric_gauge(name: str, value: float, tags: dict[str, str] | None = None) ->
 
 def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None = None) -> None:
     """Increment a counter metric."""
-    if not _initialized:
+    if not _sentry_sdk_active():
         return
     with suppress(Exception):
         _emit_metric_count(name, value, _metric_tags(tags))
@@ -321,6 +339,18 @@ def metric_increment(name: str, value: float = 1.0, tags: dict[str, str] | None 
 # ---------------------------------------------------------------------------
 # Cron monitoring
 # ---------------------------------------------------------------------------
+
+
+def _sentry_sdk_active() -> bool:
+    """True when Sentry was initialized via this adapter or init_observability()."""
+    if _initialized:
+        return True
+    try:
+        from atman.observability import is_enabled as obs_enabled
+
+        return obs_enabled()
+    except ImportError:
+        return False
 
 
 @contextmanager
@@ -332,7 +362,7 @@ def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
         with cron_checkin("atman-maintenance"):
             run_maintenance_batch()
     """
-    if not _initialized:
+    if not _sentry_sdk_active():
         yield
         return
     import sentry_sdk

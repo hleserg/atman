@@ -14,6 +14,7 @@ Live mode (real StateStore + OpenAI-compatible LLM when ATMAN_LLM_BASE_URL is se
 """
 
 import argparse
+import os
 import sys
 from datetime import UTC, datetime, time, timedelta
 from uuid import UUID, uuid4
@@ -592,6 +593,9 @@ def _cmd_deep_live(parsed: argparse.Namespace) -> int:
 
 def main() -> int:
     """Main CLI entry point."""
+    from atman.observability import init_observability
+
+    init_observability(os.getenv("ATMAN_OBS_LEVEL", "minimal"))
     if len(sys.argv) < 3 or sys.argv[1] != "reflect":
         print_help_text(
             "Usage: python -m atman.cli_reflection reflect <micro|daily|deep> --fixtures"

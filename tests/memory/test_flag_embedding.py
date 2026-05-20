@@ -328,11 +328,14 @@ class TestFlagEmbeddingAdapterImportError:
 
         adapter = FlagEmbeddingAdapter()
 
-        # Mock import to simulate missing FlagEmbedding
+        # Mock import to simulate missing FlagEmbedding.
+        # Capture the real __import__ before patching to avoid infinite recursion.
+        _real_import = __import__
+
         def mock_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
             if name == "FlagEmbedding":
                 raise ImportError("No module named 'FlagEmbedding'")
-            return __import__(name, *args, **kwargs)
+            return _real_import(name, *args, **kwargs)
 
         monkeypatch.setattr("builtins.__import__", mock_import)
 

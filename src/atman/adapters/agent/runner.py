@@ -1488,7 +1488,7 @@ class AtmanTurn:
 
     def pre(self, user_text: str) -> AtmanDeps:
         """Run pre-turn pipeline; returns updated deps with injected_context set."""
-        from atman.adapters.observability.sentry import pipeline_span
+        from atman.observability.spans import pipeline_span
 
         _LOG.debug("[AtmanTurn.pre] start  text=%r", user_text[:80])
         # Per-turn RAG only — never accumulate prior turns' injected_context.
@@ -1513,7 +1513,7 @@ class AtmanTurn:
 
     def post(self, agent_text: str) -> None:
         """Run post-turn pipeline (entity reg, auto key moment, identity facts, maintenance)."""
-        from atman.adapters.observability.sentry import pipeline_span
+        from atman.observability.spans import pipeline_span
 
         _LOG.debug("[AtmanTurn.post] start  text=%r", agent_text[:80])
         self.auto_key_moment_written = False

@@ -1,4 +1,45 @@
-.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content sync-demo-affect check-demo-affect-drift docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement session-test
+.PHONY: lint format typecheck security typecheck-agent-cli test test-fast test-all test-integration audit check all sync-site-content sync-demo-affect check-demo-affect-drift docs-preview demo-experience demo-factual demo-identity demo-reflection demo-session demo-full-corpus demo-webui demo-experience-fast demo-factual-fast demo-identity-fast demo-reflection-fast demo-session-fast demo-full-corpus-fast demo-webui-fast demo-experience-paced demo-factual-paced demo-identity-paced demo-reflection-paced demo-session-paced demo-full-corpus-paced demo-webui-paced demo-eval-runner demo-eval-runner-paced demo-eval-runner-fast eval-list eval-run webui demo-e2e-scenario live-chat chat-ui show-agent warmup-models playbook-extract playbook-check playbook-audit agent-preflight agent-wait-llm agent-smoke agent-mock-llm agent-cli-lint agent-check-prep codemap codemap-check codemap-readme codemap-agents codemap-flag-stale-ru codemap-translate codemap-fix check-eval-deps-placement session-test spotlight help
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo "Atman — available make targets"
+	@echo ""
+	@echo "  Quality"
+	@echo "    check          lint + typecheck + security + tests (default CI gate)"
+	@echo "    lint           ruff check"
+	@echo "    format         ruff format --check"
+	@echo "    typecheck      pyright"
+	@echo "    security       bandit"
+	@echo "    test           pytest with coverage"
+	@echo "    audit          pip-audit on core deps"
+	@echo ""
+	@echo "  Observability (local dev)"
+	@echo "    spotlight      start Spotlight UI at http://localhost:8969"
+	@echo "                   combine with: ATMAN_OBS_LEVEL=debug make run"
+	@echo "                   Docker: set SENTRY_SPOTLIGHT=http://host.docker.internal:8969/stream"
+	@echo ""
+	@echo "  Demos"
+	@echo "    demo-factual   factual memory walkthrough"
+	@echo "    demo-experience experience store walkthrough"
+	@echo "    demo-session   session manager walkthrough"
+	@echo "    demo-reflection reflection engine walkthrough"
+	@echo ""
+	@echo "  Codemap"
+	@echo "    codemap        regenerate SYSTEM_MAP.md + AGENTS.md"
+	@echo "    codemap-check  check for stale codemap (run in CI)"
+	@echo ""
+	@echo "  Eval"
+	@echo "    eval-list      list available benchmarks"
+	@echo "    eval-run       run noop benchmark"
+	@echo ""
+	@echo "  HF Space demo"
+	@echo "    sync-demo-affect          mirror src/atman/affect into spaces/linguistic-demo"
+	@echo "    check-demo-affect-drift   CI gate against forgotten manual propagation"
+
+# Starts Spotlight local dev UI (port 8969). See docs/features/observability/spotlight.md.
+spotlight:
+	npx @spotlightjs/spotlight
 
 lint:
 	ruff check src/ tests/ e2e/

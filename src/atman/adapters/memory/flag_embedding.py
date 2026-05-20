@@ -14,6 +14,7 @@ from typing import Any
 from typing_extensions import override
 
 from atman.core.ports.embedding import EmbeddingPort
+from atman.observability.spans import ai_embeddings_span
 
 
 class FlagEmbeddingAdapter(EmbeddingPort):
@@ -95,17 +96,20 @@ class FlagEmbeddingAdapter(EmbeddingPort):
         Uses BGEM3FlagModel.encode() with return_dense=True.
         Returns list of 1024-dimensional float vectors.
         """
-        model = self._get_model()
-        output = model.encode(
-            texts,
-            batch_size=self._batch_size,
-            max_length=self._max_length,
-            return_dense=True,
-            return_sparse=False,
-            return_colbert_vecs=False,
-        )
-        # output['dense_vecs'] is numpy ndarray of shape (n, 1024)
-        return output["dense_vecs"].tolist()
+        with ai_embeddings_span("bge", self._model_name) as span:
+            if span is not None:
+                span.set_data("embeddings.batch_size", len(texts))
+            model = self._get_model()
+            output = model.encode(
+                texts,
+                batch_size=self._batch_size,
+                max_length=self._max_length,
+                return_dense=True,
+                return_sparse=False,
+                return_colbert_vecs=False,
+            )
+            # output['dense_vecs'] is numpy ndarray of shape (n, 1024)
+            return output["dense_vecs"].tolist()
 
     def embed_batch_full(
         self,
@@ -123,26 +127,30 @@ class FlagEmbeddingAdapter(EmbeddingPort):
 
         Used by RAGIndex._hybrid_search() in atman_agent_cli.
         """
-        model = self._get_model()
-        output = model.encode(
-            texts,
-            batch_size=self._batch_size,
-            max_length=self._max_length,
-            return_dense=True,
-            return_sparse=return_sparse,
-            return_colbert_vecs=return_colbert,
-        )
-        result: dict[str, Any] = {
-            "dense_vecs": output["dense_vecs"].tolist(),
-        }
-        if return_sparse:
-            # Convert token_id keys to strings for JSON-serializability
-            result["lexical_weights"] = [
-                {str(k): float(v) for k, v in lw.items()} for lw in output["lexical_weights"]
-            ]
-        if return_colbert:
-            result["colbert_vecs"] = [cv.tolist() for cv in output["colbert_vecs"]]
-        return result
+        with ai_embeddings_span("bge", self._model_name) as span:
+            if span is not None:
+                span.set_data("embeddings.batch_size", len(texts))
+                span.set_data("embeddings.mode", "hybrid")
+            model = self._get_model()
+            output = model.encode(
+                texts,
+                batch_size=self._batch_size,
+                max_length=self._max_length,
+                return_dense=True,
+                return_sparse=return_sparse,
+                return_colbert_vecs=return_colbert,
+            )
+            result: dict[str, Any] = {
+                "dense_vecs": output["dense_vecs"].tolist(),
+            }
+            if return_sparse:
+                # Convert token_id keys to strings for JSON-serializability
+                result["lexical_weights"] = [
+                    {str(k): float(v) for k, v in lw.items()} for lw in output["lexical_weights"]
+                ]
+            if return_colbert:
+                result["colbert_vecs"] = [cv.tolist() for cv in output["colbert_vecs"]]
+            return result
 
     @override
     def dimension(self) -> int:

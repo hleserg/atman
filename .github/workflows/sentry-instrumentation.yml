@@ -1,0 +1,58 @@
+name: Sentry Instrumentation Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/atman/handlers/**"
+      - "src/atman/adapters/**"
+      - "src/atman/agents/**"
+      - "src/atman/engines/**"
+      - ".sentry-instrumentation-allowlist"
+      - "tools/check_instrumentation.py"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/atman/handlers/**"
+      - "src/atman/adapters/**"
+      - "src/atman/agents/**"
+      - "src/atman/engines/**"
+      - ".sentry-instrumentation-allowlist"
+      - "tools/check_instrumentation.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentry-instrumentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan for uninstrumented functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run instrumentation scanner
+        run: python tools/check_instrumentation.py 2>&1 | tee scan_output.txt
+
+      - name: Upload scan results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-scan-${{ github.run_id }}
+          path: scan_output.txt
+          if-no-files-found: ignore
+          retention-days: 30
