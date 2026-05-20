@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+_SCHEMA_VERSION_STR_FIELD_DESC = "Schema version for migrations and safe export/import"
+
 
 class ReflectionLevel(StrEnum):
     """
@@ -85,7 +87,7 @@ class PatternCandidate(BaseModel):
     )
     schema_version: str = Field(
         default="1.0.0",
-        description="Schema version for migrations and safe export/import",
+        description=_SCHEMA_VERSION_STR_FIELD_DESC,
     )
 
     # PROVENANCE — which KeyMoments grounded this pattern (set by aggregators
@@ -465,7 +467,7 @@ class HealthAssessment(BaseModel):
     )
     schema_version: str = Field(
         default="1.0.0",
-        description="Schema version for migrations and safe export/import",
+        description=_SCHEMA_VERSION_STR_FIELD_DESC,
     )
 
     @field_validator("overall_score")
@@ -597,7 +599,7 @@ class ReflectionEvent(BaseModel):
     notes: str = Field(default="", description="Additional notes about this reflection")
     schema_version: str = Field(
         default="1.0.0",
-        description="Schema version for migrations and safe export/import",
+        description=_SCHEMA_VERSION_STR_FIELD_DESC,
     )
 
     @field_validator("reframing_notes_added")

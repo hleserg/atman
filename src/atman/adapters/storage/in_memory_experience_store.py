@@ -18,6 +18,13 @@ from atman.core.ports import (
     ValuesTouchedQuery,
 )
 
+_ERR_IDENTITY_NOT_SUPPORTED_INMEMORY = (
+    "Identity operations not supported in InMemoryExperienceStore"
+)
+_ERR_NARRATIVE_NOT_SUPPORTED_INMEMORY = (
+    "Narrative operations not supported in InMemoryExperienceStore"
+)
+
 
 class InMemoryExperienceStore(StateStore):
     """
@@ -177,35 +184,35 @@ class InMemoryExperienceStore(StateStore):
 
     def load_identity(self, agent_id) -> None:  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_INMEMORY)
 
     def save_identity(self, identity, expected_version=None):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_INMEMORY)
 
     def create_identity_snapshot(self, snapshot):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_INMEMORY)
 
     def list_identity_snapshots(self, identity_id, limit=10):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_INMEMORY)
 
     def load_narrative(self, identity_id):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_INMEMORY)
 
     def save_narrative(self, narrative, expected_version=None, expected_updated_at=None):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_INMEMORY)
 
     def archive_narrative(self, narrative_id, reason):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_INMEMORY)
 
     def list_archived_narratives(self, identity_id, limit=10):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in InMemoryExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_INMEMORY)
 
     def save_eigenstate(self, eigenstate):  # type: ignore
         """Not implemented - use FileStateStore for eigenstate operations."""

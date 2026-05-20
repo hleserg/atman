@@ -216,6 +216,7 @@ class SkillManager:
         code_path: Path | None = None,
         instructions: str | None = None,
     ) -> Skill:
+        _ = session_id
         if not name or not name.replace("-", "").replace("_", "").isalnum():
             raise ValueError(f"Skill name must be kebab-case alphanumeric, got {name!r}")
 
@@ -586,6 +587,7 @@ class SkillManager:
 
     def _recalculate_pinning(self, agent_id: UUID, used_skill_ids: set[UUID]) -> None:
         """Apply auto-pin and auto-downgrade rules for active skills."""
+        _ = used_skill_ids
         active_skills = self._store.list_by_status(agent_id, SkillStatus.active)
         for skill in active_skills:
             # Auto-downgrade: only for auto_pinned (user_pinned is sacred)

@@ -28,9 +28,9 @@ Install: pip install textual
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
-import requests
 import threading
 import time
 import uuid
@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
+import requests
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -57,7 +58,12 @@ from textual.widgets import (
     TabPane,
 )
 
-from .config import AgentConfig
+from .config import (
+    TUI_CHAT_THINKING_LINE,
+    TUI_SEL_CHAT_WIDGET,
+    TUI_SEL_TABS,
+    AgentConfig,
+)
 from .context_manager import ContextLimits, ContextManager
 from .executor import ExecutorInterrupted, PlanExecutor, auto_plan
 from .git import (
@@ -262,10 +268,8 @@ class StatusSidebar(Static):
             lines.append("")
 
         content = "\n".join(lines)
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one("#status-content", Static).update(content)
-        except NoMatches:
-            pass
 
 
 # ── Chat pane ─────────────────────────────────────────────────────────────────
@@ -655,10 +659,8 @@ class SettingsTab(Widget):
         for key, status in secrets.status().items():
             color = "green" if "[not set]" not in status else "dim"
             lines.append(f"  [{color}]{key:<24}[/{color}] {status}")
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one("#secrets-status", Static).update("\n".join(lines))
-        except NoMatches:
-            pass
 
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-save-settings":
@@ -784,10 +786,8 @@ class SettingsTab(Widget):
 
         # Clear password fields after save
         for fid in ("inp-anthropic-key", "inp-cohere-key", "inp-github-token"):
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(f"#{fid}", Input).value = ""
-            except NoMatches:
-                pass
 
         if errors:
             self._set_status("⚠ " + " | ".join(errors), "yellow")
@@ -802,10 +802,8 @@ class SettingsTab(Widget):
         self._set_status("✓ All settings saved", "green")
 
     def _set_status(self, msg: str, color: str = "white") -> None:
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one("#settings-save-status", Static).update(f"[{color}]{msg}[/{color}]")
-        except NoMatches:
-            pass
 
 
 # ── Setup / CI wizard tab ─────────────────────────────────────────────────────
@@ -859,7 +857,13 @@ class SetupTab(Widget):
 
     DEFAULT_CSS = SETUP_CSS
 
-    STEP_ICONS = {"ok": "✅", "error": "❌", "running": "⚡", "pending": "⬜", "warn": "⚠️"}
+    STEP_ICONS: ClassVar[dict[str, str]] = {
+        "ok": "✅",
+        "error": "❌",
+        "running": "⚡",
+        "pending": "⬜",
+        "warn": "⚠️",
+    }
 
     def __init__(self, app: AtmanApp) -> None:
         super().__init__()
@@ -1022,12 +1026,10 @@ class SetupTab(Widget):
     def _log(self, msg: str, level: str = "info") -> None:
         colors = {"ok": "green", "error": "red", "warn": "yellow", "info": "dim"}
         color = colors.get(level, "white")
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one("#setup-log", RichLog).write(
                 f"[{color}]{datetime.now().strftime('%H:%M:%S')} {msg}[/{color}]"
             )
-        except NoMatches:
-            pass
 
     def _set_step(self, step: str, status: str, detail: str = "") -> None:
         self._step_status[step] = status
@@ -1044,30 +1046,24 @@ class SetupTab(Widget):
         color = {"ok": "green", "error": "red", "running": "yellow", "warn": "yellow"}.get(
             status, "dim"
         )
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(f"#step-{step}-title", Static).update(
                 f"[{color}]{icon} {label}[/{color}]"
             )
-        except NoMatches:
-            pass
         if detail:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(f"#{step}-result", Static).update(f"  [{color}]{detail}[/{color}]")
-            except NoMatches:
-                pass
         self._refresh_overview()
 
     def _refresh_overview(self) -> None:
         parts = []
         labels = ["prereqs", "tunnel", "webhook", "runner", "workflow", "test"]
         short = ["Prereqs", "Tunnel", "Webhook", "Runner", "Workflow", "Verify"]
-        for k, s in zip(labels, short):
+        for k, s in zip(labels, short, strict=True):
             icon = self.STEP_ICONS.get(self._step_status.get(k, "pending"), "⬜")
             parts.append(f"{icon} {s}")
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one("#setup-steps-overview", Static).update("  " + "   ".join(parts) + "\n")
-        except NoMatches:
-            pass
 
     def _get_orchestrator(self):
         if not self._orchestrator:
@@ -1497,23 +1493,17 @@ class AtmanApp(App):
     # ── Chat helpers ──────────────────────────────────────────────────────────
 
     def _chat_write(self, text: str) -> None:
-        try:
-            self.query_one("#chat-widget", ChatPane).write(text)
-        except NoMatches:
-            pass
+        with contextlib.suppress(NoMatches):
+            self.query_one(TUI_SEL_CHAT_WIDGET, ChatPane).write(text)
 
     def _chat_separator(self) -> None:
-        try:
-            self.query_one("#chat-widget", ChatPane).separator()
-        except NoMatches:
-            pass
+        with contextlib.suppress(NoMatches):
+            self.query_one(TUI_SEL_CHAT_WIDGET, ChatPane).separator()
 
     def _chat_append(self, chunk: str) -> None:
         """Append streaming chunk (called from worker thread)."""
-        try:
-            self.query_one("#chat-widget", ChatPane).write(chunk, markup=False)
-        except NoMatches:
-            pass
+        with contextlib.suppress(NoMatches):
+            self.query_one(TUI_SEL_CHAT_WIDGET, ChatPane).write(chunk, markup=False)
 
     # ── Input handler ─────────────────────────────────────────────────────────
 
@@ -1618,7 +1608,7 @@ class AtmanApp(App):
     def _cmd_plans(self, _: str) -> None:
         plans = self.memory.list_plans()
         self.query_one(PlansTab).refresh_plans(plans)
-        self.query_one("#tabs", TabbedContent).active = "tab-plans"
+        self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-plans"
 
     def _cmd_resume(self, _: str) -> None:
         plan = self.memory.get_active_plan()
@@ -1632,7 +1622,7 @@ class AtmanApp(App):
             f"  Branch: [cyan]{plan.branch or 'none'}[/cyan]\n"
             f"  Progress: {done}/{total}"
         )
-        for i, (step, is_done) in enumerate(zip(plan.steps, plan.steps_done)):
+        for i, (step, is_done) in enumerate(zip(plan.steps, plan.steps_done, strict=True)):
             icon = "✅" if is_done else "⬜"
             self._chat_write(f"  {icon} {i + 1}. {step}")
         self._refresh_sidebar()
@@ -1712,7 +1702,7 @@ class AtmanApp(App):
     def _cmd_changes(self, _: str) -> None:
         records = self.memory.recall_recent_changes(limit=10)
         self.query_one(ChangesTab).refresh_changes(records)
-        self.query_one("#tabs", TabbedContent).active = "tab-changes"
+        self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-changes"
 
     def _cmd_config(self, args: str) -> None:
         parts = args.strip().split()
@@ -1787,7 +1777,7 @@ class AtmanApp(App):
             "[dim]/config set context_limit 32768  — change token limit[/dim]\n"
             "[dim]/config set llm_url http://localhost:8080  — llama.cpp URL[/dim]"
         )
-        self.query_one("#tabs", TabbedContent).active = "tab-settings"
+        self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-settings"
         self._refresh_config_tab()
 
     def _rag_plan_context(self, query: str) -> str:
@@ -2071,10 +2061,10 @@ class AtmanApp(App):
                 )
 
     def action_show_config(self) -> None:
-        self.query_one("#tabs", TabbedContent).active = "tab-settings"
+        self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-settings"
 
     def action_show_setup(self) -> None:
-        self.query_one("#tabs", TabbedContent).active = "tab-setup"
+        self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-setup"
         self._refresh_config_tab()
 
     def action_manual_sync(self) -> None:
@@ -2122,10 +2112,8 @@ class AtmanApp(App):
         if t_task is not None and not t_task.done():
             t_task.cancel()
         if telegram is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await telegram.stop()
-            except Exception:
-                pass
         self.exit()
 
     def _inject_telegram_message(self, text: str) -> None:
@@ -2190,7 +2178,7 @@ class AtmanApp(App):
                     self.memory.append_to_discussion(self.current_plan, "user", enriched)
                 context = self._rag_plan_context(original_text)
                 history = self.memory.get_discussion_history(self.current_plan)
-                self.call_from_thread(self._chat_write, "\n[bold cyan]◆ Thinking...[/bold cyan]")
+                self.call_from_thread(self._chat_write, TUI_CHAT_THINKING_LINE)
                 response = self.router.discuss(enriched, history, context)
                 self.call_from_thread(self._chat_write, response)
                 self.memory.append_to_discussion(self.current_plan, "assistant", response)
@@ -2308,7 +2296,7 @@ class AtmanApp(App):
 
                 context = self._rag_plan_context(original_text)
                 history = self.memory.get_discussion_history(self.current_plan)
-                self.call_from_thread(self._chat_write, "\n[bold cyan]◆ Thinking...[/bold cyan]")
+                self.call_from_thread(self._chat_write, TUI_CHAT_THINKING_LINE)
                 response = self.router.discuss(enriched, history, context)
                 self.call_from_thread(self._chat_write, response)
                 self.memory.append_to_discussion(self.current_plan, "assistant", response)
@@ -2432,7 +2420,7 @@ class AtmanApp(App):
 
             context = self._rag_plan_context(message)
 
-            self.call_from_thread(self._chat_write, "\n[bold cyan]◆ Thinking...[/bold cyan]")
+            self.call_from_thread(self._chat_write, TUI_CHAT_THINKING_LINE)
             history = self.memory.get_discussion_history(self.current_plan)
             response = self.router.discuss(message, history, context)
             self.call_from_thread(self._chat_write, response)
@@ -2544,7 +2532,9 @@ class AtmanApp(App):
                     logs = self.pr_manager.get_ci_logs(pr_number)
                     analysis = self.router.analyze(
                         "Analyze CI failures and suggest fixes:\n"
-                        + "\n".join(f"=== {l['name']} ===\n{l['log']}" for l in logs)[:4000]
+                        + "\n".join(
+                            f"=== {entry['name']} ===\n{entry['log']}" for entry in logs
+                        )[:4000]
                     )
                     self.call_from_thread(self._chat_write, analysis)
                     time.sleep(10)
@@ -2568,7 +2558,7 @@ class AtmanApp(App):
                         )
                         time.sleep(self.cfg.babysit_poll_interval)
                         continue
-                    result = self.pr_manager.merge_pr(pr_number)
+                    self.pr_manager.merge_pr(pr_number)
                     self.call_from_thread(
                         self._chat_write, f"[green]✅ PR #{pr_number} merged![/green]"
                     )
@@ -2707,26 +2697,20 @@ class AtmanApp(App):
     # ── UI refresh helpers ────────────────────────────────────────────────────
 
     def _refresh_sidebar(self) -> None:
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(StatusSidebar).refresh_status()
-        except NoMatches:
-            pass
 
     def _refresh_all(self) -> None:
         self._refresh_sidebar()
         self._refresh_config_tab()
         plans = self.memory.list_plans()
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(PlansTab).refresh_plans(plans)
-        except NoMatches:
-            pass
 
     def _refresh_config_tab(self) -> None:
         """Refresh the Settings tab — SettingsTab is self-contained, just switch to it."""
-        try:
-            self.query_one("#tabs", TabbedContent).active = "tab-settings"
-        except NoMatches:
-            pass
+        with contextlib.suppress(NoMatches):
+            self.query_one(TUI_SEL_TABS, TabbedContent).active = "tab-settings"
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

@@ -17,6 +17,11 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+# Sentry span attribute keys (single definition for helpers + tests; Sonar S1192).
+GEN_AI_DATA_OPERATION_NAME = "gen_ai.operation.name"
+GEN_AI_DATA_PROVIDER_NAME = "gen_ai.provider.name"
+GEN_AI_DATA_REQUEST_MODEL = "gen_ai.request.model"
+
 
 def _observability_disabled() -> bool:
     """True when ATMAN_OBS_LEVEL opts out of any sentry_sdk import."""
@@ -36,9 +41,9 @@ def ai_chat_span(provider: str, model: str, *, op_name: str = "chat") -> Generat
     import sentry_sdk
 
     with sentry_sdk.start_span(op=f"gen_ai.{op_name}", name=f"{provider}/{model}") as span:
-        span.set_data("gen_ai.operation.name", op_name)
-        span.set_data("gen_ai.provider.name", provider)
-        span.set_data("gen_ai.request.model", model)
+        span.set_data(GEN_AI_DATA_OPERATION_NAME, op_name)
+        span.set_data(GEN_AI_DATA_PROVIDER_NAME, provider)
+        span.set_data(GEN_AI_DATA_REQUEST_MODEL, model)
         yield span
 
 
@@ -52,9 +57,9 @@ def ai_embeddings_span(provider: str, model: str) -> Generator[Any, None, None]:
     import sentry_sdk
 
     with sentry_sdk.start_span(op="gen_ai.embeddings", name=f"{provider}/{model}") as span:
-        span.set_data("gen_ai.operation.name", "embeddings")
-        span.set_data("gen_ai.provider.name", provider)
-        span.set_data("gen_ai.request.model", model)
+        span.set_data(GEN_AI_DATA_OPERATION_NAME, "embeddings")
+        span.set_data(GEN_AI_DATA_PROVIDER_NAME, provider)
+        span.set_data(GEN_AI_DATA_REQUEST_MODEL, model)
         yield span
 
 
@@ -70,9 +75,9 @@ def ai_rerank_span(
     import sentry_sdk
 
     with sentry_sdk.start_span(op="gen_ai.rerank", name=f"{provider}/{model}") as span:
-        span.set_data("gen_ai.operation.name", "rerank")
-        span.set_data("gen_ai.provider.name", provider)
-        span.set_data("gen_ai.request.model", model)
+        span.set_data(GEN_AI_DATA_OPERATION_NAME, "rerank")
+        span.set_data(GEN_AI_DATA_PROVIDER_NAME, provider)
+        span.set_data(GEN_AI_DATA_REQUEST_MODEL, model)
         span.set_data("rerank.docs_in", docs_in)
         span.set_data("rerank.top_n", top_n)
         yield span

@@ -22,6 +22,8 @@ from pathlib import Path
 # Ensure repo root is importable when run as python -m scripts.codemap
 _REPO_ROOT = Path(__file__).parent.parent.parent
 
+_README_BASENAME = "README.md"
+
 
 def _setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
@@ -31,7 +33,7 @@ def _setup_logging(verbose: bool = False) -> None:
     )
 
 
-def _load_components(repo_root: Path) -> dict:
+def _load_components(_repo_root: Path) -> dict:
     try:
         import yaml
     except ImportError:
@@ -159,7 +161,7 @@ def _cmd_readme(args: argparse.Namespace, repo_root: Path) -> int:
 
     components = _load_components(repo_root)
     changed = update_readme(
-        repo_root / "README.md",
+        repo_root / _README_BASENAME,
         repo_root,
         components,
         check_mode=args.check,
@@ -184,7 +186,7 @@ def _cmd_agents(args: argparse.Namespace, repo_root: Path) -> int:
     return 0
 
 
-def _cmd_flag_stale_ru(args: argparse.Namespace, repo_root: Path) -> int:
+def _cmd_flag_stale_ru(_args: argparse.Namespace, repo_root: Path) -> int:
     from .renderer.i18n import flag_stale_ru_blocks
     from .snapshot.en_hashes import HASHES_FILE
 
@@ -193,7 +195,7 @@ def _cmd_flag_stale_ru(args: argparse.Namespace, repo_root: Path) -> int:
             repo_root / "docs/architecture/SYSTEM_MAP.md",
             repo_root / "docs/architecture/SYSTEM_MAP-ru.md",
         ),
-        (repo_root / "README.md", repo_root / "README-ru.md"),
+        (repo_root / _README_BASENAME, repo_root / "README-ru.md"),
     ]
     any_stale = False
     hashes_path = repo_root / HASHES_FILE
@@ -218,7 +220,7 @@ def _cmd_translate(args: argparse.Namespace, repo_root: Path) -> int:
             repo_root / "docs/architecture/SYSTEM_MAP.md",
             repo_root / "docs/architecture/SYSTEM_MAP-ru.md",
         ),
-        (repo_root / "README.md", repo_root / "README-ru.md"),
+        (repo_root / _README_BASENAME, repo_root / "README-ru.md"),
     ]
     hashes_path = repo_root / HASHES_FILE
     only_stale = getattr(args, "only_stale", True)

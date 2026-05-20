@@ -48,5 +48,6 @@ def get_demo_command(
     Returns:
         Tuple of (command_args, env_dict)
     """
+    _ = repo_root
     cmd = python_script_cmd(script_path)
     return cmd, demo_subprocess_env(paced=paced)

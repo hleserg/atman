@@ -104,6 +104,8 @@ class InvocationTextParser:
         if not response_text or not response_text.strip():
             return []
 
+        _ = session_id
+
         text_lower = response_text.lower()
         candidates = self._candidate_skills(agent_id)
         if not candidates:

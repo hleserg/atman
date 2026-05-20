@@ -201,7 +201,7 @@ def generate_corpus_with_retries(
                     else:
                         print(f"[{locale}] session {session_number}/{count} ready", flush=True)
                     break
-                except (ValidationError, ValueError) as e:
+                except (ValueError, ValidationError) as e:
                     last_err = str(e)
                     if attempt == 2:
                         raise

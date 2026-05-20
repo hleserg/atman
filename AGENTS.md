@@ -379,6 +379,7 @@ Rules:
   - **ADR/**
       - `ADR-001-production-isolation-ru.md` — ADR-001 — Изоляция продакшена (пространство имён eval)
       - `ADR-001-production-isolation.md` — ADR-001 — Production Isolation (eval namespace)
+      - `ADR-002-full-ai-monitoring.md`
       - `README.md` — Architecture Decision Records
   - **codemap/**
       - `DELTA_REPORT.md` — Codemap Delta Report
@@ -447,6 +448,7 @@ Rules:
     - `README.md` — Atman
     - `SYSTEM-ru.md` — Source: SYSTEM.md
     - `SYSTEM.md` — Source: SYSTEM.md
+- **css/**
 - **demo-data/**
 - **design/**
     - `DESIGN_living_codemap.md` — Design — Atman Living Codemap
@@ -492,6 +494,7 @@ Rules:
   - **web-dashboard/**
       - `README-ru.md` — Веб-дашборд
       - `README.md` — Web Dashboard
+- **js/**
 - **ops/**
     - `INSTALLATION-ru.md` — Установка Atman
     - `INSTALLATION.md` — Installing Atman

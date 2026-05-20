@@ -24,6 +24,8 @@ if str(_HERE) not in sys.path:
 
 import gradio as gr  # noqa: E402
 
+_UI_PICK_PRESET = "Pick preset"
+
 from examples.presets import (  # noqa: E402
     AFFECT_PRESETS,
     POINT_A_PRESETS,
@@ -314,7 +316,7 @@ def build_ui() -> gr.Blocks:
                         gr.Markdown("**Presets:**")
                         a_preset_dropdown = gr.Dropdown(
                             choices=[p[0] for p in POINT_A_PRESETS],
-                            label="Pick preset",
+                            label=_UI_PICK_PRESET,
                             value=None,
                         )
                     with gr.Column():
@@ -357,7 +359,7 @@ def build_ui() -> gr.Blocks:
                         gr.Markdown("**Presets:**")
                         k_preset_dropdown = gr.Dropdown(
                             choices=[f"Preset {i+1}" for i in range(len(POINT_K_PRESETS))],
-                            label="Pick preset",
+                            label=_UI_PICK_PRESET,
                             value=None,
                         )
                     with gr.Column():
@@ -399,7 +401,7 @@ def build_ui() -> gr.Blocks:
                         r_run = gr.Button("Extract relations", variant="primary")
                         r_preset_dropdown = gr.Dropdown(
                             choices=[p[0] for p in RELATIONS_PRESETS],
-                            label="Pick preset",
+                            label=_UI_PICK_PRESET,
                             value=None,
                         )
                     with gr.Column():
@@ -442,7 +444,7 @@ def build_ui() -> gr.Blocks:
                         af_run = gr.Button("Analyze", variant="primary")
                         af_preset_dropdown = gr.Dropdown(
                             choices=[p[0] for p in AFFECT_PRESETS],
-                            label="Pick preset",
+                            label=_UI_PICK_PRESET,
                             value=None,
                         )
                     with gr.Column():

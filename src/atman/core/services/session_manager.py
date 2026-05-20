@@ -259,6 +259,37 @@ class SessionManager:
         self._release_journal_file(lock_file, unlink=False)
         return False
 
+    def _journal_accumulate_entry(
+        self,
+        entry: dict[str, object],
+        *,
+        key_moment_ids: list[UUID],
+        journaled_moments: dict[UUID, KeyMoment],
+        fact_refs_set: set[UUID],
+    ) -> _FinishJournalMetadata | None:
+        """Apply one decoded journal entry to accumulators; return finish payload when applicable."""
+        kind = entry.get("type")
+        if kind == "key_moment":
+            moment_id = UUID(str(entry["moment_id"]))
+            key_moment_ids.append(moment_id)
+            moment_data = entry.get("moment")
+            if isinstance(moment_data, dict):
+                journaled_moments[moment_id] = KeyMoment.model_validate(moment_data)
+            fact_refs = entry.get("fact_refs", [])
+            if isinstance(fact_refs, list):
+                for fact_id_str in fact_refs:
+                    fact_refs_set.add(UUID(str(fact_id_str)))
+            return None
+        if kind == "facts_read":
+            fact_ids = entry.get("fact_ids", [])
+            if isinstance(fact_ids, list):
+                for fact_id_str in fact_ids:
+                    fact_refs_set.add(UUID(str(fact_id_str)))
+            return None
+        if kind == "finish_session":
+            return self._finish_metadata_from_journal(entry)
+        return None
+
     def _write_journal_entry(
         self, agent_id: UUID, session_id: UUID, entry: dict[str, object]
     ) -> None:
@@ -310,21 +341,15 @@ class SessionManager:
                     continue
                 try:
                     entry = json.loads(line)
-                    if entry.get("type") == "key_moment":
-                        moment_id = UUID(entry["moment_id"])
-                        key_moment_ids.append(moment_id)
-                        moment_data = entry.get("moment")
-                        if isinstance(moment_data, dict):
-                            journaled_moments[moment_id] = KeyMoment.model_validate(moment_data)
-                        # Extract fact_refs if present
-                        for fact_id_str in entry.get("fact_refs", []):
-                            fact_refs_set.add(UUID(fact_id_str))
-                    elif entry.get("type") == "facts_read":
-                        for fact_id_str in entry.get("fact_ids", []):
-                            fact_refs_set.add(UUID(fact_id_str))
-                    elif entry.get("type") == "finish_session":
-                        finish_metadata = self._finish_metadata_from_journal(entry)
-                except (json.JSONDecodeError, KeyError, ValueError) as exc:
+                    fm = self._journal_accumulate_entry(
+                        entry,
+                        key_moment_ids=key_moment_ids,
+                        journaled_moments=journaled_moments,
+                        fact_refs_set=fact_refs_set,
+                    )
+                    if fm is not None:
+                        finish_metadata = fm
+                except (KeyError, ValueError) as exc:
                     _LOG.warning("Skipping malformed journal line in %s: %s", journal_file, exc)
                     continue
 
@@ -413,6 +438,51 @@ class SessionManager:
         # only to recognise pre-migration data.
         return _session_finish_marker(session_id) in narrative.recent_layer.content
 
+    def _recover_single_orphan_journal(self, agent_id: UUID, journal_file: Path) -> None:
+        """Recover one journal file when not active elsewhere; unlink on success."""
+        session_id_str = journal_file.stem.replace("active_", "")
+        session_id = UUID(session_id_str)
+
+        with self._lock:
+            if session_id in self._active_sessions:
+                return
+            stale_lock = self._journal_locks.pop(session_id, None)
+            if stale_lock is not None:
+                self._release_journal_file(stale_lock, unlink=False)
+        if self._journal_locked_elsewhere(agent_id, session_id):
+            _LOG.debug("Skipping live journal locked by another process: %s", session_id)
+            return
+
+        (
+            key_moment_ids,
+            journaled_moments,
+            _fact_refs_set,
+            _finish_metadata,
+        ) = self._load_journal_payload(journal_file)
+
+        if key_moment_ids:
+            loaded_moments = self._load_recovery_key_moments(
+                session_id,
+                key_moment_ids,
+                journaled_moments,
+            )
+            if loaded_moments is None:
+                return
+
+            # HLE-57: persist session→moments mapping for reflection engine
+            self._state_store.store_key_moments(session_id, loaded_moments)
+            _LOG.info(
+                "Recovered orphaned session %s with %d key moments",
+                session_id,
+                len(loaded_moments),
+            )
+
+            # HLE-27: schedule post-write enrichment for recovered moments
+            for moment in loaded_moments:
+                self._schedule_post_write(moment, agent_id)
+
+        journal_file.unlink()
+
     def _recover_orphaned_sessions(self, agent_id: UUID) -> None:
         """Scan for orphaned session journals and persist their key moments.
 
@@ -428,49 +498,7 @@ class SessionManager:
 
         for journal_file in sessions_dir.glob("active_*.jsonl"):
             try:
-                session_id_str = journal_file.stem.replace("active_", "")
-                session_id = UUID(session_id_str)
-
-                with self._lock:
-                    if session_id in self._active_sessions:
-                        continue
-                    stale_lock = self._journal_locks.pop(session_id, None)
-                    if stale_lock is not None:
-                        self._release_journal_file(stale_lock, unlink=False)
-                if self._journal_locked_elsewhere(agent_id, session_id):
-                    _LOG.debug("Skipping live journal locked by another process: %s", session_id)
-                    continue
-
-                (
-                    key_moment_ids,
-                    journaled_moments,
-                    _fact_refs_set,
-                    _finish_metadata,
-                ) = self._load_journal_payload(journal_file)
-
-                if key_moment_ids:
-                    loaded_moments = self._load_recovery_key_moments(
-                        session_id,
-                        key_moment_ids,
-                        journaled_moments,
-                    )
-                    if loaded_moments is None:
-                        continue
-
-                    # HLE-57: persist session→moments mapping for reflection engine
-                    self._state_store.store_key_moments(session_id, loaded_moments)
-                    _LOG.info(
-                        "Recovered orphaned session %s with %d key moments",
-                        session_id,
-                        len(loaded_moments),
-                    )
-
-                    # HLE-27: schedule post-write enrichment for recovered moments
-                    for moment in loaded_moments:
-                        self._schedule_post_write(moment, agent_id)
-
-                journal_file.unlink()
-
+                self._recover_single_orphan_journal(agent_id, journal_file)
             except Exception as exc:
                 _LOG.error("Failed to recover orphaned journal %s: %s", journal_file, exc)
                 continue
@@ -949,6 +977,86 @@ class SessionManager:
                 },
             )
 
+    @staticmethod
+    def _normalized_close_reason(
+        close_reason: str | None,
+    ) -> Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None:
+        allowed_close_reasons = (
+            "timeout_sleep",
+            "menu_timeout",
+            "restart",
+            "forced",
+            "interrupted",
+        )
+        if close_reason not in allowed_close_reasons:
+            return None
+        return cast(
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"],
+            close_reason,
+        )
+
+    def _finish_session_commit_side_effects(
+        self,
+        session_id: UUID,
+        session_result: SessionResult,
+        *,
+        safe_close_reason: (
+            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
+        ),
+        unexamined_fact_refs: list[UUID],
+        key_insight: str,
+        restart_reason: str | None,
+        user_language: str,
+        colored_fact_ids: set[UUID],
+    ) -> None:
+        """Persist moments, legacy experience row, eigenstate, narrative, and Session row."""
+        for moment in session_result.key_moments:
+            if moment.session_id is None:
+                moment.session_id = session_id
+            self._state_store.store_key_moment(moment)
+
+        self._state_store.store_key_moments(session_id, session_result.key_moments)
+
+        if self._post_write_scheduler is not None and session_result.identity_id is not None:
+            for moment in session_result.key_moments:
+                self._schedule_post_write(moment, session_result.identity_id)
+
+        if self._inline_validator is not None and session_result.identity_id is not None:
+            for moment in session_result.key_moments:
+                self._inline_validator.check_key_moment(moment, agent_id=session_result.identity_id)
+
+        self._persist_legacy_session_experience(
+            session_id,
+            session_result,
+            safe_close_reason=safe_close_reason,
+            unexamined_fact_refs=unexamined_fact_refs,
+            key_insight=key_insight,
+            restart_reason=restart_reason,
+            user_language=user_language,
+            colored_fact_ids=colored_fact_ids,
+        )
+
+        eigenstate = self._create_eigenstate(session_result)
+        session_result.eigenstate = eigenstate
+        self._state_store.save_eigenstate(eigenstate)
+
+        self._save_session_narrative_update(session_result)
+
+        existing_session = self._state_store.get_session(session_id)
+        if existing_session is None:
+            return
+
+        closed_status: Literal["completed", "interrupted"] = (
+            "interrupted" if safe_close_reason in {"interrupted", "forced"} else "completed"
+        )
+        existing_session.status = closed_status
+        existing_session.ended_at = session_result.finished_at
+        existing_session.close_reason = safe_close_reason  # type: ignore[assignment]
+        existing_session.restart_reason = restart_reason or ""
+        existing_session.user_language = user_language
+        existing_session.unexamined_fact_refs = list(unexamined_fact_refs)
+        self._state_store.update_session(existing_session)
+
     def finish_session(
         self,
         session_id: UUID,
@@ -1029,29 +1137,8 @@ class SessionManager:
         # Persist key moments, eigenstate, and update narrative
         # If this fails, rollback is_finished flag to allow retry
 
-        _allowed_close_reasons = (
-            "timeout_sleep",
-            "menu_timeout",
-            "restart",
-            "forced",
-            "interrupted",
-        )
-        safe_close_reason: (
-            Literal["timeout_sleep", "menu_timeout", "restart", "forced", "interrupted"] | None
-        ) = (
-            cast(
-                Literal[
-                    "timeout_sleep",
-                    "menu_timeout",
-                    "restart",
-                    "forced",
-                    "interrupted",
-                ],
-                close_reason,
-            )
-            if close_reason in _allowed_close_reasons
-            else None
-        )
+        safe_close_reason = self._normalized_close_reason(close_reason)
+
         # Compute unexamined facts (read but not colored by any key moment).
         _colored_fact_ids: set[UUID] = set()
         for _moment in session_result.key_moments:
@@ -1059,30 +1146,7 @@ class SessionManager:
         unexamined_fact_refs: list[UUID] = list(session_result._facts_read - _colored_fact_ids)
 
         try:
-            # Upsert each KeyMoment — idempotent; moments written in append_key_moment_input
-            # are already in DB, this is a no-op for them.  Moments from crashed/recovered
-            # sessions that arrived via journal replay may arrive here without prior DB write.
-            for moment in session_result.key_moments:
-                if moment.session_id is None:
-                    moment.session_id = session_id
-                self._state_store.store_key_moment(moment)
-
-            # Store session→moments mapping
-            self._state_store.store_key_moments(session_id, session_result.key_moments)
-
-            # HLE-27 follow-up: schedule post-write enrichment after moments are persisted
-            if self._post_write_scheduler is not None and session_result.identity_id is not None:
-                for moment in session_result.key_moments:
-                    self._schedule_post_write(moment, session_result.identity_id)
-
-            # HLE-32: inline validation — lightweight row-level checks, never blocks hot path
-            if self._inline_validator is not None and session_result.identity_id is not None:
-                for moment in session_result.key_moments:
-                    self._inline_validator.check_key_moment(
-                        moment, agent_id=session_result.identity_id
-                    )
-
-            self._persist_legacy_session_experience(
+            self._finish_session_commit_side_effects(
                 session_id,
                 session_result,
                 safe_close_reason=safe_close_reason,
@@ -1092,32 +1156,6 @@ class SessionManager:
                 user_language=user_language,
                 colored_fact_ids=_colored_fact_ids,
             )
-
-            eigenstate = self._create_eigenstate(session_result)
-            session_result.eigenstate = eigenstate
-            self._state_store.save_eigenstate(eigenstate)
-
-            self._save_session_narrative_update(session_result)
-
-            # v2: update Session row with close metadata. The base StateStore
-            # port returns None from get_session and returns the session
-            # unchanged from update_session by default, so legacy adapters
-            # without Session persistence naturally degrade to a no-op
-            # via the `existing_session is None` guard. Real exceptions from
-            # concrete adapters (DB errors, IO errors) propagate so the
-            # caller can react instead of silently losing data.
-            existing_session = self._state_store.get_session(session_id)
-            if existing_session is not None:
-                closed_status: Literal["completed", "interrupted"] = (
-                    "interrupted" if safe_close_reason in {"interrupted", "forced"} else "completed"
-                )
-                existing_session.status = closed_status
-                existing_session.ended_at = session_result.finished_at
-                existing_session.close_reason = safe_close_reason  # type: ignore[assignment]
-                existing_session.restart_reason = restart_reason or ""
-                existing_session.user_language = user_language
-                existing_session.unexamined_fact_refs = list(unexamined_fact_refs)
-                self._state_store.update_session(existing_session)
 
         except Exception:
             # Rollback is_finished flag to allow retry of finish_session()

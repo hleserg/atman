@@ -14,6 +14,7 @@ from atman.skills.models import (
     SkillOrigin,
     SkillStatus,
 )
+from tests._fake_paths import fake_skill_manifest, fake_skill_root
 
 
 def _make_skill(**kwargs) -> Skill:
@@ -41,8 +42,8 @@ def _make_skill(**kwargs) -> Skill:
         revision_priority=0,
         last_revised_at=None,
         manifest_inferred=False,
-        skill_root=Path("/tmp/skills/test-skill"),
-        manifest_path=Path("/tmp/skills/test-skill/SKILL.md"),
+        skill_root=fake_skill_root("test-skill"),
+        manifest_path=fake_skill_manifest("test-skill"),
         created_at=now,
         updated_at=now,
     )

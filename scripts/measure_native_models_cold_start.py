@@ -100,9 +100,7 @@ def run_bge_reranker() -> Result:
     def build():
         from atman.adapters.memory.bge_reranker import BgeReranker
 
-        return BgeReranker(
-            model_name="BAAI/bge-reranker-v2-m3", device="cpu", use_fp16=False
-        )
+        return BgeReranker(model_name="BAAI/bge-reranker-v2-m3", device="cpu", use_fp16=False)
 
     def infer(a):  # type: ignore[no-untyped-def]
         from uuid import uuid4
@@ -110,12 +108,8 @@ def run_bge_reranker() -> Result:
         from atman.core.ports.memory_reranker import SurfacedMemory
 
         candidates = [
-            SurfacedMemory(
-                key_moment_id=uuid4(), text="candidate one", score=0.5, source="dense"
-            ),
-            SurfacedMemory(
-                key_moment_id=uuid4(), text="candidate two", score=0.4, source="dense"
-            ),
+            SurfacedMemory(key_moment_id=uuid4(), text="candidate one", score=0.5, source="dense"),
+            SurfacedMemory(key_moment_id=uuid4(), text="candidate two", score=0.4, source="dense"),
         ]
         return a.rerank("test query", candidates)
 
@@ -134,7 +128,7 @@ def run_gliner() -> Result:
 
     def infer(a):  # type: ignore[no-untyped-def]
         # gliner has analyze_user_message; force model load via NER call.
-        gliner = a._get_gliner()  # noqa: SLF001 — diagnostic only
+        gliner = a._get_gliner()
         if gliner is None:
             raise RuntimeError("gliner failed to load")
         return gliner.predict_entities("Alice met Bob in Paris.", ["Person", "Location"])
@@ -153,7 +147,7 @@ def run_minilm() -> Result:
         )
 
     def infer(a):  # type: ignore[no-untyped-def]
-        clf = a._get_classifier()  # noqa: SLF001
+        clf = a._get_classifier()
         if clf is None:
             raise RuntimeError("minilm classifier failed to load")
         return clf("This is a positive sentence.", candidate_labels=["positive", "negative"])

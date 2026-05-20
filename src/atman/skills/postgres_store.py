@@ -170,7 +170,7 @@ class PostgresSkillStore:
             )
             yield conn
 
-    def _resolve_agent_for_skill(self, skill_id: UUID) -> UUID:
+    def _resolve_agent_for_skill(self, _skill_id: UUID) -> UUID:
         """Return the agent that owns a skill, using the bound agent for RLS.
 
         When the store is bound to a single agent (production path), this is a

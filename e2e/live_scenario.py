@@ -274,6 +274,7 @@ async def run_session(
     close_reason_override: str | None = None,
 ) -> UUID:
     """Run a scripted session. Returns session_id."""
+    _ = config
     hdr(f"СЕССИЯ {session_label}")
 
     # Previous session context injection

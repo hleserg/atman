@@ -397,7 +397,7 @@ def test_concurrent_finish_second_raises_already_finished(session_manager):
     def run_finish() -> None:
         try:
             manager.finish_session(context.session_id)
-        except BaseException as e:
+        except Exception as e:
             errors.append(e)
 
     with patch.object(manager._state_store, "store_key_moments", side_effect=slow_create):

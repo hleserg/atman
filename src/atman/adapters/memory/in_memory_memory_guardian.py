@@ -21,6 +21,8 @@ from atman.core.ports.memory_backend import FactualMemory
 from atman.core.ports.memory_guardian import MemoryGuardian
 from atman.core.ports.state_store import StateStore
 
+_DETECTED_BY_MEMORY_GUARDIAN_INLINE = "memory_guardian:inline"
+
 
 class InMemoryMemoryGuardian(MemoryGuardian):
     """Thread-safe in-memory MemoryGuardian for tests and local runs.
@@ -415,7 +417,7 @@ class InMemoryMemoryGuardian(MemoryGuardian):
                     "phase": "inline",
                     "content_excerpt": (getattr(fact, "content", "") or "")[:120],
                 },
-                detected_by="memory_guardian:inline",
+                detected_by=_DETECTED_BY_MEMORY_GUARDIAN_INLINE,
             )
         ]
 
@@ -443,7 +445,7 @@ class InMemoryMemoryGuardian(MemoryGuardian):
                     "phase": "inline",
                     "canonical_name": getattr(entity, "canonical_name", ""),
                 },
-                detected_by="memory_guardian:inline",
+                detected_by=_DETECTED_BY_MEMORY_GUARDIAN_INLINE,
             )
         ]
 
@@ -475,7 +477,7 @@ class InMemoryMemoryGuardian(MemoryGuardian):
                     "phase": "inline",
                     "what_happened_excerpt": (getattr(moment, "what_happened", "") or "")[:120],
                 },
-                detected_by="memory_guardian:inline",
+                detected_by=_DETECTED_BY_MEMORY_GUARDIAN_INLINE,
             )
         ]
 

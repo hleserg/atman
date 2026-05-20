@@ -297,3 +297,15 @@ class TestProcessSessionSkills:
         manager = _make_manager(store, tmp_path)
         # Should not raise
         manager.process_session_skills(self.agent_id, self.session_id)
+
+
+def test_pydantic_agent_projector_noop_methods(tmp_path: Path) -> None:
+    store = InMemorySkillStore()
+    agent_id = uuid4()
+    skill = _make_active_skill(store, agent_id, "noop", tmp_path)
+    projector = PydanticAgentProjector()
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    projector.project_skill(skill, workspace)
+    projector.unproject_skill(skill, workspace)
+    assert projector.list_projected(workspace) == []

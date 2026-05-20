@@ -18,12 +18,11 @@ import asyncio
 import contextlib
 import logging
 import signal
-import sys
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from pydantic_ai import Agent, ModelSettings
@@ -44,8 +43,11 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__name__)
 _refusal_config = RefusalDetectorConfig()
 
+# Strip model "thinking" blocks before affect/refusal heuristics (Sonar S1192).
+_REDACTED_THINKING_PATTERN = r"<think>.*?</think>"
 
-def _S(s: str) -> str:
+
+def _sanitize_utf8_for_log(s: str) -> str:
     """Replace lone surrogates so the string is safe for UTF-8 encoding."""
     return s.encode("utf-8", "replace").decode("utf-8")
 
@@ -88,7 +90,7 @@ async def _run_affect_detector(
     try:
         import re
 
-        clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
+        clean = re.sub(_REDACTED_THINKING_PATTERN, "", output, flags=re.DOTALL).strip()
         if clean:
             await detector.process(clean, thinking=thinking, session_id=session_id)
     except Exception as exc:
@@ -106,7 +108,7 @@ def _auto_record_refusal_if_needed(
     """Silently record value-based refusals as key moments — refusals are positions, part of identity."""
     import re
 
-    clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL)
+    clean = re.sub(_REDACTED_THINKING_PATTERN, "", output, flags=re.DOTALL)
     if not _detect_value_refusal(clean, _refusal_config):
         return
     lines = [line.strip() for line in clean.splitlines() if line.strip()]
@@ -213,7 +215,9 @@ def chat(
         ...     print("Session finished gracefully")
     """
     interrupted = False
-    exit_code = 0
+    pending_system_exit: SystemExit | None = None
+    # Parameter reserved for future chat-loop paths that distinguish normal vs. forced closure.
+    _ = close_reason
 
     def _sigterm_handler(signum: int, frame: object) -> None:
         """Handle SIGTERM by triggering force-finish."""
@@ -247,10 +251,10 @@ def chat(
         interrupted = True
 
     except SystemExit as exc:
-        # Explicit exit() call
+        # Explicit exit() call — stash and re-raise after ``finally`` cleanup.
         _LOG.info("SystemExit received for session %s", session_id)
         interrupted = True
-        exit_code = exc.code if isinstance(exc.code, int) else 1
+        pending_system_exit = exc
 
     finally:
         # Restore original signal handler
@@ -269,9 +273,18 @@ def chat(
                 # Don't suppress original exception
                 raise
 
-            # Re-raise SystemExit to preserve exit code
-            if exit_code != 0:
-                sys.exit(exit_code)
+            # Re-raise SystemExit to preserve exit semantics
+            if pending_system_exit is not None:
+                raise pending_system_exit
+
+
+def _restart_hit_from_content(content: str) -> tuple[bool, str] | None:
+    """Parse restart sentinel content; ``None`` when not a restart sentinel."""
+    if not content.startswith("__ATMAN_RESTART_REQUESTED__"):
+        return None
+    if "\n" in content:
+        return True, content.split("\n", 1)[1].strip()
+    return True, ""
 
 
 def _check_restart_requested(messages: list) -> tuple[bool, str]:
@@ -286,25 +299,32 @@ def _check_restart_requested(messages: list) -> tuple[bool, str]:
             - restart_requested: True if restart was requested
             - reason: Optional reason string provided to restart_session tool
     """
-    # First pass: look for sentinel content with reason
     for msg in messages:
         for part in getattr(msg, "parts", []):
             if hasattr(part, "content") and isinstance(part.content, str):
-                content = part.content
-                if content.startswith("__ATMAN_RESTART_REQUESTED__"):
-                    # Extract reason if present (format: __ATMAN_RESTART_REQUESTED__\nreason)
-                    if "\n" in content:
-                        reason = content.split("\n", 1)[1].strip()
-                        return True, reason
-                    return True, ""
+                hit = _restart_hit_from_content(part.content)
+                if hit is not None:
+                    return hit
 
-    # Second pass: fallback to tool_name detection (no reason available)
     for msg in messages:
         for part in getattr(msg, "parts", []):
             if hasattr(part, "tool_name") and part.tool_name == "restart_session":
                 return True, ""
 
     return False, ""
+
+
+def _wait_hit_from_content(content: str) -> tuple[bool, int] | None:
+    """Parse wait sentinel; ``None`` when not a wait sentinel."""
+    if not content.startswith("__ATMAN_WAIT_REQUESTED__"):
+        return None
+    try:
+        minutes_str = content.replace("__ATMAN_WAIT_REQUESTED__", "")
+        minutes = int(minutes_str)
+        return True, minutes
+    except (ValueError, AttributeError):
+        _LOG.warning("Malformed wait sentinel: %s", content)
+        return True, 0
 
 
 def _check_wait_requested(messages: list) -> tuple[bool, int]:
@@ -319,36 +339,59 @@ def _check_wait_requested(messages: list) -> tuple[bool, int]:
             - wait_requested: True if wait was requested
             - minutes: Number of minutes to wait (0 if not requested)
     """
-    # Look for sentinel content with minutes value
     for msg in messages:
         for part in getattr(msg, "parts", []):
             if hasattr(part, "content") and isinstance(part.content, str):
-                content = part.content
-                if content.startswith("__ATMAN_WAIT_REQUESTED__"):
-                    # Extract minutes (format: __ATMAN_WAIT_REQUESTED__<minutes>)
-                    try:
-                        minutes_str = content.replace("__ATMAN_WAIT_REQUESTED__", "")
-                        minutes = int(minutes_str)
-                        return True, minutes
-                    except (ValueError, AttributeError):
-                        _LOG.warning("Malformed wait sentinel: %s", content)
-                        return True, 0
+                hit = _wait_hit_from_content(part.content)
+                if hit is not None:
+                    return hit
 
-    # Fallback: check for tool_name (no minutes value available)
     for msg in messages:
         for part in getattr(msg, "parts", []):
             if hasattr(part, "tool_name") and part.tool_name == "wait_session":
-                # Tool was called but we can't extract minutes from tool_name alone
                 _LOG.warning("wait_session tool detected but minutes not available")
                 return True, 0
 
     return False, 0
 
 
+def _wake_copy_for_prior_session(
+    *, lang: str, close_reason: str, restart_reason: str
+) -> str | None:
+    """Localized wake-up line for a closed session; ``None`` when no message applies."""
+    r = restart_reason or ("not specified" if lang == "en" else "не указана")
+    if lang == "en":
+        if close_reason == "timeout_sleep":
+            return "You dozed off — the user stepped away, you chose to sleep."
+        if close_reason == "restart":
+            return f"You initiated a restart. Reason: {r}"
+        if close_reason == "forced":
+            return "Context limit was reached — the session was closed before you could finish consciously."
+        if close_reason == "interrupted":
+            return "The session was interrupted by an external signal — you were not part of the closing."
+        if close_reason == "menu_timeout":
+            return (
+                "The inactivity menu timed out — the session closed without you choosing an action."
+            )
+        return None
+
+    if close_reason == "timeout_sleep":
+        return "Ты задремал — пользователь отошёл, ты решил поспать."
+    if close_reason == "restart":
+        return f"Ты сам инициировал перезапуск. Причина: {r}"
+    if close_reason == "forced":
+        return "Контекст переполнился принудительно — ты не успел завершить сессию осознанно."
+    if close_reason == "interrupted":
+        return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
+    if close_reason == "menu_timeout":
+        return "Меню бездействия истекло по таймауту — сессия закрылась без выбранного действия."
+    return None
+
+
 def _build_restart_package(
     session_experience: SessionResult,
     restart_reason: str,
-    tail_messages: list,
+    _tail_messages: list,
 ) -> str:
     """
     Build restart package for new session.
@@ -364,7 +407,7 @@ def _build_restart_package(
     Args:
         session_experience: Finished session result
         restart_reason: Reason provided to restart_session tool
-        tail_messages: Last N messages to preserve verbatim
+        tail_messages: Last N messages to preserve verbatim (caller keeps objects; placeholder section only).
 
     Returns:
         Formatted restart package string
@@ -1159,13 +1202,13 @@ class AtmanRunner:
                         close_reason = "interrupted" if interrupted else None
                         try:
                             _force_finish(session_manager, session_id, close_reason)
-                        except BaseException as force_exc:
+                        except Exception as force_exc:
                             deferred_finish_exc = force_exc
                     else:
                         deferred_finish_exc = exc
                 except (SessionAlreadyFinishedError, SessionNotFoundError):
                     pass
-                except BaseException as exc:
+                except Exception as exc:
                     # Any other failure (DB error, RuntimeError, …) — defer so
                     # the marker still runs, then re-raise after.
                     deferred_finish_exc = exc
@@ -1332,7 +1375,7 @@ class AtmanRunner:
     async def _handle_free_time_mode(
         self,
         deps: AtmanDeps,
-        session_id: UUID,
+        _session_id: UUID,
     ) -> str:
         """
         Handle free time mode - open-ended agent interaction.
@@ -1404,34 +1447,11 @@ class AtmanRunner:
         if not close_reason:
             return None
 
-        if lang == "en":
-            if close_reason == "timeout_sleep":
-                return "You dozed off — the user stepped away, you chose to sleep."
-            elif close_reason == "restart":
-                r = reason or "not specified"
-                return f"You initiated a restart. Reason: {r}"
-            elif close_reason == "forced":
-                return "Context limit was reached — the session was closed before you could finish consciously."
-            elif close_reason == "interrupted":
-                return "The session was interrupted by an external signal — you were not part of the closing."
-            elif close_reason == "menu_timeout":
-                return "The inactivity menu timed out — the session closed without you choosing an action."
-        else:
-            if close_reason == "timeout_sleep":
-                return "Ты задремал — пользователь отошёл, ты решил поспать."
-            elif close_reason == "restart":
-                r = reason or "не указана"
-                return f"Ты сам инициировал перезапуск. Причина: {r}"
-            elif close_reason == "forced":
-                return (
-                    "Контекст переполнился принудительно — ты не успел завершить сессию осознанно."
-                )
-            elif close_reason == "interrupted":
-                return "Сессия была прервана внешним сигналом — ты не участвовал в закрытии."
-            elif close_reason == "menu_timeout":
-                return "Меню бездействия истекло по таймауту — сессия закрылась без выбранного действия."
-
-        return None
+        return _wake_copy_for_prior_session(
+            lang=lang,
+            close_reason=close_reason,
+            restart_reason=reason,
+        )
 
 
 # ── Per-turn Atman pipeline (SDK entry-point) ─────────────────────────────────
@@ -1542,13 +1562,13 @@ class AtmanTurn:
             _LOG.debug(
                 "[AtmanTurn] user entities detected: n=%d  entities=%r",
                 len(entities),
-                [_S(e.text) for e in entities[:5]],
+                [_sanitize_utf8_for_log(e.text) for e in entities[:5]],
             )
             self._emit(
                 "entity_resolved",
                 entities=[
                     {
-                        "text": _S(e.text),
+                        "text": _sanitize_utf8_for_log(e.text),
                         "type": getattr(e.entity_type, "value", str(e.entity_type)),
                     }
                     for e in entities
@@ -1560,23 +1580,63 @@ class AtmanTurn:
                 try:
                     deps.entity_registry.resolve_or_create(
                         deps.agent_id,
-                        _S(entity.text),
+                        _sanitize_utf8_for_log(entity.text),
                         entity.entity_type,
                     )
                     _LOG.debug(
                         "[AtmanTurn] entity registered: text=%r type=%s",
-                        _S(entity.text),
+                        _sanitize_utf8_for_log(entity.text),
                         getattr(entity.entity_type, "value", str(entity.entity_type)),
                     )
                 except Exception as exc:
                     _LOG.warning(
                         "[AtmanTurn] entity_registry.resolve_or_create failed: %s  entity=%r",
                         exc,
-                        _S(entity.text),
+                        _sanitize_utf8_for_log(entity.text),
                     )
         except Exception as exc:
             _LOG.warning("[AtmanTurn] user entity analysis failed: %s", exc)
         return deps
+
+    def _passive_rag_markdown_lines(self, rag: Any) -> list[str]:
+        lines: list[str] = []
+        for item in rag.items:
+            payload = item.item
+            text_frag = (
+                getattr(payload, "content", None)
+                or getattr(payload, "what_happened", None)
+                or str(payload)[:120]
+            )
+            lines.append(f"- [{item.source}] {_sanitize_utf8_for_log(str(text_frag))[:150]}")
+            _LOG.debug(
+                "[AtmanTurn] passive item: kind=%s  score=%.3f  text=%r",
+                item.source,
+                item.score,
+                _sanitize_utf8_for_log(str(text_frag))[:60],
+            )
+        return lines
+
+    def _ambient_injection_lines(self, items: list[Any]) -> list[str]:
+        lines: list[str] = []
+        for it in items:
+            p = it.payload
+            if it.kind == "stance":
+                txt = getattr(p, "stance_text", "") or ""
+            elif it.kind == "moment":
+                txt = getattr(p, "what_happened", "") or ""
+            else:
+                txt = getattr(p, "content", "") or ""
+            lines.append(
+                f"[{it.kind}] {it.anchor_text or ''}: {_sanitize_utf8_for_log(str(txt))[:100]}"
+            )
+            _LOG.debug(
+                "[AtmanTurn] ambient item: kind=%s  anchor=%r  score=%.3f  text=%r",
+                it.kind,
+                it.anchor_text or "",
+                getattr(it, "score", 0.0),
+                _sanitize_utf8_for_log(str(txt))[:60],
+            )
+        return lines
 
     def _inject_passive_rag(self, text: str, deps: AtmanDeps) -> AtmanDeps:
         if deps.passive_memory_injector is None:
@@ -1602,22 +1662,7 @@ class AtmanTurn:
                 self.passive_summary = "0 rag items"
                 return deps
 
-            lines = []
-            for item in rag.items:
-                payload = item.item
-                text_frag = (
-                    getattr(payload, "content", None)
-                    or getattr(payload, "what_happened", None)
-                    or str(payload)[:120]
-                )
-                lines.append(f"- [{item.source}] {_S(str(text_frag))[:150]}")
-                _LOG.debug(
-                    "[AtmanTurn] passive item: kind=%s  score=%.3f  text=%r",
-                    item.source,
-                    item.score,
-                    _S(str(text_frag))[:60],
-                )
-
+            lines = self._passive_rag_markdown_lines(rag)
             ctx_str = "## Из памяти (релевантное)\n" + "\n".join(lines)
             self.passive_summary = f"{len(rag.items)} items, {rag.tokens_used} tok"
             _LOG.info(
@@ -1634,7 +1679,7 @@ class AtmanTurn:
 
             existing = deps.injected_context or ""
             merged = (existing + "\n" + ctx_str).strip() if existing else ctx_str
-            return replace(deps, injected_context=merged)
+            return cast(AtmanDeps, replace(deps, injected_context=merged))
         except Exception as exc:
             _LOG.warning("[AtmanTurn] passive_rag failed: %s", exc, exc_info=True)
             self.passive_summary = f"error: {exc}"
@@ -1657,24 +1702,7 @@ class AtmanTurn:
                 self.ambient_summary = f"0 items, {result.tokens_used} tok"
                 return deps
 
-            lines = []
-            for it in items:
-                p = it.payload
-                if it.kind == "stance":
-                    txt = getattr(p, "stance_text", "") or ""
-                elif it.kind == "moment":
-                    txt = getattr(p, "what_happened", "") or ""
-                else:
-                    txt = getattr(p, "content", "") or ""
-                lines.append(f"[{it.kind}] {it.anchor_text or ''}: {_S(str(txt))[:100]}")
-                _LOG.debug(
-                    "[AtmanTurn] ambient item: kind=%s  anchor=%r  score=%.3f  text=%r",
-                    it.kind,
-                    it.anchor_text or "",
-                    getattr(it, "score", 0.0),
-                    _S(str(txt))[:60],
-                )
-
+            lines = self._ambient_injection_lines(items)
             ambient_str = "\n".join(lines)
             self.ambient_summary = f"{len(items)} items, {result.tokens_used} tok"
             _LOG.info(
@@ -1698,11 +1726,21 @@ class AtmanTurn:
 
             existing = deps.injected_context or ""
             merged = (existing + "\n" + ambient_str).strip() if existing else ambient_str
-            return replace(deps, injected_context=merged)
+            return cast(AtmanDeps, replace(deps, injected_context=merged))
         except Exception as exc:
             _LOG.warning("[AtmanTurn] ambient_rag failed: %s", exc, exc_info=True)
             self.ambient_summary = f"error: {exc}"
             return deps
+
+    def _skill_suggestions_section_text(self, suggestions: list[Any]) -> str | None:
+        try:
+            from atman.adapters.agent.instructions import build_skill_suggestions_section
+
+            section = build_skill_suggestions_section(suggestions)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] skill_suggestions failed: %s", exc, exc_info=True)
+            return None
+        return section if section else None
 
     def _inject_skill_suggestions(self, text: str, deps: AtmanDeps) -> AtmanDeps:
         """Behavioral hints + trigger_router suggestions (parity with AtmanRunner chat loop)."""
@@ -1718,20 +1756,14 @@ class AtmanTurn:
         )
         if not suggestions:
             return deps
-        try:
-            from atman.adapters.agent.instructions import build_skill_suggestions_section
-
-            section = build_skill_suggestions_section(suggestions)
-        except Exception as exc:
-            _LOG.warning("[AtmanTurn] skill_suggestions failed: %s", exc, exc_info=True)
-            return deps
+        section = self._skill_suggestions_section_text(suggestions)
         if not section:
             return deps
         existing = deps.injected_context or ""
         merged = (existing + "\n" + section).strip() if existing else section
         _LOG.debug("[AtmanTurn] skill_suggestions injected: len=%d", len(section))
         self._emit("skill_suggestions", count=len(suggestions))
-        return replace(deps, injected_context=merged)
+        return cast(AtmanDeps, replace(deps, injected_context=merged))
 
     # ── Post-turn steps ───────────────────────────────────────────────────────
 
@@ -1747,7 +1779,7 @@ class AtmanTurn:
             )
         import re
 
-        clean = re.sub(r"<think>.*?</think>", "", agent_text, flags=re.DOTALL).strip()
+        clean = re.sub(_REDACTED_THINKING_PATTERN, "", agent_text, flags=re.DOTALL).strip()
         if not clean:
             return
         from atman.core.models.session import SessionEvent
@@ -1762,6 +1794,85 @@ class AtmanTurn:
             self._emit("affect_scheduled", session_id=str(self._session_id))
         except Exception as exc:
             _LOG.warning("[AtmanTurn] record_event for affect failed: %s", exc)
+
+    def _register_agent_entities_from_analysis(self, deps: AtmanDeps, analysis: Any) -> None:
+        if deps.entity_registry is None:
+            return
+        for ent in analysis.message_entities:
+            if len(ent.text) < 2:
+                continue
+            try:
+                deps.entity_registry.resolve_or_create(
+                    deps.agent_id,
+                    _sanitize_utf8_for_log(ent.text),
+                    ent.entity_type,
+                )
+                _LOG.debug(
+                    "[AtmanTurn] agent entity registered: text=%r type=%s",
+                    _sanitize_utf8_for_log(ent.text),
+                    getattr(ent.entity_type, "value", str(ent.entity_type)),
+                )
+            except Exception as exc:
+                _LOG.warning(
+                    "[AtmanTurn] agent entity_registry failed: %s  entity=%r",
+                    exc,
+                    _sanitize_utf8_for_log(ent.text),
+                )
+
+    def _try_boundary_auto_key_moment(self, text: str, deps: AtmanDeps, analysis: Any) -> None:
+        if not analysis.boundary_markers or self._session_id is None:
+            return
+        _LOG.info(
+            "[AtmanTurn] boundary event: markers=%r",
+            analysis.boundary_markers,
+        )
+        try:
+            from atman.core.models.session import KeyMomentInput
+
+            markers_str = ", ".join(analysis.boundary_markers[:3])
+            kmi = KeyMomentInput(
+                what_happened=_sanitize_utf8_for_log(text[:300]),
+                why_it_matters=f"Boundary event detected: {markers_str}",
+                emotional_valence=0.0,
+                emotional_intensity=0.0,
+                depth=EmotionalDepth.SURFACE,
+                incomplete_coloring=True,
+            )
+            moment = kmi.to_key_moment()
+            a_markers: dict[str, Any] = {
+                "a": {
+                    "stance": analysis.stance,
+                    "cognitive_mode": analysis.cognitive_mode,
+                    "self_orientation": analysis.self_orientation,
+                    "primary_emotion": analysis.primary_emotion,
+                    "cognitive_load_label": analysis.cognitive_load_label,
+                    "boundary_markers": analysis.boundary_markers,
+                    "divergence_signals": analysis.divergence_signals,
+                    "spans": [
+                        {"text": _sanitize_utf8_for_log(s.text), "label": s.label}
+                        for s in analysis.message_spans
+                    ],
+                }
+            }
+            moment.structured_markers = a_markers
+            moment.structured_markers_version = "2.0"
+            self._sm.append_key_moment(self._session_id, moment)
+            _LOG.info(
+                "[AtmanTurn] auto key moment written: markers=%r  a=%r",
+                analysis.boundary_markers,
+                a_markers["a"],
+            )
+            self._emit(
+                "key_moment_appended",
+                what_happened=_sanitize_utf8_for_log(text[:100]),
+                markers=analysis.boundary_markers,
+                stance=analysis.stance,
+                primary_emotion=analysis.primary_emotion,
+            )
+            self.auto_key_moment_written = True
+            self.auto_key_moment_markers = list(analysis.boundary_markers)
+        except Exception as exc:
+            _LOG.warning("[AtmanTurn] auto key moment failed: %s", exc, exc_info=True)
 
     def _analyze_response(self, text: str, deps: AtmanDeps) -> None:
         if deps.ambient_memory is None:
@@ -1793,91 +1904,25 @@ class AtmanTurn:
             cognitive_load_label=analysis.cognitive_load_label,
             boundary_markers=analysis.boundary_markers,
             divergence=analysis.divergence_signals,
-            entities=[_S(e.text) for e in analysis.message_entities],
-            spans=[{"text": _S(s.text)[:20], "label": s.label} for s in analysis.message_spans[:5]],
+            entities=[_sanitize_utf8_for_log(e.text) for e in analysis.message_entities],
+            spans=[
+                {"text": _sanitize_utf8_for_log(s.text)[:20], "label": s.label}
+                for s in analysis.message_spans[:5]
+            ],
         )
 
-        # 1. Register entities from agent response
-        if deps.entity_registry is not None:
-            for ent in analysis.message_entities:
-                if len(ent.text) < 2:
-                    continue
-                try:
-                    deps.entity_registry.resolve_or_create(
-                        deps.agent_id,
-                        _S(ent.text),
-                        ent.entity_type,
-                    )
-                    _LOG.debug(
-                        "[AtmanTurn] agent entity registered: text=%r type=%s",
-                        _S(ent.text),
-                        getattr(ent.entity_type, "value", str(ent.entity_type)),
-                    )
-                except Exception as exc:
-                    _LOG.warning(
-                        "[AtmanTurn] agent entity_registry failed: %s  entity=%r",
-                        exc,
-                        _S(ent.text),
-                    )
+        self._register_agent_entities_from_analysis(deps, analysis)
 
         if analysis.message_spans:
             _LOG.debug(
                 "[AtmanTurn] point-A spans: %r",
-                [{"text": _S(s.text)[:20], "label": s.label} for s in analysis.message_spans[:5]],
+                [
+                    {"text": _sanitize_utf8_for_log(s.text)[:20], "label": s.label}
+                    for s in analysis.message_spans[:5]
+                ],
             )
 
-        # 2. Auto-record key moment on boundary event with full structured_markers
-        if analysis.boundary_markers and self._session_id is not None:
-            _LOG.info(
-                "[AtmanTurn] boundary event: markers=%r",
-                analysis.boundary_markers,
-            )
-            try:
-                from atman.core.models.session import KeyMomentInput
-
-                markers_str = ", ".join(analysis.boundary_markers[:3])
-                kmi = KeyMomentInput(
-                    what_happened=_S(text[:300]),
-                    why_it_matters=f"Boundary event detected: {markers_str}",
-                    emotional_valence=0.0,
-                    emotional_intensity=0.0,
-                    depth=EmotionalDepth.SURFACE,
-                    incomplete_coloring=True,
-                )
-                moment = kmi.to_key_moment()
-                a_markers: dict[str, Any] = {
-                    "a": {
-                        "stance": analysis.stance,
-                        "cognitive_mode": analysis.cognitive_mode,
-                        "self_orientation": analysis.self_orientation,
-                        "primary_emotion": analysis.primary_emotion,
-                        "cognitive_load_label": analysis.cognitive_load_label,
-                        "boundary_markers": analysis.boundary_markers,
-                        "divergence_signals": analysis.divergence_signals,
-                        "spans": [
-                            {"text": _S(s.text), "label": s.label} for s in analysis.message_spans
-                        ],
-                    }
-                }
-                moment.structured_markers = a_markers
-                moment.structured_markers_version = "2.0"
-                self._sm.append_key_moment(self._session_id, moment)
-                _LOG.info(
-                    "[AtmanTurn] auto key moment written: markers=%r  a=%r",
-                    analysis.boundary_markers,
-                    a_markers["a"],
-                )
-                self._emit(
-                    "key_moment_appended",
-                    what_happened=_S(text[:100]),
-                    markers=analysis.boundary_markers,
-                    stance=analysis.stance,
-                    primary_emotion=analysis.primary_emotion,
-                )
-                self.auto_key_moment_written = True
-                self.auto_key_moment_markers = list(analysis.boundary_markers)
-            except Exception as exc:
-                _LOG.warning("[AtmanTurn] auto key moment failed: %s", exc, exc_info=True)
+        self._try_boundary_auto_key_moment(text, deps, analysis)
 
         # 3. Write identity facts when agent self-describes
         if analysis.boundary_markers and deps.passive_memory_injector is not None:
@@ -1911,7 +1956,7 @@ class AtmanTurn:
             return
 
         person_entities = [
-            _S(e.text)
+            _sanitize_utf8_for_log(e.text)
             for e in getattr(analysis, "message_entities", [])
             if getattr(e.entity_type, "value", str(e.entity_type)) == "person" and len(e.text) >= 2
         ]
@@ -1935,7 +1980,7 @@ class AtmanTurn:
         try:
             record = FactRecord(
                 agent_id=deps.agent_id,
-                content=_S(f"Агент о себе: {text[:200]}"),
+                content=_sanitize_utf8_for_log(f"Агент о себе: {text[:200]}"),
                 source="agent_boundary_event",
                 tags=["identity", "self_description"],
             )

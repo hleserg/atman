@@ -110,7 +110,7 @@ def load_all_fixture_sessions_sorted(locale: str = "en") -> list[Path]:
             if sn is None:
                 continue
             numbered.append((int(sn), path))
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError):
             continue
     numbered.sort(key=lambda x: x[0])
     return [p for _, p in numbered]
@@ -404,6 +404,7 @@ def run_session_from_fixture(
 
     Returns ``(session_id, session_result)``.
     """
+    _ = clock
     events, moments, outcome = _parse_fixture(fixture_path)
 
     if verbose:

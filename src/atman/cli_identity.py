@@ -18,6 +18,10 @@ from atman.adapters.storage import FileStateStore
 from atman.core.services import IdentityService, NarrativeService
 from atman.term import print_banner, print_err, print_ok
 
+_HELP_WORKSPACE = "Workspace directory"
+_HELP_AGENT_ID_OPTIONAL = "Agent ID (optional, will generate)"
+_HELP_AGENT_ID_REQUIRED = "Agent ID"
+
 
 def cmd_identity_init(workspace: Path, agent_id: UUID | None = None) -> None:
     """Bootstrap a new identity."""
@@ -172,7 +176,8 @@ def cmd_narrative_validate(narrative_path: Path) -> None:
     print_banner("Validate Narrative")
 
     # Create dummy workspace just for validation service
-    store = FileStateStore(Path("/tmp/dummy"))
+    # Dummy store path only for NarrativeService wiring; no writes during validate.
+    store = FileStateStore(Path.home() / ".atman" / "cli-validate-dummy")
     service = NarrativeService(store)
 
     is_valid, issues = service.validate_narrative_file(narrative_path)
@@ -200,28 +205,28 @@ def main() -> None:
 
     # identity init
     init_parser = subparsers.add_parser("init", help="Bootstrap a new identity")
-    init_parser.add_argument("--workspace", type=Path, required=True, help="Workspace directory")
-    init_parser.add_argument("--agent-id", type=UUID, help="Agent ID (optional, will generate)")
+    init_parser.add_argument("--workspace", type=Path, required=True, help=_HELP_WORKSPACE)
+    init_parser.add_argument("--agent-id", type=UUID, help=_HELP_AGENT_ID_OPTIONAL)
 
     # identity show
     show_parser = subparsers.add_parser("show", help="Show current identity")
-    show_parser.add_argument("--workspace", type=Path, required=True, help="Workspace directory")
-    show_parser.add_argument("--agent-id", type=UUID, required=True, help="Agent ID")
+    show_parser.add_argument("--workspace", type=Path, required=True, help=_HELP_WORKSPACE)
+    show_parser.add_argument("--agent-id", type=UUID, required=True, help=_HELP_AGENT_ID_REQUIRED)
 
     # identity snapshot
     snapshot_parser = subparsers.add_parser("snapshot", help="Create identity snapshot")
+    snapshot_parser.add_argument("--workspace", type=Path, required=True, help=_HELP_WORKSPACE)
     snapshot_parser.add_argument(
-        "--workspace", type=Path, required=True, help="Workspace directory"
+        "--agent-id", type=UUID, required=True, help=_HELP_AGENT_ID_REQUIRED
     )
-    snapshot_parser.add_argument("--agent-id", type=UUID, required=True, help="Agent ID")
     snapshot_parser.add_argument(
         "--description", type=str, required=True, help="Snapshot description"
     )
 
     # narrative render
     render_parser = subparsers.add_parser("render", help="Render NARRATIVE.md")
-    render_parser.add_argument("--workspace", type=Path, required=True, help="Workspace directory")
-    render_parser.add_argument("--agent-id", type=UUID, required=True, help="Agent ID")
+    render_parser.add_argument("--workspace", type=Path, required=True, help=_HELP_WORKSPACE)
+    render_parser.add_argument("--agent-id", type=UUID, required=True, help=_HELP_AGENT_ID_REQUIRED)
     render_parser.add_argument("--eigenstate", type=Path, help="Path to eigenstate.json (optional)")
 
     # narrative validate

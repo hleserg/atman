@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from atman.adapters.storage._atomic_write import write_atomically
 from atman.core.models import FactRecord, Relation
 from atman.core.models.fact import FactStatus
@@ -58,7 +60,7 @@ class FileBackend(FactualMemory):
                 try:
                     data = json.loads(line)
                     fact = FactRecord.model_validate(data)
-                except (json.JSONDecodeError, ValueError) as exc:
+                except (ValueError, ValidationError) as exc:
                     warnings.warn(
                         f"Skipping malformed fact at {self.filepath}:{line_number}: "
                         f"{type(exc).__name__}: {exc}",

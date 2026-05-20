@@ -17,6 +17,8 @@ import numpy as np
 
 from .config import AgentConfig
 
+_RAG_META_JSON = "meta.json"
+
 if TYPE_CHECKING:
     from .providers import ProviderRouter
 
@@ -414,14 +416,14 @@ class RAGIndex:
         return n_upd
 
     def check_staleness(self) -> bool:
-        meta_obj = self.index_path / "meta.json"
+        meta_obj = self.index_path / _RAG_META_JSON
         if not meta_obj.exists():
             return True
         try:
             t_build = float(json.loads(meta_obj.read_text(encoding="utf-8")).get("built_at", 0))
             limit_h = float(getattr(self.cfg, "rag_stale_hours", 4.0))
             return (time.time() - t_build) / 3600 > limit_h
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError):
             return True
 
     def symbol_search(self, nm: str) -> list[Chunk]:
@@ -659,7 +661,7 @@ class RAGIndex:
                 np.asarray(self._embeddings, dtype=np.float32),
             )
 
-        (self.index_path / "meta.json").write_text(
+        (self.index_path / _RAG_META_JSON).write_text(
             json.dumps({"chunk_count": len(self._chunks), "built_at": time.time()}),
             encoding="utf-8",
         )
@@ -688,7 +690,7 @@ class RAGIndex:
                 ):
                     d_ob.setdefault(dk, dv)
                 self._chunks.append(Chunk(**d_ob))
-            except (TypeError, KeyError, ValueError, json.JSONDecodeError):
+            except (TypeError, KeyError, ValueError):
                 continue
 
         if np_emb.exists():
@@ -731,7 +733,7 @@ class RAGIndex:
 
     @property
     def stats(self) -> dict[str, Any]:
-        mf = self.index_path / "meta.json"
+        mf = self.index_path / _RAG_META_JSON
         bt = None
         if mf.exists():
             try:

@@ -37,7 +37,7 @@ ATMAN_EXTRA_KEYS: list[str] = [
 ]
 
 
-def make_event_scrubber(level: str) -> Any:
+def make_event_scrubber(_level: str) -> Any:
     """Return an EventScrubber configured with ATMAN_DENYLIST.
 
     In verbose mode we still scrub — developer must opt-in to raw payloads
@@ -144,7 +144,7 @@ def _make_before_send(level: str) -> Any:
 _HEALTH_ROUTES: frozenset[str] = frozenset({"/health", "/healthz", "/metrics", "/livez", "/readyz"})
 
 
-def _make_before_send_transaction(level: str) -> Any:
+def _make_before_send_transaction(_level: str) -> Any:
     """Factory for before_send_transaction callback.
 
     Drops health-check and metrics endpoints to avoid quota waste.

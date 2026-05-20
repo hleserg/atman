@@ -73,15 +73,8 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             body = {}
 
-        messages = body.get("messages") or []
-        preview = ""
-        if isinstance(messages, list) and messages:
-            last = messages[-1]
-            if isinstance(last, dict):
-                preview = str(last.get("content", ""))[:200]
-
         use_stream = bool(body.get("stream"))
-        reply = f"{self.stub_text}\n\n[user last message excerpt]\n{preview}\n".strip()
+        reply = self.stub_text.strip()
 
         if not use_stream:
             full: dict[str, Any] = {

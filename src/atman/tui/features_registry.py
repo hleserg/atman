@@ -25,6 +25,19 @@ class FeatureInfo:
     test_globs: tuple[str, ...]
 
 
+# --- Registry literals (Sonar S1192): one definition site per repeated demo label/path/env. ---
+_DEMO_LABEL_PACED = "Demo (paced)"
+_DEMO_LABEL_FAST = "Demo (fast)"
+_ATMAN_DEMO_PACE_ON = "1"
+_ATMAN_DEMO_PACE_OFF = "off"
+_DEMO_SCRIPT_FACTUAL = "src/demo.py"
+_DEMO_SCRIPT_EXPERIENCE = "src/demo_experience_store.py"
+_DEMO_SCRIPT_IDENTITY = "src/demo_identity.py"
+_DEMO_SCRIPT_REFLECTION = "src/demo_reflection.py"
+_DEMO_SCRIPT_SESSION = "src/demo_session_manager.py"
+_DEMO_SCRIPT_WEB_DASHBOARD = "src/demo_web_dashboard.py"
+
+
 FEATURES: tuple[FeatureInfo, ...] = (
     FeatureInfo(
         slug="factual-memory",
@@ -35,19 +48,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
             "src/atman/adapters/memory/",
             "src/atman/core/models/fact.py",
             "src/atman/core/ports/memory_backend.py",
-            "src/demo.py",
+            _DEMO_SCRIPT_FACTUAL,
             "src/atman/cli.py",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_FACTUAL,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_FACTUAL,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=(
@@ -65,19 +78,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
             "src/atman/adapters/storage/",
             "src/atman/core/models/experience.py",
             "src/atman/core/services/experience_service.py",
-            "src/demo_experience_store.py",
+            _DEMO_SCRIPT_EXPERIENCE,
             "src/atman/cli_experience.py",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo_experience_store.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_EXPERIENCE,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo_experience_store.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_EXPERIENCE,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=(
@@ -96,19 +109,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
             "src/atman/core/services/identity_service.py",
             "src/atman/core/services/narrative_service.py",
             "src/atman/adapters/storage/",
-            "src/demo_identity.py",
+            _DEMO_SCRIPT_IDENTITY,
             "src/atman/cli_identity.py",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo_identity.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_IDENTITY,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo_identity.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_IDENTITY,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=(
@@ -131,19 +144,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
             "src/atman/core/models/reflection.py",
             "src/atman/core/ports/reflection.py",
             "src/atman/adapters/reflection/",
-            "src/demo_reflection.py",
+            _DEMO_SCRIPT_REFLECTION,
             "src/atman/cli_reflection.py",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo_reflection.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_REFLECTION,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo_reflection.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_REFLECTION,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=(
@@ -165,19 +178,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
         related_paths=(
             "src/atman/core/models/session.py",
             "src/atman/core/services/session_manager.py",
-            "src/demo_session_manager.py",
+            _DEMO_SCRIPT_SESSION,
             "src/atman/core/ports/state_store.py",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo_session_manager.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_SESSION,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo_session_manager.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_SESSION,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=(
@@ -194,19 +207,19 @@ FEATURES: tuple[FeatureInfo, ...] = (
             "src/atman/web_dashboard/app.py",
             "src/atman/web_dashboard/pages/",
             "src/atman/web_dashboard/utils/",
-            "src/demo_web_dashboard.py",
+            _DEMO_SCRIPT_WEB_DASHBOARD,
             "Makefile",
         ),
         demos=(
             DemoCommand(
-                "Demo (paced)",
-                ("src/demo_web_dashboard.py",),
-                {"ATMAN_DEMO_PACE": "1"},
+                _DEMO_LABEL_PACED,
+                (_DEMO_SCRIPT_WEB_DASHBOARD,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_ON},
             ),
             DemoCommand(
-                "Demo (fast)",
-                ("src/demo_web_dashboard.py",),
-                {"ATMAN_DEMO_PACE": "off"},
+                _DEMO_LABEL_FAST,
+                (_DEMO_SCRIPT_WEB_DASHBOARD,),
+                {"ATMAN_DEMO_PACE": _ATMAN_DEMO_PACE_OFF},
             ),
         ),
         test_globs=("tests/test_web_dashboard_*.py",),

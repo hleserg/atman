@@ -669,7 +669,7 @@ def test_save_identity_concurrent_writers_resolve_to_last_writer():
             try:
                 updated = identity.model_copy(update={"self_description": desc}, deep=True)
                 store.save_identity(updated)
-            except BaseException as exc:  # pragma: no cover - exercised only on failure
+            except Exception as exc:  # pragma: no cover - exercised only on failure
                 errors.append(exc)
 
         threads = [threading.Thread(target=writer, args=(d,)) for d in descriptions]

@@ -37,7 +37,15 @@ REQUIRED_FIELDS = {"id", "category", "title", "status"}
 OPTIONAL_FIELDS = {"extends", "since"}
 ALL_FIELDS = REQUIRED_FIELDS | OPTIONAL_FIELDS
 
-IGNORED_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache"}
+IGNORED_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+}
 
 
 @dataclass
@@ -82,7 +90,7 @@ def _read_gitignore_patterns(repo_root: Path) -> list[re.Pattern[str]]:
         escaped = re.escape(line.rstrip("/"))
         escaped = escaped.replace(r"\*\*", ".*").replace(r"\*", "[^/]*")
         with contextlib.suppress(re.error):
-                patterns.append(re.compile(escaped))
+            patterns.append(re.compile(escaped))
     return patterns
 
 
@@ -122,7 +130,9 @@ def _strip_fenced_code_blocks(content: str) -> str:
     return "".join(result)
 
 
-def _extract_from_markdown(content: str, source_file: str) -> tuple[list[PlaybookMarker], list[str]]:
+def _extract_from_markdown(
+    content: str, source_file: str
+) -> tuple[list[PlaybookMarker], list[str]]:
     """Extract PLAYBOOK markers from HTML comments in Markdown files."""
     markers: list[PlaybookMarker] = []
     errors: list[str] = []
@@ -346,7 +356,9 @@ def generate_output(markers: list[PlaybookMarker], repo_root: Path) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Extract PLAYBOOK markers from Atman source files.")
+    parser = argparse.ArgumentParser(
+        description="Extract PLAYBOOK markers from Atman source files."
+    )
     parser.add_argument(
         "--source-repo",
         type=Path,

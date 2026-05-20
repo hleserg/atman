@@ -30,6 +30,9 @@ from atman.term import (
     print_salience_table,
 )
 
+_ERR_INVALID_UUID = "Invalid UUID format"
+_ERR_EXPERIENCE_NOT_FOUND = "Experience not found"
+
 
 def cmd_add(service: ExperienceService, args: list[str]):
     """Add a new experience from a JSON file."""
@@ -85,7 +88,7 @@ def cmd_get(service: ExperienceService, args: list[str]):
     try:
         experience_id = UUID(args[0])
     except ValueError:
-        print_err("Invalid UUID format")
+        print_err(_ERR_INVALID_UUID)
         return
 
     record = service.get_experience(experience_id)
@@ -93,7 +96,7 @@ def cmd_get(service: ExperienceService, args: list[str]):
         print_ok("Experience found:")
         print_experience_record(record)
     else:
-        print_err("Experience not found")
+        print_err(_ERR_EXPERIENCE_NOT_FOUND)
 
 
 def cmd_reflect(service: ExperienceService, args: list[str]):
@@ -107,7 +110,7 @@ def cmd_reflect(service: ExperienceService, args: list[str]):
     try:
         experience_id = UUID(args[0])
     except ValueError:
-        print_err("Invalid UUID format")
+        print_err(_ERR_INVALID_UUID)
         return
 
     reflection = args[1]
@@ -125,7 +128,7 @@ def cmd_reflect(service: ExperienceService, args: list[str]):
         print_ok("Reframing note added:")
         print_experience_record(record)
     else:
-        print_err("Experience not found")
+        print_err(_ERR_EXPERIENCE_NOT_FOUND)
 
 
 def cmd_search(service: ExperienceService, args: list[str]):
@@ -183,14 +186,14 @@ def cmd_decay_preview(service: ExperienceService, args: list[str]):
     try:
         experience_id = UUID(args[0])
     except ValueError:
-        print_err("Invalid UUID format")
+        print_err(_ERR_INVALID_UUID)
         return
 
     days_forward = int(args[1]) if len(args) > 1 else 30
 
     record = service.get_experience(experience_id)
     if not record:
-        print_err("Experience not found")
+        print_err(_ERR_EXPERIENCE_NOT_FOUND)
         return
 
     print_ok("Salience decay preview")

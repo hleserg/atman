@@ -21,7 +21,11 @@ from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Input, Label, Static
 
-QUEUE_PATH = Path.home() / ".atman" / "agent_memory" / "task_queue.jsonl"
+from .config import _DOT_ATMAN_DIRNAME
+
+_SEL_TASK_TABLE = "#task-table"
+
+QUEUE_PATH = Path.home() / _DOT_ATMAN_DIRNAME / "agent_memory" / "task_queue.jsonl"
 
 
 @dataclass
@@ -231,7 +235,7 @@ class QueueScreen(Screen[None]):
         self.dismiss()
 
     def _refresh_table(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         table.clear(columns=True)
         table.add_columns("Priority", "Status", "Title")
         for task in self.queue.all():
@@ -276,35 +280,35 @@ class QueueScreen(Screen[None]):
         self._refresh_table()
 
     def action_delete_task(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         tid = _cursor_task_id(table)
         if tid is not None:
             self.queue.delete(tid)
             self._refresh_table()
 
     def action_move_up(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         tid = _cursor_task_id(table)
         if tid is not None:
             self.queue.move_up(tid)
             self._refresh_table()
 
     def action_move_down(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         tid = _cursor_task_id(table)
         if tid is not None:
             self.queue.move_down(tid)
             self._refresh_table()
 
     def action_toggle_priority(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         tid = _cursor_task_id(table)
         if tid is not None:
             self.queue.toggle_priority(tid)
             self._refresh_table()
 
     def action_start_task(self) -> None:
-        table = self.query_one("#task-table", DataTable)
+        table = self.query_one(_SEL_TASK_TABLE, DataTable)
         tid = _cursor_task_id(table)
         if tid is None:
             return

@@ -40,6 +40,7 @@ from atman.adapters.storage.reflection_persistence_models import (
     ReflectionEvent,
     ReflectionLevel,
 )
+from atman.db_url import resolve_database_url
 
 _REFLECTION_COLUMNS = """
     id, agent_id, level, created_at, session_id, period_start, period_end,
@@ -53,7 +54,7 @@ class ReflectionStore:
     PostgreSQL storage for reflection content in ``agent_{N}.reflections``.
 
     Reads database configuration from environment:
-    - ATMAN_DB_URL (default: postgresql://atman@localhost:5432/atman)
+    - ATMAN_DB_URL (default: postgresql://atman:atman@localhost:5432/atman)
     - ATMAN_CURRENT_AGENT (optional UUID string; used when agent_id is not passed)
     """
 
@@ -68,9 +69,7 @@ class ReflectionStore:
                 "psycopg is required for ReflectionStore. Install with: pip install psycopg[binary]"
             )
 
-        self.db_url = db_url or os.environ.get(
-            "ATMAN_DB_URL", "postgresql://atman@localhost:5432/atman"
-        )
+        self.db_url = resolve_database_url(db_url)
         self._conn: psycopg.Connection[Any] | None = None
         self._closed = False
         self._schema_resolver = AgentSchemaResolver(fixed_serial_id=fixed_serial_id)

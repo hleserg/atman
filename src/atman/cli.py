@@ -23,6 +23,8 @@ from atman.term import (
     print_ok,
 )
 
+_ERR_INVALID_UUID_FORMAT = "Ошибка: неверный формат UUID"
+
 
 def cmd_add(backend: FactualMemory, args: list[str]) -> None:
     """Добавляет новый факт."""
@@ -50,7 +52,7 @@ def cmd_get(backend: FactualMemory, args: list[str]) -> None:
     try:
         fact_id = UUID(args[0])
     except ValueError:
-        print_err("Ошибка: неверный формат UUID")
+        print_err(_ERR_INVALID_UUID_FORMAT)
         return
 
     fact = backend.get_fact(fact_id)
@@ -103,7 +105,7 @@ def cmd_link(backend: FactualMemory, args: list[str]) -> None:
         source_id = UUID(args[0])
         target_id = UUID(args[1])
     except ValueError:
-        print_err("Ошибка: неверный формат UUID")
+        print_err(_ERR_INVALID_UUID_FORMAT)
         return
 
     relation_type = args[2]
@@ -138,7 +140,7 @@ def cmd_invalidate(backend: FactualMemory, args: list[str]) -> None:
     try:
         fact_id = UUID(args[0])
     except ValueError:
-        print_err("Ошибка: неверный формат UUID")
+        print_err(_ERR_INVALID_UUID_FORMAT)
         return
 
     reason = " ".join(args[1:])

@@ -22,6 +22,7 @@ from atman.skills.models import (
 from atman.skills.noop import NoopSkillManager
 from atman.skills.projection import PydanticAgentProjector
 from atman.skills.retriever import SkillRetriever
+from tests._fake_paths import fake_skill_manifest, fake_skill_root
 
 
 def _now() -> datetime:
@@ -64,8 +65,8 @@ def _make_skill(
         revision_priority=revision_priority,
         last_revised_at=None,
         manifest_inferred=False,
-        skill_root=Path(f"/tmp/{name}"),
-        manifest_path=Path(f"/tmp/{name}/SKILL.md"),
+        skill_root=fake_skill_root(name),
+        manifest_path=fake_skill_manifest(name),
         created_at=now,
         updated_at=now,
     )
@@ -227,8 +228,8 @@ class TestDraftPromotion:
             revision_priority=0,
             last_revised_at=None,
             manifest_inferred=False,
-            skill_root=Path(f"/tmp/{name}"),
-            manifest_path=Path(f"/tmp/{name}/SKILL.md"),
+            skill_root=fake_skill_root(name),
+            manifest_path=fake_skill_manifest(name),
             created_at=now,
             updated_at=now,
         )

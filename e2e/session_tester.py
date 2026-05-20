@@ -83,7 +83,7 @@ AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
 WORKSPACE = Path(os.getenv("ATMAN_AGENT_WORKSPACE", str(Path.home() / ".atman" / "dev-agent")))
 
 
-def _S(s: str) -> str:
+def _sanitize_utf8_for_log(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 
@@ -288,7 +288,7 @@ async def _do_turn(
             for ent in data.get("entities") or []:  # type: ignore[union-attr]
                 text = ent.get("text", "")  # type: ignore[union-attr]
                 if text:
-                    tm.entities_detected.append(_S(str(text)))
+                    tm.entities_detected.append(_sanitize_utf8_for_log(str(text)))
         elif event == "passive_rag":
             rag_counts["passive"] = int(data.get("items_total", 0))  # type: ignore[arg-type]
         elif event == "ambient_injection":
@@ -312,7 +312,7 @@ async def _do_turn(
     t0 = time.perf_counter()
     try:
         result = await agent.run(
-            _S(my_text),
+            _sanitize_utf8_for_log(my_text),
             deps=deps,
             message_history=trimmed if trimmed else None,
         )
@@ -331,7 +331,7 @@ async def _do_turn(
 
     output = str(result.output or "").strip()
     agent_clean = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
-    agent_clean = _S(agent_clean)
+    agent_clean = _sanitize_utf8_for_log(agent_clean)
 
     # Post-turn: shared AtmanTurn pipeline (analysis, auto KM, affect, refusal)
     try:
@@ -563,7 +563,7 @@ async def main() -> None:
     agent = Agent(
         llm,
         deps_type=type(deps_base),
-        instructions=lambda c: _S(build_instructions(c.deps)),
+        instructions=lambda c: _sanitize_utf8_for_log(build_instructions(c.deps)),
         tools=[
             record_key_moment,
             restart_session,

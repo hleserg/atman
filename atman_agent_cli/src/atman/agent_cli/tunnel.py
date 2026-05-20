@@ -34,6 +34,8 @@ from pathlib import Path
 
 import requests
 
+from .config import _DOT_ATMAN_DIRNAME, _GITHUB_JSON_ACCEPT_HEADER
+
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 CLOUDFLARED_INSTALL = {
@@ -49,9 +51,9 @@ RUNNER_DOWNLOAD = {
 
 GITHUB_API = "https://api.github.com"
 WEBHOOK_PATH = "/webhook"
-RUNNER_DIR = Path.home() / ".atman" / "gh-runner"
-CLOUDFLARED_BIN = Path.home() / ".atman" / "bin" / "cloudflared"
-TUNNEL_STATE_FILE = Path.home() / ".atman" / "tunnel_state.json"
+RUNNER_DIR = Path.home() / _DOT_ATMAN_DIRNAME / "gh-runner"
+CLOUDFLARED_BIN = Path.home() / _DOT_ATMAN_DIRNAME / "bin" / "cloudflared"
+TUNNEL_STATE_FILE = Path.home() / _DOT_ATMAN_DIRNAME / "tunnel_state.json"
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -118,7 +120,7 @@ def install_cloudflared(log: Log = _noop) -> bool:
         )
         return False
 
-    bin_dir = Path.home() / ".atman" / "bin"
+    bin_dir = Path.home() / _DOT_ATMAN_DIRNAME / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     dest = bin_dir / ("cloudflared.exe" if system == "Windows" else "cloudflared")
 
@@ -233,10 +235,11 @@ def register_github_webhook(
     Register (or update) GitHub webhook pointing to the tunnel.
     Returns webhook ID or None on failure.
     """
+    _ = webhook_port
     webhook_url = f"{tunnel_url}{WEBHOOK_PATH}"
     headers = {
         "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
+        "Accept": _GITHUB_JSON_ACCEPT_HEADER,
     }
     payload = {
         "name": "web",
@@ -299,7 +302,10 @@ def delete_github_webhook(
     repo: str,
     log: Log = _noop,
 ) -> bool:
-    headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github+json"}
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": _GITHUB_JSON_ACCEPT_HEADER,
+    }
     try:
         r = requests.delete(
             f"{GITHUB_API}/repos/{repo}/hooks/{webhook_id}",
@@ -325,7 +331,10 @@ def get_runner_registration_token(
     log: Log = _noop,
 ) -> str | None:
     """Get a short-lived runner registration token from GitHub API."""
-    headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github+json"}
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": _GITHUB_JSON_ACCEPT_HEADER,
+    }
     try:
         r = requests.post(
             f"{GITHUB_API}/repos/{repo}/actions/runners/registration-token",
@@ -466,7 +475,10 @@ def runner_is_running() -> bool:
 
 
 def list_registered_runners(github_token: str, repo: str) -> list[dict]:
-    headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github+json"}
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": _GITHUB_JSON_ACCEPT_HEADER,
+    }
     try:
         r = requests.get(f"{GITHUB_API}/repos/{repo}/actions/runners", headers=headers, timeout=15)
         return r.json().get("runners", []) if r.status_code == 200 else []

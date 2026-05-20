@@ -27,7 +27,7 @@ CURSOR_RULES = Path(".cursor/rules/docs-placement.mdc")
 CLAUDE_MD = Path("CLAUDE.md")
 
 
-def _build_docs_map(repo_root: Path, lang: str = "en") -> str:
+def _build_docs_map(repo_root: Path, _lang: str = "en") -> str:
     """Build a markdown docs tree from the docs/ directory."""
     docs_dir = repo_root / "docs"
     if not docs_dir.exists():
@@ -130,7 +130,7 @@ def update_agent_instructions(
 
     Returns True if any file was changed (or would change in check mode).
     """
-    docs_map = _build_docs_map(repo_root, lang=lang)
+    docs_map = _build_docs_map(repo_root, _lang=lang)
     any_changed = False
 
     targets = [

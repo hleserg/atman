@@ -17,6 +17,8 @@ from atman.core.ports.linguistic import DetectedEntity
 
 logger = logging.getLogger(__name__)
 
+_MREBEL_OBJ_TYPE_MARKER = "<obj_type>"
+
 try:
     from transformers import pipeline as _hf_pipeline  # type: ignore[import-untyped]
 
@@ -167,10 +169,10 @@ def _parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
             obj_part, _, relation_part = rest.partition("<obj>")
             # Discard obj_type tag and its content (object type label) — keep only
             # the trailing relation label.
-            if "<obj_type>" in relation_part:
-                _, _, relation_part = relation_part.partition("<obj_type>")
-        elif "<obj_type>" in rest:
-            obj_part, _, relation_part = rest.partition("<obj_type>")
+            if _MREBEL_OBJ_TYPE_MARKER in relation_part:
+                _, _, relation_part = relation_part.partition(_MREBEL_OBJ_TYPE_MARKER)
+        elif _MREBEL_OBJ_TYPE_MARKER in rest:
+            obj_part, _, relation_part = rest.partition(_MREBEL_OBJ_TYPE_MARKER)
         else:
             continue
 

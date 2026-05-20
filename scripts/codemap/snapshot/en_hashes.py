@@ -11,6 +11,8 @@ import json
 import logging
 from pathlib import Path
 
+from ..path_guard import write_text_under_root
+
 log = logging.getLogger(__name__)
 
 HASHES_FILE = Path(".codemap/en_hashes.json")
@@ -31,11 +33,26 @@ def load_hashes(path: Path = HASHES_FILE) -> dict[str, str]:
 
 
 def save_hashes(hashes: dict[str, str], path: Path = HASHES_FILE) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    repo_root = _repo_root_from(path)
     try:
-        path.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
+        write_text_under_root(
+            path,
+            json.dumps(hashes, indent=2, sort_keys=True),
+            root=repo_root,
+        )
     except Exception as exc:
         log.warning("Cannot save EN hashes to %s: %s", path, exc)
+
+
+def _repo_root_from(path: Path) -> Path:
+    cur = path.resolve()
+    for _ in range(12):
+        if (cur / "pyproject.toml").is_file():
+            return cur
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return Path.cwd().resolve()
 
 
 def compute_block_hash(section: str, content: str) -> str:

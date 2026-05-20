@@ -134,7 +134,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql://atman@localhost:5432/atman"
+    database_url: str = "postgresql://atman:atman@localhost:5432/atman"
 
     embedding: EmbeddingSettings = EmbeddingSettings()
     llm: LLMSettings = LLMSettings()

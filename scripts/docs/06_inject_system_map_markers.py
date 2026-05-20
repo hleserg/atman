@@ -8,27 +8,30 @@ scripts/docs/06_inject_system_map_markers.py
 
 Запуск: python3 scripts/docs/06_inject_system_map_markers.py [--dry-run]
 """
+
 from __future__ import annotations
+
 import argparse
 import re
 import sys
 from pathlib import Path
 
-TARGET = Path("docs/architecture/SYSTEM_MAP.md")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+TARGET = (_REPO_ROOT / "docs/architecture/SYSTEM_MAP.md").resolve()
 
 # Маркеры которые нужно вставить.
 # key = название секции (section="X"), value = заголовок ### который её предваряет
 SECTIONS = {
     "modules-domain-models": "### 1.1.",
-    "modules-ports":         "### 1.2.",
-    "modules-services":      "### 1.3.",
-    "modules-adapters":      "### 1.4.",
-    "modules-cli":           "### 1.5.",
+    "modules-ports": "### 1.2.",
+    "modules-services": "### 1.3.",
+    "modules-adapters": "### 1.4.",
+    "modules-cli": "### 1.5.",
 }
 
 START_TMPL = '<!-- codemap:auto:start section="{section}" -->'
-END_TAG    = "<!-- codemap:auto:end -->"
-MARKER_RE  = re.compile(r'<!--\s*codemap:auto:start')
+END_TAG = "<!-- codemap:auto:end -->"
+MARKER_RE = re.compile(r"<!--\s*codemap:auto:start")
 
 
 def find_section_table_bounds(lines: list[str], header_prefix: str) -> tuple[int, int] | None:
@@ -73,7 +76,7 @@ def find_section_table_bounds(lines: list[str], header_prefix: str) -> tuple[int
     return table_start, table_end
 
 
-def inject_markers(content: str, dry_run: bool = False) -> str:
+def inject_markers(content: str, dry_run: bool = False) -> tuple[str, list[str]]:
     lines = content.splitlines(keepends=True)
     # Работаем с конца чтобы индексы не сдвигались
     sections_sorted = sorted(SECTIONS.items(), key=lambda kv: kv[1], reverse=True)
@@ -95,8 +98,10 @@ def inject_markers(content: str, dry_run: bool = False) -> str:
         table_start, table_end = bounds
 
         if dry_run:
-            print(f"  DRY {section}: обернуть строки {table_start+1}–{table_end+1} "
-                  f"(заголовок: {lines[table_start-1].rstrip()!r})")
+            print(
+                f"  DRY {section}: обернуть строки {table_start + 1}–{table_end + 1} "
+                f"(заголовок: {lines[table_start - 1].rstrip()!r})"
+            )
             changes.append(section)
             continue
 
@@ -105,7 +110,7 @@ def inject_markers(content: str, dry_run: bool = False) -> str:
         # Вставить START перед первой строкой таблицы
         lines.insert(table_start, start_tag + "\n")
 
-        print(f"  ✓ {section}: маркеры вставлены вокруг строк {table_start+1}–{table_end+1}")
+        print(f"  ✓ {section}: маркеры вставлены вокруг строк {table_start + 1}–{table_end + 1}")
         changes.append(section)
 
     return "".join(lines), changes

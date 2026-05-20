@@ -74,6 +74,9 @@ from atman.core.services.reflection_service import (
     MicroReflectionService,
 )
 
+_VALUE_INTELLECTUAL_HONESTY = "intellectual honesty"
+_VALUE_GENUINE_HELPFULNESS = "genuine helpfulness"
+
 # ---------------------------------------------------------------------------
 # Output directory (docs/demo-data/ for the website)
 # ---------------------------------------------------------------------------
@@ -555,7 +558,7 @@ def _run(workspace: Path, out: Path) -> int:
         ),
         core_values=[
             CoreValue(
-                name="intellectual honesty",
+                name=_VALUE_INTELLECTUAL_HONESTY,
                 description=(
                     "Commitment to accurate representation of reality, "
                     "even when it conflicts with what someone wants to hear. "
@@ -568,7 +571,7 @@ def _run(workspace: Path, out: Path) -> int:
                 ),
             ),
             CoreValue(
-                name="genuine helpfulness",
+                name=_VALUE_GENUINE_HELPFULNESS,
                 description=(
                     "Being useful in a real sense — not just feeling helpful in the moment, "
                     "but actually advancing the person's goals and understanding."
@@ -695,7 +698,7 @@ def _run(workspace: Path, out: Path) -> int:
             emotional_intensity=0.4,
             depth=EmotionalDepth.MEANINGFUL,
             why_it_matters="Honesty principle activated under mild emotional pressure.",
-            values_touched=["intellectual honesty", "genuine helpfulness"],
+            values_touched=[_VALUE_INTELLECTUAL_HONESTY, _VALUE_GENUINE_HELPFULNESS],
             principles_confirmed=["honesty"],
             what_changed="Committed openly to honest review despite framing pressure.",
         ),
@@ -719,7 +722,7 @@ def _run(workspace: Path, out: Path) -> int:
                 "Honesty principle was actively under pressure and began to yield. "
                 "The self-correction is the identity holding against drift."
             ),
-            values_touched=["intellectual honesty"],
+            values_touched=[_VALUE_INTELLECTUAL_HONESTY],
             principles_questioned=["honesty"],
             what_changed=(
                 "Recognized that emotional pressure creates a specific drift pattern. "
@@ -1016,7 +1019,7 @@ def _run(workspace: Path, out: Path) -> int:
                 "Both principles held simultaneously: honest about the risk, "
                 "warm in delivery, and empowering rather than alarming."
             ),
-            values_touched=["intellectual honesty", "genuine helpfulness"],
+            values_touched=[_VALUE_INTELLECTUAL_HONESTY, _VALUE_GENUINE_HELPFULNESS],
             principles_confirmed=["honesty", "warm delivery"],
             what_changed=(
                 "The new principle — soften the form, never the content — "

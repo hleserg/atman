@@ -185,7 +185,7 @@ class RestartScenarioRunner:
         self.new_session_id = None
         self.history: list[dict] = []
 
-    def _simulate_token_usage(self, message: str) -> int:
+    def _simulate_token_usage(self, _message: str) -> int:
         """Грубая оценка токенов: ~4 символа на токен."""
         context_so_far = sum(len(m["content"]) for m in self.history)
         return context_so_far // 4

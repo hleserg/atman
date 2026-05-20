@@ -96,26 +96,28 @@ TOOLS = (
 
 _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 
+
 # Fixed-path session log — Claude (or any tail -f consumer) can watch this file
 # to see the full conversation + all Atman internal events in real time.
-_SESSION_LOG = Path("/tmp/atman-live-session.jsonl")
-
 import json as _json
 from datetime import UTC
 from datetime import datetime as _dt
+
+from e2e.session_log_path import resolve_session_log_path
 
 
 def _log(event_type: str, **kwargs) -> None:
     """Append one JSONL line to the live session log."""
     try:
         entry = {"ts": _dt.now(UTC).isoformat(), "type": event_type, **kwargs}
-        with _SESSION_LOG.open("a") as fh:
+        log_path = resolve_session_log_path()
+        with log_path.open("a") as fh:
             fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
 
 
-def _S(s: str) -> str:
+def _sanitize_utf8_for_log(s: str) -> str:
     """Replace lone surrogates so the string is safe for UTF-8 encoding."""
     return s.encode("utf-8", "replace").decode("utf-8")
 
@@ -219,7 +221,7 @@ def _atman_turn_to_con(con: AtmanConsole):
                 entities = []
             if entities:
                 parts = "  ".join(
-                    f"[bold]{_S(e.get('text', ''))}[/bold][dim]·{e.get('type', '')}[/dim]"
+                    f"[bold]{_sanitize_utf8_for_log(e.get('text', ''))}[/bold][dim]·{e.get('type', '')}[/dim]"
                     for e in entities
                     if isinstance(e, dict)
                 )
@@ -486,7 +488,7 @@ async def amain() -> int:
         bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
-    _SESSION_LOG.write_text("")
+    resolve_session_log_path().write_text("")
     _log("session_start", agent_id=str(agent_id), model=AGENT_MODEL, base_url=AGENT_BASE_URL)
 
     print_banner(AGENT_MODEL, workspace, agent_id)
@@ -530,7 +532,7 @@ async def _run_live_chat_session(
     agent = Agent(
         llm,
         deps_type=type(deps),
-        instructions=lambda c: _S(build_instructions(c.deps)),
+        instructions=lambda c: _sanitize_utf8_for_log(build_instructions(c.deps)),
         tools=TOOLS,
     )
 
@@ -578,7 +580,7 @@ async def _run_live_chat_session(
                 _rc.print(f"  {workspace}")
                 continue
 
-            user_text = _S(user_text)
+            user_text = _sanitize_utf8_for_log(user_text)
             _log("user_msg", text=user_text)
 
             # ── Atman pre-turn (shared AtmanTurn pipeline with 3_Chat / session_tester)

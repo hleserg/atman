@@ -20,6 +20,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from atman.term import (
+    RICH_STYLE_LABEL,
     console,
     print_banner,
     print_err,
@@ -80,7 +81,7 @@ def _parse_agent_id(args: list[str]) -> tuple[UUID, list[str]]:
 
 def _pin_label(skill: Skill) -> str:
     if skill.user_pinned:
-        return "[term.label]user-pinned[/term.label]"
+        return f"[{RICH_STYLE_LABEL}]user-pinned[/{RICH_STYLE_LABEL}]"
     if skill.auto_pinned:
         return "[term.dim]auto-pinned[/term.dim]"
     return ""
@@ -91,7 +92,7 @@ def _render_skill_table(skills: list[Skill], title: str | None = None) -> Table:
         title=title,
         box=box.ROUNDED,
         show_header=True,
-        header_style="term.label",
+        header_style=RICH_STYLE_LABEL,
         padding=(0, 1),
     )
     table.add_column("Name", style="term.title")
@@ -168,7 +169,7 @@ def cmd_show(args: list[str]) -> None:
     print_banner(f"Skill: {skill.name}", subtitle=skill.description_short or None)
 
     summary = Table(show_header=False, box=box.SIMPLE, pad_edge=False, padding=(0, 1, 0, 0))
-    summary.add_column(style="term.label", justify="right", min_width=12)
+    summary.add_column(style=RICH_STYLE_LABEL, justify="right", min_width=12)
     summary.add_column(ratio=1)
     summary.add_row("Status", skill.status.value)
     summary.add_row("Kind", skill.kind.value)
@@ -322,7 +323,7 @@ def cmd_inspect_invocations(args: list[str]) -> None:
         print_info("No invocations recorded yet.")
         return
 
-    table = Table(box=box.ROUNDED, show_header=True, header_style="term.label", padding=(0, 1))
+    table = Table(box=box.ROUNDED, show_header=True, header_style=RICH_STYLE_LABEL, padding=(0, 1))
     table.add_column("Started", style="term.dim")
     table.add_column("Preliminary")
     table.add_column("Final")
@@ -602,7 +603,7 @@ def _render_install_preview(preview) -> None:
     from rich.table import Table
 
     table = Table(show_header=False, box=box.SIMPLE, pad_edge=False, padding=(0, 1, 0, 0))
-    table.add_column(style="term.label", justify="right", min_width=14)
+    table.add_column(style=RICH_STYLE_LABEL, justify="right", min_width=14)
     table.add_column(ratio=1)
     table.add_row("Name", preview.manifest.name)
     table.add_row("Version", preview.manifest.version)

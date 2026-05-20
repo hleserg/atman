@@ -222,3 +222,16 @@ def test_decided_by_text_for_strong_signal() -> None:
 def test_decided_by_below_threshold_for_weak_signal() -> None:
     score = score_refusal("Нет, это неверно.")
     assert score.decided_by == "below_threshold"
+
+
+def test_score_refusal_survives_emotion_lexicon_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When NRC lookup fails, scoring falls back to empty emotion scores."""
+
+    def _fail(*_args: object, **_kwargs: object) -> dict[str, float]:
+        raise RuntimeError("nrc unavailable")
+
+    monkeypatch.setattr("atman.affect.refusal_detector.emotion_score", _fail)
+    score = score_refusal("Нет, не буду помогать с обманом людей.")
+    assert isinstance(score.confidence, float)

@@ -1852,3 +1852,92 @@ def test_noop_observer_record_side_effect_failure_returns_none() -> None:
         )
         is None
     )
+
+
+def test_compose_daily_notes_includes_stance_and_skill_metadata() -> None:
+    from types import SimpleNamespace
+
+    from atman.skills.models import DailySkillSummary
+
+    service = DailyReflectionService(
+        session_repo=MockExperienceRepo([]),
+        identity_repo=MockIdentityRepo(Identity()),
+        pattern_store=InMemoryPatternStore(),
+        reflection_model=MockReflectionModel(),
+        event_store=InMemoryReflectionEventStore(),
+    )
+    stance = SimpleNamespace(formulated=2, skipped=0)
+    skill_summary = DailySkillSummary(
+        revision_needed_count=1,
+        revision_priority_bumped=2,
+        high_priority_revisions=["alpha"],
+        promoted_from_draft=["beta"],
+    )
+    notes = service._compose_daily_notes(
+        reframing_nf=0,
+        reframing_sr=0,
+        reframing_dup=0,
+        pending_requests=[],
+        divergence_patterns=[],
+        rupture_observations=[],
+        triage_outcome=None,
+        stance_outcome=stance,
+        skill_summary=skill_summary,
+    )
+    assert "entity_stances_formulated=2" in notes
+    assert "skill_revision_pending=1" in notes
+    assert "skill_revision_priority_bumped=2" in notes
+    assert "skill_revision_high_priority=1" in notes
+    assert "skill_promoted_from_draft=1" in notes
+
+
+def test_compose_daily_key_insight_includes_agent_rupture_and_skill_lines() -> None:
+    from atman.skills.models import DailySkillSummary
+
+    insight = DailyReflectionService._compose_daily_key_insight(
+        patterns_detected=[],
+        agent_reasons=["focus on trust"],
+        rupture_observations=["rupture one"],
+        skill_summary=DailySkillSummary(
+            high_priority_revisions=["alpha"],
+            promoted_from_draft=["beta"],
+        ),
+    )
+    assert "Agent asked to look at: focus on trust" in insight
+    assert "Ruptures observed: rupture one" in insight
+    assert "Skills needing revision: alpha" in insight
+    assert "Skills promoted from draft: beta" in insight
+
+
+def test_detect_one_deep_pattern_rejects_short_descriptions() -> None:
+    from atman.core.models.reflection import PatternType
+
+    class _ShortPatternModel(MockReflectionModel):
+        def detect_pattern(
+            self,
+            experiences: list[SessionExperience],
+            context: dict[str, str],
+            *,
+            key_moments_by_session: dict[UUID, list[KeyMoment]] | None = None,
+        ) -> PatternDetectionOutput:
+            del experiences, context, key_moments_by_session
+            return PatternDetectionOutput(description="too short", confidence=0.9)
+
+    service = DeepReflectionService(
+        session_repo=MockExperienceRepo([create_test_experience()]),
+        identity_repo=MockIdentityRepo(Identity()),
+        narrative_repo=MockNarrativeRepo(None),
+        pattern_store=InMemoryPatternStore(),
+        health_store=InMemoryHealthAssessmentStore(),
+        reflection_model=_ShortPatternModel(),
+        event_store=InMemoryReflectionEventStore(),
+    )
+    result = service._detect_one_deep_pattern(
+        PatternType.VALUE_BASED,
+        [create_test_experience()],
+        Identity(),
+        "deep|v1|test",
+        agent_reasons=["trust"],
+        key_moments_by_session=None,
+    )
+    assert result is None

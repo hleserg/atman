@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
+from atman.db_url import resolve_database_url
+
 if TYPE_CHECKING:
     import psycopg
     from psycopg.rows import dict_row
@@ -76,6 +78,10 @@ _FACT_SELECT = """
 """
 
 
+_SQL_ORDER_FACT_CREATED_DESC = "f.created_at DESC"
+_SQL_ORDER_SALIENCE_THEN_CREATED = f"f.salience DESC NULLS LAST, {_SQL_ORDER_FACT_CREATED_DESC}"
+
+
 def _vec_str(vec: list[float]) -> str:
     """Serialize a float list to PostgreSQL vector literal '[x,y,z]'."""
     return "[" + ",".join(repr(v) for v in vec) + "]"
@@ -129,7 +135,7 @@ class PostgresFactualMemory(FactualMemory):
       1. ``db_url`` constructor argument
       2. ``ATMAN_DB_URL`` environment variable
       3. ``DATABASE_URL`` environment variable
-      4. ``postgresql://atman@localhost:5432/atman`` (default)
+      4. ``postgresql://atman:atman@localhost:5432/atman`` (default)
 
     RLS context is read from ``ATMAN_CURRENT_AGENT`` environment variable
     (same pattern as ReflectionStore).
@@ -157,12 +163,7 @@ class PostgresFactualMemory(FactualMemory):
                 "psycopg is required for PostgresFactualMemory. "
                 "Install with: pip install 'psycopg[binary]'"
             )
-        self.db_url = (
-            db_url
-            or os.environ.get("ATMAN_DB_URL")
-            or os.environ.get("DATABASE_URL")
-            or "postgresql://atman@localhost:5432/atman"
-        )
+        self.db_url = resolve_database_url(db_url)
         self._embedding = embedding
         self._post_write_scheduler = post_write_scheduler
         self._conn: psycopg.Connection[Any] | None = None
@@ -365,7 +366,7 @@ class PostgresFactualMemory(FactualMemory):
         self._set_agent_context(conn)
 
         with conn.cursor() as cur:
-            rows = self._load_rows(cur, "f.id = %s", [str(fact_id)], "f.created_at DESC")
+            rows = self._load_rows(cur, "f.id = %s", [str(fact_id)], _SQL_ORDER_FACT_CREATED_DESC)
 
         conn.commit()
         return rows[0] if rows else None
@@ -409,13 +410,13 @@ class PostgresFactualMemory(FactualMemory):
             # Text fallback
             conditions.append("f.content ILIKE %s")
             params.append(f"%{query}%")
-            order_sql = "f.created_at DESC"
+            order_sql = _SQL_ORDER_FACT_CREATED_DESC
         else:
             # No query: order by salience DESC so the candidate pool returned
             # to embedding-based RAG (PassiveMemoryInjector.surface_for_context
             # passes query=None) contains the most important facts. Matches
             # InMemoryBackend/FileBackend behavior.
-            order_sql = "f.salience DESC NULLS LAST, f.created_at DESC"
+            order_sql = _SQL_ORDER_SALIENCE_THEN_CREATED
 
         where_sql = " AND ".join(conditions) if conditions else "TRUE"
 
@@ -569,7 +570,7 @@ class PostgresFactualMemory(FactualMemory):
         self._set_agent_context(conn)
 
         with conn.cursor() as cur:
-            rows = self._load_rows(cur, "TRUE", [], "f.created_at DESC", limit)
+            rows = self._load_rows(cur, "TRUE", [], _SQL_ORDER_FACT_CREATED_DESC, limit)
 
         conn.commit()
         return rows
@@ -741,7 +742,7 @@ class PostgresFactualMemory(FactualMemory):
                 cur,
                 "f.id = ANY(%s)",
                 [fact_ids],
-                "f.created_at DESC",
+                _SQL_ORDER_FACT_CREATED_DESC,
                 limit,
             )
         conn.commit()

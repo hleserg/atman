@@ -12,10 +12,23 @@ import logging
 import os
 from pathlib import Path
 
+from .path_guard import write_text_under_root
 from .renderer.i18n import _END_RE, _START_RU_RE, flag_stale_ru_blocks
 from .snapshot.en_hashes import load_hashes, save_hashes
 
 log = logging.getLogger(__name__)
+
+
+def _repo_root_from(path: Path) -> Path:
+    cur = path.resolve()
+    for _ in range(12):
+        if (cur / "pyproject.toml").is_file():
+            return cur
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    msg = f"Cannot locate repo root from {path!s}"
+    raise ValueError(msg)
 
 
 def _translate_block(en_content: str, section: str) -> str:
@@ -174,7 +187,8 @@ def translate_stale_blocks(
             log.error("Failed to translate section '%s': %s", section, exc)
 
     if translated:
-        ru_path.write_text(ru_text, encoding="utf-8")
+        repo_root = _repo_root_from(en_path)
+        write_text_under_root(ru_path, ru_text, root=repo_root)
         log.info("Updated %s (%d sections)", ru_path, len(translated))
 
         # Update hashes

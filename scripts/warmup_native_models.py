@@ -41,7 +41,7 @@ def _warmup(name: str, fn: Callable[[], None]) -> bool:
         elapsed = time.perf_counter() - t0
         print(f"  {_OK} {name}  ({elapsed:.1f}s)")
         return True
-    except Exception as e:
+    except Exception:
         elapsed = time.perf_counter() - t0
         first = traceback.format_exc().splitlines()[-1]
         print(f"  {_FAIL} {name}  ({elapsed:.1f}s)  {first}")
@@ -79,7 +79,7 @@ def warm_gliner() -> None:
         minilm_model="MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
         device="cpu",
     )
-    g = a._get_gliner()  # noqa: SLF001
+    g = a._get_gliner()
     if g is None:
         raise RuntimeError("GLiNER failed to load")
     g.predict_entities("Alice met Bob.", ["Person", "Location"])
@@ -93,7 +93,7 @@ def warm_minilm() -> None:
         minilm_model="MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
         device="cpu",
     )
-    clf = a._get_classifier()  # noqa: SLF001
+    clf = a._get_classifier()
     if clf is None:
         raise RuntimeError("MiniLM classifier failed to load")
     clf("warmup", candidate_labels=["yes", "no"])
@@ -133,7 +133,9 @@ def main() -> int:
 
     names = args.only if args.only else list(WARMERS)
 
-    print(f"\nAtman model warmup  (CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')})")
+    print(
+        f"\nAtman model warmup  (CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')})"
+    )
     print(f"Models: {', '.join(names)}\n")
 
     results = {name: _warmup(name, WARMERS[name]) for name in names}

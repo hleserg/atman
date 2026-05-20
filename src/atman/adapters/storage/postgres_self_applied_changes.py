@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -32,6 +31,7 @@ else:
 from atman.adapters.storage.postgres_agent_schema import AgentSchemaResolver
 from atman.core.models import SelfAppliedChange, SelfChangeActor, SelfChangeTargetKind
 from atman.core.ports.self_applied_changes import SelfAppliedChangeStore
+from atman.db_url import resolve_database_url
 
 
 def _row_to_change(row: dict[str, Any]) -> SelfAppliedChange:
@@ -70,9 +70,7 @@ class PostgresSelfAppliedChangeStore(SelfAppliedChangeStore):
                 "Install with: pip install psycopg[binary]"
             )
         self._agent_id = agent_id
-        self._db_url = db_url or os.environ.get(
-            "ATMAN_DB_URL", "postgresql://atman@localhost:5432/atman"
-        )
+        self._db_url = resolve_database_url(db_url)
         self._conn: psycopg.Connection[Any] | None = None
         self._schema_resolver = AgentSchemaResolver(fixed_serial_id=fixed_serial_id)
 

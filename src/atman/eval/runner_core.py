@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from atman.eval.hardware import collect_hardware_metadata
 from atman.eval.reporters.base import Reporter
@@ -98,7 +98,7 @@ class RunnerCore:
             cached = self._completed_by_idempotency_key[idempotency_key]
             metadata = dict(cached.metadata)
             metadata["idempotent_reuse"] = True
-            return replace(cached, status="skipped", metadata=metadata)
+            return cast(BenchmarkRunOutcome, replace(cached, status="skipped", metadata=metadata))
 
         apply_global_seed(effective_seed)
         context = RunContext.create(

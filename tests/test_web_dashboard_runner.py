@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from atman.web_dashboard.utils.runner import run_command_async, run_command_sync
+from tests._fake_paths import _TEST_CMD_CWD
 
 
 @pytest.mark.asyncio
@@ -22,7 +23,7 @@ async def test_run_command_async_success() -> None:
     mock_process.stdout.__aiter__.return_value = [test_output.encode()]
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-        exit_code, output = await run_command_async(["echo", "test"], Path("/tmp"))
+        exit_code, output = await run_command_async(["echo", "test"], _TEST_CMD_CWD)
 
     assert exit_code == 0
     assert output == test_output
@@ -46,7 +47,7 @@ async def test_run_command_async_with_callback() -> None:
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         exit_code, _output = await run_command_async(
-            ["echo", "test"], Path("/tmp"), on_line=on_line
+            ["echo", "test"], _TEST_CMD_CWD, on_line=on_line
         )
 
     assert exit_code == 0
@@ -64,7 +65,7 @@ async def test_run_command_async_with_env() -> None:
     mock_process.stdout.__aiter__.return_value = []
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
-        await run_command_async(["test"], Path("/tmp"), env={"TEST_VAR": "value"})
+        await run_command_async(["test"], _TEST_CMD_CWD, env={"TEST_VAR": "value"})
 
         # Check that env was merged
         call_kwargs = mock_exec.call_args[1]
@@ -81,7 +82,7 @@ async def test_run_command_async_failure() -> None:
     mock_process.stdout.__aiter__.return_value = [b"error\n"]
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-        exit_code, output = await run_command_async(["false"], Path("/tmp"))
+        exit_code, output = await run_command_async(["false"], _TEST_CMD_CWD)
 
     assert exit_code == 1
     assert output == "error\n"
@@ -95,7 +96,7 @@ def test_run_command_sync_success() -> None:
     mock_result.stderr = "stderr output"
 
     with patch("subprocess.run", return_value=mock_result) as mock_run:
-        exit_code, output = run_command_sync(["echo", "test"], Path("/tmp"))
+        exit_code, output = run_command_sync(["echo", "test"], _TEST_CMD_CWD)
 
         # Check that timeout was passed
         assert mock_run.call_args[1]["timeout"] == 300
@@ -112,7 +113,7 @@ def test_run_command_sync_with_env() -> None:
     mock_result.stderr = ""
 
     with patch("subprocess.run", return_value=mock_result) as mock_run:
-        run_command_sync(["test"], Path("/tmp"), env={"TEST_VAR": "value"})
+        run_command_sync(["test"], _TEST_CMD_CWD, env={"TEST_VAR": "value"})
 
         # Check that env was passed
         call_kwargs = mock_run.call_args[1]
@@ -128,7 +129,7 @@ def test_run_command_sync_failure() -> None:
     mock_result.stderr = "error"
 
     with patch("subprocess.run", return_value=mock_result):
-        exit_code, output = run_command_sync(["false"], Path("/tmp"))
+        exit_code, output = run_command_sync(["false"], _TEST_CMD_CWD)
 
     assert exit_code == 1
     assert output == "stdouterror"
@@ -158,7 +159,7 @@ def test_run_command_sync_timeout() -> None:
     mock_timeout.stderr = b"error output"
 
     with patch("subprocess.run", side_effect=mock_timeout):
-        exit_code, output = run_command_sync(["slow-command"], Path("/tmp"))
+        exit_code, output = run_command_sync(["slow-command"], _TEST_CMD_CWD)
 
     assert exit_code == 124  # Standard timeout exit code
     assert "partial output" in output
@@ -174,7 +175,7 @@ def test_run_command_sync_custom_timeout() -> None:
     mock_result.stderr = ""
 
     with patch("subprocess.run", return_value=mock_result) as mock_run:
-        run_command_sync(["test"], Path("/tmp"), timeout=60)
+        run_command_sync(["test"], _TEST_CMD_CWD, timeout=60)
 
         # Check that custom timeout was passed
         assert mock_run.call_args[1]["timeout"] == 60
