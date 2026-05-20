@@ -7,9 +7,7 @@ from uuid import UUID
 from atman.core.models.maintenance import JobName, JobStatus, MaintenanceJob
 
 # Job types that require a ``key_moment_id`` key in their payload.
-_MOMENT_SCOPED_JOBS: frozenset[JobName] = frozenset(
-    {JobName.mrebel_extract, JobName.lingvo_enrich}
-)
+_MOMENT_SCOPED_JOBS: frozenset[JobName] = frozenset({JobName.mrebel_extract, JobName.lingvo_enrich})
 
 
 def validate_enqueue_payload(job_name: JobName, payload: dict) -> None:
