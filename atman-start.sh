@@ -30,8 +30,8 @@ fi
 
 # 2. Запуск контейнеров (Postgres; Qdrant пропускается если ATMAN_USE_QDRANT≠1)
 cd "${ATMAN_DIR}"
-if [ -f "docker-compose.yml" ]; then
-    if [ "${ATMAN_USE_QDRANT:-0}" = "1" ]; then
+if [[ -f "docker-compose.yml" ]]; then
+    if [[ "${ATMAN_USE_QDRANT:-0}" = "1" ]]; then
         echo "[Atman] Запуск PostgreSQL + Qdrant..."
         docker compose up -d --remove-orphans
     else

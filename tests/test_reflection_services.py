@@ -825,7 +825,7 @@ def test_daily_reflection_persists_minimum_length_structured_pattern_output() ->
     assert len(event.patterns_detected) == 1
     assert len(patterns) == 1
     assert patterns[0].description == "1234567890"
-    assert patterns[0].confidence == 0.41
+    assert patterns[0].confidence == pytest.approx(0.41)
 
 
 @pytest.mark.parametrize(
@@ -1832,19 +1832,23 @@ def test_daily_reflection_repeated_run_does_not_duplicate_snapshot() -> None:
 def test_noop_observer_record_narrative_commit_failure_returns_none() -> None:
     """NoOpReflectionEventPersistenceObserver.record_narrative_commit_failure is a silent no-op."""
     observer = NoOpReflectionEventPersistenceObserver()
-    result = observer.record_reflection_event_save_failed_after_narrative_commit(
-        reflection_level=ReflectionLevel.MICRO,
-        error_message="simulated error",
+    assert (
+        observer.record_reflection_event_save_failed_after_narrative_commit(
+            reflection_level=ReflectionLevel.MICRO,
+            error_message="simulated error",
+        )
+        is None
     )
-    assert result is None
 
 
 def test_noop_observer_record_side_effect_failure_returns_none() -> None:
     """NoOpReflectionEventPersistenceObserver.record_side_effect_failure is a silent no-op."""
     observer = NoOpReflectionEventPersistenceObserver()
-    result = observer.record_reflection_job_event_save_failed_after_side_effects(
-        reflection_level=ReflectionLevel.DAILY,
-        reflection_run_key="deep|v1|abc",
-        error_message="simulated side-effect error",
+    assert (
+        observer.record_reflection_job_event_save_failed_after_side_effects(
+            reflection_level=ReflectionLevel.DAILY,
+            reflection_run_key="deep|v1|abc",
+            error_message="simulated side-effect error",
+        )
+        is None
     )
-    assert result is None

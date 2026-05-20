@@ -14,6 +14,8 @@ SYSTEM_MAP §2.1 / §5.3 regression freeze.
 
 from __future__ import annotations
 
+import pytest
+
 from atman.core.models import (
     Eigenstate,
     ExperienceRecord,
@@ -48,9 +50,9 @@ def test_golden_experience_record_deserializes() -> None:
     assert str(record.experience.id) == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     assert len(record.experience.key_moment_ids) == 1
     assert str(record.experience.key_moment_ids[0]) == "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
-    assert record.experience.salience == 1.0
+    assert record.experience.salience == pytest.approx(1.0)
     assert record.experience.access_count == 0
-    assert record.experience.avg_emotional_intensity == 0.7
+    assert record.experience.avg_emotional_intensity == pytest.approx(0.7)
     assert record.experience.has_profound_moment is False
     # E24.2: fact_refs lift back-links from facts -> experiences.
     assert str(record.experience.fact_refs[0]) == "33333333-3333-4333-8333-333333333333"
@@ -209,7 +211,7 @@ def test_golden_fact_record_deserializes() -> None:
     assert fact.confirmation_count == 0
     assert fact.last_confirmed_at is None
     assert fact.disputed_at is None
-    assert fact.salience == 1.0
+    assert fact.salience == pytest.approx(1.0)
 
 
 def test_golden_fact_record_disputed_deserializes() -> None:
@@ -219,7 +221,7 @@ def test_golden_fact_record_disputed_deserializes() -> None:
     assert fact.invalidated_at is None
     assert fact.confirmation_count == 2
     # DISPUTED keeps salience non-zero (provisional, not terminal).
-    assert fact.salience == 0.7
+    assert fact.salience == pytest.approx(0.7)
     # ``effective_lifecycle_timestamp`` returns ``disputed_at`` for DISPUTED.
     assert fact.effective_lifecycle_timestamp == fact.disputed_at
 
@@ -228,7 +230,7 @@ def test_golden_fact_record_superseded_deserializes() -> None:
     fact = FactRecord.model_validate_json(_GOLDEN_FACT_SUPERSEDED)
     assert fact.status.value == "superseded"
     assert fact.superseded_by is not None
-    assert fact.salience == 0.0
+    assert fact.salience == pytest.approx(0.0)
     assert fact.effective_lifecycle_timestamp == fact.invalidated_at
 
 
@@ -237,7 +239,7 @@ def test_golden_fact_record_invalidated_deserializes() -> None:
     assert fact.status.value == "invalidated"
     assert fact.invalidated_at is not None
     assert fact.disputed_at is None
-    assert fact.salience == 0.0
+    assert fact.salience == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

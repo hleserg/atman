@@ -333,7 +333,7 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
         }
     """
     tokens = tokenize(text)
-    zero = {k: 0.0 for k in EMOTION_KEYS}
+    zero = dict.fromkeys(EMOTION_KEYS, 0.0)
     if not tokens:
         zero["_meta"] = {"tokens": 0, "hits": 0, "coverage": 0.0, "matched": []}
         return zero

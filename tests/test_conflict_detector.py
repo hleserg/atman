@@ -135,7 +135,7 @@ def test_scan_all_conflicts_skips_invalidated_facts():
 
 def test_get_cognitive_tension_zero_for_no_conflicts():
     detector = ConflictDetector(factual_memory=InMemoryBackend())
-    assert detector.get_cognitive_tension([]) == 0.0
+    assert detector.get_cognitive_tension([]) == pytest.approx(0.0)
 
 
 def test_get_cognitive_tension_grows_with_conflicts():
@@ -150,5 +150,5 @@ def test_get_cognitive_tension_grows_with_conflicts():
 
 def test_content_similarity_handles_empty_text():
     detector = ConflictDetector(factual_memory=InMemoryBackend())
-    assert detector._content_similarity("", "anything") == 0.0
-    assert detector._content_similarity("anything", "") == 0.0
+    assert detector._content_similarity("", "anything") == pytest.approx(0.0)
+    assert detector._content_similarity("anything", "") == pytest.approx(0.0)

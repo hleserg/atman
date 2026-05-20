@@ -156,7 +156,7 @@ class TestMockEmbeddingAdapter:
     def test_similarity_empty_vectors(self, adapter: MockEmbeddingAdapter) -> None:
         """Similarity of empty vectors is 0.0."""
         sim = adapter.similarity([], [])
-        assert sim == 0.0
+        assert sim == pytest.approx(0.0)
 
     # ==========================================================================
     # Edge Cases

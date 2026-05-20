@@ -21,7 +21,7 @@ in_project && in_deps {
 }
 ' pyproject.toml | grep -E "$EVAL_PKGS" || true)
 
-if [ -n "$violations" ]; then
+if [[ -n "$violations" ]]; then
   echo "Eval-only packages found in [project].dependencies:"
   echo "$violations"
   echo "Move them to [project.optional-dependencies] eval"

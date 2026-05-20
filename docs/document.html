@@ -958,7 +958,7 @@
         });
 
       function renderMarkdown(markdown) {
-        const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+        const lines = markdown.replaceAll("\r\n", "\n").split("\n");
         const blocks = [];
         const headings = [];
         let index = 0;
@@ -1071,7 +1071,7 @@
         return lines
           .join("\n")
           .split(/\n\s*\n/)
-          .map((paragraph) => `<p>${renderInline(paragraph.replace(/\n/g, " "))}</p>`)
+          .map((paragraph) => `<p>${renderInline(paragraph.replaceAll("\n", " "))}</p>`)
           .join("");
       }
 
@@ -1147,7 +1147,7 @@
       function uniqueSlug(text, headings) {
         const base = text
           .toLowerCase()
-          .replace(/ё/g, "е")
+          .replaceAll("ё", "е")
           .replace(/[^a-zа-я0-9]+/g, "-")
           .replace(/^-|-$/g, "") || "section";
         const existing = new Set(headings.map((heading) => heading.id));
@@ -1168,15 +1168,15 @@
 
       function escapeHtml(value) {
         return String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
       }
 
       function escapeAttribute(value) {
-        return escapeHtml(value).replace(/`/g, "&#096;");
+        return escapeHtml(value).replaceAll("`", "&#096;");
       }
     </script>
   </body>

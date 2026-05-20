@@ -1130,7 +1130,7 @@ const FILES = {
 // Minimal syntax highlight for JSON
 function hlJson(json) {
   return json
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")\s*:/g, '<span class="k">$1</span>:')
     .replace(/"(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"/g, m => `<span class="s">${m}</span>`)
     .replace(/\b(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="n">$1</span>')

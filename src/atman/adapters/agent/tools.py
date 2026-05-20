@@ -11,6 +11,8 @@ All tools receive RunContext[AtmanDeps] as the first parameter,
 giving them access to services and session state.
 """
 
+import asyncio
+import math
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -117,7 +119,7 @@ async def record_key_moment(
     # underlying SessionManager raises ValueError("set incomplete_coloring=True")
     # for this combination, but the agent has no way to set that flag through
     # this tool, so we surface a more useful instruction instead.
-    if emotional_valence == 0.0 and emotional_intensity == 0.0:
+    if math.isclose(emotional_valence, 0.0) and math.isclose(emotional_intensity, 0.0):
         return (
             "Error: emotional_valence and emotional_intensity cannot both be 0.0. "
             "Provide non-zero emotional coloring "
@@ -158,6 +160,7 @@ async def log_experience(
     Kept so older prompts, docs, and e2e scripts that still reference
     ``log_experience`` get a clear migration message instead of ImportError.
     """
+    await asyncio.sleep(0)
     _ = ctx, what_happened, why_it_matters
     return (
         "The log_experience tool was removed. Use record_key_moment during the session "

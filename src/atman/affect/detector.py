@@ -312,6 +312,7 @@ class AffectDetector:
         session_id: UUID | None,
     ) -> None:
         """Handle emphasis detection: write key_moment and optionally trigger LLM analysis."""
+        await asyncio.sleep(0)
         signal = emphasis_signal(emphasized)
         excerpt = clean_text.strip()[:500]
         says_writes = {
@@ -377,6 +378,7 @@ class AffectDetector:
         session_id: UUID | None = None,
     ) -> AffectRecord:
         """Agent-originated memory with optional objective enrichment."""
+        await asyncio.sleep(0)
         if self.config.use_llm_analysis:
             _LOG.warning("LLM sincerity path not implemented — proceeding without it")
 

@@ -83,7 +83,7 @@ class TestSkillRetriever:
 
         assert len(suggestions) == 1
         assert suggestions[0].skill_name == "outlet-control"
-        assert suggestions[0].confidence == 1.0
+        assert suggestions[0].confidence == pytest.approx(1.0)
         assert "keyword" in suggestions[0].reason
 
     def test_no_match_returns_empty(self, tmp_path):
@@ -129,7 +129,7 @@ class TestSkillRetriever:
         suggestions = retriever.suggest("turn on outlet", self.agent_id, self.session_id)
         assert len(suggestions) == 2
         # All have same confidence 1.0 from keyword match
-        assert all(s.confidence == 1.0 for s in suggestions)
+        assert all(s.confidence == pytest.approx(1.0) for s in suggestions)
 
     def test_empty_store_returns_empty(self):
         store = InMemorySkillStore()
@@ -149,7 +149,7 @@ class TestCosineSimilarity:
         assert _cosine_similarity([1.0, 0.0], [-1.0, 0.0]) == pytest.approx(-1.0)
 
     def test_zero_vector_returns_zero(self):
-        assert _cosine_similarity([0.0, 0.0], [1.0, 0.0]) == 0.0
+        assert _cosine_similarity([0.0, 0.0], [1.0, 0.0]) == pytest.approx(0.0)
 
     def test_dimension_mismatch_returns_zero(self):
-        assert _cosine_similarity([1.0, 0.0], [1.0, 0.0, 0.0]) == 0.0
+        assert _cosine_similarity([1.0, 0.0], [1.0, 0.0, 0.0]) == pytest.approx(0.0)

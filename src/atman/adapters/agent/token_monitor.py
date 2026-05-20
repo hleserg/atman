@@ -16,6 +16,7 @@ to enforce context limits during interactive sessions.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
@@ -91,6 +92,7 @@ class TokenMonitor:
         Args:
             result: Result from agent.run() containing usage data
         """
+        await asyncio.sleep(0)
         usage = result.usage()
         if not usage or not usage.input_tokens:
             return

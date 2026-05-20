@@ -201,7 +201,8 @@ def _print_row(r: Result) -> None:
             f"ΔRSS={r.rss_delta_mb:7.1f} MB"
         )
     else:
-        first_line = (r.error or "").splitlines()[0] if r.error else "?"
+        err_text = r.error or "?"
+        first_line = err_text.splitlines()[0]
         print(f"  {r.name:14s}  FAIL   {first_line[:80]}")
 
 

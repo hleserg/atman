@@ -40,4 +40,4 @@ def test_gen_ai_beats_other_signals():
         "gen_ai.operation.name": "rerank",
         "span_context": {"parent_sampled": False},
     }
-    assert _traces_sampler(ctx) == 1.0
+    assert _traces_sampler(ctx) == pytest.approx(1.0)

@@ -231,6 +231,7 @@ def test_wakeup_messages() -> int:
 
 
 async def main() -> int:
+    await asyncio.sleep(0)
     total = 0
     total += test_unexamined_facts_computation()
     total += test_wakeup_messages()

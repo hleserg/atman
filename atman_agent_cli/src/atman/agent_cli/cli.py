@@ -1434,10 +1434,14 @@ class AtmanApp(App):
                 allowed_ids = [int(x) for x in allowed_ids_raw.split(",") if x.strip().isdigit()]
 
                 async def _on_tg_msg(txt: str, _cid: int) -> None:
-                    self.call_from_thread(self._inject_telegram_message, txt)
+                    await asyncio.to_thread(
+                        self.call_from_thread, self._inject_telegram_message, txt
+                    )
 
                 async def _on_tg_file(path: Path, _mime: str, _cid: int) -> None:
-                    self.call_from_thread(self._notify_file_received, path)
+                    await asyncio.to_thread(
+                        self.call_from_thread, self._notify_file_received, path
+                    )
 
                 self.telegram = TelegramBot(
                     token=telegram_token,

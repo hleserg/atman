@@ -15,6 +15,7 @@ Requires linguistic extra: pip install -e ".[linguistic]"
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -22,7 +23,6 @@ from typing import NamedTuple
 # ---------------------------------------------------------------------------
 # Adapter imports
 # ---------------------------------------------------------------------------
-
 from atman.adapters.linguistic.noop_adapter import NoOpLinguisticAnalyzer
 from atman.core.ports.linguistic import LinguisticAnalyzer
 
@@ -357,7 +357,7 @@ class NERResult:
     @property
     def f1(self) -> float:
         p, r = self.precision, self.recall
-        if p + r == 0.0:
+        if math.isclose(p + r, 0.0):
             return 0.0
         return 2 * p * r / (p + r)
 

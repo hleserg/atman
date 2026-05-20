@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar, Literal, cast
 
@@ -31,7 +31,9 @@ class QueueTask:
     description: str = ""
     priority: Literal["now", "later"] = "now"
     status: Literal["pending", "in_progress", "done", "blocked"] = "pending"
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(
+        default_factory=lambda: datetime.now(UTC).isoformat()
+    )
     order: int = 0
 
 

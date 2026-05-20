@@ -13,7 +13,7 @@ echo "=== Atman lexicon improver ==="
 echo
 
 # 1. Проверка API-ключа
-if [ -z "$ANTHROPIC_API_KEY" ]; then
+if [[ -z "$ANTHROPIC_API_KEY" ]]; then
     echo "ОШИБКА: ANTHROPIC_API_KEY не задан."
     echo "Сделай: export ANTHROPIC_API_KEY=sk-ant-..."
     exit 1
@@ -26,14 +26,14 @@ pip install -q anthropic pymorphy3 2>/dev/null || pip install -q anthropic
 echo "[OK] Зависимости готовы"
 
 # 3. Исходный файл
-if [ ! -f original_ru.tsv ]; then
+if [[ ! -f original_ru.tsv ]]; then
     echo "ОШИБКА: original_ru.tsv не найден в этой папке."
     exit 1
 fi
 echo "[OK] Исходник на месте ($(wc -l < original_ru.tsv) строк)"
 
 # 4. Засеиваем эталонами (только если ещё не делали)
-if [ ! -f improved_ru.tsv ]; then
+if [[ ! -f improved_ru.tsv ]]; then
     echo "[..] Засеиваю выверенные переводы..."
     python3 seed_output.py golden_seed.tsv improved_ru.tsv original_ru.tsv
     echo "[OK] Засеяно"

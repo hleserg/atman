@@ -5,7 +5,7 @@
 PORT=3000
 WSL_IP=$(hostname -I | awk '{print $1}')
 
-if [ -z "$WSL_IP" ]; then
+if [[ -z "$WSL_IP" ]]; then
     echo "[ERROR] Не удалось получить IP WSL"
     exit 1
 fi

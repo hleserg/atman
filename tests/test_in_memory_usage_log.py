@@ -42,7 +42,9 @@ def test_get_usage_for_session_filters_by_session_and_memory_type() -> None:
 
     only_facts = log.get_usage_for_session(sid, memory_type="fact")
     assert len(only_facts) == 1
-    assert only_facts[0].memory_type == "fact"
+    first = only_facts[0]
+    assert first is not None
+    assert first.memory_type == "fact"
 
 
 def test_get_usage_for_memory_returns_most_recent_first_capped_by_limit() -> None:

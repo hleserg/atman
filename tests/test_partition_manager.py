@@ -142,10 +142,10 @@ def test_cli_validation_ranges():
     """Test that validation ranges are reasonable."""
     # Future months: 1-120 (10 years)
     assert 1 <= 3 <= 120  # default
-    assert 1 <= 1 <= 120  # min
+    assert 1 <= 120  # min bound
     assert 1 <= 120 <= 120  # max
 
     # Retention months: 1-240 (20 years)
     assert 1 <= 18 <= 240  # default
-    assert 1 <= 1 <= 240  # min
+    assert 1 <= 240  # min bound
     assert 1 <= 240 <= 240  # max

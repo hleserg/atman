@@ -36,7 +36,9 @@ def test_make_event_scrubber_verbose_level():
 def test_before_send_passes_event():
     fn = _make_before_send("minimal")
     event = {"message": "test", "level": "error"}
-    assert fn(event, {}) is event
+    result = fn(event, {})
+    assert result == event  # Sonar S5796; hook returns same dict (scrubbing.py)
+    assert result is event
 
 
 def test_before_send_transaction_drops_health():
@@ -49,13 +51,17 @@ def test_before_send_transaction_drops_health():
 def test_before_send_transaction_keeps_api():
     fn = _make_before_send_transaction("minimal")
     event = {"transaction": "/api/chat"}
-    assert fn(event, {}) is event
+    result = fn(event, {})
+    assert result == event  # Sonar S5796; hook returns same dict (scrubbing.py)
+    assert result is event
 
 
 def test_before_send_transaction_keeps_empty():
     fn = _make_before_send_transaction("debug")
     event = {"transaction": ""}
-    assert fn(event, {}) is event
+    result = fn(event, {})
+    assert result == event  # Sonar S5796; hook returns same dict (scrubbing.py)
+    assert result is event
 
 
 def test_health_routes_set():

@@ -115,7 +115,7 @@ def test_start_session_returns_context_with_identity_and_narrative(session_manag
     assert context.identity.id == agent_id
     assert context.narrative is not None
     assert context.narrative.core_layer.content == "Core narrative"
-    assert context.emotional_baseline == 0.0
+    assert context.emotional_baseline == pytest.approx(0.0)
 
 
 def test_start_session_fails_without_identity(temp_storage):
@@ -175,7 +175,7 @@ def test_record_key_moment_with_valid_coloring(session_manager):
     assert active_session is not None
     assert len(active_session.key_moments) == 1
     assert active_session.key_moments[0].what_happened == "Something significant happened"
-    assert active_session.key_moments[0].how_i_felt.emotional_valence == 0.5
+    assert active_session.key_moments[0].how_i_felt.emotional_valence == pytest.approx(0.5)
 
 
 def test_record_key_moment_without_coloring_requires_incomplete_flag(session_manager):
@@ -245,7 +245,7 @@ def test_finish_session_creates_experience_and_eigenstate(session_manager, temp_
     assert result is not None
     assert result.session_id == context.session_id
     assert len(result.key_moments) == 1
-    assert result.overall_emotional_tone == 0.3
+    assert result.overall_emotional_tone == pytest.approx(0.3)
     assert result.key_insight == "Test insight"
     assert result.eigenstate is not None
     assert result.eigenstate.session_id == context.session_id
@@ -484,8 +484,8 @@ def test_create_eigenstate_empty_key_moments(session_manager):
         overall_emotional_tone=0.0,
     )
     es = manager._create_eigenstate(sr)
-    assert es.emotional_intensity == 0.5
-    assert es.cognitive_load == 0.0
+    assert es.emotional_intensity == pytest.approx(0.5)
+    assert es.cognitive_load == pytest.approx(0.0)
 
 
 def test_valence_zero_with_intensity_allowed_without_incomplete_flag(session_manager):
@@ -504,8 +504,8 @@ def test_valence_zero_with_intensity_allowed_without_incomplete_flag(session_man
     )
     active = manager.get_active_session(context.session_id)
     assert active is not None
-    assert active.key_moments[0].how_i_felt.emotional_valence == 0.0
-    assert active.key_moments[0].how_i_felt.emotional_intensity == 0.6
+    assert active.key_moments[0].how_i_felt.emotional_valence == pytest.approx(0.0)
+    assert active.key_moments[0].how_i_felt.emotional_intensity == pytest.approx(0.6)
 
 
 def test_list_active_sessions_returns_summaries(session_manager):
@@ -552,7 +552,7 @@ def test_eigenstate_cognitive_load_from_event_count(session_manager):
     )
     result = manager.finish_session(context.session_id)
     assert result.eigenstate is not None
-    assert result.eigenstate.cognitive_load == 1.0
+    assert result.eigenstate.cognitive_load == pytest.approx(1.0)
 
 
 def test_record_after_finish_raises(session_manager):
@@ -742,8 +742,8 @@ def test_eigenstate_captures_session_state(session_manager):
 
     eigenstate = result.eigenstate
     assert eigenstate is not None
-    assert eigenstate.emotional_tone == 0.4
-    assert eigenstate.emotional_intensity == 0.8  # From key moment
+    assert eigenstate.emotional_tone == pytest.approx(0.4)
+    assert eigenstate.emotional_intensity == pytest.approx(0.8)  # From key moment
     assert eigenstate.session_summary == "Deep insight"
     assert "honesty" in eigenstate.dominant_themes or "competence" in eigenstate.dominant_themes
     assert "always_be_certain" in eigenstate.unresolved_tensions
@@ -2051,7 +2051,7 @@ def test_orphan_recovery_loads_key_moments_from_storage(
     moments = store.get_key_moments_for_session(orphan_session_id)
     assert len(moments) == 1
     assert moments[0].how_i_felt.depth == EmotionalDepth.PROFOUND
-    assert moments[0].how_i_felt.emotional_intensity == 0.9
+    assert moments[0].how_i_felt.emotional_intensity == pytest.approx(0.9)
 
 
 def test_orphan_recovery_restores_journaled_key_moment_payload(

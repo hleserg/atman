@@ -279,12 +279,12 @@ class TestConflictDetector:
 
     def test_content_similarity_handles_empty_strings(self, memory: InMemoryBackend) -> None:
         detector = ConflictDetector(memory)
-        assert detector._content_similarity("", "anything") == 0.0
-        assert detector._content_similarity("x y z", "") == 0.0
+        assert detector._content_similarity("", "anything") == pytest.approx(0.0)
+        assert detector._content_similarity("x y z", "") == pytest.approx(0.0)
 
     def test_get_cognitive_tension_zero_for_no_conflicts(self, memory: InMemoryBackend) -> None:
         detector = ConflictDetector(memory)
-        assert detector.get_cognitive_tension([]) == 0.0
+        assert detector.get_cognitive_tension([]) == pytest.approx(0.0)
 
     def test_get_cognitive_tension_capped_at_one(self, memory: InMemoryBackend) -> None:
         detector = ConflictDetector(memory)
@@ -390,7 +390,7 @@ class TestEmotionalEcho:
 
     def test_get_dominant_emotional_tone_no_echoes(self) -> None:
         echo = EmotionalEcho(InMemoryStateStore())
-        assert echo.get_dominant_emotional_tone() == 0.0
+        assert echo.get_dominant_emotional_tone() == pytest.approx(0.0)
 
     def test_get_dominant_emotional_tone_weighted_average(self) -> None:
         now = datetime.now(UTC)

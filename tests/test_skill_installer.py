@@ -40,10 +40,7 @@ def _make_zip(payload: Mapping[str, str | bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for arcname, content in payload.items():
-            if isinstance(content, str):
-                zf.writestr(arcname, content)
-            else:
-                zf.writestr(arcname, content)
+            zf.writestr(arcname, content)
     return buf.getvalue()
 
 

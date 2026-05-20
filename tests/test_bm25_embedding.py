@@ -80,7 +80,7 @@ def test_embed_with_corpus_uses_idf():
     # "rare" is in the query and has positive weight; "common" is not in
     # the query so its slot is zero.
     assert vec[rare_idx] > 0.0
-    assert vec[common_idx] == 0.0
+    assert vec[common_idx] == pytest.approx(0.0)
 
 
 def test_embed_with_corpus_skips_oov_terms():
@@ -103,7 +103,7 @@ def test_similarity_zero_vector_returns_zero():
     adapter = BM25EmbeddingAdapter()
     other = adapter.embed("alpha beta")
     zero = [0.0] * adapter.dimension()
-    assert adapter.similarity(zero, other) == 0.0
+    assert adapter.similarity(zero, other) == pytest.approx(0.0)
 
 
 def test_similarity_dimension_mismatch_raises():
@@ -133,7 +133,7 @@ def test_idf_returns_zero_for_unknown_term():
     # A term whose hashed slot is not in the doc-frequency table reads
     # back as zero IDF; pick a string whose hash is unlikely to collide
     # with the small corpus.
-    assert adapter._idf("zzz_unique_unknown_term_qwerty") == 0.0
+    assert adapter._idf("zzz_unique_unknown_term_qwerty") == pytest.approx(0.0)
 
 
 def test_tf_weight_handles_zero_avg_doc_len():
@@ -146,7 +146,7 @@ def test_build_corpus_stats_with_empty_corpus():
     adapter = BM25EmbeddingAdapter()
     adapter._build_corpus_stats([])
     assert adapter._num_docs == 0
-    assert adapter._avg_doc_len == 0.0
+    assert adapter._avg_doc_len == pytest.approx(0.0)
 
 
 def test_init_rejects_non_positive_dimension():

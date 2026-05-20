@@ -155,7 +155,7 @@ class TestKeyMomentBuilder:
         m = b.build(self._input(), session_id=uuid4(), agent_id=uuid4(), analysis=analysis)
         assert m.structured_markers is not None
         assert m.structured_markers["topic_labels"] == ["work"]
-        assert m.structured_markers["cognitive_load"] == 0.8
+        assert m.structured_markers["cognitive_load"] == pytest.approx(0.8)
         assert m.structured_markers_version == "1.0"
 
     def test_build_with_identity_snapshot(self) -> None:
@@ -191,9 +191,9 @@ class TestInMemorySalienceDecayService:
     def test_calculate_lambda_by_depth(self) -> None:
         store = InMemoryStateStore()
         svc = InMemorySalienceDecayService(store)
-        assert svc.calculate_lambda("surface", 0.5) == 0.05
-        assert svc.calculate_lambda("meaningful", 0.5) == 0.02
-        assert svc.calculate_lambda("profound", 0.5) == 0.005
+        assert svc.calculate_lambda("surface", 0.5) == pytest.approx(0.05)
+        assert svc.calculate_lambda("meaningful", 0.5) == pytest.approx(0.02)
+        assert svc.calculate_lambda("profound", 0.5) == pytest.approx(0.005)
 
     def test_calculate_lambda_high_importance_slower(self) -> None:
         store = InMemoryStateStore()
@@ -203,7 +203,7 @@ class TestInMemorySalienceDecayService:
     def test_calculate_lambda_unknown_depth_default(self) -> None:
         store = InMemoryStateStore()
         svc = InMemorySalienceDecayService(store)
-        assert svc.calculate_lambda("nonsense", 0.5) == 0.05
+        assert svc.calculate_lambda("nonsense", 0.5) == pytest.approx(0.05)
 
     def _store_with_moment(
         self,
@@ -247,7 +247,7 @@ class TestInMemorySalienceDecayService:
         assert n == 0
         loaded = store.get_key_moment(m.id)
         assert loaded is not None
-        assert loaded.salience == 1.0
+        assert loaded.salience == pytest.approx(1.0)
 
     def test_decay_pass_profound_decays_slower_than_surface(self) -> None:
         long_ago = datetime.now(UTC) - timedelta(days=30)

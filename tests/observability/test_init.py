@@ -158,7 +158,7 @@ def test_debug_uses_full_sample_rate(monkeypatch):
     """debug level must use traces_sample_rate=1.0 (100% tracing for full dev waterfall)."""
     mock = _run_init_mocked("debug", monkeypatch)
     _, kwargs = mock.call_args
-    assert kwargs.get("traces_sample_rate") == 1.0
+    assert kwargs.get("traces_sample_rate") == pytest.approx(1.0)
     assert "traces_sampler" not in kwargs
 
 
@@ -166,7 +166,7 @@ def test_verbose_uses_full_sample_rate(monkeypatch):
     """verbose level must use traces_sample_rate=1.0 (100% tracing)."""
     mock = _run_init_mocked("verbose", monkeypatch)
     _, kwargs = mock.call_args
-    assert kwargs.get("traces_sample_rate") == 1.0
+    assert kwargs.get("traces_sample_rate") == pytest.approx(1.0)
     assert "traces_sampler" not in kwargs
 
 
@@ -197,7 +197,9 @@ def test_before_send_transaction_drops_health(monkeypatch):
     assert bst(healthz_event, {}) is None
 
     real_event = {"transaction": "/api/agent", "type": "transaction"}
-    assert bst(real_event, {}) is real_event
+    result = bst(real_event, {})
+    assert result == real_event  # Sonar S5796; hook returns same dict
+    assert result is real_event
 
 
 def test_before_send_transaction_passes_normal(monkeypatch):
@@ -205,7 +207,9 @@ def test_before_send_transaction_passes_normal(monkeypatch):
     _, kwargs = mock.call_args
     bst = kwargs.get("before_send_transaction")
     event = {"transaction": "/api/memory", "type": "transaction"}
-    assert bst(event, {}) is event
+    result = bst(event, {})
+    assert result == event  # Sonar S5796; hook returns same dict
+    assert result is event
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +222,7 @@ def test_traces_sampler_boosts_gen_ai():
 
     # SDK 2.x: custom_sampling_context items are spread into the root dict
     ctx = {"gen_ai.operation.name": "chat"}
-    assert _traces_sampler(ctx) == 1.0
+    assert _traces_sampler(ctx) == pytest.approx(1.0)
 
 
 def test_traces_sampler_boosts_ai_route():
@@ -226,14 +230,14 @@ def test_traces_sampler_boosts_ai_route():
 
     # SDK 2.x: transaction name lives under span_context.name
     ctx = {"span_context": {"name": "/api/agent/start"}}
-    assert _traces_sampler(ctx) == 1.0
+    assert _traces_sampler(ctx) == pytest.approx(1.0)
 
 
 def test_traces_sampler_default():
     from atman.observability.sampling import _traces_sampler
 
     ctx: dict = {}
-    assert _traces_sampler(ctx) == 0.1
+    assert _traces_sampler(ctx) == pytest.approx(0.1)
 
 
 def test_traces_sampler_inherits_parent_true():
@@ -241,14 +245,14 @@ def test_traces_sampler_inherits_parent_true():
 
     # SDK 2.x: parent_sampled lives under span_context.parent_sampled
     ctx = {"span_context": {"parent_sampled": True}}
-    assert _traces_sampler(ctx) == 1.0
+    assert _traces_sampler(ctx) == pytest.approx(1.0)
 
 
 def test_traces_sampler_inherits_parent_false():
     from atman.observability.sampling import _traces_sampler
 
     ctx = {"span_context": {"parent_sampled": False}}
-    assert _traces_sampler(ctx) == 0.0
+    assert _traces_sampler(ctx) == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

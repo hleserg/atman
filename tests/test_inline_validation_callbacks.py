@@ -137,6 +137,7 @@ def test_inline_fact_check_dedups() -> None:
     guardian = InMemoryMemoryGuardian()
     fact = FactRecord(content="example", source="t", metadata={"embedding": None})
     out1 = guardian.inline_check_fact(fact, agent_id=agent)
+    assert len(out1) >= 1
     guardian.write_finding(out1[0])
     out2 = guardian.inline_check_fact(fact, agent_id=agent)
     assert out2 == []
@@ -147,6 +148,7 @@ def test_inline_key_moment_check_dedups() -> None:
     guardian = InMemoryMemoryGuardian()
     moment = _moment(incomplete=True)
     out1 = guardian.inline_check_key_moment(moment, agent_id=agent)
+    assert len(out1) >= 1
     guardian.write_finding(out1[0])
     assert guardian.inline_check_key_moment(moment, agent_id=agent) == []
 
@@ -156,6 +158,7 @@ def test_inline_entity_check_dedups() -> None:
     guardian = InMemoryMemoryGuardian()
     entity = Entity(agent_id=agent, canonical_name="x", entity_type=EntityType.person)
     out1 = guardian.inline_check_entity(entity, agent_id=agent)
+    assert len(out1) >= 1
     guardian.write_finding(out1[0])
     assert guardian.inline_check_entity(entity, agent_id=agent) == []
 

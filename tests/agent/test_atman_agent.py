@@ -41,10 +41,8 @@ def test_agent_responds():
     """Test that agent can respond to a simple prompt."""
     agent = create_agent()
     result = agent.run_sync("Say hello.")
-    # Pydantic AI AgentRunResult has data attribute, but pyright doesn't see it
-    assert result  # type: ignore[truthy-bool]
-    assert hasattr(result, "data")
-    assert result.data  # type: ignore[attr-defined]
+    assert result.output
+    assert isinstance(result.output, str)
 
 
 @pytest.mark.requires_agent_llm
