@@ -24,151 +24,8 @@
     <link rel="alternate" hreflang="ru" href="https://atmanai.dev/document.html?lang=ru">
     <link rel="alternate" hreflang="x-default" href="https://atmanai.dev/document.html">
     <link rel="icon" href="pic/logo.png">
+    <link rel="stylesheet" href="css/site-shell.css">
     <style>
-      :root {
-        color-scheme: dark;
-        --bg: #090b12;
-        --bg-soft: #111524;
-        --card: rgba(255, 255, 255, 0.075);
-        --card-strong: rgba(255, 255, 255, 0.12);
-        --text: #f4efe7;
-        --muted: #b9b0a5;
-        --line: rgba(255, 255, 255, 0.16);
-        --gold: #f4c873;
-        --gold-soft: rgba(244, 200, 115, 0.18);
-        --blue: #88b8ff;
-        --green: #9de0bf;
-        --shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        scroll-behavior: smooth;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        background:
-          radial-gradient(circle at 18% 12%, rgba(244, 200, 115, 0.18), transparent 28rem),
-          radial-gradient(circle at 82% 8%, rgba(136, 184, 255, 0.14), transparent 30rem),
-          radial-gradient(circle at 50% 110%, rgba(182, 156, 255, 0.16), transparent 28rem),
-          linear-gradient(180deg, #080a11 0%, #0d1020 46%, #090b12 100%);
-        color: var(--text);
-        line-height: 1.7;
-      }
-
-      body::before {
-        position: fixed;
-        inset: 0;
-        z-index: -1;
-        pointer-events: none;
-        content: "";
-        background-image:
-          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 72px 72px;
-        mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent 72%);
-      }
-
-      a {
-        color: inherit;
-      }
-
-      .page {
-        width: min(1120px, calc(100% - 40px));
-        margin: 0 auto;
-      }
-
-      .nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 28px 0;
-      }
-
-      .brand {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-        text-decoration: none;
-      }
-
-      .brand img {
-        width: 44px;
-        height: 44px;
-        border-radius: 14px;
-        box-shadow: 0 10px 32px rgba(244, 200, 115, 0.18);
-      }
-
-      .brand span {
-        font-size: 1.05rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .nav-links,
-      .doc-tabs {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .nav-links {
-        color: var(--muted);
-        font-size: 0.95rem;
-      }
-
-      .nav-links a {
-        text-decoration: none;
-      }
-
-      .nav-links a:hover {
-        color: var(--text);
-      }
-
-      .lang-switcher {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.055);
-      }
-
-      .lang-btn {
-        min-width: 40px;
-        padding: 6px 10px;
-        border: none;
-        border-radius: 999px;
-        background: transparent;
-        color: var(--muted);
-        font-size: 0.9rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 160ms ease;
-      }
-
-      .lang-btn:hover {
-        color: var(--text);
-      }
-
-      .lang-btn.active {
-        background: var(--gold-soft);
-        color: var(--gold);
-      }
-
       .hero {
         padding: 58px 0 38px;
       }
@@ -866,7 +723,21 @@
       }
 
       function matchHeadingLine(trimmed) {
-        return trimmed.match(/^(#{1,4})\s+([^\n]+)$/);
+        if (!trimmed.startsWith("#")) {
+          return null;
+        }
+        let level = 0;
+        while (level < trimmed.length && trimmed[level] === "#" && level < 4) {
+          level += 1;
+        }
+        if (level === 0 || trimmed[level] !== " ") {
+          return null;
+        }
+        const title = trimmed.slice(level + 1);
+        if (!title) {
+          return null;
+        }
+        return ["#".repeat(level), title];
       }
 
       function consumeFencedCodeBlock(lines, startIndex) {
