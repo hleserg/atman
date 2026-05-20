@@ -30,10 +30,11 @@ cp "${SRC}/refusal_detector.py"  "${DST}/refusal_detector.py"
 
 # Rewrite `from atman.affect...` → `from lib.affect...` so the Space's
 # standalone import graph resolves without the atman package on sys.path.
-python3 - <<'PY'
+python3 - "${DST}" <<'PY'
 import pathlib
+import sys
 
-DST = pathlib.Path("spaces/linguistic-demo/lib/affect")
+DST = pathlib.Path(sys.argv[1])
 targets = [DST / "metrics.py", DST / "refusal_detector.py"]
 for path in targets:
     text = path.read_text(encoding="utf-8")
