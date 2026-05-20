@@ -148,7 +148,34 @@ EN_NEGATORS = {
 }
 # Apostrophe-free contraction forms ("wont", "dont", "doesnt", …) were removed:
 # tokenize() splits on apostrophes ("won't" → ["won", "t"]), so those forms
-# never matched the token stream.
+# never matched the token stream. Split contractions are handled via
+# _CONTRACTION_NEG_STEMS below.
+
+# Stems of English contractions whose negation is split by the tokenizer.
+# "won't" → ["won", "t"]; the modifier scan recognises the (stem, "t") pair
+# as a single negator. Matches the same list in refusal_detector.py.
+_EN_CONTRACTION_NEG_STEMS = frozenset(
+    {
+        "won",
+        "don",
+        "doesn",
+        "didn",
+        "isn",
+        "aren",
+        "wasn",
+        "weren",
+        "haven",
+        "hasn",
+        "hadn",
+        "shouldn",
+        "couldn",
+        "wouldn",
+        "ain",
+        "mustn",
+        "needn",
+        "can",
+    }
+)
 
 
 # ============== Загрузка словарей ==============
@@ -334,7 +361,11 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
     consumed = [False] * len(lemmas)  # чтобы биграмма не считалась дважды
 
     def modifier_multiplier(i: int) -> tuple[float, bool]:
-        """Посмотреть N токенов назад, вернуть (множитель, было_ли_отрицание)."""
+        """Посмотреть N токенов назад, вернуть (множитель, было_ли_отрицание).
+
+        Для английского распознаём также паттерн расщеплённой контракции
+        ("won't" → ["won", "t"]): пара (stem, "t") считается одним негатором.
+        """
         mult = 1.0
         negated = False
         for j in range(max(0, i - window), i):
@@ -342,6 +373,14 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
                 continue
             prev = lemmas[j]
             if prev in negs:
+                negated = not negated
+            elif (
+                lang == "en"
+                and prev == "t"
+                and j - 1 >= max(0, i - window)
+                and not consumed[j - 1]
+                and lemmas[j - 1] in _EN_CONTRACTION_NEG_STEMS
+            ):
                 negated = not negated
             elif prev in amps:
                 mult *= amps[prev]

@@ -97,19 +97,51 @@ EN_NEGATORS = frozenset(
         "nobody",
         "without",
         "cannot",
-        "cant",
-        "wont",
-        "dont",
-        "doesnt",
-        "didnt",
-        "isnt",
-        "arent",
-        "wasnt",
-        "werent",
-        "havent",
-        "hasnt",
     }
 )
+# Apostrophe-free contraction forms ("cant", "wont", "dont", …) were removed:
+# tokenize() splits on apostrophes ("won't" → ["won", "t"]), so those forms
+# never matched. Split contractions are handled via _EN_CONTRACTION_NEG_STEMS.
+
+# Stems of English contractions whose negation is split by the tokenizer.
+# Matches refusal_detector._CONTRACTION_NEG_STEMS and emolex._EN_CONTRACTION_NEG_STEMS.
+_EN_CONTRACTION_NEG_STEMS = frozenset(
+    {
+        "won",
+        "don",
+        "doesn",
+        "didn",
+        "isn",
+        "aren",
+        "wasn",
+        "weren",
+        "haven",
+        "hasn",
+        "hadn",
+        "shouldn",
+        "couldn",
+        "wouldn",
+        "ain",
+        "mustn",
+        "needn",
+        "can",
+    }
+)
+
+
+def _count_negators(window: list[str], lang: str) -> int:
+    """Count negation markers in `window`, including split English contractions.
+
+    For English, a (stem, "t") pair from a tokenizer-split contraction (e.g.
+    ["won", "t"]) counts as one negator.
+    """
+    negs = RU_NEGATORS if lang == "ru" else EN_NEGATORS
+    count = sum(1 for w in window if w in negs)
+    if lang == "en":
+        for j in range(len(window) - 1):
+            if window[j + 1] == "t" and window[j] in _EN_CONTRACTION_NEG_STEMS:
+                count += 1
+    return count
 
 RU_POSITIVE_SINCERITY_MARKERS = frozenset(
     {
@@ -257,16 +289,18 @@ def disclaimer_density(tokens: Sequence[str], lang: str) -> float:
 def negation_inversion_valence(text: str, lang: str, base_valence: float) -> float:
     """
     Flip valence when an odd number of negation markers appear in a 3-token look-back window.
+
+    Recognises both bare negators ("not", "не") and split English contractions
+    ("won't" → ["won", "t"]) via _count_negators.
     """
     tokens = tokenize(text)
     if not tokens:
         return base_valence
-    negs = RU_NEGATORS if lang == "ru" else EN_NEGATORS
     lowered = [t.lower() for t in tokens]
     adjusted_tokens: list[float] = []
     for i, _tok in enumerate(lowered):
         window = lowered[max(0, i - 3) : i]
-        neg_count = sum(1 for w in window if w in negs)
+        neg_count = _count_negators(window, lang)
         flip = -1.0 if (neg_count % 2 == 1) else 1.0
         # reuse per-token nrc contribution proxy: distribute base_valence uniformly
         adjusted_tokens.append(flip)

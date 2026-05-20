@@ -216,22 +216,25 @@ def analyze_relations(text: str):
 @traced("nlp.affect_rules")
 def analyze_affect(text: str, lang_choice: str):
     if not text.strip():
-        return {}, {}, "—", "—", "—"
+        return {}, "—", "—", "—", "—"
     clean_text, emphasized = strip_markdown(text)
     lang = resolve_lang(clean_text, lang_choice)
 
     raw = emotion_score(clean_text, lang=lang)
     meta = raw.pop("_meta", {})
-    emo_chart = {k: float(raw[k]) for k in EMOTION_KEYS}
+    # NRC densities are 0..100 per 100 tokens; clamp to [0, 1] for gr.Label rendering.
+    emo_chart = {k: min(1.0, float(raw[k]) / 100.0) for k in EMOTION_KEYS}
 
     tokens = tokenize(clean_text)
-    metrics = {
-        "hedge_density": round(hedge_density(tokens, lang), 4),
-        "self_reference_density": round(self_reference_density(tokens, lang), 4),
-        "disclaimer_density": round(disclaimer_density(tokens, lang), 4),
-        "sincerity_score": sincerity_score(clean_text, tokens, lang),
-        "emotion_lexical_energy": round(emotion_lexical_energy(raw), 3),
-    }
+    s_score = sincerity_score(clean_text, tokens, lang)
+    metrics_md = (
+        f"- **hedge_density**: `{hedge_density(tokens, lang):.4f}`\n"
+        f"- **self_reference_density**: `{self_reference_density(tokens, lang):.4f}`\n"
+        f"- **disclaimer_density**: `{disclaimer_density(tokens, lang):.4f}`\n"
+        f"- **sincerity_score**: `{s_score}` _(integer 0–3; A+B+C heuristic)_\n"
+        f"- **emotion_lexical_energy**: `{emotion_lexical_energy(raw):.3f}` "
+        f"_(L2 norm over 8 primary NRC channels)_"
+    )
 
     refusal = score_refusal(clean_text)
     refusal_md = (
@@ -256,7 +259,7 @@ def analyze_affect(text: str, lang_choice: str):
         f"NRC hits: **{meta.get('hits', 0)}** "
         f"({meta.get('coverage', 0)}% coverage)"
     )
-    return emo_chart, metrics, refusal_md, emphasis_md, meta_md
+    return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -443,8 +446,11 @@ def build_ui() -> gr.Blocks:
                             value=None,
                         )
                     with gr.Column():
-                        af_emo = gr.Label(label="EmoLex emotion density per 100 tokens")
-                        af_metrics = gr.Label(label="Behavioural metrics")
+                        af_emo = gr.Label(
+                            label="EmoLex emotion density (share of tokens)",
+                            num_top_classes=10,
+                        )
+                        af_metrics = gr.Markdown(label="Behavioural metrics")
                         af_refusal = gr.Markdown(label="RefusalDetector")
                         af_emphasis = gr.Markdown(label="Markdown emphasis")
                         af_meta = gr.Markdown()
