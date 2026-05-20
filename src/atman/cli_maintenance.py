@@ -6,7 +6,7 @@ Usage:
     python -m atman.cli_maintenance run --loop --interval 3600
     python -m atman.cli_maintenance run --job salience_decay --agent-id <uuid>
     python -m atman.cli_maintenance list [--status pending]
-    python -m atman.cli_maintenance enqueue <job_name> --agent-id <uuid>
+    python -m atman.cli_maintenance enqueue <job_name> --agent-id <uuid> [--key-moment-id <uuid>]
 """
 
 import argparse
@@ -139,7 +139,26 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
             print(f"Invalid UUID for --agent-id: {args.agent_id!r}")
             return 1
 
-    job = queue.enqueue(job_name, agent_id=agent_id)
+    payload: dict | None = None
+    if args.key_moment_id is not None:
+        try:
+            UUID(args.key_moment_id)
+        except ValueError:
+            print(f"Invalid UUID for --key-moment-id: {args.key_moment_id!r}")
+            return 1
+        payload = {"key_moment_id": args.key_moment_id}
+
+    try:
+        job = queue.enqueue(job_name, agent_id=agent_id, payload=payload)
+    except ValueError as exc:
+        if "key_moment_id" in str(exc):
+            print(str(exc))
+            print(
+                "Moment-scoped jobs (mrebel_extract, lingvo_enrich) require --key-moment-id <uuid>."
+            )
+            return 1
+        raise
+
     print(f"Enqueued job {job.id} ({job.job_name}) — status: {job.status}")
     return 0
 
@@ -157,6 +176,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "  atman-maintenance list --status pending\n"
             "  atman-maintenance enqueue salience_decay "
             "--agent-id 00000000-0000-0000-0000-000000000001\n"
+            "  atman-maintenance enqueue mrebel_extract "
+            "--agent-id 00000000-0000-0000-0000-000000000001 "
+            "--key-moment-id 11111111-1111-4111-8111-111111111111\n"
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -229,6 +251,13 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="agent_id",
         metavar="UUID",
         help="Associate the job with this agent UUID.",
+    )
+    enq_p.add_argument(
+        "--key-moment-id",
+        default=None,
+        dest="key_moment_id",
+        metavar="UUID",
+        help="Required for mrebel_extract and lingvo_enrich (payload key_moment_id).",
     )
 
     return parser
