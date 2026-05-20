@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
+
 from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
 from atman.adapters.memory.in_memory_entity_registry import InMemoryEntityRegistry
 from atman.adapters.memory.in_memory_entity_relation_store import InMemoryEntityRelationStore
@@ -372,19 +374,8 @@ def test_worker_skips_missing_moment() -> None:
     assert len(skipped) == 1
 
 
-def test_worker_requires_moment_payload() -> None:
+def test_enqueue_rejects_moment_job_without_payload() -> None:
     agent = uuid4()
     queue = InMemoryMaintenanceQueue()
-    queue.enqueue(JobName.mrebel_extract, agent_id=agent, payload={}, run_key="bad")
-
-    worker = MaintenanceWorker(
-        queue,
-        state_store=InMemoryStateStore(),
-        entity_relation_extractor=_StubExtractor([]),
-        entity_relation_store=InMemoryEntityRelationStore(),
-        entity_registry=InMemoryEntityRegistry(),
-    )
-    worker.run_once()
-    failed = queue.list_jobs(status=JobStatus.failed, agent_id=agent)
-    assert len(failed) == 1
-    assert "key_moment_id" in (failed[0].error or "")
+    with pytest.raises(ValueError, match="key_moment_id"):
+        queue.enqueue(JobName.mrebel_extract, agent_id=agent, payload={}, run_key="bad")
