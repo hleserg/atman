@@ -9,8 +9,6 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-**Tests:** 1764 passing, 138 skipped (`pytest tests/` on `main`; see CI workflow above).
-
 [[ru](README-ru.md)] — *Russian version*
 
 Atman is open-source infrastructure that gives LLM agents a way to track their own values, notice when they drift from themselves under contextual pressure, and build identity through actual lived experience instead of static prompt injection. Research-stage code addressing value drift, sycophancy, and the bootstrap problem in long-running agents. MIT licensed.
