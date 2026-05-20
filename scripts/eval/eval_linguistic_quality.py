@@ -12,10 +12,10 @@ Usage:
 Requires linguistic extra: pip install -e ".[linguistic]"
 """
 
-import math
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -23,7 +23,6 @@ from typing import NamedTuple
 # ---------------------------------------------------------------------------
 # Adapter imports
 # ---------------------------------------------------------------------------
-
 from atman.adapters.linguistic.noop_adapter import NoOpLinguisticAnalyzer
 from atman.core.ports.linguistic import LinguisticAnalyzer
 

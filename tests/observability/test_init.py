@@ -197,7 +197,9 @@ def test_before_send_transaction_drops_health(monkeypatch):
     assert bst(healthz_event, {}) is None
 
     real_event = {"transaction": "/api/agent", "type": "transaction"}
-    assert bst(real_event, {}) == real_event
+    result = bst(real_event, {})
+    assert result == real_event  # Sonar S5796; hook returns same dict
+    assert result is real_event
 
 
 def test_before_send_transaction_passes_normal(monkeypatch):
@@ -205,7 +207,9 @@ def test_before_send_transaction_passes_normal(monkeypatch):
     _, kwargs = mock.call_args
     bst = kwargs.get("before_send_transaction")
     event = {"transaction": "/api/memory", "type": "transaction"}
-    assert bst(event, {}) == event
+    result = bst(event, {})
+    assert result == event  # Sonar S5796; hook returns same dict
+    assert result is event
 
 
 # ---------------------------------------------------------------------------
