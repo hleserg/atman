@@ -122,9 +122,7 @@ def test_session_manager_swallow_scheduler_errors(tmp_path, caplog) -> None:
     with caplog.at_level(logging.WARNING):
         _finish(mgr, ctx.session_id)
     assert mgr.get_active_session(ctx.session_id) is None
-    assert any(
-        r.levelno == logging.WARNING and "continuing" in r.message for r in caplog.records
-    )
+    assert any(r.levelno == logging.WARNING and "continuing" in r.message for r in caplog.records)
 
 
 def test_session_manager_no_scheduler_is_noop(tmp_path) -> None:
