@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -75,7 +76,9 @@ def test_schedule_for_key_moment_swallows_queue_errors(caplog) -> None:
     agent = uuid4()
     moment = _moment()
     # Must not propagate the exception — post-write hooks are best-effort.
-    scheduler.schedule_for_key_moment(moment, agent)
+    with caplog.at_level(logging.WARNING):
+        scheduler.schedule_for_key_moment(moment, agent)
+    assert any(r.levelno == logging.WARNING and "continuing" in r.message for r in caplog.records)
 
 
 def test_schedule_at_specific_time() -> None:

@@ -48,10 +48,88 @@ def make_event_scrubber(level: str) -> Any:
     return EventScrubber(denylist=denylist, recursive=True)
 
 
+_REFLECTION_OVERLOAD_LOGGER = "atman.reflection.overload"
+_TESTS_PATH_MARKERS: tuple[str, ...] = ("/tests/", "\\tests\\")
+_OPERATIONAL_ERROR_MESSAGE_MARKERS: tuple[str, ...] = (
+    "post-write scheduler raised",
+    "Failed to enqueue",
+)
+
+
+def _is_pytest_frame_path(path: str) -> bool:
+    if any(marker in path for marker in _TESTS_PATH_MARKERS):
+        return True
+    normalized = path.replace("\\", "/")
+    return "/tests/" in normalized or normalized.startswith("tests/")
+
+
+def _event_logger_name(event: dict[str, Any]) -> str:
+    return str(event.get("logger") or "")
+
+
+def _event_level(event: dict[str, Any]) -> str:
+    return str(event.get("level") or "").lower()
+
+
+def _event_message(event: dict[str, Any]) -> str:
+    logentry = event.get("logentry")
+    if isinstance(logentry, dict):
+        return str(logentry.get("formatted") or logentry.get("message") or "")
+    return str(event.get("message") or "")
+
+
+def _iter_stack_frame_paths(event: dict[str, Any], hint: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    exception = event.get("exception")
+    if isinstance(exception, dict):
+        for exc_value in exception.get("values") or []:
+            if not isinstance(exc_value, dict):
+                continue
+            stacktrace = exc_value.get("stacktrace")
+            if not isinstance(stacktrace, dict):
+                continue
+            for frame in stacktrace.get("frames") or []:
+                if not isinstance(frame, dict):
+                    continue
+                for key in ("abs_path", "filename", "module"):
+                    value = frame.get(key)
+                    if value:
+                        paths.append(str(value))
+
+    exc_info = hint.get("exc_info")
+    if isinstance(exc_info, tuple) and len(exc_info) >= 3 and exc_info[2] is not None:
+        import traceback
+
+        for summary in traceback.extract_tb(exc_info[2]):
+            paths.append(summary.filename)
+    return paths
+
+
+def _stack_frame_in_tests(event: dict[str, Any], hint: dict[str, Any]) -> bool:
+    return any(_is_pytest_frame_path(path) for path in _iter_stack_frame_paths(event, hint))
+
+
+def _is_operational_error_log(event: dict[str, Any]) -> bool:
+    if _event_level(event) != "error":
+        return False
+    message = _event_message(event)
+    return any(marker in message for marker in _OPERATIONAL_ERROR_MESSAGE_MARKERS)
+
+
+def _should_drop_operational_signal(event: dict[str, Any], hint: dict[str, Any]) -> bool:
+    if _event_logger_name(event) == _REFLECTION_OVERLOAD_LOGGER:
+        return True
+    if _stack_frame_in_tests(event, hint):
+        return True
+    return _is_operational_error_log(event)
+
+
 def _make_before_send(level: str) -> Any:
-    """Factory for before_send callback (no-op filter for now; extensible)."""
+    """Factory for before_send callback — drop operational / test noise."""
 
     def before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+        if _should_drop_operational_signal(event, hint):
+            return None
         return event
 
     return before_send

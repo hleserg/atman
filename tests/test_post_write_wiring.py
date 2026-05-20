@@ -3,6 +3,7 @@ and MaintenanceWorker dispatch for ``mrebel_extract`` / ``lingvo_enrich``."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -100,7 +101,7 @@ def test_session_manager_schedules_on_finish_after_persist(tmp_path) -> None:
     assert store.get_key_moment(moment.id) is not None
 
 
-def test_session_manager_swallow_scheduler_errors(tmp_path) -> None:
+def test_session_manager_swallow_scheduler_errors(tmp_path, caplog) -> None:
     """A broken scheduler must not bring the finish path down."""
 
     class _Boom:
@@ -118,8 +119,12 @@ def test_session_manager_swallow_scheduler_errors(tmp_path) -> None:
     mgr.append_key_moment(ctx.session_id, _moment())
     # finish_session must complete despite the scheduler raising for every
     # moment — the exception is swallowed inside _schedule_post_write.
-    _finish(mgr, ctx.session_id)
+    with caplog.at_level(logging.WARNING):
+        _finish(mgr, ctx.session_id)
     assert mgr.get_active_session(ctx.session_id) is None
+    assert any(
+        r.levelno == logging.WARNING and "continuing" in r.message for r in caplog.records
+    )
 
 
 def test_session_manager_no_scheduler_is_noop(tmp_path) -> None:

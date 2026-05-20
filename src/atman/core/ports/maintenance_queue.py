@@ -15,6 +15,8 @@ def validate_enqueue_payload(job_name: JobName, payload: dict) -> None:
 
     Call this at the start of every ``MaintenanceQueue.enqueue()`` implementation
     so that structurally invalid jobs are rejected before they enter the queue.
+    Prevents ATMAN-BACKEND-C (``ValueError: key_moment_id missing``) from recurring
+    when moment-scoped jobs are enqueued without a payload key.
     """
     if job_name in _MOMENT_SCOPED_JOBS and not payload.get("key_moment_id"):
         if "key_moment_id" in payload:

@@ -105,8 +105,11 @@ class PostWriteScheduler:
                     scheduled_at=when,
                 )
             except Exception:
-                _LOG.exception(
-                    "Failed to enqueue %s for moment %s — continuing", job_name.value, moment.id
+                _LOG.warning(
+                    "Failed to enqueue %s for moment %s — continuing",
+                    job_name.value,
+                    moment.id,
+                    exc_info=True,
                 )
 
     def schedule_for_fact(
@@ -127,7 +130,11 @@ class PostWriteScheduler:
                 scheduled_at=when,
             )
         except Exception:
-            _LOG.exception("Failed to enqueue fact_entity_link for fact %s — continuing", fact.id)
+            _LOG.warning(
+                "Failed to enqueue fact_entity_link for fact %s — continuing",
+                fact.id,
+                exc_info=True,
+            )
 
     # PLAYBOOK-START
     # id: fire-and-forget-asyncio-task-strong-refs
@@ -195,8 +202,8 @@ def _log_task_exception(task: asyncio.Task[None]) -> None:
         return
     exc = task.exception()
     if exc is not None:
-        _LOG.exception(
+        _LOG.warning(
             "post-write enrichment task failed: %s",
             exc,
-            exc_info=(type(exc), exc, exc.__traceback__),
+            exc_info=exc,
         )

@@ -185,6 +185,9 @@ class MaintenanceWorker:
         ):
             self._queue.mark_skipped(job.id, reason="relation enrichment not configured")
             return _DispatchOutcome.SKIPPED, None
+        if not job.payload.get("key_moment_id"):
+            self._queue.mark_skipped(job.id, reason="missing key_moment_id payload")
+            return _DispatchOutcome.SKIPPED, None
         agent_id, moment_id = _require_moment_payload(job)
         moment = self._state_store.get_key_moment(moment_id)
         if moment is None:
@@ -226,6 +229,9 @@ class MaintenanceWorker:
         """
         if self._analyzer is None or self._state_store is None:
             self._queue.mark_skipped(job.id, reason="linguistic enrichment not configured")
+            return _DispatchOutcome.SKIPPED, None
+        if not job.payload.get("key_moment_id"):
+            self._queue.mark_skipped(job.id, reason="missing key_moment_id payload")
             return _DispatchOutcome.SKIPPED, None
         agent_id, moment_id = _require_moment_payload(job)
         moment = self._state_store.get_key_moment(moment_id)

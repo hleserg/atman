@@ -440,6 +440,26 @@ class TestMaintenanceWorker:
         worker.run_once()
         assert q.list_jobs()[0].status is JobStatus.failed
 
+    def test_mrebel_missing_key_moment_id_legacy_job_skipped(self) -> None:
+        """Pre-#617 queue rows skip cleanly instead of failing into Sentry."""
+        from atman.core.models.maintenance import MaintenanceJob
+
+        q = InMemoryMaintenanceQueue()
+        store = InMemoryStateStore()
+        worker = MaintenanceWorker(
+            q,
+            state_store=store,
+            entity_relation_extractor=MagicMock(extract_relations=lambda text, entities: []),
+            entity_relation_store=MagicMock(),
+            entity_registry=MagicMock(),
+        )
+        job = MaintenanceJob(job_name=JobName.mrebel_extract, agent_id=uuid4(), payload={})
+        q._jobs.append(job)
+        worker.run_once()
+        the_job = next(j for j in q.list_jobs() if j.id == job.id)
+        assert the_job.status is JobStatus.skipped
+        assert "key_moment_id" in (the_job.error or "")
+
 
 def test_decay_pass_high_importance_decays_slower_than_low() -> None:
     """High-importance (>0.8) moments must decay 30% slower per the contract
