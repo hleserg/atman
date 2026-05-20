@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-from ..path_guard import resolve_under_root
+from ..path_guard import write_text_under_root
 
 log = logging.getLogger(__name__)
 
@@ -34,12 +34,14 @@ def load_hashes(path: Path = HASHES_FILE) -> dict[str, str]:
 
 def save_hashes(hashes: dict[str, str], path: Path = HASHES_FILE) -> None:
     repo_root = _repo_root_from(path)
-    safe_path = resolve_under_root(path, root=repo_root)
-    safe_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        safe_path.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
+        write_text_under_root(
+            path,
+            json.dumps(hashes, indent=2, sort_keys=True),
+            root=repo_root,
+        )
     except Exception as exc:
-        log.warning("Cannot save EN hashes to %s: %s", safe_path, exc)
+        log.warning("Cannot save EN hashes to %s: %s", path, exc)
 
 
 def _repo_root_from(path: Path) -> Path:

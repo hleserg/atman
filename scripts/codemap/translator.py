@@ -12,7 +12,7 @@ import logging
 import os
 from pathlib import Path
 
-from .path_guard import resolve_under_root
+from .path_guard import write_text_under_root
 from .renderer.i18n import _END_RE, _START_RU_RE, flag_stale_ru_blocks
 from .snapshot.en_hashes import load_hashes, save_hashes
 
@@ -188,9 +188,8 @@ def translate_stale_blocks(
 
     if translated:
         repo_root = _repo_root_from(en_path)
-        safe_ru_path = resolve_under_root(ru_path, root=repo_root)
-        safe_ru_path.write_text(ru_text, encoding="utf-8")
-        log.info("Updated %s (%d sections)", safe_ru_path, len(translated))
+        write_text_under_root(ru_path, ru_text, root=repo_root)
+        log.info("Updated %s (%d sections)", ru_path, len(translated))
 
         # Update hashes
         if hashes_file:

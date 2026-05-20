@@ -13,3 +13,17 @@ def resolve_under_root(path: Path, *, root: Path) -> Path:
         msg = f"Path {path!s} escapes trusted root {root!s}"
         raise ValueError(msg)
     return resolved
+
+
+def write_text_under_root(
+    path: Path,
+    text: str,
+    *,
+    root: Path,
+    encoding: str = "utf-8",
+) -> None:
+    """Write ``text`` only after validating ``path`` stays under ``root``."""
+    safe_path = resolve_under_root(path, root=root)
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_path.write_text(text, encoding=encoding)
+

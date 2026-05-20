@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from ..extractor.ast_walker import FileMetadata, walk_directory
-from ..path_guard import resolve_under_root
+from ..path_guard import write_text_under_root
 
 log = logging.getLogger(__name__)
 
@@ -206,9 +206,8 @@ def update_system_map(
     new_text, changed = _replace_blocks(original, repo_root, components, check_mode)
 
     if changed and not check_mode:
-        safe_path = resolve_under_root(system_map_path, root=repo_root)
-        safe_path.write_text(new_text, encoding="utf-8")
-        log.info("Updated %s", safe_path)
+        write_text_under_root(system_map_path, new_text, root=repo_root)
+        log.info("Updated %s", system_map_path)
 
     return changed
 

@@ -97,22 +97,21 @@ TOOLS = (
 _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 
 
-from e2e.session_log_path import resolve_session_log_path
-
 # Fixed-path session log — Claude (or any tail -f consumer) can watch this file
 # to see the full conversation + all Atman internal events in real time.
-_SESSION_LOG = resolve_session_log_path()
-
 import json as _json
 from datetime import UTC
 from datetime import datetime as _dt
+
+from e2e.session_log_path import resolve_session_log_path
 
 
 def _log(event_type: str, **kwargs) -> None:
     """Append one JSONL line to the live session log."""
     try:
         entry = {"ts": _dt.now(UTC).isoformat(), "type": event_type, **kwargs}
-        with _SESSION_LOG.open("a") as fh:
+        log_path = resolve_session_log_path()
+        with log_path.open("a") as fh:
             fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -489,7 +488,7 @@ async def amain() -> int:
         bootstrap_minimal_agent(store, agent_id)
 
     # Truncate the live log at session start so previous sessions don't confuse tail -f.
-    _SESSION_LOG.write_text("")
+    resolve_session_log_path().write_text("")
     _log("session_start", agent_id=str(agent_id), model=AGENT_MODEL, base_url=AGENT_BASE_URL)
 
     print_banner(AGENT_MODEL, workspace, agent_id)
