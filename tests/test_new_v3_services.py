@@ -460,6 +460,73 @@ class TestMaintenanceWorker:
         assert the_job.status is JobStatus.skipped
         assert "key_moment_id" in (the_job.error or "")
 
+    def test_lingvo_null_payload_skipped(self) -> None:
+        from atman.core.models.maintenance import MaintenanceJob
+
+        q = InMemoryMaintenanceQueue()
+        worker = MaintenanceWorker(
+            q,
+            state_store=InMemoryStateStore(),
+            linguistic_analyzer=MagicMock(),
+        )
+        job = MaintenanceJob.model_construct(
+            job_name=JobName.lingvo_enrich,
+            agent_id=uuid4(),
+            payload=None,
+        )
+        q._jobs.append(job)
+        worker.run_once()
+        the_job = next(j for j in q.list_jobs() if j.id == job.id)
+        assert the_job.status is JobStatus.skipped
+
+    def test_fact_entity_link_dedup_keeps_highest_confidence(self) -> None:
+        from atman.core.models.entity import EntityType
+        from atman.core.models.fact import FactRecord
+        from atman.core.models.maintenance import MaintenanceJob
+        from atman.core.ports.linguistic import DetectedEntity, UserMessageAnalysis
+
+        agent_id = uuid4()
+        fact_id = uuid4()
+        entity_id = uuid4()
+        fact = FactRecord(id=fact_id, agent_id=agent_id, content="Alice met Bob", source="test")
+
+        ent = DetectedEntity(text="Alice", entity_type=EntityType.person, confidence=0.4)
+        ent_dup = DetectedEntity(text="Alice", entity_type=EntityType.person, confidence=0.9)
+        analysis = UserMessageAnalysis(text=fact.content or "", entities=[ent, ent_dup])
+
+        factual = MagicMock()
+        factual.get_fact.return_value = fact
+        saved: list = []
+
+        def _save(_fact_id: UUID, _agent_id: UUID, links: list) -> None:
+            saved.extend(links)
+
+        factual.save_fact_entity_links = _save
+
+        registry = MagicMock()
+        registry.resolve_or_create.return_value = (MagicMock(id=entity_id), True)
+
+        analyzer = MagicMock()
+        analyzer.analyze_user_message.return_value = analysis
+
+        q = InMemoryMaintenanceQueue()
+        worker = MaintenanceWorker(
+            q,
+            factual_memory=factual,
+            linguistic_analyzer=analyzer,
+            entity_registry=registry,
+        )
+        job = MaintenanceJob(
+            job_name=JobName.fact_entity_link,
+            agent_id=agent_id,
+            payload={"fact_id": str(fact_id)},
+        )
+        q._jobs.append(job)
+        worker.run_once()
+
+        assert len(saved) == 1
+        assert saved[0].confidence == 0.9
+
 
 def test_decay_pass_high_importance_decays_slower_than_low() -> None:
     """High-importance (>0.8) moments must decay 30% slower per the contract

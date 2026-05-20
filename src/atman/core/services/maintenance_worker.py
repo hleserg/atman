@@ -78,12 +78,13 @@ class MaintenanceWorker:
         import time as _time
 
         _t0 = _time.monotonic()
+        payload = job.payload or {}
         _slog(
             "job_start",
             job_id=str(job.id),
             job_name=job.job_name.value,
-            agent_id=str(job.payload.get("agent_id", "")),
-            payload_keys=list(job.payload.keys()),
+            agent_id=str(payload.get("agent_id", "")),
+            payload_keys=list(payload.keys()),
         )
         _tags: dict[str, str] = {
             "job.name": job.job_name.value,
@@ -145,7 +146,7 @@ class MaintenanceWorker:
         if job.agent_id is None:
             raise ValueError(f"salience_decay job {job.id} requires agent_id")
         agent_id = job.agent_id
-        cutoff_str = job.payload.get("cutoff")
+        cutoff_str = (job.payload or {}).get("cutoff")
         cutoff = datetime.fromisoformat(cutoff_str) if cutoff_str else datetime.now(UTC)
         count = self._decay.decay_pass(agent_id, cutoff=cutoff)
         return {"updated": count}
@@ -290,7 +291,7 @@ class MaintenanceWorker:
         if job.agent_id is None:
             raise ValueError(f"fact_entity_link job {job.id} requires agent_id")
         agent_id = job.agent_id
-        raw_fact_id = job.payload.get("fact_id")
+        raw_fact_id = (job.payload or {}).get("fact_id")
         if not raw_fact_id:
             raise ValueError(f"fact_entity_link job {job.id} missing fact_id payload")
         fact_id = UUID(str(raw_fact_id))
@@ -371,7 +372,7 @@ def _require_moment_payload(job: MaintenanceJob) -> tuple[UUID, UUID]:
     """Extract (agent_id, moment_id) from a moment-scoped enrichment job."""
     if job.agent_id is None:
         raise ValueError(f"{job.job_name.value} job {job.id} requires agent_id")
-    raw = job.payload.get("key_moment_id")
+    raw = (job.payload or {}).get("key_moment_id")
     if not raw:
         raise ValueError(f"{job.job_name.value} job {job.id} missing key_moment_id payload")
     return job.agent_id, UUID(str(raw))

@@ -126,6 +126,21 @@ def test_before_send_keeps_unrelated_error():
     assert result is event
 
 
+def test_before_send_tolerates_malformed_exception_structure():
+    event = {
+        "level": "error",
+        "exception": {
+            "values": [
+                "not-a-dict",
+                {"stacktrace": "not-a-dict"},
+                {"stacktrace": {"frames": ["not-a-frame", {}]}},
+            ]
+        },
+    }
+    result = _before_send()(event, {})
+    assert result is event
+
+
 def test_should_drop_operational_signal_direct():
     assert _should_drop_operational_signal({"logger": _REFLECTION_OVERLOAD_LOGGER}, {}) is True
     assert (
