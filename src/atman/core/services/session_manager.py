@@ -918,7 +918,12 @@ class SessionManager:
         try:
             self._post_write_scheduler.schedule_for_key_moment(moment, agent_id)
         except Exception:
-            _LOG.exception("post-write scheduler raised for moment %s — continuing", moment.id)
+            # WARNING + exc_info: degraded-mode path must not become a Sentry error event.
+            _LOG.warning(
+                "post-write scheduler raised for moment %s — continuing",
+                moment.id,
+                exc_info=True,
+            )
 
     def record_key_moment(self, session_id: UUID, moment: KeyMomentInput) -> None:
         """

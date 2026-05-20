@@ -78,12 +78,13 @@ class MaintenanceWorker:
         import time as _time
 
         _t0 = _time.monotonic()
+        payload = job.payload or {}
         _slog(
             "job_start",
             job_id=str(job.id),
             job_name=job.job_name.value,
-            agent_id=str(job.payload.get("agent_id", "")),
-            payload_keys=list(job.payload.keys()),
+            agent_id=str(payload.get("agent_id", "")),
+            payload_keys=list(payload.keys()),
         )
         _tags: dict[str, str] = {
             "job.name": job.job_name.value,
@@ -145,7 +146,7 @@ class MaintenanceWorker:
         if job.agent_id is None:
             raise ValueError(f"salience_decay job {job.id} requires agent_id")
         agent_id = job.agent_id
-        cutoff_str = job.payload.get("cutoff")
+        cutoff_str = (job.payload or {}).get("cutoff")
         cutoff = datetime.fromisoformat(cutoff_str) if cutoff_str else datetime.now(UTC)
         count = self._decay.decay_pass(agent_id, cutoff=cutoff)
         return {"updated": count}
@@ -184,6 +185,9 @@ class MaintenanceWorker:
             or self._entity_registry is None
         ):
             self._queue.mark_skipped(job.id, reason="relation enrichment not configured")
+            return _DispatchOutcome.SKIPPED, None
+        if not (job.payload or {}).get("key_moment_id"):
+            self._queue.mark_skipped(job.id, reason="missing key_moment_id payload")
             return _DispatchOutcome.SKIPPED, None
         agent_id, moment_id = _require_moment_payload(job)
         moment = self._state_store.get_key_moment(moment_id)
@@ -226,6 +230,9 @@ class MaintenanceWorker:
         """
         if self._analyzer is None or self._state_store is None:
             self._queue.mark_skipped(job.id, reason="linguistic enrichment not configured")
+            return _DispatchOutcome.SKIPPED, None
+        if not (job.payload or {}).get("key_moment_id"):
+            self._queue.mark_skipped(job.id, reason="missing key_moment_id payload")
             return _DispatchOutcome.SKIPPED, None
         agent_id, moment_id = _require_moment_payload(job)
         moment = self._state_store.get_key_moment(moment_id)
@@ -284,7 +291,7 @@ class MaintenanceWorker:
         if job.agent_id is None:
             raise ValueError(f"fact_entity_link job {job.id} requires agent_id")
         agent_id = job.agent_id
-        raw_fact_id = job.payload.get("fact_id")
+        raw_fact_id = (job.payload or {}).get("fact_id")
         if not raw_fact_id:
             raise ValueError(f"fact_entity_link job {job.id} missing fact_id payload")
         fact_id = UUID(str(raw_fact_id))
@@ -316,14 +323,7 @@ class MaintenanceWorker:
                     "fact entity resolve failed for %r (fact %s)", ent.text, fact_id, exc_info=True
                 )
 
-        # Deduplicate (entity_id, role) — keep highest confidence
-        seen_er: set[tuple[UUID, str]] = set()
-        unique_links: list[FactEntityLink] = []
-        for link in entity_links:
-            key = (link.entity_id, link.role)
-            if key not in seen_er:
-                seen_er.add(key)
-                unique_links.append(link)
+        unique_links = _dedupe_fact_entity_links(entity_links)
 
         save_fn = getattr(self._factual_memory, "save_fact_entity_links", None)
         if save_fn is None:
@@ -361,11 +361,22 @@ class MaintenanceWorker:
         return matches[0].id if matches else None
 
 
+def _dedupe_fact_entity_links(links: list[FactEntityLink]) -> list[FactEntityLink]:
+    """Keep one link per (entity_id, role) with the highest confidence."""
+    best_by_key: dict[tuple[UUID, str], FactEntityLink] = {}
+    for link in links:
+        key = (link.entity_id, link.role)
+        prev = best_by_key.get(key)
+        if prev is None or link.confidence > prev.confidence:
+            best_by_key[key] = link
+    return list(best_by_key.values())
+
+
 def _require_moment_payload(job: MaintenanceJob) -> tuple[UUID, UUID]:
     """Extract (agent_id, moment_id) from a moment-scoped enrichment job."""
     if job.agent_id is None:
         raise ValueError(f"{job.job_name.value} job {job.id} requires agent_id")
-    raw = job.payload.get("key_moment_id")
+    raw = (job.payload or {}).get("key_moment_id")
     if not raw:
         raise ValueError(f"{job.job_name.value} job {job.id} missing key_moment_id payload")
     return job.agent_id, UUID(str(raw))
