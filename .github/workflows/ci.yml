@@ -78,16 +78,21 @@ jobs:
 
       - name: Check Sentry config
         id: sentry_check
+        env:
+          _SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          _SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          _SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          if [ -z "${{ secrets.SENTRY_AUTH_TOKEN }}" ] || \
-             [ -z "${{ secrets.SENTRY_ORG }}" ] || \
-             [ -z "${{ secrets.SENTRY_PROJECT }}" ]; then
+          if [ -z "$_SENTRY_AUTH_TOKEN" ] || \
+             [ -z "$_SENTRY_ORG" ] || \
+             [ -z "$_SENTRY_PROJECT" ]; then
             echo "Sentry is not configured, skipping"
             echo "SENTRY_ENABLED=false" >> $GITHUB_ENV
           else
             echo "Sentry is configured"
             echo "SENTRY_ENABLED=true" >> $GITHUB_ENV
           fi
+
 
       - name: Create Sentry release
         if: env.SENTRY_ENABLED == 'true'
