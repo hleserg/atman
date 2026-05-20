@@ -59,6 +59,9 @@ from atman.term import (
     print_ok,
 )
 
+_MSG_FIXTURES_MODE = "Using test fixtures..."
+_MSG_REFLECTION_COMPLETE = "\nReflection Complete!"
+
 
 class MockExperienceRepo:
     """Mock experience repository."""
@@ -153,6 +156,7 @@ class MockExperienceRepo:
     def list_recent_sessions(
         self, agent_id: UUID | None = None, *, limit: int = 10
     ) -> list[Session]:
+        _ = agent_id
         return [self._synth(e)[0] for e in self.get_recent(limit)]
 
     def get_sessions_in_range(
@@ -302,7 +306,7 @@ def cmd_reflect_micro(args: list[str]) -> int:
         print_help_text("Usage: atman reflect micro --fixtures")
         return 1
 
-    print_ok("Using test fixtures...")
+    print_ok(_MSG_FIXTURES_MODE)
     demo_pace()
 
     experience_repo, _identity_repo, narrative_repo = setup_fixtures()
@@ -331,7 +335,7 @@ def cmd_reflect_micro(args: list[str]) -> int:
 
     event = service.reflect(session_id)
 
-    print_ok("\nReflection Complete!")
+    print_ok(_MSG_REFLECTION_COMPLETE)
     demo_pace()
     print_info(f"  Level: {event.reflection_level}")
     print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
@@ -359,7 +363,7 @@ def cmd_reflect_daily(args: list[str]) -> int:
         print_help_text("Usage: atman reflect daily --fixtures | --live --agent-id <uuid>")
         return 1
 
-    print_ok("Using test fixtures...")
+    print_ok(_MSG_FIXTURES_MODE)
     demo_pace()
 
     experience_repo, identity_repo, _narrative_repo = setup_fixtures()
@@ -382,7 +386,7 @@ def cmd_reflect_daily(args: list[str]) -> int:
 
     event = service.reflect(date)
 
-    print_ok("\nReflection Complete!")
+    print_ok(_MSG_REFLECTION_COMPLETE)
     demo_pace()
     print_info(f"  Level: {event.reflection_level}")
     print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
@@ -416,7 +420,7 @@ def _cmd_daily_live(parsed: argparse.Namespace) -> int:
     service = build_daily_reflection_service(agent_id, state_store)
     event = service.reflect(date)
 
-    print_ok("\nReflection Complete!")
+    print_ok(_MSG_REFLECTION_COMPLETE)
     demo_pace()
     print_info(f"  Level: {event.reflection_level}")
     print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
@@ -452,7 +456,7 @@ def cmd_reflect_deep(args: list[str]) -> int:
         )
         return 1
 
-    print_ok("Using test fixtures...")
+    print_ok(_MSG_FIXTURES_MODE)
     demo_pace()
 
     experience_repo, identity_repo, narrative_repo = setup_fixtures()
@@ -480,7 +484,7 @@ def cmd_reflect_deep(args: list[str]) -> int:
 
     event = service.reflect(since, until)
 
-    print_ok("\nReflection Complete!")
+    print_ok(_MSG_REFLECTION_COMPLETE)
     demo_pace()
     print_info(f"  Level: {event.reflection_level}")
     print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")
@@ -578,7 +582,7 @@ def _cmd_deep_live(parsed: argparse.Namespace) -> int:
     service = build_deep_reflection_service(agent_id, state_store)
     event = service.reflect(since, until)
 
-    print_ok("\nReflection Complete!")
+    print_ok(_MSG_REFLECTION_COMPLETE)
     demo_pace()
     print_info(f"  Level: {event.reflection_level}")
     print_info(f"  Experiences analyzed: {len(event.experiences_analyzed)}")

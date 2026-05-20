@@ -5,16 +5,23 @@
   <script>
     (function () {
       try {
-        var q = new URLSearchParams(window.location.search);
+        var q = new URLSearchParams(globalThis.location.search);
         var u = q.get('lang');
-        var s = localStorage.getItem('atman-lang');
-        var L =
-          u === 'en' || u === 'ru' ? u
-          : s === 'en' || s === 'ru' ? s
-          : (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru'
-          : 'en';
-        document.documentElement.lang = L;
-      } catch (e) {}
+        var s = globalThis.localStorage.getItem('atman-lang');
+        var L;
+        if (u === 'en' || u === 'ru') {
+          L = u;
+        } else if (s === 'en' || s === 'ru') {
+          L = s;
+        } else if ((globalThis.navigator.language || '').toLowerCase().startsWith('ru')) {
+          L = 'ru';
+        } else {
+          L = 'en';
+        }
+        globalThis.document.documentElement.lang = L;
+      } catch (e) {
+        void e;
+      }
     })();
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -282,8 +289,8 @@
     /* ── Letter card ── */
     .letter {
       margin-top: 14px; padding: 22px 26px; border: 1px solid rgba(182,156,255,0.25);
-      border-radius: 16px; background: rgba(182,156,255,0.06);
-      font-size: 0.96rem; line-height: 1.7; color: #d9d0c5;
+      border-radius: 16px; background: rgba(182,156,255,0.12);
+      font-size: 0.96rem; line-height: 1.7; color: #f0ebe5;
       white-space: pre-wrap;
     }
 
@@ -1060,35 +1067,35 @@ const T = {
 };
 
 function detectLang() {
-  const u = new URLSearchParams(window.location.search).get('lang');
+  const u = new URLSearchParams(globalThis.location.search).get('lang');
   if (u === 'en' || u === 'ru') return u;
-  const s = localStorage.getItem('atman-lang');
+  const s = globalThis.localStorage.getItem('atman-lang');
   if (s === 'en' || s === 'ru') return s;
-  return (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  return (globalThis.navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
 function applyLang(lang) {
   const t = T[lang]; if (!t) return;
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-i18n-meta]').forEach(el => {
-    const key = el.getAttribute('data-i18n-meta');
+    const key = el.dataset.i18nMeta;
     if (t.meta && t.meta[key]) {
       if (el.tagName === 'TITLE') el.textContent = t.meta[key];
       else el.setAttribute('content', t.meta[key]);
     }
   });
   document.querySelectorAll('[data-i18n]').forEach(el => {
-    const v = el.getAttribute('data-i18n').split('.').reduce((o,k) => o?.[k], t);
+    const v = el.dataset.i18n.split('.').reduce((o,k) => o?.[k], t);
     if (v != null) el.textContent = v;
   });
   document.querySelectorAll('[data-i18n-html]').forEach(el => {
-    const v = el.getAttribute('data-i18n-html').split('.').reduce((o,k) => o?.[k], t);
+    const v = el.dataset.i18nHtml.split('.').reduce((o,k) => o?.[k], t);
     if (v != null) el.innerHTML = v;
   });
   document.querySelectorAll('.lang-btn').forEach(btn =>
-    btn.classList.toggle('active', btn.getAttribute('data-lang') === lang)
+    btn.classList.toggle('active', btn.dataset.lang === lang)
   );
-  localStorage.setItem('atman-lang', lang);
+  globalThis.localStorage.setItem('atman-lang', lang);
   syncLinks(lang);
 }
 
@@ -1100,14 +1107,14 @@ function syncLinks(lang) {
     const pq = hashIdx >= 0 ? raw.slice(0, hashIdx) : raw;
     const hash = hashIdx >= 0 ? raw.slice(hashIdx) : '';
     if (!pq.match(/(index|demo|document)\.html/)) return;
-    const u = new URL(pq || 'index.html', window.location.href);
+    const u = new URL(pq || 'index.html', globalThis.location.href);
     u.searchParams.set('lang', lang);
     a.setAttribute('href', u.pathname.split('/').pop() + u.search + hash);
   });
 }
 
 document.querySelectorAll('.lang-btn').forEach(btn =>
-  btn.addEventListener('click', () => applyLang(btn.getAttribute('data-lang')))
+  btn.addEventListener('click', () => applyLang(btn.dataset.lang))
 );
 applyLang(detectLang());
 
@@ -1127,14 +1134,36 @@ const FILES = {
   'json-11': 'demo-data/11_session_2_experience.json',
 };
 
-// Minimal syntax highlight for JSON
+// Minimal syntax highlight for JSON (linear-time; ReDoS-safe patterns)
+function highlightJsonValueFragment(fragment) {
+  let s = fragment;
+  s = s.replace(/"(?:[^"\\]|\\.)*"/g, function (x) {
+    return '<span class="s">' + x + '</span>';
+  });
+  s = s.replace(/\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, function (x) {
+    return '<span class="n">' + x + '</span>';
+  });
+  s = s.replace(/\b(true|false|null)\b/g, function (x) {
+    return '<span class="b">' + x + '</span>';
+  });
+  return s;
+}
+
 function hlJson(json) {
-  return json
-    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")\s*:/g, '<span class="k">$1</span>:')
-    .replace(/"(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"/g, m => `<span class="s">${m}</span>`)
-    .replace(/\b(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="n">$1</span>')
-    .replace(/\b(true|false|null)\b/g, '<span class="b">$1</span>');
+  const esc = json
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  const lines = esc.split('\n');
+  const out = lines.map(function (line) {
+    const km = /^(\s*)("(?:[^"\\]|\\.)*")\s*:/.exec(line);
+    if (km) {
+      const rest = line.slice(km[0].length);
+      return km[1] + '<span class="k">' + km[2] + '</span>:' + highlightJsonValueFragment(rest);
+    }
+    return highlightJsonValueFragment(line);
+  });
+  return out.join('\n');
 }
 
 function loadJson(id, path) {
@@ -1144,7 +1173,8 @@ function loadJson(id, path) {
     const pre = document.createElement('pre');
     pre.innerHTML = hlJson(JSON.stringify(data, null, 2));
     el.appendChild(pre);
-  }).catch(() => {
+  }).catch((e) => {
+    void e;
     const el = document.getElementById(id);
     if (el) el.innerHTML = '<pre style="color:var(--muted);padding:16px">Data not found. Run: make demo-e2e-scenario</pre>';
   });

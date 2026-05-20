@@ -12,6 +12,7 @@ class NoOpReflectionEventPersistenceObserver:
         reflection_level: ReflectionLevel,
         error_message: str,
     ) -> None:
+        _ = (reflection_level, error_message)
         return None
 
     def record_reflection_job_event_save_failed_after_side_effects(
@@ -21,4 +22,5 @@ class NoOpReflectionEventPersistenceObserver:
         reflection_run_key: str | None,
         error_message: str,
     ) -> None:
+        _ = (reflection_level, reflection_run_key, error_message)
         return None

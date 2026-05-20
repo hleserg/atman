@@ -185,6 +185,8 @@ class PostWriteScheduler:
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
         task.add_done_callback(_log_task_exception)
+        # Yield once so this coroutine uses ``await`` (fire-and-forget still applies).
+        await asyncio.sleep(0)
 
     # PLAYBOOK-END
 

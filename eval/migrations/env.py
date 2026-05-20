@@ -18,7 +18,7 @@ if config.config_file_name is not None:
 target_metadata = None  # using raw SQL migrations, not autogenerate
 
 DB_URL = os.environ.get("EVAL_DB_URL") or os.environ.get(
-    "ATMAN_DB_URL", "postgresql+psycopg://atman@localhost:5432/atman"
+    "ATMAN_DB_URL", "postgresql+psycopg://atman:atman@localhost:5432/atman"
 )
 
 

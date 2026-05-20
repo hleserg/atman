@@ -96,9 +96,17 @@ TOOLS = (
 
 _rc = Console(highlight=False, markup=True)  # Rich console for Atman internals
 
+
+def _default_session_log_path() -> Path:
+    override = os.environ.get("ATMAN_LIVE_SESSION_LOG")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".atman" / "live-session.jsonl"
+
+
 # Fixed-path session log — Claude (or any tail -f consumer) can watch this file
 # to see the full conversation + all Atman internal events in real time.
-_SESSION_LOG = Path("/tmp/atman-live-session.jsonl")
+_SESSION_LOG = _default_session_log_path()
 
 import json as _json
 from datetime import UTC
@@ -115,7 +123,7 @@ def _log(event_type: str, **kwargs) -> None:
         pass
 
 
-def _S(s: str) -> str:
+def _sanitize_utf8_for_log(s: str) -> str:
     """Replace lone surrogates so the string is safe for UTF-8 encoding."""
     return s.encode("utf-8", "replace").decode("utf-8")
 

@@ -150,11 +150,11 @@ KNOWN_DUPLICATES = {
 GITHUB_REPO = {"owner": "hleserg", "repo": "atman"}
 
 PRIORITY_MAP = {
-    "risk:blocking": 1,   # Urgent
+    "risk:blocking": 1,  # Urgent
     "P0": 1,
-    "P1": 2,              # High
-    "P2": 3,              # Medium
-    "P3": 4,              # Low
+    "P1": 2,  # High
+    "P2": 3,  # Medium
+    "P3": 4,  # Low
 }
 
 ZONE_MAP = {

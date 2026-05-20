@@ -104,7 +104,7 @@ def test_get_demo_command_fast() -> None:
 
 def test_get_demo_command_with_repo_root() -> None:
     """Test get_demo_command with repo_root parameter."""
-    repo_root = Path("/tmp/test-repo")
+    repo_root = Path("/var/atman-test/test-repo")
     cmd, env = get_demo_command("src/demo.py", paced=True, repo_root=repo_root)
 
     # Should not affect the output (parameter reserved for future use)

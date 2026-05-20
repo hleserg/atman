@@ -16,95 +16,101 @@ from atman.tui.cmd import python_script_cmd
 from atman.tui.features_registry import FEATURES, FeatureInfo
 from atman.tui.runner import stream_command
 
+# Textual ids / selectors (Sonar S1192).
+_ID_FEAT_DETAIL_SCREEN = "feat-detail-screen"
+_ID_FEAT_RIGHT_OUTPUT = "feat-right-output"
+SEL_FEAT_DETAIL_SCREEN = f"#{_ID_FEAT_DETAIL_SCREEN}"
+SEL_FEAT_RIGHT_OUTPUT = f"#{_ID_FEAT_RIGHT_OUTPUT}"
+
 
 class FeaturesTab(Vertical):
-    DEFAULT_CSS = """
-    FeaturesTab {
+    DEFAULT_CSS = f"""
+    FeaturesTab {{
         height: 1fr;
-    }
-    FeaturesTab #feat-pick-screen {
+    }}
+    FeaturesTab #feat-pick-screen {{
         height: 1fr;
         width: 60;
         max-height: 100%;
         align: center middle;
         border: solid $boost;
-    }
-    FeaturesTab #feat-detail-screen {
+    }}
+    FeaturesTab #{_ID_FEAT_DETAIL_SCREEN} {{
         height: 1fr;
-    }
-    FeaturesTab #feat-sidebar {
+    }}
+    FeaturesTab #feat-sidebar {{
         width: 36%;
         min-width: 28;
         height: 1fr;
         border: solid $boost;
         padding: 0 1;
-    }
-    FeaturesTab #feat-desc {
+    }}
+    FeaturesTab #feat-desc {{
         height: auto;
         max-height: 14;
         border: solid $boost;
         padding: 0 1;
         margin-bottom: 1;
-    }
-    FeaturesTab #feat-actions {
+    }}
+    FeaturesTab #feat-actions {{
         height: auto;
         layout: vertical;
         margin-top: 1;
-    }
+    }}
     FeaturesTab #feat-row-readme,
-    FeaturesTab #feat-row-demo {
+    FeaturesTab #feat-row-demo {{
         height: auto;
         layout: horizontal;
         margin-bottom: 1;
-    }
+    }}
     FeaturesTab #feat-row-readme Button,
-    FeaturesTab #feat-row-demo Button {
+    FeaturesTab #feat-row-demo Button {{
         width: 1fr;
-    }
-    FeaturesTab #feat-actions > Button {
+    }}
+    FeaturesTab #feat-actions > Button {{
         width: 100%;
         margin-bottom: 1;
-    }
-    FeaturesTab #feat-workarea {
+    }}
+    FeaturesTab #feat-workarea {{
         width: 1fr;
         height: 1fr;
         border: solid $boost;
-    }
-    FeaturesTab #feat-right-readme {
+    }}
+    FeaturesTab #feat-right-readme {{
         height: 1fr;
         border: solid $boost;
-    }
-    FeaturesTab #feat-right-output {
+    }}
+    FeaturesTab #{_ID_FEAT_RIGHT_OUTPUT} {{
         border: solid $boost;
         background: $surface;
-    }
-    FeaturesTab #feat-right-output.-run-error {
+    }}
+    FeaturesTab #{_ID_FEAT_RIGHT_OUTPUT}.-run-error {{
         border: tall $error;
         background: $error-muted;
-    }
-    FeaturesTab #feat-right-output.-run-ok {
+    }}
+    FeaturesTab #{_ID_FEAT_RIGHT_OUTPUT}.-run-ok {{
         border: tall $success;
         background: $success-muted;
-    }
-    FeaturesTab #feat-run-status {
+    }}
+    FeaturesTab #feat-run-status {{
         height: auto;
         padding: 0 1;
         background: $boost;
-    }
-    FeaturesTab #feat-run-status.-st-err {
+    }}
+    FeaturesTab #feat-run-status.-st-err {{
         color: $text-error;
         text-style: bold;
         background: $error-muted;
-    }
-    FeaturesTab #feat-run-status.-st-ok {
+    }}
+    FeaturesTab #feat-run-status.-st-ok {{
         color: $text-success;
         background: $success-muted;
-    }
-    FeaturesTab #feat-log {
+    }}
+    FeaturesTab #feat-log {{
         height: 1fr;
         min-height: 8;
         border: solid $boost;
-    }
+    }}
     """
 
     def __init__(self, repo_root: Path, **kwargs: Any) -> None:
@@ -117,7 +123,7 @@ class FeaturesTab(Vertical):
             yield Static("[b]Выберите фичу[/b]", id="feat-pick-title")
             for f in FEATURES:
                 yield Button(f.title, id=f"feat-pick-{f.slug}", variant="primary")
-        with Horizontal(id="feat-detail-screen"):
+        with Horizontal(id=_ID_FEAT_DETAIL_SCREEN):
             with Vertical(id="feat-sidebar"):
                 yield Static("", id="feat-desc")
                 with Vertical(id="feat-actions"):
@@ -132,7 +138,7 @@ class FeaturesTab(Vertical):
             with Vertical(id="feat-workarea"):
                 with ScrollableContainer(id="feat-right-readme"):
                     yield Markdown("", id="feat-md-body")
-                with Vertical(id="feat-right-output"):
+                with Vertical(id=_ID_FEAT_RIGHT_OUTPUT):
                     yield Static("", id="feat-run-status")
                     yield RichLog(
                         id="feat-log",
@@ -143,21 +149,21 @@ class FeaturesTab(Vertical):
                     )
 
     def on_mount(self) -> None:
-        self.query_one("#feat-detail-screen", Horizontal).display = False
-        self.query_one("#feat-right-output", Vertical).display = False
+        self.query_one(SEL_FEAT_DETAIL_SCREEN, Horizontal).display = False
+        self.query_one(SEL_FEAT_RIGHT_OUTPUT, Vertical).display = False
         self._show_picker()
 
     def _show_picker(self) -> None:
         self._current = None
         pick = self.query_one("#feat-pick-screen")
-        detail = self.query_one("#feat-detail-screen")
+        detail = self.query_one(SEL_FEAT_DETAIL_SCREEN)
         pick.display = True
         detail.display = False
 
     def _show_detail(self, info: FeatureInfo) -> None:
         self._current = info
         pick = self.query_one("#feat-pick-screen")
-        detail = self.query_one("#feat-detail-screen")
+        detail = self.query_one(SEL_FEAT_DETAIL_SCREEN)
         pick.display = False
         detail.display = True
 
@@ -172,21 +178,21 @@ class FeaturesTab(Vertical):
 
     def _show_readme_pane(self) -> None:
         self.query_one("#feat-right-readme", ScrollableContainer).display = True
-        self.query_one("#feat-right-output", Vertical).display = False
+        self.query_one(SEL_FEAT_RIGHT_OUTPUT, Vertical).display = False
 
     def _show_output_pane(self) -> None:
         self.query_one("#feat-right-readme", ScrollableContainer).display = False
-        self.query_one("#feat-right-output", Vertical).display = True
+        self.query_one(SEL_FEAT_RIGHT_OUTPUT, Vertical).display = True
 
     def _reset_output_chrome(self) -> None:
-        out = self.query_one("#feat-right-output", Vertical)
+        out = self.query_one(SEL_FEAT_RIGHT_OUTPUT, Vertical)
         status = self.query_one("#feat-run-status", Static)
         out.remove_class("-run-error", "-run-ok")
         status.remove_class("-st-err", "-st-ok")
         status.update("")
 
     def _set_run_outcome(self, *, ok: bool, exit_code: int, kind: str) -> None:
-        out = self.query_one("#feat-right-output", Vertical)
+        out = self.query_one(SEL_FEAT_RIGHT_OUTPUT, Vertical)
         status = self.query_one("#feat-run-status", Static)
         out.remove_class("-run-error", "-run-ok")
         status.remove_class("-st-err", "-st-ok")

@@ -5,19 +5,23 @@
     <script>
       (function () {
         try {
-          var q = new URLSearchParams(window.location.search);
+          var q = new URLSearchParams(globalThis.location.search);
           var u = q.get('lang');
-          var s = localStorage.getItem('atman-lang');
-          var L =
-            u === 'en' || u === 'ru'
-              ? u
-              : s === 'en' || s === 'ru'
-                ? s
-                : (navigator.language || '').toLowerCase().startsWith('ru')
-                  ? 'ru'
-                  : 'en';
-          document.documentElement.lang = L;
-        } catch (e) {}
+          var s = globalThis.localStorage.getItem('atman-lang');
+          var L;
+          if (u === 'en' || u === 'ru') {
+            L = u;
+          } else if (s === 'en' || s === 'ru') {
+            L = s;
+          } else if ((globalThis.navigator.language || '').toLowerCase().startsWith('ru')) {
+            L = 'ru';
+          } else {
+            L = 'en';
+          }
+          globalThis.document.documentElement.lang = L;
+        } catch (e) {
+          void e;
+        }
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -374,8 +378,8 @@
         border: 1px solid rgba(244, 200, 115, 0.24);
         border-left: 4px solid var(--gold);
         border-radius: 22px;
-        background: rgba(244, 200, 115, 0.09);
-        color: #f2e8d7;
+        background: rgba(244, 200, 115, 0.14);
+        color: var(--text);
       }
 
       .markdown-body blockquote p:last-child {
@@ -683,17 +687,17 @@
       };
 
       function detectLanguage() {
-        const urlLang = new URLSearchParams(window.location.search).get('lang');
+        const urlLang = new URLSearchParams(globalThis.location.search).get('lang');
         if (urlLang === 'en' || urlLang === 'ru') {
           return urlLang;
         }
 
-        const savedLang = localStorage.getItem('atman-lang');
+        const savedLang = globalThis.localStorage.getItem('atman-lang');
         if (savedLang && translations[savedLang]) {
           return savedLang;
         }
 
-        const browserLang = navigator.language || navigator.userLanguage;
+        const browserLang = globalThis.navigator.language || globalThis.navigator.userLanguage;
         if (browserLang.startsWith('ru')) {
           return 'ru';
         }
@@ -707,7 +711,7 @@
         document.documentElement.lang = lang;
 
         document.querySelectorAll('[data-i18n]').forEach(el => {
-          const key = el.getAttribute('data-i18n');
+          const key = el.dataset.i18n;
           const keys = key.split('.');
           let value = t;
           for (const k of keys) {
@@ -719,10 +723,10 @@
         });
 
         document.querySelectorAll('.lang-btn').forEach(btn => {
-          btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+          btn.classList.toggle('active', btn.dataset.lang === lang);
         });
 
-        localStorage.setItem('atman-lang', lang);
+        globalThis.localStorage.setItem('atman-lang', lang);
         syncAtmanLangInLinks(lang);
 
         return t;
@@ -752,7 +756,7 @@
             return;
           }
           const base = pathAndQuery || 'index.html';
-          const u = new URL(base, window.location.href);
+          const u = new URL(base, globalThis.location.href);
           const file = u.pathname.split('/').pop() || '';
           if (file !== 'document.html' && file !== 'demo.html' && file !== 'index.html') {
             return;
@@ -764,9 +768,9 @@
 
       document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          const lang = btn.getAttribute('data-lang');
+          const lang = btn.dataset.lang;
           const t = applyTranslations(lang);
-          const activeDocKey = new URLSearchParams(window.location.search).get("doc") || "readme";
+          const activeDocKey = new URLSearchParams(globalThis.location.search).get("doc") || "readme";
           
           const newDocuments = getDocuments(lang);
           const activeDoc = newDocuments[activeDocKey];
@@ -908,7 +912,7 @@
         "/content/COMPARISON-ru.md": "comparison",
       };
 
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(globalThis.location.search);
       const requestedDoc = params.get("doc") || "readme";
       const activeDocKey = documents[requestedDoc] ? requestedDoc : "readme";
       const activeDoc = documents[activeDocKey];
@@ -957,6 +961,91 @@
           toc.innerHTML = `<span class="muted">${tocError}</span>`;
         });
 
+      function isHorizontalRuleLine(trimmed) {
+        return /^\\?-{3,}$/.test(trimmed);
+      }
+
+      function matchHeadingLine(trimmed) {
+        return trimmed.match(/^(#{1,4})\s+(.+)$/);
+      }
+
+      function consumeFencedCodeBlock(lines, startIndex) {
+        const codeLines = [];
+        let idx = startIndex + 1;
+        while (idx < lines.length && !lines[idx].trim().startsWith("```")) {
+          codeLines.push(lines[idx]);
+          idx += 1;
+        }
+        if (idx < lines.length) {
+          idx += 1;
+        }
+        const html = "<pre><code>" + escapeHtml(codeLines.join("\n")) + "</code></pre>";
+        return { nextIndex: idx, html };
+      }
+
+      function consumeBlockquote(lines, startIndex) {
+        const quoteLines = [];
+        let idx = startIndex;
+        while (idx < lines.length && lines[idx].trim().startsWith(">")) {
+          quoteLines.push(lines[idx].trim().replace(/^>\s?/, ""));
+          idx += 1;
+        }
+        return {
+          nextIndex: idx,
+          html: "<blockquote>" + renderParagraphs(quoteLines) + "</blockquote>",
+        };
+      }
+
+      function buildListHtml(tagName, items) {
+        const parts = [];
+        for (const item of items) {
+          parts.push("<li>" + renderInline(item) + "</li>");
+        }
+        return "<" + tagName + ">" + parts.join("") + "</" + tagName + ">";
+      }
+
+      function consumeBulletList(lines, startIndex) {
+        const items = [];
+        let idx = startIndex;
+        while (idx < lines.length && /^[-*]\s+/.test(lines[idx].trim())) {
+          items.push(lines[idx].trim().replace(/^[-*]\s+/, ""));
+          idx += 1;
+        }
+        return { nextIndex: idx, html: buildListHtml("ul", items) };
+      }
+
+      function consumeOrderedList(lines, startIndex) {
+        const items = [];
+        let idx = startIndex;
+        while (idx < lines.length && /^\d+\.\s+/.test(lines[idx].trim())) {
+          items.push(lines[idx].trim().replace(/^\d+\.\s+/, ""));
+          idx += 1;
+        }
+        return { nextIndex: idx, html: buildListHtml("ol", items) };
+      }
+
+      function consumeParagraph(lines, startIndex) {
+        const paragraphLines = [];
+        let idx = startIndex;
+        while (
+          idx < lines.length &&
+          lines[idx].trim() &&
+          !lines[idx].trim().startsWith("```") &&
+          !isHorizontalRuleLine(lines[idx].trim()) &&
+          !matchHeadingLine(lines[idx].trim()) &&
+          !lines[idx].trim().startsWith(">") &&
+          !/^[-*]\s+/.test(lines[idx].trim()) &&
+          !/^\d+\.\s+/.test(lines[idx].trim())
+        ) {
+          paragraphLines.push(lines[idx].trim());
+          idx += 1;
+        }
+        return {
+          nextIndex: idx,
+          html: "<p>" + renderInline(paragraphLines.join(" ")) + "</p>",
+        };
+      }
+
       function renderMarkdown(markdown) {
         const lines = markdown.replaceAll("\r\n", "\n").split("\n");
         const blocks = [];
@@ -964,8 +1053,7 @@
         let index = 0;
 
         while (index < lines.length) {
-          const line = lines[index];
-          const trimmed = line.trim();
+          const trimmed = lines[index].trim();
 
           if (!trimmed) {
             index += 1;
@@ -973,69 +1061,57 @@
           }
 
           if (trimmed.startsWith("```")) {
-            const codeLines = [];
-            index += 1;
-
-            while (index < lines.length && !lines[index].trim().startsWith("```")) {
-              codeLines.push(lines[index]);
-              index += 1;
-            }
-
-            index += 1;
-            blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+            const codeBlock = consumeFencedCodeBlock(lines, index);
+            blocks.push(codeBlock.html);
+            index = codeBlock.nextIndex;
             continue;
           }
 
-          if (/^\\?-{3,}$/.test(trimmed)) {
+          if (isHorizontalRuleLine(trimmed)) {
             blocks.push("<hr>");
             index += 1;
             continue;
           }
 
-          const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+          const headingMatch = matchHeadingLine(trimmed);
           if (headingMatch) {
             const level = headingMatch[1].length;
             const text = cleanInlineText(headingMatch[2]);
             const id = uniqueSlug(text, headings);
             headings.push({ id, level, text });
-            blocks.push(`<h${level} id="${id}">${renderInline(headingMatch[2])}</h${level}>`);
+            blocks.push(
+              "<h" +
+                level +
+                ' id="' +
+                id +
+                '">' +
+                renderInline(headingMatch[2]) +
+                "</h" +
+                level +
+                ">"
+            );
             index += 1;
             continue;
           }
 
           if (trimmed.startsWith(">")) {
-            const quoteLines = [];
-
-            while (index < lines.length && lines[index].trim().startsWith(">")) {
-              quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
-              index += 1;
-            }
-
-            blocks.push(`<blockquote>${renderParagraphs(quoteLines)}</blockquote>`);
+            const bq = consumeBlockquote(lines, index);
+            blocks.push(bq.html);
+            index = bq.nextIndex;
             continue;
           }
 
           if (/^[-*]\s+/.test(trimmed)) {
-            const items = [];
-
-            while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-              items.push(lines[index].trim().replace(/^[-*]\s+/, ""));
-              index += 1;
-            }
-
-            blocks.push(`<ul>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`);
+            const ul = consumeBulletList(lines, index);
+            blocks.push(ul.html);
+            index = ul.nextIndex;
             continue;
           }
 
           if (/^\d+\.\s+/.test(trimmed)) {
-            const items = [];
-
-            while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
-              items.push(lines[index].trim().replace(/^\d+\.\s+/, ""));
-              index += 1;
-            }
-
-            blocks.push(`<ol>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ol>`);
+            const ol = consumeOrderedList(lines, index);
+            blocks.push(ol.html);
+            index = ol.nextIndex;
             continue;
           }
 
@@ -1045,23 +1121,9 @@
             continue;
           }
 
-          const paragraphLines = [];
-
-          while (
-            index < lines.length &&
-            lines[index].trim() &&
-            !lines[index].trim().startsWith("```") &&
-            !/^\\?-{3,}$/.test(lines[index].trim()) &&
-            !lines[index].trim().match(/^(#{1,4})\s+(.+)$/) &&
-            !lines[index].trim().startsWith(">") &&
-            !/^[-*]\s+/.test(lines[index].trim()) &&
-            !/^\d+\.\s+/.test(lines[index].trim())
-          ) {
-            paragraphLines.push(lines[index].trim());
-            index += 1;
-          }
-
-          blocks.push(`<p>${renderInline(paragraphLines.join(" "))}</p>`);
+          const para = consumeParagraph(lines, index);
+          blocks.push(para.html);
+          index = para.nextIndex;
         }
 
         return { html: blocks.join("\n"), headings };
@@ -1086,9 +1148,17 @@
 
         return visibleHeadings
           .slice(0, 24)
-          .map((heading) => (
-            `<a class="level-${heading.level}" href="#${heading.id}">${escapeHtml(heading.text)}</a>`
-          ))
+          .map((heading) => {
+            return (
+              '<a class="level-' +
+              heading.level +
+              '" href="#' +
+              heading.id +
+              '">' +
+              escapeHtml(heading.text) +
+              "</a>"
+            );
+          })
           .join("");
       }
 

@@ -35,6 +35,8 @@ from atman.skills.store import SkillStore
 
 _log = logging.getLogger(__name__)
 
+_SKILL_MD_BASENAME = "SKILL.md"
+
 
 class SkillInstallError(RuntimeError):
     """Raised when an install attempt fails for any reason the user must see."""
@@ -97,10 +99,10 @@ def install_external(
     with tempfile.TemporaryDirectory(prefix="atman-skill-install-") as td:
         staging = Path(td)
         manifest_dir = _materialise_source(source, staging, http_get=http_get)
-        manifest_path = manifest_dir / "SKILL.md"
+        manifest_path = manifest_dir / _SKILL_MD_BASENAME
         if not manifest_path.exists():
             raise SkillInstallError(
-                f"No SKILL.md at the root of '{source}' (looked in {manifest_dir})"
+                f"No {_SKILL_MD_BASENAME} at the root of '{source}' (looked in {manifest_dir})"
             )
 
         manifest = parse_skill_md(manifest_path)
@@ -150,7 +152,7 @@ def install_external(
         # overrides (origin, name) we applied above.
         from atman.skills.manifest import write_skill_md
 
-        write_skill_md(manifest, target_root / "SKILL.md")
+        write_skill_md(manifest, target_root / _SKILL_MD_BASENAME)
 
         now = datetime.now(UTC)
         entity_id = _resolve_entity_id(
@@ -180,7 +182,7 @@ def install_external(
             last_revised_at=None,
             manifest_inferred=manifest.manifest_inferred,
             skill_root=target_root,
-            manifest_path=target_root / "SKILL.md",
+            manifest_path=target_root / _SKILL_MD_BASENAME,
             created_at=now,
             updated_at=now,
         )
@@ -329,20 +331,20 @@ def _locate_manifest_root(root: Path) -> Path:
     (common for GitHub archives) but no deeper to keep the resolution
     unambiguous.
     """
-    if (root / "SKILL.md").exists():
+    if (root / _SKILL_MD_BASENAME).exists():
         return root
     candidates = [p for p in root.iterdir() if p.is_dir()]
-    if len(candidates) == 1 and (candidates[0] / "SKILL.md").exists():
+    if len(candidates) == 1 and (candidates[0] / _SKILL_MD_BASENAME).exists():
         return candidates[0]
     raise SkillInstallError(
-        f"No SKILL.md found at the top of {root} (or inside a single wrapper dir)"
+        f"No {_SKILL_MD_BASENAME} found at the top of {root} (or inside a single wrapper dir)"
     )
 
 
 # ── manifest helpers ──────────────────────────────────────────────────────
 
 
-def _rename_manifest(manifest: SkillManifest, new_name: str, manifest_path: Path) -> SkillManifest:
+def _rename_manifest(manifest: SkillManifest, new_name: str, _manifest_path: Path) -> SkillManifest:
     """Apply ``--name`` override; the new name must be kebab-case alphanumeric."""
     if not _valid_skill_name(new_name):
         raise SkillInstallError(

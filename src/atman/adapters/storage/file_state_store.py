@@ -33,6 +33,8 @@ from atman.core.ports.state_store import (
     ValuesTouchedQuery,
 )
 
+_GLOB_JSON_FILES = "*.json"
+
 
 def _read_json_file(path: Path) -> Any:
     """Read JSON from ``path``; raise ``ValueError`` with file context on parse error."""
@@ -159,7 +161,7 @@ class FileStateStore(StateStore):
         """
         all_experiences: list[ExperienceRecord] = []
 
-        for experience_file in self.experiences_dir.glob("*.json"):
+        for experience_file in self.experiences_dir.glob(_GLOB_JSON_FILES):
             data = _read_json_file(experience_file)
             record = ExperienceRecord.model_validate(data)
 
@@ -312,7 +314,7 @@ class FileStateStore(StateStore):
         """List identity snapshots."""
         snapshots: list[IdentitySnapshot] = []
 
-        for snapshot_file in self.identity_snapshots_dir.glob("*.json"):
+        for snapshot_file in self.identity_snapshots_dir.glob(_GLOB_JSON_FILES):
             data = _read_json_file(snapshot_file)
             snapshot = IdentitySnapshot.model_validate(data)
 
@@ -398,7 +400,7 @@ class FileStateStore(StateStore):
         """List archived narratives."""
         archived: list[tuple[NarrativeDocument, str, datetime]] = []
 
-        for archive_file in self.narrative_archive_dir.glob("*.json"):
+        for archive_file in self.narrative_archive_dir.glob(_GLOB_JSON_FILES):
             data = _read_json_file(archive_file)
 
             narrative = NarrativeDocument.model_validate(data["narrative"])
@@ -528,7 +530,7 @@ class FileStateStore(StateStore):
             if session_file.exists():
                 try:
                     existing = _read_json_file(session_file)
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     existing = []
                 if isinstance(existing, list):
                     replaced = False
@@ -596,7 +598,7 @@ class FileStateStore(StateStore):
                     data = json.loads(line)
                     key_moment = KeyMoment.model_validate(data)
                     key_moments.append(key_moment)
-                except (json.JSONDecodeError, ValueError) as e:
+                except ValueError as e:
                     import warnings
 
                     warnings.warn(
@@ -637,11 +639,11 @@ class FileStateStore(StateStore):
 
     def _iter_sessions_for_agent(self, agent_id: UUID) -> list[Session]:
         sessions: list[Session] = []
-        for session_file in self.sessions_dir.glob("*.json"):
+        for session_file in self.sessions_dir.glob(_GLOB_JSON_FILES):
             try:
                 data = _read_json_file(session_file)
                 s = Session.model_validate(data)
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 import warnings
 
                 warnings.warn(

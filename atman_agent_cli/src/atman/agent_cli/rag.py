@@ -421,7 +421,7 @@ class RAGIndex:
             t_build = float(json.loads(meta_obj.read_text(encoding="utf-8")).get("built_at", 0))
             limit_h = float(getattr(self.cfg, "rag_stale_hours", 4.0))
             return (time.time() - t_build) / 3600 > limit_h
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError):
             return True
 
     def symbol_search(self, nm: str) -> list[Chunk]:
@@ -688,7 +688,7 @@ class RAGIndex:
                 ):
                     d_ob.setdefault(dk, dv)
                 self._chunks.append(Chunk(**d_ob))
-            except (TypeError, KeyError, ValueError, json.JSONDecodeError):
+            except (TypeError, KeyError, ValueError):
                 continue
 
         if np_emb.exists():

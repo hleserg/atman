@@ -9,7 +9,6 @@ explicit exits (SystemExit).
 from __future__ import annotations
 
 import signal
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -33,6 +32,7 @@ from atman.core.models import (
     SessionResult,
 )
 from atman.core.services.session_manager import SessionManager
+from tests._fake_paths import _TEST_RUNNER_WORKSPACE
 
 if TYPE_CHECKING:
     from atman.core.ports.state_store import StateStore
@@ -211,7 +211,8 @@ def test_chat_handles_keyboard_interrupt(
     ) -> None:
         """Patched chat that raises KeyboardInterrupt."""
         interrupted = False
-        exit_code = 0
+        pending_system_exit: SystemExit | None = None
+        _ = close_reason
 
         def _sigterm_handler(signum: int, frame: object) -> None:
             nonlocal interrupted
@@ -226,13 +227,13 @@ def test_chat_handles_keyboard_interrupt(
             interrupted = True
         except SystemExit as exc:
             interrupted = True
-            exit_code = exc.code if isinstance(exc.code, int) else 1
+            pending_system_exit = exc
         finally:
             signal.signal(signal.SIGTERM, original_sigterm_handler)
             if interrupted:
                 _force_finish(sm, sid, close_reason="interrupted")  # type: ignore[arg-type]
-            if exit_code != 0:
-                sys.exit(exit_code)
+            if pending_system_exit is not None:
+                raise pending_system_exit
 
     # Call patched version
     patched_chat(session_manager, ctx.session_id)
@@ -302,7 +303,7 @@ def test_chat_handles_system_exit(
 
     # Simulate SystemExit
     interrupted = False
-    exit_code = 0
+    pending_system_exit: SystemExit | None = None
 
     def _sigterm_handler(signum: int, frame: object) -> None:
         nonlocal interrupted
@@ -311,23 +312,20 @@ def test_chat_handles_system_exit(
 
     original_sigterm_handler = signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    try:
+    with pytest.raises(SystemExit) as exc_info:
         try:
-            sys.exit(42)
+            raise SystemExit(42)
         except SystemExit as exc:
             interrupted = True
-            exit_code = exc.code if isinstance(exc.code, int) else 1
+            pending_system_exit = exc
         finally:
             signal.signal(signal.SIGTERM, original_sigterm_handler)
             if interrupted:
                 _force_finish(session_manager, ctx.session_id, close_reason="interrupted")
-            if exit_code != 0:
-                with pytest.raises(SystemExit) as exc_info:
-                    sys.exit(exit_code)
-                assert exc_info.value.code == 42
+            if pending_system_exit is not None:
+                raise pending_system_exit
 
-    except SystemExit:
-        pass  # Expected
+    assert exc_info.value.code == 42
 
     # Verify session was force-finished
     session_result = session_manager.get_active_session(ctx.session_id)
@@ -826,7 +824,7 @@ def test_build_wake_up_message_timeout_sleep(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )
@@ -861,7 +859,7 @@ def test_build_wake_up_message_restart(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )
@@ -893,7 +891,7 @@ def test_build_wake_up_message_forced(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )
@@ -925,7 +923,7 @@ def test_build_wake_up_message_interrupted(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )
@@ -957,7 +955,7 @@ def test_build_wake_up_message_menu_timeout(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )
@@ -988,7 +986,7 @@ def test_build_wake_up_message_no_close_reason(
     closed = _closed_session(session_manager._state_store, ctx.session_id)
 
     runner = AtmanRunner(
-        workspace=Path("/tmp"),
+        workspace=_TEST_RUNNER_WORKSPACE,
         agent_id=identity_with_narrative.id,
         config=AgentConfig(model=ModelConfig(model="test")),
     )

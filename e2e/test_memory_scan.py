@@ -7,7 +7,7 @@ boundary_event detection and AffectDetector statistical triggers.
 Usage:
     PYTHONPATH=. .venv/bin/python e2e/test_memory_scan.py [--jsonl PATH]
 
-Default JSONL: /tmp/atman-live-session.jsonl
+Default JSONL: ~/.atman/live-session.jsonl (override with ATMAN_LIVE_SESSION_LOG)
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -25,7 +26,15 @@ from rich.table import Table
 
 _rc = Console(highlight=False)
 
-SESSION_LOG = Path("/tmp/atman-live-session.jsonl")
+
+def _default_session_log_path() -> Path:
+    override = os.environ.get("ATMAN_LIVE_SESSION_LOG")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".atman" / "live-session.jsonl"
+
+
+SESSION_LOG = _default_session_log_path()
 
 
 def load_responses(jsonl: Path) -> list[dict]:

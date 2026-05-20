@@ -233,6 +233,7 @@ def register_github_webhook(
     Register (or update) GitHub webhook pointing to the tunnel.
     Returns webhook ID or None on failure.
     """
+    _ = webhook_port
     webhook_url = f"{tunnel_url}{WEBHOOK_PATH}"
     headers = {
         "Authorization": f"Bearer {github_token}",

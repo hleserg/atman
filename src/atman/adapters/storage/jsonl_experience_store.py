@@ -21,6 +21,9 @@ from atman.core.ports import (
     ValuesTouchedQuery,
 )
 
+_ERR_IDENTITY_NOT_SUPPORTED_JSONL = "Identity operations not supported in JsonlExperienceStore"
+_ERR_NARRATIVE_NOT_SUPPORTED_JSONL = "Narrative operations not supported in JsonlExperienceStore"
+
 
 class JsonlExperienceStore(StateStore):
     """
@@ -306,35 +309,35 @@ class JsonlExperienceStore(StateStore):
 
     def load_identity(self, agent_id):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_JSONL)
 
     def save_identity(self, identity, expected_version=None):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_JSONL)
 
     def create_identity_snapshot(self, snapshot):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_JSONL)
 
     def list_identity_snapshots(self, identity_id, limit=10):  # type: ignore
         """Not implemented - use FileStateStore for identity operations."""
-        raise NotImplementedError("Identity operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_IDENTITY_NOT_SUPPORTED_JSONL)
 
     def load_narrative(self, identity_id):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_JSONL)
 
     def save_narrative(self, narrative, expected_version=None, expected_updated_at=None):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_JSONL)
 
     def archive_narrative(self, narrative_id, reason):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_JSONL)
 
     def list_archived_narratives(self, identity_id, limit=10):  # type: ignore
         """Not implemented - use FileStateStore for narrative operations."""
-        raise NotImplementedError("Narrative operations not supported in JsonlExperienceStore")
+        raise NotImplementedError(_ERR_NARRATIVE_NOT_SUPPORTED_JSONL)
 
     def save_eigenstate(self, eigenstate):  # type: ignore
         """Not implemented - use FileStateStore for eigenstate operations."""

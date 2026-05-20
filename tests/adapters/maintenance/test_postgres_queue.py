@@ -31,7 +31,7 @@ pytestmark = [
 @pytest.fixture
 def db_url() -> str:
     """Return test database URL from environment."""
-    return os.environ.get("TEST_DB_URL", "postgresql://atman@localhost:5432/atman_test")
+    return os.environ.get("TEST_DB_URL", "postgresql://atman:atman@localhost:5432/atman_test")
 
 
 @pytest.fixture

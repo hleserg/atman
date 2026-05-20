@@ -20,15 +20,20 @@ from rich.theme import Theme
 
 from atman.core.models import ExperienceRecord, FactRecord
 
+# Rich theme / style names — single literal site (Sonar S1192).
+RICH_STYLE_DIM = "term.dim"
+RICH_STYLE_LABEL = "term.label"
+RICH_STYLE_BORDER = "term.border"
+
 _THEME = Theme(
     {
         "term.ok": "bold green",
         "term.err": "bold red",
         "term.warn": "yellow",
         "term.title": "bold cyan",
-        "term.dim": "dim",
-        "term.label": "bold",
-        "term.border": "cyan",
+        RICH_STYLE_DIM: "dim",
+        RICH_STYLE_LABEL: "bold",
+        RICH_STYLE_BORDER: "cyan",
     }
 )
 
@@ -79,18 +84,20 @@ def print_info(message: str) -> None:
 
 
 def print_banner(title: str, subtitle: str | None = None) -> None:
-    body = title if subtitle is None else f"{title}\n[term.dim]{subtitle}[/term.dim]"
+    body = (
+        title if subtitle is None else f"{title}\n[{RICH_STYLE_DIM}]{subtitle}[/{RICH_STYLE_DIM}]"
+    )
     console.print(
         Panel.fit(
             body,
-            border_style="term.border",
+            border_style=RICH_STYLE_BORDER,
             padding=(1, 2),
         )
     )
 
 
 def print_section(title: str) -> None:
-    console.print(Rule(f"[term.title]{title}[/term.title]", style="term.border"))
+    console.print(Rule(f"[term.title]{title}[/term.title]", style=RICH_STYLE_BORDER))
 
 
 def print_help_text(text: str) -> None:
@@ -126,7 +133,7 @@ def _indent_width(prefix: str) -> int:
 
 def print_fact(fact: FactRecord, prefix: str = "") -> None:
     table = Table(show_header=False, box=box.SIMPLE, pad_edge=False, padding=(0, 1, 0, 0))
-    table.add_column(style="term.label", justify="right", min_width=12)
+    table.add_column(style=RICH_STYLE_LABEL, justify="right", min_width=12)
     table.add_column(ratio=1)
     tags = ", ".join(fact.tags) if fact.tags else "—"
     table.add_row("ID", str(fact.id))
@@ -149,7 +156,7 @@ def print_fact(fact: FactRecord, prefix: str = "") -> None:
 def print_experience_record(record: ExperienceRecord, prefix: str = "") -> None:
     exp = record.experience
     main = Table(show_header=False, box=box.ROUNDED, pad_edge=False, padding=(0, 1, 0, 0))
-    main.add_column(style="term.label", justify="right", min_width=14)
+    main.add_column(style=RICH_STYLE_LABEL, justify="right", min_width=14)
     main.add_column(ratio=1)
     main.add_row("ID", str(exp.id))
     main.add_row("Session", str(exp.session_id))
@@ -178,13 +185,13 @@ def print_experience_record(record: ExperienceRecord, prefix: str = "") -> None:
 
     if exp.reframing_notes:
         notes = Table(title="Reframing notes", box=box.ROUNDED, show_lines=True, padding=(0, 1))
-        notes.add_column("#", justify="right", style="term.dim", width=3)
-        notes.add_column("Added", style="term.dim")
+        notes.add_column("#", justify="right", style=RICH_STYLE_DIM, width=3)
+        notes.add_column("Added", style=RICH_STYLE_DIM)
         notes.add_column("Type")
         notes.add_column("Reflection", ratio=2)
         for i, note in enumerate(exp.reframing_notes, 1):
             trig = (
-                f"\n[term.dim]Triggered by[/term.dim] {note.triggered_by}"
+                f"\n[{RICH_STYLE_DIM}]Triggered by[/{RICH_STYLE_DIM}] {note.triggered_by}"
                 if note.triggered_by
                 else ""
             )
@@ -204,7 +211,7 @@ def print_experience_record(record: ExperienceRecord, prefix: str = "") -> None:
 
 
 def print_salience_table(rows: list[tuple[int, float]], title: str | None = None) -> None:
-    table = Table(title=title, box=box.ROUNDED, show_header=True, header_style="term.label")
+    table = Table(title=title, box=box.ROUNDED, show_header=True, header_style=RICH_STYLE_LABEL)
     table.add_column("Days", justify="right")
     table.add_column("Salience", justify="right")
     for days, sal in rows:

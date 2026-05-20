@@ -71,7 +71,7 @@ class PostgresSelfAppliedChangeStore(SelfAppliedChangeStore):
             )
         self._agent_id = agent_id
         self._db_url = db_url or os.environ.get(
-            "ATMAN_DB_URL", "postgresql://atman@localhost:5432/atman"
+            "ATMAN_DB_URL", "postgresql://atman:atman@localhost:5432/atman"
         )
         self._conn: psycopg.Connection[Any] | None = None
         self._schema_resolver = AgentSchemaResolver(fixed_serial_id=fixed_serial_id)

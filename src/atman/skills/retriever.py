@@ -40,6 +40,7 @@ class SkillRetriever:
         session_id: UUID,
     ) -> list[SkillSuggestion]:
         """Return ranked suggestions for on-demand (non-pinned) skills."""
+        _ = session_id
         candidates = self._store.list_active_on_demand(agent_id)
         if not candidates:
             return []

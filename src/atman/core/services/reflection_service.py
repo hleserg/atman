@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from datetime import UTC, datetime, time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -65,10 +65,16 @@ from atman.core.reflection_run_keys import (
     reframing_trigger_key,
 )
 from atman.core.services.divergence_aggregator import DivergenceAggregator
-from atman.core.services.entity_relations_formulator import EntityRelationsFormulator
-from atman.core.services.entity_stance_formulator import EntityStanceFormulator
+from atman.core.services.entity_relations_formulator import (
+    EntityRelationsFormulator,
+    RelationFormulationOutcome,
+)
+from atman.core.services.entity_stance_formulator import (
+    EntityStanceFormulator,
+    StanceFormulationOutcome,
+)
 from atman.core.services.findings_triage import FindingsTriage, TriageOutcome
-from atman.core.services.merge_candidates_handler import MergeCandidatesHandler
+from atman.core.services.merge_candidates_handler import MergeCandidatesHandler, MergeOutcome
 from atman.core.services.narrative_revision import NarrativeRevisionService
 from atman.core.services.session_experience_view import build_session_experience
 from atman.core.services.structured_markers_aggregator import StructuredMarkersAggregator
@@ -478,6 +484,75 @@ class DailyReflectionService:
         self._agent_id = agent_id
         self._skill_manager = skill_manager
 
+    def _compose_daily_notes(
+        self,
+        *,
+        reframing_nf: int,
+        reframing_sr: int,
+        reframing_dup: int,
+        pending_requests: list[ReflectionRequest],
+        divergence_patterns: list[PatternCandidate],
+        rupture_observations: list[str],
+        triage_outcome: TriageOutcome | None,
+        stance_outcome: Any | None,
+        skill_summary: DailySkillSummary | None,
+    ) -> str:
+        notes = "outcome=daily_ok"
+        if reframing_nf or reframing_sr:
+            notes += (
+                f" signal=reframing_append_degraded not_found={reframing_nf} "
+                f"storage_rejected={reframing_sr}"
+            )
+        if reframing_dup:
+            notes += f" reframing_duplicate_triggered_by={reframing_dup}"
+        if pending_requests:
+            notes += f" agent_driven_requests={len(pending_requests)}"
+        if divergence_patterns:
+            notes += f" divergence_patterns={len(divergence_patterns)}"
+        if rupture_observations:
+            notes += f" divergence_ruptures={len(rupture_observations)}"
+        if triage_outcome is not None:
+            notes += (
+                f" findings_triage_resolved={triage_outcome.resolved_count}"
+                f" findings_triage_attention={triage_outcome.requires_attention_count}"
+            )
+        if stance_outcome is not None and (stance_outcome.formulated or stance_outcome.skipped):
+            notes += f" entity_stances_formulated={stance_outcome.formulated}"
+        if skill_summary is None:
+            return notes
+        if skill_summary.revision_needed_count:
+            notes += f" skill_revision_pending={skill_summary.revision_needed_count}"
+        if skill_summary.revision_priority_bumped:
+            notes += f" skill_revision_priority_bumped={skill_summary.revision_priority_bumped}"
+        if skill_summary.high_priority_revisions:
+            notes += f" skill_revision_high_priority={len(skill_summary.high_priority_revisions)}"
+        if skill_summary.promoted_from_draft:
+            notes += f" skill_promoted_from_draft={len(skill_summary.promoted_from_draft)}"
+        return notes
+
+    @staticmethod
+    def _compose_daily_key_insight(
+        *,
+        patterns_detected: list[PatternCandidate],
+        agent_reasons: list[str],
+        rupture_observations: list[str],
+        skill_summary: DailySkillSummary | None,
+    ) -> str:
+        key_insight_parts = [f"Daily reflection: {len(patterns_detected)} patterns detected"]
+        if agent_reasons:
+            joined = "; ".join(agent_reasons[:3])
+            key_insight_parts.append(f"Agent asked to look at: {joined}")
+        if rupture_observations:
+            joined = "; ".join(rupture_observations[:3])
+            key_insight_parts.append(f"Ruptures observed: {joined}")
+        if skill_summary is not None and skill_summary.high_priority_revisions:
+            joined = ", ".join(skill_summary.high_priority_revisions[:3])
+            key_insight_parts.append(f"Skills needing revision: {joined}")
+        if skill_summary is not None and skill_summary.promoted_from_draft:
+            joined = ", ".join(skill_summary.promoted_from_draft[:3])
+            key_insight_parts.append(f"Skills promoted from draft: {joined}")
+        return ". ".join(key_insight_parts)
+
     def reflect(self, date: datetime) -> ReflectionEvent:
         """
         Perform daily reflection for a specific date.
@@ -592,53 +667,24 @@ class DailyReflectionService:
         # is not.
         skill_summary = self._process_skills_for_daily()
 
-        notes = "outcome=daily_ok"
-        if reframing_nf or reframing_sr:
-            notes += (
-                f" signal=reframing_append_degraded not_found={reframing_nf} "
-                f"storage_rejected={reframing_sr}"
-            )
-        if reframing_dup:
-            notes += f" reframing_duplicate_triggered_by={reframing_dup}"
-        if pending_requests:
-            notes += f" agent_driven_requests={len(pending_requests)}"
-        if divergence_patterns:
-            notes += f" divergence_patterns={len(divergence_patterns)}"
-        if rupture_observations:
-            notes += f" divergence_ruptures={len(rupture_observations)}"
-        if triage_outcome is not None:
-            notes += (
-                f" findings_triage_resolved={triage_outcome.resolved_count}"
-                f" findings_triage_attention={triage_outcome.requires_attention_count}"
-            )
-        if stance_outcome is not None and (stance_outcome.formulated or stance_outcome.skipped):
-            notes += f" entity_stances_formulated={stance_outcome.formulated}"
-        if skill_summary is not None:
-            if skill_summary.revision_needed_count:
-                notes += f" skill_revision_pending={skill_summary.revision_needed_count}"
-            if skill_summary.revision_priority_bumped:
-                notes += f" skill_revision_priority_bumped={skill_summary.revision_priority_bumped}"
-            if skill_summary.high_priority_revisions:
-                notes += (
-                    f" skill_revision_high_priority={len(skill_summary.high_priority_revisions)}"
-                )
-            if skill_summary.promoted_from_draft:
-                notes += f" skill_promoted_from_draft={len(skill_summary.promoted_from_draft)}"
+        notes = self._compose_daily_notes(
+            reframing_nf=reframing_nf,
+            reframing_sr=reframing_sr,
+            reframing_dup=reframing_dup,
+            pending_requests=pending_requests,
+            divergence_patterns=divergence_patterns,
+            rupture_observations=rupture_observations,
+            triage_outcome=triage_outcome,
+            stance_outcome=stance_outcome,
+            skill_summary=skill_summary,
+        )
 
-        key_insight_parts = [f"Daily reflection: {len(patterns_detected)} patterns detected"]
-        if agent_reasons:
-            joined = "; ".join(agent_reasons[:3])
-            key_insight_parts.append(f"Agent asked to look at: {joined}")
-        if rupture_observations:
-            joined = "; ".join(rupture_observations[:3])
-            key_insight_parts.append(f"Ruptures observed: {joined}")
-        if skill_summary is not None and skill_summary.high_priority_revisions:
-            joined = ", ".join(skill_summary.high_priority_revisions[:3])
-            key_insight_parts.append(f"Skills needing revision: {joined}")
-        if skill_summary is not None and skill_summary.promoted_from_draft:
-            joined = ", ".join(skill_summary.promoted_from_draft[:3])
-            key_insight_parts.append(f"Skills promoted from draft: {joined}")
-        key_insight = ". ".join(key_insight_parts)
+        key_insight = self._compose_daily_key_insight(
+            patterns_detected=patterns_detected,
+            agent_reasons=agent_reasons,
+            rupture_observations=rupture_observations,
+            skill_summary=skill_summary,
+        )
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DAILY,
@@ -874,6 +920,79 @@ class DeepReflectionService:
         self._agent_id = agent_id
         self._skill_manager = skill_manager
 
+    def _compose_deep_notes(
+        self,
+        *,
+        reframing_nf: int,
+        reframing_sr: int,
+        reframing_dup: int,
+        stance_outcome: StanceFormulationOutcome | None,
+        merge_outcome: MergeOutcome | None,
+        pending_requests: list[ReflectionRequest],
+        relation_outcome: RelationFormulationOutcome | None,
+        skill_summary: DeepSkillSummary | None,
+    ) -> str:
+        notes = "outcome=deep_ok"
+        if reframing_nf or reframing_sr:
+            notes += (
+                f" signal=reframing_append_degraded not_found={reframing_nf} "
+                f"storage_rejected={reframing_sr}"
+            )
+        if reframing_dup:
+            notes += f" reframing_duplicate_triggered_by={reframing_dup}"
+        if stance_outcome is not None and (stance_outcome.formulated or stance_outcome.promoted):
+            notes += (
+                f" entity_stances_revised={stance_outcome.formulated}"
+                f" entity_stances_promoted={stance_outcome.promoted}"
+            )
+        if merge_outcome is not None and (merge_outcome.merged or merge_outcome.ignored):
+            notes += (
+                f" merge_candidates_merged={merge_outcome.merged}"
+                f" merge_candidates_ignored={merge_outcome.ignored}"
+            )
+        if pending_requests:
+            notes += f" agent_driven_requests={len(pending_requests)}"
+        if relation_outcome is not None and (
+            relation_outcome.formulated or relation_outcome.pairs_considered
+        ):
+            notes += (
+                f" entity_relations_formulated={relation_outcome.formulated}"
+                f" entity_relations_pairs={relation_outcome.pairs_considered}"
+            )
+        if skill_summary is None:
+            return notes
+        if skill_summary.archive_candidates:
+            notes += f" skill_archive_candidates={len(skill_summary.archive_candidates)}"
+        if skill_summary.problematic_skills:
+            notes += f" skill_problematic={len(skill_summary.problematic_skills)}"
+        return notes
+
+    @staticmethod
+    def _compose_deep_key_insight(
+        *,
+        patterns_detected: list[PatternCandidate],
+        health_assessment: HealthAssessment,
+        agent_reasons: list[str],
+        skill_summary: DeepSkillSummary | None,
+    ) -> str:
+        key_insight = (
+            f"Deep reflection: {len(patterns_detected)} patterns, "
+            f"health score {health_assessment.overall_score:.2f}"
+        )
+        if agent_reasons:
+            joined = "; ".join(agent_reasons[:3])
+            key_insight = f"{key_insight}. Agent asked to look at: {joined}"
+        if skill_summary is None or (
+            not skill_summary.archive_candidates and not skill_summary.problematic_skills
+        ):
+            return key_insight
+        parts = []
+        if skill_summary.problematic_skills:
+            parts.append("problematic skills: " + ", ".join(skill_summary.problematic_skills[:3]))
+        if skill_summary.archive_candidates:
+            parts.append("archive candidates: " + ", ".join(skill_summary.archive_candidates[:3]))
+        return f"{key_insight}. Skill loop — {'; '.join(parts)}"
+
     def reflect(self, since: datetime, until: datetime) -> ReflectionEvent:
         """
         Perform deep reflection over a period.
@@ -1004,59 +1123,23 @@ class DeepReflectionService:
             merge_outcome=merge_outcome,
         )
 
-        notes = "outcome=deep_ok"
-        if reframing_nf or reframing_sr:
-            notes += (
-                f" signal=reframing_append_degraded not_found={reframing_nf} "
-                f"storage_rejected={reframing_sr}"
-            )
-        if reframing_dup:
-            notes += f" reframing_duplicate_triggered_by={reframing_dup}"
-        if stance_outcome is not None and (stance_outcome.formulated or stance_outcome.promoted):
-            notes += (
-                f" entity_stances_revised={stance_outcome.formulated}"
-                f" entity_stances_promoted={stance_outcome.promoted}"
-            )
-        if merge_outcome is not None and (merge_outcome.merged or merge_outcome.ignored):
-            notes += (
-                f" merge_candidates_merged={merge_outcome.merged}"
-                f" merge_candidates_ignored={merge_outcome.ignored}"
-            )
-        if pending_requests:
-            notes += f" agent_driven_requests={len(pending_requests)}"
-        if relation_outcome is not None and (
-            relation_outcome.formulated or relation_outcome.pairs_considered
-        ):
-            notes += (
-                f" entity_relations_formulated={relation_outcome.formulated}"
-                f" entity_relations_pairs={relation_outcome.pairs_considered}"
-            )
-        if skill_summary is not None:
-            if skill_summary.archive_candidates:
-                notes += f" skill_archive_candidates={len(skill_summary.archive_candidates)}"
-            if skill_summary.problematic_skills:
-                notes += f" skill_problematic={len(skill_summary.problematic_skills)}"
-
-        key_insight = (
-            f"Deep reflection: {len(patterns_detected)} patterns, "
-            f"health score {health_assessment.overall_score:.2f}"
+        notes = self._compose_deep_notes(
+            reframing_nf=reframing_nf,
+            reframing_sr=reframing_sr,
+            reframing_dup=reframing_dup,
+            stance_outcome=stance_outcome,
+            merge_outcome=merge_outcome,
+            pending_requests=pending_requests,
+            relation_outcome=relation_outcome,
+            skill_summary=skill_summary,
         )
-        if agent_reasons:
-            joined = "; ".join(agent_reasons[:3])
-            key_insight = f"{key_insight}. Agent asked to look at: {joined}"
-        if skill_summary is not None and (
-            skill_summary.archive_candidates or skill_summary.problematic_skills
-        ):
-            parts = []
-            if skill_summary.problematic_skills:
-                parts.append(
-                    "problematic skills: " + ", ".join(skill_summary.problematic_skills[:3])
-                )
-            if skill_summary.archive_candidates:
-                parts.append(
-                    "archive candidates: " + ", ".join(skill_summary.archive_candidates[:3])
-                )
-            key_insight = f"{key_insight}. Skill loop — {'; '.join(parts)}"
+
+        key_insight = self._compose_deep_key_insight(
+            patterns_detected=patterns_detected,
+            health_assessment=health_assessment,
+            agent_reasons=agent_reasons,
+            skill_summary=skill_summary,
+        )
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.DEEP,
@@ -1170,6 +1253,46 @@ class DeepReflectionService:
             timestamp=self._clock.now(),
         )
 
+    def _detect_one_deep_pattern(
+        self,
+        pattern_type: PatternType,
+        experiences: list[SessionExperience],
+        identity: Identity,
+        run_key: str,
+        *,
+        agent_reasons: list[str] | None,
+        key_moments_by_session: dict[UUID, list[KeyMoment]] | None,
+    ) -> PatternCandidate | None:
+        context = {
+            "identity_values": ", ".join(v.name for v in identity.core_values),
+            "pattern_type": pattern_type.value,
+        }
+        if agent_reasons:
+            context["agent_requested_focus"] = " | ".join(agent_reasons)
+
+        detection = self.reflection_model.detect_pattern(
+            experiences=experiences,
+            context=context,
+            key_moments_by_session=key_moments_by_session,
+        )
+        pattern_description = detection.description.strip()
+
+        if not pattern_description or len(pattern_description) <= 10:
+            return None
+
+        conf = detection.confidence if detection.confidence is not None else 0.7
+        detection_key = deep_pattern_detection_key(run_key, pattern_type.value)
+        pattern = PatternCandidate(
+            pattern_type=pattern_type,
+            description=pattern_description,
+            examples=[exp.id for exp in experiences[:5]],
+            detected_by=ReflectionLevel.DEEP,
+            confidence=conf,
+            potential_habit=detection.potential_habit,
+            potential_principle=detection.potential_principle,
+        )
+        return self.pattern_store.save_with_detection_key(detection_key, pattern)
+
     def _detect_deep_patterns(
         self,
         experiences: list[SessionExperience],
@@ -1185,34 +1308,16 @@ class DeepReflectionService:
 
         patterns: list[PatternCandidate] = []
 
-        for pattern_type in [PatternType.BEHAVIOR, PatternType.EMOTIONAL]:
-            context = {
-                "identity_values": ", ".join(v.name for v in identity.core_values),
-                "pattern_type": pattern_type.value,
-            }
-            if agent_reasons:
-                context["agent_requested_focus"] = " | ".join(agent_reasons)
-
-            detection = self.reflection_model.detect_pattern(
-                experiences=experiences,
-                context=context,
+        for pattern_type in (PatternType.BEHAVIOR, PatternType.EMOTIONAL):
+            stored = self._detect_one_deep_pattern(
+                pattern_type,
+                experiences,
+                identity,
+                run_key,
+                agent_reasons=agent_reasons,
                 key_moments_by_session=key_moments_by_session,
             )
-            pattern_description = detection.description.strip()
-
-            if pattern_description and len(pattern_description) > 10:
-                conf = detection.confidence if detection.confidence is not None else 0.7
-                detection_key = deep_pattern_detection_key(run_key, pattern_type.value)
-                pattern = PatternCandidate(
-                    pattern_type=pattern_type,
-                    description=pattern_description,
-                    examples=[exp.id for exp in experiences[:5]],
-                    detected_by=ReflectionLevel.DEEP,
-                    confidence=conf,
-                    potential_habit=detection.potential_habit,
-                    potential_principle=detection.potential_principle,
-                )
-                stored = self.pattern_store.save_with_detection_key(detection_key, pattern)
+            if stored is not None:
                 patterns.append(stored)
 
         return patterns
@@ -1245,6 +1350,7 @@ class DeepReflectionService:
         key_moments_by_session: dict[UUID, list[KeyMoment]] | None = None,
     ) -> str:
         """Propose revisions to narrative based on patterns."""
+        _ = (identity, patterns)
         narrative = self.narrative_repo.get_current()
         if not narrative:
             return "No narrative to revise"

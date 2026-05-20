@@ -5,19 +5,23 @@
     <script>
       (function () {
         try {
-          var q = new URLSearchParams(window.location.search);
+          var q = new URLSearchParams(globalThis.location.search);
           var u = q.get('lang');
-          var s = localStorage.getItem('atman-lang');
-          var L =
-            u === 'en' || u === 'ru'
-              ? u
-              : s === 'en' || s === 'ru'
-                ? s
-                : (navigator.language || '').toLowerCase().startsWith('ru')
-                  ? 'ru'
-                  : 'en';
-          document.documentElement.lang = L;
-        } catch (e) {}
+          var s = globalThis.localStorage.getItem('atman-lang');
+          var L;
+          if (u === 'en' || u === 'ru') {
+            L = u;
+          } else if (s === 'en' || s === 'ru') {
+            L = s;
+          } else if ((globalThis.navigator.language || '').toLowerCase().startsWith('ru')) {
+            L = 'ru';
+          } else {
+            L = 'en';
+          }
+          globalThis.document.documentElement.lang = L;
+        } catch (e) {
+          void e;
+        }
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1123,17 +1127,17 @@
       };
 
       function detectLanguage() {
-        const urlLang = new URLSearchParams(window.location.search).get('lang');
+        const urlLang = new URLSearchParams(globalThis.location.search).get('lang');
         if (urlLang === 'en' || urlLang === 'ru') {
           return urlLang;
         }
 
-        const savedLang = localStorage.getItem('atman-lang');
+        const savedLang = globalThis.localStorage.getItem('atman-lang');
         if (savedLang && translations[savedLang]) {
           return savedLang;
         }
 
-        const browserLang = navigator.language || navigator.userLanguage;
+        const browserLang = globalThis.navigator.language || globalThis.navigator.userLanguage;
         if (browserLang.startsWith('ru')) {
           return 'ru';
         }
@@ -1147,7 +1151,7 @@
         document.documentElement.lang = lang;
 
         document.querySelectorAll('[data-i18n-meta]').forEach(el => {
-          const key = el.getAttribute('data-i18n-meta');
+          const key = el.dataset.i18nMeta;
           if (t.meta && t.meta[key]) {
             if (el.tagName === 'TITLE') {
               el.textContent = t.meta[key];
@@ -1160,7 +1164,7 @@
         });
 
         document.querySelectorAll('[data-i18n]').forEach(el => {
-          const key = el.getAttribute('data-i18n');
+          const key = el.dataset.i18n;
           const keys = key.split('.');
           let value = t;
           for (const k of keys) {
@@ -1172,7 +1176,7 @@
         });
 
         document.querySelectorAll('[data-i18n-html]').forEach(el => {
-          const key = el.getAttribute('data-i18n-html');
+          const key = el.dataset.i18nHtml;
           const keys = key.split('.');
           let value = t;
           for (const k of keys) {
@@ -1184,10 +1188,10 @@
         });
 
         document.querySelectorAll('.lang-btn').forEach(btn => {
-          btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+          btn.classList.toggle('active', btn.dataset.lang === lang);
         });
 
-        localStorage.setItem('atman-lang', lang);
+        globalThis.localStorage.setItem('atman-lang', lang);
         syncAtmanLangInLinks(lang);
       }
 
@@ -1215,7 +1219,7 @@
             return;
           }
           const base = pathAndQuery || 'index.html';
-          const u = new URL(base, window.location.href);
+          const u = new URL(base, globalThis.location.href);
           const file = u.pathname.split('/').pop() || '';
           if (file !== 'document.html' && file !== 'demo.html' && file !== 'index.html') {
             return;
@@ -1227,7 +1231,7 @@
 
       document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          const lang = btn.getAttribute('data-lang');
+          const lang = btn.dataset.lang;
           applyTranslations(lang);
         });
       });

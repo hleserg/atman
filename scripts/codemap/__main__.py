@@ -31,7 +31,7 @@ def _setup_logging(verbose: bool = False) -> None:
     )
 
 
-def _load_components(repo_root: Path) -> dict:
+def _load_components(_repo_root: Path) -> dict:
     try:
         import yaml
     except ImportError:
@@ -184,7 +184,7 @@ def _cmd_agents(args: argparse.Namespace, repo_root: Path) -> int:
     return 0
 
 
-def _cmd_flag_stale_ru(args: argparse.Namespace, repo_root: Path) -> int:
+def _cmd_flag_stale_ru(_args: argparse.Namespace, repo_root: Path) -> int:
     from .renderer.i18n import flag_stale_ru_blocks
     from .snapshot.en_hashes import HASHES_FILE
 

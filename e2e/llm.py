@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from e2e.models import (
     SessionFixtureDocument,
@@ -201,7 +201,7 @@ def generate_corpus_with_retries(
                     else:
                         print(f"[{locale}] session {session_number}/{count} ready", flush=True)
                     break
-                except (ValidationError, ValueError) as e:
+                except ValueError as e:
                     last_err = str(e)
                     if attempt == 2:
                         raise

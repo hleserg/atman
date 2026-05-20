@@ -33,9 +33,7 @@ def _db_url() -> str:
 
 
 def _agent_serial(conn, agent_id: UUID) -> int | None:
-    row = conn.execute(
-        "SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]
-    ).fetchone()
+    row = conn.execute("SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]).fetchone()
     return int(row[0]) if row else None
 
 
@@ -56,7 +54,9 @@ def _show_key_moments(conn, schema: str, agent_id: UUID) -> None:
     ).fetchall()
     t = Table(
         title="[cyan]Key Moments[/cyan] (last 10)",
-        show_lines=False, box=None, padding=(0, 1),
+        show_lines=False,
+        box=None,
+        padding=(0, 1),
     )
     t.add_column("ID", style="dim", width=8)
     t.add_column("What happened", width=55)
@@ -90,7 +90,9 @@ def _show_facts(conn, agent_id: UUID) -> None:
     ).fetchall()
     t = Table(
         title="[cyan]Facts[/cyan] (last 10)",
-        show_lines=False, box=None, padding=(0, 1),
+        show_lines=False,
+        box=None,
+        padding=(0, 1),
     )
     t.add_column("ID", style="dim", width=8)
     t.add_column("Content", width=70)
@@ -129,7 +131,9 @@ def _show_entities(conn, schema: str, agent_id: UUID) -> None:
     ).fetchall()
     t = Table(
         title="[cyan]Entities[/cyan] (top 20 by fact links)",
-        show_lines=False, box=None, padding=(0, 1),
+        show_lines=False,
+        box=None,
+        padding=(0, 1),
     )
     t.add_column("ID", style="dim", width=8)
     t.add_column("Name", width=30)

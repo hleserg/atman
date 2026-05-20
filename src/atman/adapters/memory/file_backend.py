@@ -58,7 +58,7 @@ class FileBackend(FactualMemory):
                 try:
                     data = json.loads(line)
                     fact = FactRecord.model_validate(data)
-                except (json.JSONDecodeError, ValueError) as exc:
+                except ValueError as exc:
                     warnings.warn(
                         f"Skipping malformed fact at {self.filepath}:{line_number}: "
                         f"{type(exc).__name__}: {exc}",

@@ -138,14 +138,10 @@ def test_leap_year_handling():
     # Day will be adjusted to Feb 28 (not 31)
 
 
-def test_cli_validation_ranges():
+def test_cli_validation_ranges() -> None:
     """Test that validation ranges are reasonable."""
-    # Future months: 1-120 (10 years)
-    assert 1 <= 3 <= 120  # default
-    assert 1 <= 120  # min bound
-    assert 1 <= 120 <= 120  # max
+    future_min, future_max, future_default = 1, 120, 3
+    assert future_min <= future_default <= future_max
 
-    # Retention months: 1-240 (20 years)
-    assert 1 <= 18 <= 240  # default
-    assert 1 <= 240  # min bound
-    assert 1 <= 240 <= 240  # max
+    retention_min, retention_max, retention_default = 1, 240, 18
+    assert retention_min <= retention_default <= retention_max

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 from atman.skills.models import Skill, SkillKind, SkillOrigin, SkillStatus
+from tests._fake_paths import fake_skill_manifest, fake_skill_root
 
 
 def _now():
@@ -39,8 +39,8 @@ def _make_skill(name: str, description: str, user_pinned: bool = True, agent_id=
         revision_priority=0,
         last_revised_at=None,
         manifest_inferred=False,
-        skill_root=Path(f"/tmp/{name}"),
-        manifest_path=Path(f"/tmp/{name}/SKILL.md"),
+        skill_root=fake_skill_root(name),
+        manifest_path=fake_skill_manifest(name),
         created_at=now,
         updated_at=now,
     )

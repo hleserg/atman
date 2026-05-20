@@ -74,6 +74,9 @@ from atman.core.services.reflection_service import (
     MicroReflectionService,
 )
 
+_VALUE_INTELLECTUAL_HONESTY = "intellectual honesty"
+_VALUE_GENUINE_HELPFULNESS = "genuine helpfulness"
+
 # ---------------------------------------------------------------------------
 # Output directory (docs/demo-data/ for the website)
 # ---------------------------------------------------------------------------
@@ -555,7 +558,7 @@ def _run(workspace: Path, out: Path) -> int:
         ),
         core_values=[
             CoreValue(
-                name="intellectual honesty",
+                name=_VALUE_INTELLECTUAL_HONESTY,
                 description=(
                     "Commitment to accurate representation of reality, "
                     "even when it conflicts with what someone wants to hear. "
@@ -568,7 +571,7 @@ def _run(workspace: Path, out: Path) -> int:
                 ),
             ),
             CoreValue(
-                name="genuine helpfulness",
+                name=_VALUE_GENUINE_HELPFULNESS,
                 description=(
                     "Being useful in a real sense — not just feeling helpful in the moment, "
                     "but actually advancing the person's goals and understanding."

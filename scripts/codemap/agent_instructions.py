@@ -27,7 +27,7 @@ CURSOR_RULES = Path(".cursor/rules/docs-placement.mdc")
 CLAUDE_MD = Path("CLAUDE.md")
 
 
-def _build_docs_map(repo_root: Path, lang: str = "en") -> str:
+def _build_docs_map(repo_root: Path, _lang: str = "en") -> str:
     """Build a markdown docs tree from the docs/ directory."""
     docs_dir = repo_root / "docs"
     if not docs_dir.exists():

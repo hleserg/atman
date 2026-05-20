@@ -28,8 +28,8 @@ from datetime import UTC, datetime
 
 try:
     import psycopg
-    from psycopg import sql
     from dateutil.relativedelta import relativedelta
+    from psycopg import sql
 except ImportError:
     print(
         "Error: required packages not installed. Run: pip install 'atman[eval]'",
@@ -53,7 +53,7 @@ def get_db_url() -> str:
 def safe_db_url_for_logging(db_url: str) -> str:
     """Return safe version of DB URL for logging (without credentials)."""
     from urllib.parse import urlparse
-    
+
     try:
         parsed = urlparse(db_url)
         hostname = parsed.hostname or "localhost"
@@ -138,7 +138,10 @@ def create_future_partitions(
 
 
 def detach_old_partitions(
-    conn: psycopg.Connection, retention_months: int = DEFAULT_RETENTION_MONTHS, *, dry_run: bool = False
+    conn: psycopg.Connection,
+    retention_months: int = DEFAULT_RETENTION_MONTHS,
+    *,
+    dry_run: bool = False,
 ) -> None:
     """Detach partitions older than retention_months."""
     existing = list_existing_partitions(conn)
@@ -167,8 +170,7 @@ def show_status(conn: psycopg.Connection) -> None:
     for partition in partitions:
         # Get row count for each partition (safe identifier quoting)
         query = sql.SQL("SELECT COUNT(*) FROM {}.{}").format(
-            sql.Identifier("eval"),
-            sql.Identifier(partition)
+            sql.Identifier("eval"), sql.Identifier(partition)
         )
         cur = conn.execute(query)
         count = cur.fetchone()[0]  # type: ignore[index]
@@ -239,9 +241,7 @@ def main() -> None:
             if args.status:
                 show_status(conn)
             if args.create_future:
-                create_future_partitions(
-                    conn, months=args.future_months, dry_run=args.dry_run
-                )
+                create_future_partitions(conn, months=args.future_months, dry_run=args.dry_run)
             if args.detach_old:
                 detach_old_partitions(
                     conn, retention_months=args.retention_months, dry_run=args.dry_run

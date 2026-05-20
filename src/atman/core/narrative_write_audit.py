@@ -21,6 +21,7 @@ class NoOpNarrativeWriteAudit:
         identity_id: UUID,
         reason_or_summary: str,
     ) -> None:
+        _ = (change_kind, narrative_id, identity_id, reason_or_summary)
         return None
 
     def record_narrative_commit_audit_failure(
@@ -32,4 +33,5 @@ class NoOpNarrativeWriteAudit:
         committed_summary: str,
         error_message: str,
     ) -> None:
+        _ = (change_kind, narrative_id, identity_id, committed_summary, error_message)
         return None

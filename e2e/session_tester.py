@@ -83,7 +83,7 @@ AGENT_API_KEY = os.getenv("AGENT_LLM_API_KEY", "dummy")
 WORKSPACE = Path(os.getenv("ATMAN_AGENT_WORKSPACE", str(Path.home() / ".atman" / "dev-agent")))
 
 
-def _S(s: str) -> str:
+def _sanitize_utf8_for_log(s: str) -> str:
     return s.encode("utf-8", "replace").decode("utf-8")
 
 

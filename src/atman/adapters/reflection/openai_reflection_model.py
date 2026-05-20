@@ -5,6 +5,8 @@ Uses any OpenAI-compatible API endpoint for structured generation during reflect
 Connection details from OpenAILLMConfig.
 """
 
+from __future__ import annotations
+
 import json
 from typing import TypeVar
 from uuid import UUID
@@ -42,7 +44,7 @@ from atman.core.models.reflection import (
 from atman.core.ports.reflection import ReflectionModel
 from atman.observability.spans import ai_chat_span
 
-T = TypeVar("T", bound=pydantic.BaseModel)
+TModel = TypeVar("TModel", bound=pydantic.BaseModel)
 
 
 class OpenAIReflectionModel(ReflectionModel):
@@ -66,8 +68,8 @@ class OpenAIReflectionModel(ReflectionModel):
     def _call_with_retry(
         self,
         messages: list[OllamaMessage],
-        output_model: type[T],
-    ) -> T:
+        output_model: type[TModel],
+    ) -> TModel:
         """
         Call OpenAI-compatible API with retry on parsing failures.
 
@@ -112,8 +114,6 @@ class OpenAIReflectionModel(ReflectionModel):
                     parsed_json = json.loads(content)
                     return output_model.model_validate(parsed_json)
             except (
-                json.JSONDecodeError,
-                pydantic.ValidationError,
                 httpx.HTTPStatusError,
                 httpx.RequestError,
                 KeyError,
@@ -130,7 +130,7 @@ class OpenAIReflectionModel(ReflectionModel):
         """Close the HTTP client and release resources."""
         self._client.close()
 
-    def __enter__(self) -> "OpenAIReflectionModel":
+    def __enter__(self) -> OpenAIReflectionModel:
         """Context manager entry."""
         return self
 

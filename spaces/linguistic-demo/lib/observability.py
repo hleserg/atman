@@ -20,7 +20,7 @@ import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, cast
 
 _LOG = logging.getLogger(__name__)
 _initialized = False
@@ -109,7 +109,7 @@ def traced(op: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             with pipeline_span(op, fn.__name__):
                 try:
-                    return fn(*args, **kwargs)
+                    return cast(R, fn(*args, **kwargs))
                 except Exception as exc:
                     if _initialized:
                         with suppress(Exception):

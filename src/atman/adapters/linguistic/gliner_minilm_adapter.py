@@ -22,6 +22,8 @@ from atman.core.session_log import slog as _slog
 
 logger = logging.getLogger(__name__)
 
+_HIGH_COGNITIVE_LOAD_LABEL = "high cognitive load"
+
 try:
     from gliner import GLiNER as _GLiNER  # type: ignore[import-untyped]
 
@@ -110,7 +112,7 @@ _POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
     "cognitive_load_label": [
         "low cognitive load",
         "manageable cognitive load",
-        "high cognitive load",
+        _HIGH_COGNITIVE_LOAD_LABEL,
         "overwhelmed",
     ],
 }
@@ -125,7 +127,7 @@ _SELF_ORIENTATION_MAP = {
 _COGNITIVE_LOAD_MAP = {
     "low cognitive load": "low",
     "manageable cognitive load": "manageable",
-    "high cognitive load": "high",
+    _HIGH_COGNITIVE_LOAD_LABEL: "high",
     "overwhelmed": "overwhelmed",
 }
 
@@ -194,7 +196,7 @@ _LEARNING_MAP = {
 
 # Legacy zero-shot labels (kept for backward compat in point-K cognitive_load heuristic)
 _KEY_MOMENT_LEGACY_LABELS = [
-    "high cognitive load",
+    _HIGH_COGNITIVE_LOAD_LABEL,
     "boundary event",
     "positive trust",
     "negative trust",
@@ -370,12 +372,12 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             return {}
         return dict(zip(result["labels"], result["scores"], strict=False))
 
-    def _classify_task(self, text: str, task_name: str, candidates: list[str]) -> str | None:
+    def _classify_task(self, text: str, _task_name: str, candidates: list[str]) -> str | None:
         """Run a single classification task and return the top label above threshold."""
         scores = self._run_classification(text, candidates)
         return _pick_top(scores, self._classification_threshold)
 
-    def _extract_anchors(self, entities: list[DetectedEntity], text: str) -> list[AmbientAnchor]:
+    def _extract_anchors(self, entities: list[DetectedEntity], _text: str) -> list[AmbientAnchor]:
         anchors: list[AmbientAnchor] = []
         for ent in entities:
             if ent.entity_type == EntityType.person:
@@ -576,7 +578,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             or len(boundary_markers) > 0
         )
         principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
-        cognitive_load = min(1.0, max(0.0, legacy_scores.get("high cognitive load", 0.0)))
+        cognitive_load = min(1.0, max(0.0, legacy_scores.get(_HIGH_COGNITIVE_LOAD_LABEL, 0.0)))
 
         positive_score = legacy_scores.get("positive trust", 0.0)
         negative_score = legacy_scores.get("negative trust", 0.0)

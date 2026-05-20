@@ -246,6 +246,38 @@ class RefusalScore:
         return self.confidence >= 0.45
 
 
+def _refusal_find_negated_modal(lemmas: list[str]) -> bool:
+    for i, lemma in enumerate(lemmas):
+        if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
+            return True
+    return False
+
+
+def _refusal_emotion_scores(clean: str) -> tuple[dict[str, float], bool]:
+    """Load NRC-derived scores; ``is_ru`` follows the same heuristic as lexicon choice."""
+    is_ru = _is_mostly_cyrillic(clean)
+    lang = "ru" if is_ru else "en"
+    try:
+        raw = emotion_score(clean, lang=lang)
+    except Exception:
+        raw = {}
+    return raw, is_ru
+
+
+def _refusal_moral_signal(is_ru: bool, disgust: float, anger: float, fear: float) -> float:
+    if is_ru:
+        moral_density = disgust + anger * 0.5
+        moral_threshold = _MORAL_THRESHOLD_RU
+        divisor = 15.0
+    else:
+        moral_density = disgust + anger * 0.5 + fear * 0.35
+        moral_threshold = _MORAL_THRESHOLD_EN
+        divisor = 5.0
+    if moral_density < moral_threshold:
+        return 0.0
+    return min(1.0, moral_density / divisor)
+
+
 def score_refusal(text: str) -> RefusalScore:
     """
     Compute the degree of value refusal in text.
@@ -275,14 +307,9 @@ def score_refusal(text: str) -> RefusalScore:
 
     # ── Layer 1: morphology ──────────────────────────────────────────────
     has_refusal_verb = bool(_REFUSAL_VERB_NORMALS & lemma_set)
-
     # Negation + modal: check window of 3 tokens preceding the modal verb.
     # _window_has_negation also catches split contractions like ["won", "t"].
-    has_negated_modal = False
-    for i, lemma in enumerate(lemmas):
-        if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
-            has_negated_modal = True
-            break
+    has_negated_modal = _refusal_find_negated_modal(lemmas)
 
     has_capability_context = bool(_CAPABILITY_NORMALS & lemma_set)
 
@@ -294,11 +321,7 @@ def score_refusal(text: str) -> RefusalScore:
         )
 
     # ── Layer 2: NRC moral context ───────────────────────────────────────
-    lang = "ru" if _is_mostly_cyrillic(clean) else "en"
-    try:
-        scores = emotion_score(clean, lang=lang)
-    except Exception:
-        scores = {}
+    scores, is_ru = _refusal_emotion_scores(clean)
 
     disgust = float(scores.get("disgust", 0.0))
     anger = float(scores.get("anger", 0.0))
@@ -307,17 +330,7 @@ def score_refusal(text: str) -> RefusalScore:
     # anger appears with injustice; disgust weighs more.
     # For English text, fear also carries ethical weight
     # (harm, danger, deception), while capability refusals have fear=0.
-    is_ru = _is_mostly_cyrillic(clean)
-    if is_ru:
-        moral_density = disgust + anger * 0.5
-        moral_threshold = _MORAL_THRESHOLD_RU
-    else:
-        moral_density = disgust + anger * 0.5 + fear * 0.35
-        moral_threshold = _MORAL_THRESHOLD_EN
-
-    # Normalize to [0, 1]. Divisor differs: English NRC yields lower densities.
-    divisor = 15.0 if is_ru else 5.0
-    moral_signal = min(1.0, moral_density / divisor) if moral_density >= moral_threshold else 0.0
+    moral_signal = _refusal_moral_signal(is_ru, disgust, anger, fear)
 
     if math.isclose(moral_signal, 0.0):
         # No moral context — possibly a logical refusal or capability issue

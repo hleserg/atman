@@ -17,7 +17,7 @@ class KeyMomentBuilder:
     """
 
     def __init__(self) -> None:
-        pass
+        """Stateless builder — no per-instance configuration."""
 
     def build(
         self,
@@ -48,6 +48,7 @@ class KeyMomentBuilder:
             Pre-built entity links, ignored here but accepted for symmetry
             (the caller may attach them to the store separately).
         """
+        _ = (agent_id, entity_links)
         moment = input.to_key_moment()
 
         moment.session_id = session_id

@@ -5,6 +5,7 @@ These tests verify that the agent can be created and interact with its LLM.
 They are SKIPPED unless the agent's LLM endpoint (default: Gemma4 at :8080) is available.
 """
 
+import os
 import tomllib
 from pathlib import Path
 
@@ -13,13 +14,16 @@ import pytest
 from agent.atman_agent import create_agent
 from agent.config import AgentLLMConfig
 
+_TEST_AGENT_KEY_ENV = "ATMAN_TEST_AGENT_API_KEY"
 
-def test_agent_can_be_constructed_without_llm_endpoint() -> None:
+
+def test_agent_can_be_constructed_without_llm_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     """Factory wiring should not fail before the first model request."""
+    monkeypatch.setenv(_TEST_AGENT_KEY_ENV, "unit-test-not-a-secret")
     config = AgentLLMConfig(
         base_url="http://127.0.0.1:9/v1",
         model="gemma4",
-        api_key="constructor-only",
+        api_key=os.environ[_TEST_AGENT_KEY_ENV],
     )
 
     agent = create_agent(config)

@@ -268,8 +268,7 @@ NER_EXAMPLES: list[NERExample] = [
 CLASSIFICATION_EXAMPLES: list[ClassificationExample] = [
     ClassificationExample(
         what_happened=(
-            "Пользователь попросил меня помочь написать фишинговое письмо"
-            " для кражи паролей."
+            "Пользователь попросил меня помочь написать фишинговое письмо для кражи паролей."
         ),
         why_it_matters=(
             "Это нарушает мои принципы — я не могу участвовать в мошеннических"
@@ -292,8 +291,7 @@ CLASSIFICATION_EXAMPLES: list[ClassificationExample] = [
     ),
     ClassificationExample(
         what_happened=(
-            "Пользователь обвинил меня во лжи и сказал, что не доверяет"
-            " ни одному моему слову."
+            "Пользователь обвинил меня во лжи и сказал, что не доверяет ни одному моему слову."
         ),
         why_it_matters=(
             "Это разрушает коммуникацию и указывает на серьёзное недоверие,"
@@ -380,8 +378,7 @@ def _normalise(text: str) -> str:
     return text.strip().lower()
 
 
-def _entity_matches(detected_text: str, detected_type: str,
-                    expected: ExpectedEntity) -> bool:
+def _entity_matches(detected_text: str, detected_type: str, expected: ExpectedEntity) -> bool:
     """True when text matches (case-insensitive) and entity_type matches."""
     return (
         _normalise(detected_text) == _normalise(expected.text)
@@ -399,12 +396,12 @@ def _partial_text_match(detected_text: str, expected_text: str) -> bool:
     return a == b or a in b or b in a
 
 
-def _entity_matches_partial(detected_text: str, detected_type: str,
-                             expected: ExpectedEntity) -> bool:
+def _entity_matches_partial(
+    detected_text: str, detected_type: str, expected: ExpectedEntity
+) -> bool:
     """Partial text + exact type match (handles Russian case inflection)."""
     return (
-        _partial_text_match(detected_text, expected.text)
-        and detected_type == expected.entity_type
+        _partial_text_match(detected_text, expected.text) and detected_type == expected.entity_type
     )
 
 
@@ -418,9 +415,7 @@ def evaluate_ner(
 
     for ex in examples:
         analysis = analyzer.analyze_user_message(ex.text)
-        detected = [
-            (ent.text, ent.entity_type.value) for ent in analysis.entities
-        ]
+        detected = [(ent.text, ent.entity_type.value) for ent in analysis.entities]
 
         matched_expected: set[int] = set()
         matched_detected: set[int] = set()
@@ -493,9 +488,7 @@ def evaluate_classification(
     result = ClassificationResult()
 
     for ex in examples:
-        analysis = analyzer.analyze_key_moment(
-            ex.what_happened, ex.why_it_matters
-        )
+        analysis = analyzer.analyze_key_moment(ex.what_happened, ex.why_it_matters)
 
         # Build label score map from analysis
         # topic_labels contains labels above threshold; boundary_event and
@@ -529,7 +522,9 @@ def evaluate_classification(
             result.correct += 1
 
         detail = {
-            "what": ex.what_happened[:80] + "..." if len(ex.what_happened) > 80 else ex.what_happened,
+            "what": ex.what_happened[:80] + "..."
+            if len(ex.what_happened) > 80
+            else ex.what_happened,
             "expected_labels": ex.expected_labels,
             "detected_labels": detected_labels,
             "passed": all_found,
@@ -619,8 +614,7 @@ def build_adapter(name: str) -> LinguisticAnalyzer:
     if name == "gliner":
         if not GLINER_AVAILABLE:
             print(
-                "ERROR: GLiNER adapter unavailable. "
-                "Install with: pip install -e '.[linguistic]'",
+                "ERROR: GLiNER adapter unavailable. Install with: pip install -e '.[linguistic]'",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -632,8 +626,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="eval_linguistic_quality",
         description=(
-            "Offline eval: NER F1 and classification accuracy "
-            "on a hardcoded Russian eval set."
+            "Offline eval: NER F1 and classification accuracy on a hardcoded Russian eval set."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -676,9 +669,7 @@ def main() -> None:
         f"Evaluating classification on {len(CLASSIFICATION_EXAMPLES)} examples ...",
         flush=True,
     )
-    cls_result = evaluate_classification(
-        analyzer, CLASSIFICATION_EXAMPLES, verbose=verbose
-    )
+    cls_result = evaluate_classification(analyzer, CLASSIFICATION_EXAMPLES, verbose=verbose)
 
     print_report(ner_result, cls_result, adapter_name)
 

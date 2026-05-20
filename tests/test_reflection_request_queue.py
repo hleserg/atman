@@ -27,7 +27,8 @@ def test_run_key_collapses_same_reason_within_hour():
     a = agent_driven_run_key("daily", "user got upset", t)
     b = agent_driven_run_key("daily", "  user got upset  ", same)
     c = agent_driven_run_key("daily", "USER GOT UPSET", same)
-    assert a == b == c
+    assert a == b
+    assert a == c
 
 
 def test_run_key_differs_across_hours():

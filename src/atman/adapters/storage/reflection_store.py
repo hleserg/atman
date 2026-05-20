@@ -53,7 +53,7 @@ class ReflectionStore:
     PostgreSQL storage for reflection content in ``agent_{N}.reflections``.
 
     Reads database configuration from environment:
-    - ATMAN_DB_URL (default: postgresql://atman@localhost:5432/atman)
+    - ATMAN_DB_URL (default: postgresql://atman:atman@localhost:5432/atman)
     - ATMAN_CURRENT_AGENT (optional UUID string; used when agent_id is not passed)
     """
 
@@ -69,7 +69,7 @@ class ReflectionStore:
             )
 
         self.db_url = db_url or os.environ.get(
-            "ATMAN_DB_URL", "postgresql://atman@localhost:5432/atman"
+            "ATMAN_DB_URL", "postgresql://atman:atman@localhost:5432/atman"
         )
         self._conn: psycopg.Connection[Any] | None = None
         self._closed = False

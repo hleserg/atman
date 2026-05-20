@@ -39,10 +39,12 @@ class PydanticAgentProjector:
     """
 
     def project_skill(self, skill: Skill, agent_workspace: Path) -> None:
-        pass
+        # MVP: pydantic-ai registers tools from code, not from filesystem projection.
+        del skill, agent_workspace
 
     def unproject_skill(self, skill: Skill, agent_workspace: Path) -> None:
-        pass
+        del skill, agent_workspace
 
     def list_projected(self, agent_workspace: Path) -> list[str]:
+        del agent_workspace
         return []

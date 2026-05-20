@@ -10,6 +10,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from atman.observability.spans import (
+    GEN_AI_DATA_OPERATION_NAME,
+    GEN_AI_DATA_PROVIDER_NAME,
+    GEN_AI_DATA_REQUEST_MODEL,
     ai_chat_span,
     ai_embeddings_span,
     ai_rerank_span,
@@ -46,9 +49,9 @@ def test_ai_chat_span_op(mock_sentry):
         pass
     mock_start.assert_called_once()
     assert mock_start.call_args.kwargs["op"] == "gen_ai.chat"
-    span.set_data.assert_any_call("gen_ai.operation.name", "chat")
-    span.set_data.assert_any_call("gen_ai.provider.name", "anthropic")
-    span.set_data.assert_any_call("gen_ai.request.model", "claude-opus-4-7")
+    span.set_data.assert_any_call(GEN_AI_DATA_OPERATION_NAME, "chat")
+    span.set_data.assert_any_call(GEN_AI_DATA_PROVIDER_NAME, "anthropic")
+    span.set_data.assert_any_call(GEN_AI_DATA_REQUEST_MODEL, "claude-opus-4-7")
 
 
 def test_ai_chat_span_custom_op(mock_sentry):
@@ -56,7 +59,7 @@ def test_ai_chat_span_custom_op(mock_sentry):
     with ai_chat_span("openai", "gpt-4o", op_name="stream") as _:
         pass
     assert mock_start.call_args.kwargs["op"] == "gen_ai.stream"
-    span.set_data.assert_any_call("gen_ai.operation.name", "stream")
+    span.set_data.assert_any_call(GEN_AI_DATA_OPERATION_NAME, "stream")
 
 
 def test_ai_embeddings_span(mock_sentry):
@@ -64,9 +67,9 @@ def test_ai_embeddings_span(mock_sentry):
     with ai_embeddings_span("bge", "BAAI/bge-m3") as _:
         pass
     assert mock_start.call_args.kwargs["op"] == "gen_ai.embeddings"
-    span.set_data.assert_any_call("gen_ai.operation.name", "embeddings")
-    span.set_data.assert_any_call("gen_ai.provider.name", "bge")
-    span.set_data.assert_any_call("gen_ai.request.model", "BAAI/bge-m3")
+    span.set_data.assert_any_call(GEN_AI_DATA_OPERATION_NAME, "embeddings")
+    span.set_data.assert_any_call(GEN_AI_DATA_PROVIDER_NAME, "bge")
+    span.set_data.assert_any_call(GEN_AI_DATA_REQUEST_MODEL, "BAAI/bge-m3")
 
 
 def test_ai_rerank_span(mock_sentry):

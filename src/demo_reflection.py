@@ -53,6 +53,11 @@ from atman.term import (
     print_ok,
 )
 
+_DEMO_CORE_NARRATIVE_LINE = "I am in early stages of self-discovery."
+_TABLE_TITLE_REFLECTION = "Reflection Summary"
+_LABEL_EXPERIENCES_ANALYZED = "Experiences Analyzed"
+_LABEL_KEY_INSIGHT = "Key Insight"
+
 
 class MockExperienceRepo:
     """Mock experience repository for demo."""
@@ -146,6 +151,7 @@ class MockExperienceRepo:
     def list_recent_sessions(
         self, agent_id: UUID | None = None, *, limit: int = 10
     ) -> list[Session]:
+        _ = agent_id
         return [self._synth(e)[0] for e in self.get_recent(limit)]
 
     def get_sessions_in_range(
@@ -270,7 +276,7 @@ def demo_micro_reflection(
         identity_id=identity.id,
         core_layer=NarrativeLayer(
             layer_type=LayerType.CORE,
-            content="I am in early stages of self-discovery.",
+            content=_DEMO_CORE_NARRATIVE_LINE,
         ),
         recent_layer=NarrativeLayer(
             layer_type=LayerType.RECENT,
@@ -301,13 +307,13 @@ def demo_micro_reflection(
     print_ok("\nMicro Reflection Complete!")
     demo_pace()
 
-    table = Table(title="Reflection Summary")
+    table = Table(title=_TABLE_TITLE_REFLECTION)
     table.add_column("Metric")
     table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
-    table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
-    table.add_row("Key Insight", event.key_insight)
+    table.add_row(_LABEL_EXPERIENCES_ANALYZED, str(len(event.experiences_analyzed)))
+    table.add_row(_LABEL_KEY_INSIGHT, event.key_insight)
 
     console.print(table)
     demo_pace()
@@ -349,15 +355,15 @@ def demo_daily_reflection(
     print_ok("\nDaily Reflection Complete!")
     demo_pace()
 
-    table = Table(title="Reflection Summary")
+    table = Table(title=_TABLE_TITLE_REFLECTION)
     table.add_column("Metric")
     table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
-    table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
+    table.add_row(_LABEL_EXPERIENCES_ANALYZED, str(len(event.experiences_analyzed)))
     table.add_row("Patterns Detected", str(len(event.patterns_detected)))
     table.add_row("Reframing Notes Added", str(event.reframing_notes_added))
-    table.add_row("Key Insight", event.key_insight)
+    table.add_row(_LABEL_KEY_INSIGHT, event.key_insight)
 
     console.print(table)
     demo_pace()
@@ -386,7 +392,7 @@ def demo_deep_reflection(
         identity_id=identity.id,
         core_layer=NarrativeLayer(
             layer_type=LayerType.CORE,
-            content="I am in early stages of self-discovery.",
+            content=_DEMO_CORE_NARRATIVE_LINE,
         ),
         recent_layer=NarrativeLayer(
             layer_type=LayerType.RECENT,
@@ -426,12 +432,12 @@ def demo_deep_reflection(
     print_ok("\nDeep Reflection Complete!")
     demo_pace()
 
-    table = Table(title="Reflection Summary")
+    table = Table(title=_TABLE_TITLE_REFLECTION)
     table.add_column("Metric")
     table.add_column("Value")
 
     table.add_row("Level", str(event.reflection_level))
-    table.add_row("Experiences Analyzed", str(len(event.experiences_analyzed)))
+    table.add_row(_LABEL_EXPERIENCES_ANALYZED, str(len(event.experiences_analyzed)))
     table.add_row("Patterns Detected", str(len(event.patterns_detected)))
     table.add_row("Reframing Notes Added", str(event.reframing_notes_added))
 
@@ -440,7 +446,7 @@ def demo_deep_reflection(
         if assessment:
             table.add_row("Health Score", f"{assessment.overall_score:.2f}/1.0")
 
-    table.add_row("Key Insight", event.key_insight)
+    table.add_row(_LABEL_KEY_INSIGHT, event.key_insight)
 
     console.print(table)
     demo_pace()
@@ -618,7 +624,7 @@ def main() -> None:
         identity_id=identity.id,
         core_layer=NarrativeLayer(
             layer_type=LayerType.CORE,
-            content="I am in early stages of self-discovery.",
+            content=_DEMO_CORE_NARRATIVE_LINE,
         ),
         recent_layer=NarrativeLayer(
             layer_type=LayerType.RECENT,

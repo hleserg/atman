@@ -113,7 +113,7 @@ class PostgresEntityRegistry(EntityRegistry):
       1. ``db_url`` constructor argument
       2. ``ATMAN_DB_URL`` environment variable
       3. ``DATABASE_URL`` environment variable
-      4. ``postgresql://atman@localhost:5432/atman`` (default)
+      4. ``postgresql://atman:atman@localhost:5432/atman`` (default)
 
     Example::
 
@@ -137,7 +137,7 @@ class PostgresEntityRegistry(EntityRegistry):
             db_url
             or os.environ.get("ATMAN_DB_URL")
             or os.environ.get("DATABASE_URL")
-            or "postgresql://atman@localhost:5432/atman"
+            or "postgresql://atman:atman@localhost:5432/atman"
         )
         self._conn: psycopg.Connection[Any] | None = None
         self._fixed_serial_id: int | None = serial_id
