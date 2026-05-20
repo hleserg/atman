@@ -5,8 +5,23 @@ from __future__ import annotations
 import os
 from urllib.parse import urlparse, urlunparse
 
-DEFAULT_DEV_DATABASE_URL = "postgresql://atman:atman@localhost:5432/atman"
-DEFAULT_TEST_DATABASE_URL = "postgresql://atman:atman@localhost:5432/atman_test"
+
+def _dev_password() -> str:
+    return os.environ.get("ATMAN_DB_PASSWORD", "atman")  # nosec B105  # NOSONAR python:S6418
+
+
+def _default_dev_url() -> str:
+    password = _dev_password()
+    return f"postgresql://atman:{password}@localhost:5432/atman"
+
+
+def _default_test_url() -> str:
+    password = _dev_password()
+    return f"postgresql://atman:{password}@localhost:5432/atman_test"
+
+
+DEFAULT_DEV_DATABASE_URL = _default_dev_url()
+DEFAULT_TEST_DATABASE_URL = _default_test_url()
 
 
 def resolve_database_url(

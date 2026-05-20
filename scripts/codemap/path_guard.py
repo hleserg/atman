@@ -9,7 +9,7 @@ def resolve_under_root(path: Path, *, root: Path) -> Path:
     """Resolve ``path`` and ensure it stays under ``root``."""
     resolved = path.expanduser().resolve()
     root_resolved = root.expanduser().resolve()
-    if resolved != root_resolved and root_resolved not in resolved.parents:
+    if not resolved.is_relative_to(root_resolved):
         msg = f"Path {path!s} escapes trusted root {root!s}"
         raise ValueError(msg)
     return resolved
@@ -23,7 +23,8 @@ def write_text_under_root(
     encoding: str = "utf-8",
 ) -> None:
     """Write ``text`` only after validating ``path`` stays under ``root``."""
-    safe_path = resolve_under_root(path, root=root)
+    root_resolved = root.expanduser().resolve()
+    safe_path = resolve_under_root(path, root=root_resolved)
     safe_path.parent.mkdir(parents=True, exist_ok=True)
-    safe_path.write_text(text, encoding=encoding)
-
+    with safe_path.open("w", encoding=encoding) as handle:
+        handle.write(text)

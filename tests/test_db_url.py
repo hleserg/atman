@@ -34,8 +34,9 @@ def test_resolve_database_url_prefers_explicit() -> None:
 
 
 def test_require_password_rejects_missing_password() -> None:
+    no_password_url = _url_without_password(DEFAULT_DEV_DATABASE_URL)
     with pytest.raises(ValueError, match="password"):
-        require_password_in_database_url(_url_without_password(DEFAULT_DEV_DATABASE_URL))
+        require_password_in_database_url(no_password_url)  # NOSONAR python:S2115 — negative test
 
 
 def test_with_password_if_missing_injects_dev_default() -> None:

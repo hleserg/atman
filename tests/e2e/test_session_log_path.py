@@ -16,6 +16,17 @@ def test_resolve_session_log_default_under_atman_home(monkeypatch: pytest.Monkey
     assert path == base / "live-session.jsonl"
 
 
+def test_resolve_session_log_env_uses_basename_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("e2e.session_log_path._ATMAN_HOME", tmp_path / ".atman")
+    base = (tmp_path / ".atman").resolve()
+    base.mkdir()
+    monkeypatch.setenv("ATMAN_LIVE_SESSION_LOG", "/etc/passwd")
+    path = resolve_session_log_path()
+    assert path == base / "passwd"
+
+
 def test_validate_session_log_path_rejects_outside_home(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must stay under"):
         validate_session_log_path(tmp_path / "outside.jsonl")
