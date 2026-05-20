@@ -50,7 +50,7 @@ security:
 	bandit -c pyproject.toml -r src/atman/ -q
 
 test:
-	pytest tests/ -v --cov=src/atman --cov-fail-under=90 --cov-report=term-missing --cov-report=xml
+	pytest tests/ -v --cov=src/atman --cov-fail-under=90 --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
 
 test-fast:
 	pytest tests/ -m "not slow" -v
