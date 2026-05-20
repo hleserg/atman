@@ -2,28 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <script>
-    (function () {
-      try {
-        var q = new URLSearchParams(globalThis.location.search);
-        var u = q.get('lang');
-        var s = globalThis.localStorage.getItem('atman-lang');
-        var L;
-        if (u === 'en' || u === 'ru') {
-          L = u;
-        } else if (s === 'en' || s === 'ru') {
-          L = s;
-        } else if ((globalThis.navigator.language || '').toLowerCase().startsWith('ru')) {
-          L = 'ru';
-        } else {
-          L = 'en';
-        }
-        globalThis.document.documentElement.lang = L;
-      } catch (e) {
-        void e;
-      }
-    })();
-  </script>
+  <script src="js/lang-bootstrap.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n-meta="title">Atman — Live E2E Walkthrough</title>
   <meta name="description"

@@ -2,28 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <script>
-      (function () {
-        try {
-          var q = new URLSearchParams(globalThis.location.search);
-          var u = q.get('lang');
-          var s = globalThis.localStorage.getItem('atman-lang');
-          var L;
-          if (u === 'en' || u === 'ru') {
-            L = u;
-          } else if (s === 'en' || s === 'ru') {
-            L = s;
-          } else if ((globalThis.navigator.language || '').toLowerCase().startsWith('ru')) {
-            L = 'ru';
-          } else {
-            L = 'en';
-          }
-          globalThis.document.documentElement.lang = L;
-        } catch (e) {
-          void e;
-        }
-      })();
-    </script>
+    <script src="js/lang-bootstrap.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Atman — project documents</title>
     <meta
@@ -589,6 +568,7 @@
       </footer>
     </div>
 
+    <script src="js/atman-lang-utils.js"></script>
     <script>
       const translations = {
         ru: {
@@ -686,90 +666,10 @@
         }
       };
 
-      function detectLanguage() {
-        const urlLang = new URLSearchParams(globalThis.location.search).get('lang');
-        if (urlLang === 'en' || urlLang === 'ru') {
-          return urlLang;
-        }
-
-        const savedLang = globalThis.localStorage.getItem('atman-lang');
-        if (savedLang && translations[savedLang]) {
-          return savedLang;
-        }
-
-        const browserLang = globalThis.navigator.language || globalThis.navigator.userLanguage;
-        if (browserLang.startsWith('ru')) {
-          return 'ru';
-        }
-        return 'en';
-      }
-
-      function applyTranslations(lang) {
-        const t = translations[lang];
-        if (!t) return;
-
-        document.documentElement.lang = lang;
-
-        document.querySelectorAll('[data-i18n]').forEach(el => {
-          const key = el.dataset.i18n;
-          const keys = key.split('.');
-          let value = t;
-          for (const k of keys) {
-            value = value?.[k];
-          }
-          if (value) {
-            el.textContent = value;
-          }
-        });
-
-        document.querySelectorAll('.lang-btn').forEach(btn => {
-          btn.classList.toggle('active', btn.dataset.lang === lang);
-        });
-
-        globalThis.localStorage.setItem('atman-lang', lang);
-        syncAtmanLangInLinks(lang);
-
-        return t;
-      }
-
-      function syncAtmanLangInLinks(lang) {
-        document.querySelectorAll('a[href]').forEach((a) => {
-          const raw = a.getAttribute('href');
-          if (
-            !raw ||
-            raw.startsWith('http://') ||
-            raw.startsWith('https://') ||
-            raw.startsWith('mailto:') ||
-            raw.startsWith('#')
-          ) {
-            return;
-          }
-          const hashIdx = raw.indexOf('#');
-          const pathAndQuery = hashIdx >= 0 ? raw.slice(0, hashIdx) : raw;
-          const hash = hashIdx >= 0 ? raw.slice(hashIdx) : '';
-          if (
-            !pathAndQuery.startsWith('document.html') &&
-            !pathAndQuery.startsWith('demo.html') &&
-            pathAndQuery !== 'index.html' &&
-            !pathAndQuery.startsWith('index.html?')
-          ) {
-            return;
-          }
-          const base = pathAndQuery || 'index.html';
-          const u = new URL(base, globalThis.location.href);
-          const file = u.pathname.split('/').pop() || '';
-          if (file !== 'document.html' && file !== 'demo.html' && file !== 'index.html') {
-            return;
-          }
-          u.searchParams.set('lang', lang);
-          a.setAttribute('href', file + u.search + hash);
-        });
-      }
-
       document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const lang = btn.dataset.lang;
-          const t = applyTranslations(lang);
+          const t = AtmanLang.applyTranslations(lang, translations);
           const activeDocKey = new URLSearchParams(globalThis.location.search).get("doc") || "readme";
           
           const newDocuments = getDocuments(lang);
@@ -816,8 +716,8 @@
         });
       });
 
-      const currentLang = detectLanguage();
-      const currentTranslations = applyTranslations(currentLang);
+      const currentLang = AtmanLang.detectLanguage(translations);
+      const currentTranslations = AtmanLang.applyTranslations(currentLang, translations);
 
       function getDocumentPath(docKey, lang) {
         const paths = {
@@ -966,7 +866,7 @@
       }
 
       function matchHeadingLine(trimmed) {
-        return trimmed.match(/^(#{1,4})\s+(.+)$/);
+        return trimmed.match(/^(#{1,4})\s+([^\n]+)$/);
       }
 
       function consumeFencedCodeBlock(lines, startIndex) {
