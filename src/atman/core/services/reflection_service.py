@@ -1277,7 +1277,7 @@ class DeepReflectionService:
         )
         pattern_description = detection.description.strip()
 
-        if not pattern_description or len(pattern_description) <= 10:
+        if not pattern_description or len(pattern_description) < 10:
             return None
 
         conf = detection.confidence if detection.confidence is not None else 0.7

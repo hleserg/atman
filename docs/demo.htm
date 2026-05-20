@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Atman — Interactive demo</title>
   <link rel="icon" href="pic/logo.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <!-- Self-hosted/system fonts only: external CSS has no stable SRI hash (Sonar Web:S5725). -->
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -21,7 +19,7 @@
     html { scroll-behavior: smooth; }
     body {
       background: var(--bg); color: var(--text);
-      font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; overflow-x: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; overflow-x: hidden;
     }
     body::before {
       content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
@@ -571,7 +569,7 @@ function Terminal({ lines, count, title }) {
     if (endRef.current) endRef.current.parentElement.scrollTop = endRef.current.parentElement.scrollHeight;
   }, [count]);
   return (
-    <div style={{background:'#05070d',border:'1px solid rgba(255,255,255,0.09)',borderRadius:16,overflow:'hidden',fontFamily:"'JetBrains Mono','Fira Code',monospace",fontSize:'0.76rem',display:'flex',flexDirection:'column',height:'100%',minHeight:0}}>
+    <div style={{background:'#05070d',border:'1px solid rgba(255,255,255,0.09)',borderRadius:16,overflow:'hidden',fontFamily:"ui-monospace, 'Cascadia Code', monospace",fontSize:'0.76rem',display:'flex',flexDirection:'column',height:'100%',minHeight:0}}>
       <div style={{display:'flex',alignItems:'center',gap:7,padding:'9px 14px',background:'rgba(255,255,255,0.035)',borderBottom:'1px solid rgba(255,255,255,0.07)',flexShrink:0}}>
         {['#ff5f57','#febc2e','#28c840'].map(c=><div key={c} style={{width:9,height:9,borderRadius:'50%',background:c}} />)}
         <span style={{marginLeft:8,color:'#4a4540',fontSize:'0.68rem',letterSpacing:'0.04em'}}>{title}</span>
@@ -744,7 +742,7 @@ function Viz3({step,lang}) {
       </VCard>
       {step>=6&&<VCard>
         <VLabel color="#9de0bf">NARRATIVE.md</VLabel>
-        <div style={{marginTop:7,color:'#9de0bf',fontSize:'0.72rem',lineHeight:1.6,fontFamily:"'JetBrains Mono',monospace"}}>
+        <div style={{marginTop:7,color:'#9de0bf',fontSize:'0.72rem',lineHeight:1.6,fontFamily:"ui-monospace, monospace"}}>
           {'# CORE LAYER\n'+(ru?'Я ценю честность…':'I value honesty…')+'\n\n# RECENT LAYER\n'+(ru?'Сложная сессия выявила мою склонность…':'A challenging session revealed my tendency…')}
         </div>
         <div style={{marginTop:7}}>

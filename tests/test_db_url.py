@@ -39,6 +39,8 @@ def test_require_password_rejects_missing_password() -> None:
         require_password_in_database_url(no_password_url)  # NOSONAR python:S2115 — negative test
 
 
-def test_with_password_if_missing_injects_dev_default() -> None:
+def test_resolve_database_url_injects_password_when_missing() -> None:
+    url = resolve_database_url(_url_without_password(DEFAULT_DEV_DATABASE_URL))
+    assert urlparse(url).password == urlparse(DEFAULT_DEV_DATABASE_URL).password
     url = with_password_if_missing(_url_without_password(DEFAULT_DEV_DATABASE_URL))
     assert urlparse(url).password == urlparse(DEFAULT_DEV_DATABASE_URL).password

@@ -40,7 +40,7 @@ def resolve_database_url(
                 break
     if url is None:
         url = default
-    return require_password_in_database_url(url)
+    return with_password_if_missing(url)
 
 
 def require_password_in_database_url(url: str) -> str:
