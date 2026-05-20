@@ -414,12 +414,14 @@ class TestMaintenanceWorker:
         assert the_job.status is JobStatus.failed
         assert "agent_id" in (the_job.error or "")
 
-    def test_decay_without_service_marks_failed(self) -> None:
+    def test_decay_without_service_marks_skipped(self) -> None:
         q = InMemoryMaintenanceQueue()
         worker = MaintenanceWorker(q, salience_decay=None)
         q.enqueue(JobName.salience_decay, agent_id=uuid4())
         worker.run_once()
-        assert q.list_jobs()[0].status is JobStatus.failed
+        job = q.list_jobs()[0]
+        assert job.status is JobStatus.skipped
+        assert job.error == "salience decay not configured"
 
     def test_guardian_without_agent_id_marks_failed(self) -> None:
         q = InMemoryMaintenanceQueue()
@@ -433,12 +435,14 @@ class TestMaintenanceWorker:
         the_job = next(j for j in listed if j.id == job.id)
         assert the_job.status is JobStatus.failed
 
-    def test_guardian_without_service_marks_failed(self) -> None:
+    def test_guardian_without_service_marks_skipped(self) -> None:
         q = InMemoryMaintenanceQueue()
         worker = MaintenanceWorker(q, memory_guardian=None)
         q.enqueue(JobName.memory_guardian_scan, agent_id=uuid4())
         worker.run_once()
-        assert q.list_jobs()[0].status is JobStatus.failed
+        job = q.list_jobs()[0]
+        assert job.status is JobStatus.skipped
+        assert job.error == "memory guardian not configured"
 
     def test_mrebel_missing_key_moment_id_legacy_job_skipped(self) -> None:
         """Pre-#617 queue rows skip cleanly instead of failing into Sentry."""
