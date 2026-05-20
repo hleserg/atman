@@ -372,6 +372,11 @@ class TestInMemoryMaintenanceQueue:
         with pytest.raises(ValueError, match="key_moment_id"):
             q.enqueue(job_name, agent_id=uuid4(), payload={})
 
+    def test_enqueue_moment_scoped_job_rejects_empty_key_moment_id(self) -> None:
+        q = InMemoryMaintenanceQueue()
+        with pytest.raises(ValueError, match="non-empty 'key_moment_id'"):
+            q.enqueue(JobName.mrebel_extract, agent_id=uuid4(), payload={"key_moment_id": ""})
+
     def test_enqueue_moment_scoped_job_accepts_key_moment_id(self) -> None:
         q = InMemoryMaintenanceQueue()
         moment_id = uuid4()

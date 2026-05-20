@@ -195,7 +195,8 @@ class PostgresMaintenanceQueue(MaintenanceQueue):
         Enqueue a job. If ``run_key`` matches an existing pending/running job,
         return that existing row (idempotent).
         """
-        validate_enqueue_payload(job_name, payload or {})
+        payload = payload or {}
+        validate_enqueue_payload(job_name, payload)
         conn = self._get_conn()
         with conn.transaction(), conn.cursor() as cur:
             if run_key is not None:
@@ -209,7 +210,7 @@ class PostgresMaintenanceQueue(MaintenanceQueue):
                 {
                     "job_name": job_name.value,
                     "agent_id": agent_id,
-                    "payload": Jsonb(payload or {}),
+                    "payload": Jsonb(payload),
                     "run_key": run_key,
                     "scheduled_at": scheduled_at,
                 },

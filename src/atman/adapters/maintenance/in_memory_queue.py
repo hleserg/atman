@@ -32,7 +32,8 @@ class InMemoryMaintenanceQueue(MaintenanceQueue):
         Enqueue job. If run_key matches an existing pending/running job,
         return that existing job (idempotent).
         """
-        validate_enqueue_payload(job_name, payload or {})
+        payload = payload or {}
+        validate_enqueue_payload(job_name, payload)
         with self._lock:
             if run_key is not None:
                 for job in self._jobs:
@@ -45,7 +46,7 @@ class InMemoryMaintenanceQueue(MaintenanceQueue):
             new_job = MaintenanceJob(
                 job_name=job_name,
                 agent_id=agent_id,
-                payload=payload or {},
+                payload=payload,
                 run_key=run_key,
                 scheduled_at=scheduled_at or datetime.now(UTC),
             )

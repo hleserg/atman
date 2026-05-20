@@ -17,8 +17,13 @@ def validate_enqueue_payload(job_name: JobName, payload: dict) -> None:
     so that structurally invalid jobs are rejected before they enter the queue.
     """
     if job_name in _MOMENT_SCOPED_JOBS and not payload.get("key_moment_id"):
+        if "key_moment_id" in payload:
+            raise ValueError(
+                f"{job_name.value} job requires a non-empty 'key_moment_id' in payload, "
+                f"got: {payload['key_moment_id']!r}"
+            )
         raise ValueError(
-            f"{job_name.value} job requires 'key_moment_id' in payload, got: {list(payload.keys())}"
+            f"{job_name.value} job requires 'key_moment_id' in payload, got keys: {list(payload.keys())}"
         )
 
 
