@@ -400,6 +400,30 @@ def test_maintenance_enqueue_unknown_job_exits_nonzero() -> None:
     assert "Unknown job" in r.stdout or "Unknown job" in r.stderr
 
 
+def test_maintenance_enqueue_moment_job_without_key_moment_id_exits_nonzero() -> None:
+    """Moment-scoped enqueue requires --key-moment-id."""
+    r = _run_maintenance(
+        ["enqueue", "mrebel_extract", "--agent-id", "00000000-0000-0000-0000-000000000001"]
+    )
+    assert r.returncode != 0
+    assert "key_moment_id" in r.stdout or "key_moment_id" in r.stderr
+
+
+def test_maintenance_enqueue_moment_job_with_key_moment_id_succeeds() -> None:
+    r = _run_maintenance(
+        [
+            "enqueue",
+            "mrebel_extract",
+            "--agent-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--key-moment-id",
+            "11111111-1111-4111-8111-111111111111",
+        ]
+    )
+    assert r.returncode == 0, r.stderr
+    assert "Enqueued job" in r.stdout
+
+
 def test_maintenance_run_once_succeeds_on_empty_queue() -> None:
     """`atman-maintenance run --once` succeeds when queue is empty."""
     r = _run_maintenance(["run", "--once"])

@@ -363,6 +363,35 @@ class TestInMemoryMaintenanceQueue:
         only_agent = q.list_jobs(agent_id=agent)
         assert {j.id for j in only_agent} == {j1.id}
 
+    @pytest.mark.parametrize(
+        "job_name",
+        [JobName.mrebel_extract, JobName.lingvo_enrich],
+    )
+    def test_enqueue_moment_scoped_job_requires_key_moment_id(self, job_name: JobName) -> None:
+        q = InMemoryMaintenanceQueue()
+        with pytest.raises(ValueError, match="key_moment_id"):
+            q.enqueue(job_name, agent_id=uuid4(), payload={})
+
+    def test_enqueue_moment_scoped_job_rejects_empty_key_moment_id(self) -> None:
+        q = InMemoryMaintenanceQueue()
+        with pytest.raises(ValueError, match="non-empty 'key_moment_id'"):
+            q.enqueue(JobName.mrebel_extract, agent_id=uuid4(), payload={"key_moment_id": ""})
+
+    def test_enqueue_moment_scoped_job_accepts_key_moment_id(self) -> None:
+        q = InMemoryMaintenanceQueue()
+        moment_id = uuid4()
+        job = q.enqueue(
+            JobName.mrebel_extract,
+            agent_id=uuid4(),
+            payload={"key_moment_id": str(moment_id)},
+        )
+        assert job.payload["key_moment_id"] == str(moment_id)
+
+    def test_enqueue_non_moment_job_allows_empty_payload(self) -> None:
+        q = InMemoryMaintenanceQueue()
+        job = q.enqueue(JobName.salience_decay, agent_id=uuid4(), payload={})
+        assert job.status is JobStatus.pending
+
 
 # ---------------------------------------------------------------------------
 # Regression: FileStateStore.store_key_moment is a true upsert (replaces

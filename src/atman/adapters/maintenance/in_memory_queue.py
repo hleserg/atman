@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from atman.core.models.maintenance import JobName, JobStatus, MaintenanceJob
-from atman.core.ports.maintenance_queue import MaintenanceQueue
+from atman.core.ports.maintenance_queue import MaintenanceQueue, validate_enqueue_payload
 
 
 class InMemoryMaintenanceQueue(MaintenanceQueue):
@@ -32,6 +32,8 @@ class InMemoryMaintenanceQueue(MaintenanceQueue):
         Enqueue job. If run_key matches an existing pending/running job,
         return that existing job (idempotent).
         """
+        payload = payload or {}
+        validate_enqueue_payload(job_name, payload)
         with self._lock:
             if run_key is not None:
                 for job in self._jobs:
@@ -44,7 +46,7 @@ class InMemoryMaintenanceQueue(MaintenanceQueue):
             new_job = MaintenanceJob(
                 job_name=job_name,
                 agent_id=agent_id,
-                payload=payload or {},
+                payload=payload,
                 run_key=run_key,
                 scheduled_at=scheduled_at or datetime.now(UTC),
             )
