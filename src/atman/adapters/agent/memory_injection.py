@@ -83,6 +83,14 @@ def inject_memory(
     if not content:
         return None
 
+    try:
+        from atman.adapters.observability.sentry import metric_distribution as _md
+        from atman.adapters.observability.sentry import metric_increment as _mi
+        _mi("atman.memory_injection.inject", tags={"mode": mode, "prepend": str(prepend)})
+        _md("atman.memory_injection.content_chars", float(len(content)), tags={"mode": mode})
+    except Exception:
+        pass
+
     if mode == "system_prompt":
         return content
 
