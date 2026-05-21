@@ -1,0 +1,674 @@
+/* Atman — Linguistic Demo · Gradio 6 stylesheet.
+ *
+ * Load like this:
+ *     with open(_HERE / "style.css") as f:
+ *         css = f.read()
+ *     with gr.Blocks(title="...", theme=theme, css=css) as demo:
+ *
+ * Selectors target Gradio 6 rendered DOM. Where the class name moved between
+ * minor versions (e.g. .block / .gr-block, .gr-button-primary / button.primary)
+ * we list both so the rule still bites.
+ */
+
+/* ── Root: font, page bg, smoothing ──────────────────────────────────── */
+.gradio-container {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    font-feature-settings: "ss01", "cv02", "cv11";  /* Inter numeral variants */
+    -webkit-font-smoothing: antialiased;
+    max-width: 1180px !important;
+    margin: 0 auto !important;
+}
+.gradio-container, .gradio-container * { letter-spacing: -0.003em; }
+
+/* ── Hero column (#atman-hero — wraps H1 + header_md + diagram) ──────── */
+#atman-hero { padding: 56px 0 16px; position: relative; text-align: center; }
+
+/* The H1 lives inside the first gr.Markdown — target its rendered h1 */
+#atman-hero .gr-block:first-child h1,
+#atman-hero .markdown h1,
+#atman-hero h1 {
+    font-size: clamp(34px, 4.6vw, 50px) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.05 !important;
+    margin: 0 auto 18px !important;
+    background: linear-gradient(120deg, #4F46E5 0%, #8B5CF6 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent !important;
+    display: inline-block !important;
+}
+
+/* The blurb (#atman-header-md) — neutral grey, larger line-height */
+#atman-header-md, #atman-header-md p {
+    font-size: 15.5px !important;
+    line-height: 1.7 !important;
+    color: #64748B !important;
+    max-width: 720px;
+    margin: 0 auto !important;
+}
+.dark #atman-header-md, .dark #atman-header-md p { color: #94A3B8 !important; }
+#atman-header-md em {
+    color: #0F172A !important; opacity: .8;
+    display: block !important; margin-top: 10px;
+    font-size: 14px !important; font-style: italic !important;
+}
+.dark #atman-header-md em { color: #E2E8F0 !important; }
+#atman-header-md b, #atman-header-md strong {
+    color: #0F172A !important; font-weight: 600 !important;
+}
+.dark #atman-header-md b, .dark #atman-header-md strong { color: #E2E8F0 !important; }
+
+/* Diagram frame (gr.Image #atman-diagram) */
+#atman-diagram {
+    max-width: 960px !important;
+    margin: 36px auto 0 !important;
+    padding: 22px !important;
+    background: #FFFFFF !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 14px !important;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04) !important;
+}
+.dark #atman-diagram { background: #13131F !important; border-color: #1F2937 !important; }
+#atman-diagram img { border-radius: 8px; max-height: 320px; object-fit: contain; }
+
+/* Pin the language radio top-right of the hero, render as a segmented pill */
+#atman-lang {
+    position: absolute !important; top: 28px !important; right: 28px !important;
+    z-index: 5;
+    background: #FFFFFF; border: 1px solid #E5E7EB;
+    border-radius: 999px; padding: 3px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    min-width: 0 !important; width: auto !important;
+}
+.dark #atman-lang { background: #13131F; border-color: #1F2937; }
+#atman-lang label {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important; letter-spacing: 0.03em !important;
+    padding: 7px 14px !important; border-radius: 999px !important;
+    border: none !important; background: transparent !important;
+    color: #64748B !important; margin: 0 !important; cursor: pointer;
+}
+#atman-lang label.selected,
+#atman-lang label:has(input:checked) {
+    background: #4F46E5 !important; color: #FFFFFF !important;
+}
+.dark #atman-lang label:has(input:checked) { background: #6366F1 !important; }
+#atman-lang input[type="radio"] { display: none !important; }
+#atman-lang > .label,
+#atman-lang > div > .block-label,
+#atman-lang > div > .block-info { display: none !important; }
+#atman-lang .form, #atman-lang .wrap, #atman-lang .options {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+}
+
+/* ── Warmup row (#atman-warmup-row) ──────────────────────────────────── */
+#atman-warmup-row {
+    margin: 8px 0 24px !important;
+    display: grid !important;
+    grid-template-columns: auto 1fr !important;
+    gap: 12px !important;
+    align-items: stretch !important;
+}
+#atman-warmup-btn {
+    background: transparent !important;
+    color: #4F46E5 !important;
+    border: 1px solid #4F46E5 !important;
+    border-radius: 8px !important;
+    padding: 12px 20px !important;
+    font-weight: 500 !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+.dark #atman-warmup-btn {
+    color: #A5B4FC !important;
+    border-color: #6366F1 !important;
+}
+#atman-warmup-btn:hover { background: rgba(79,70,229,0.08) !important; }
+.dark #atman-warmup-btn:hover { background: rgba(99,102,241,0.12) !important; }
+
+/* Status Textbox — strip textarea chrome, render as inline info pill */
+#atman-warmup-log textarea {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font: 500 13px/1.4 'Inter', sans-serif !important;
+    color: #0F172A !important;
+    resize: none !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+.dark #atman-warmup-log textarea { color: #E2E8F0 !important; }
+#atman-warmup-log {
+    display: flex !important;
+    align-items: center !important;
+    padding: 12px 16px !important;
+}
+#atman-warmup-log > .block-label {
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 11px !important;
+    color: #64748B !important;
+    background: transparent !important;
+    padding: 0 12px 0 0 !important;
+    margin: 0 !important;
+    border-right: 1px solid #E5E7EB !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    height: 100%;
+}
+.dark #atman-warmup-log > .block-label {
+    color: #94A3B8 !important;
+    border-right-color: #1F2937 !important;
+}
+
+/* ── Tabs (.tabs > .tab-nav) ─────────────────────────────────────────── */
+.tabs > .tab-nav {
+    border-bottom: 1px solid #E5E7EB !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+}
+.dark .tabs > .tab-nav { border-bottom-color: #1F2937 !important; }
+.tabs > .tab-nav button {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    margin-bottom: -1px !important;
+    padding: 16px 20px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #64748B !important;
+    transition: color .15s, border-color .15s;
+}
+.tabs > .tab-nav button:hover { color: #0F172A !important; }
+.dark .tabs > .tab-nav button:hover { color: #E2E8F0 !important; }
+.tabs > .tab-nav button.selected,
+.tabs > .tab-nav button[aria-selected="true"] {
+    color: #4F46E5 !important;
+    border-bottom-color: #4F46E5 !important;
+    font-weight: 600 !important;
+}
+.dark .tabs > .tab-nav button.selected,
+.dark .tabs > .tab-nav button[aria-selected="true"] {
+    color: #818CF8 !important;
+    border-bottom-color: #6366F1 !important;
+}
+.tabs > .tabitem,
+.tabs .tabitem-content { padding: 32px 0 !important; }
+
+/* ── About-this-tab accordions (.atman-about-accordion) ──────────────── */
+.atman-about-accordion,
+.gr-accordion.atman-about-accordion {
+    border: 1px solid #E5E7EB !important;
+    border-radius: 8px !important;
+    background: #FFFFFF !important;
+    margin-bottom: 28px !important;
+    overflow: hidden;
+}
+.dark .atman-about-accordion {
+    border-color: #1F2937 !important;
+    background: #13131F !important;
+}
+.atman-about-accordion summary,
+.atman-about-accordion > .label-wrap {
+    padding: 14px 18px !important;
+    gap: 10px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #0F172A !important;
+    cursor: pointer;
+}
+.dark .atman-about-accordion summary,
+.dark .atman-about-accordion > .label-wrap { color: #E2E8F0 !important; }
+.atman-about-accordion summary svg,
+.atman-about-accordion .label-wrap svg {
+    color: #4F46E5 !important;
+    width: 14px !important;
+    height: 14px !important;
+    transition: transform .18s ease;
+}
+.atman-about-accordion[open] summary svg,
+.atman-about-accordion.open .label-wrap svg { transform: rotate(90deg); }
+.atman-about-accordion > div:not(.label-wrap),
+.atman-about-accordion .accordion-content {
+    padding: 4px 18px 18px 42px !important;
+}
+.atman-about-accordion .markdown,
+.atman-about-accordion p,
+.atman-about-accordion li {
+    font-size: 14px !important;
+    line-height: 1.65 !important;
+    color: #64748B !important;
+}
+.dark .atman-about-accordion .markdown,
+.dark .atman-about-accordion p,
+.dark .atman-about-accordion li { color: #94A3B8 !important; }
+.atman-about-accordion b,
+.atman-about-accordion strong {
+    color: #0F172A !important;
+    font-weight: 600 !important;
+}
+.dark .atman-about-accordion b,
+.dark .atman-about-accordion strong { color: #E2E8F0 !important; }
+.atman-about-accordion blockquote {
+    margin: 14px 0 0 !important;
+    padding: 12px 16px !important;
+    border-left: 2px solid #4F46E5 !important;
+    background: rgba(79,70,229,0.06) !important;
+    border-radius: 0 6px 6px 0 !important;
+    font-size: 13px !important;
+}
+.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) !important; }
+
+/* ── Dropdowns (preset selectors) ────────────────────────────────────── */
+.gr-dropdown, .gradio-dropdown, .dropdown {
+    padding: 12px 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid #E5E7EB !important;
+    background: #FFFFFF !important;
+    transition: border-color .15s, box-shadow .15s;
+}
+.dark .gr-dropdown,
+.dark .gradio-dropdown,
+.dark .dropdown {
+    border-color: #1F2937 !important;
+    background: #13131F !important;
+}
+.gr-dropdown:focus-within,
+.gradio-dropdown:focus-within,
+.dropdown:focus-within {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.28) !important;
+    outline: none !important;
+}
+.dark .gr-dropdown:focus-within,
+.dark .dropdown:focus-within {
+    border-color: #6366F1 !important;
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.36) !important;
+}
+.gr-dropdown ul li,
+.gradio-dropdown ul li,
+.dropdown ul li {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
+    font-size: 13px !important;
+}
+
+/* ── Result blocks (every Textbox/Markdown/JSON/etc) ─────────────────── */
+.block, .gr-block {
+    border-radius: 12px !important;
+    border: 1px solid #E5E7EB !important;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04) !important;
+    padding: 20px 22px !important;
+}
+.dark .block, .dark .gr-block {
+    border-color: #1F2937 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+}
+
+/* Eyebrow label above each block */
+.block > .block-label,
+.gr-block > .block-label,
+.block > label.block-label,
+label.block-label {
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #64748B !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+    background: transparent !important;
+    padding: 0 0 8px 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: block !important;
+}
+.dark .block > .block-label,
+.dark .gr-block > .block-label { color: #94A3B8 !important; }
+
+/* HighlightedText pills — calmer than Gradio's default rainbow */
+.gr-highlighted-text span[class*="highlight"],
+.highlighted-text span[class*="highlight"] {
+    border-radius: 4px !important;
+    padding: 1px 5px !important;
+    border: 1px solid transparent;
+    font-size: 13.5px;
+}
+
+/* ── gr.JSON output (replaces gr.Label for classification) ───────────── */
+.json-holder,
+.gr-json,
+[data-testid="json"] {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
+    font-size: 13px !important;
+    line-height: 1.75 !important;
+    background: #F8FAFC !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 8px !important;
+    padding: 16px 18px !important;
+    color: #0F172A !important;
+}
+.dark .json-holder,
+.dark .gr-json,
+.dark [data-testid="json"] {
+    background: #0F0F1B !important;
+    border-color: #1F2937 !important;
+    color: #E2E8F0 !important;
+}
+/* react-json-tree node colours */
+.json-holder .object-key,
+.json-holder [class*="object-key"] { color: #64748B !important; }
+.dark .json-holder .object-key { color: #94A3B8 !important; }
+.json-holder .string,
+.json-holder [class*="string-value"] { color: #059669 !important; }
+.dark .json-holder .string { color: #10B981 !important; }
+.json-holder .number { color: #F59E0B !important; }
+.json-holder .punctuation,
+.json-holder span[role="presentation"] { color: #94A3B8 !important; }
+
+/* ── Dataframe (Relations tab) ───────────────────────────────────────── */
+.gr-dataframe table {
+    border-collapse: separate !important;
+    border-spacing: 0;
+}
+.gr-dataframe th {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748B !important;
+    background: #F8FAFC !important;
+    border-bottom: 1px solid #E5E7EB !important;
+}
+.dark .gr-dataframe th {
+    background: #0F0F1B !important;
+    color: #94A3B8 !important;
+    border-bottom-color: #1F2937 !important;
+}
+.gr-dataframe td {
+    font-size: 13px;
+    padding: 10px 14px !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.gr-button,
+button.lg,
+button.primary,
+button.secondary {
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    padding: 11px 20px !important;
+    letter-spacing: -0.005em !important;
+    transition: background .18s, box-shadow .18s, transform .05s !important;
+}
+.gr-button:active, button.lg:active { transform: translateY(1px); }
+
+.gr-button-primary,
+button.primary,
+[data-variant="primary"] {
+    background: #4F46E5 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.dark .gr-button-primary,
+.dark button.primary,
+.dark [data-variant="primary"] { background: #6366F1 !important; }
+.gr-button-primary:hover,
+button.primary:hover {
+    background: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 100%) !important;
+    box-shadow: 0 2px 8px rgba(79,70,229,0.18) !important;
+}
+.dark .gr-button-primary:hover,
+.dark button.primary:hover {
+    background: linear-gradient(135deg, #6366F1 0%, #A78BFA 100%) !important;
+    box-shadow: 0 2px 12px rgba(99,102,241,0.24) !important;
+}
+.gr-button-secondary,
+button.secondary {
+    background: transparent !important;
+    border: 1px solid #4F46E5 !important;
+    color: #4F46E5 !important;
+}
+.dark .gr-button-secondary,
+.dark button.secondary {
+    border-color: #6366F1 !important;
+    color: #A5B4FC !important;
+}
+.gr-button-secondary:hover,
+button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
+.dark .gr-button-secondary:hover { background: rgba(99,102,241,0.12) !important; }
+
+/* ── Detailed Analysis Report group (.atman-report-group) ────────────── */
+.atman-report-group { padding: 22px !important; }
+.atman-report-group h3,
+.atman-report-group > .markdown:first-child h3 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    margin: 0 0 18px !important;
+    color: #0F172A !important;
+    padding-bottom: 12px !important;
+    border-bottom: 1px solid #E5E7EB !important;
+}
+.dark .atman-report-group h3 {
+    color: #E2E8F0 !important;
+    border-bottom-color: #1F2937 !important;
+}
+/* Section-header markdown elements (a_boundary_hdr, a_divergence_hdr, a_meta_hdr) */
+.atman-report-group .atman-sec-hdr p,
+.atman-report-group .atman-sec-hdr {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    color: #64748B !important;
+    margin: 16px 0 8px !important;
+}
+.dark .atman-report-group .atman-sec-hdr p,
+.dark .atman-report-group .atman-sec-hdr { color: #94A3B8 !important; }
+.atman-report-group .atman-sec-body p,
+.atman-report-group .atman-sec-body {
+    font-size: 13.5px !important;
+    line-height: 1.65 !important;
+    color: #0F172A !important;
+    margin: 0 0 6px !important;
+}
+.dark .atman-report-group .atman-sec-body p,
+.dark .atman-report-group .atman-sec-body { color: #E2E8F0 !important; }
+.atman-meta-block,
+.atman-report-group .atman-sec-body.atman-meta-block p {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+    color: #64748B !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* ── Generic meta-text markdown (k_meta, r_meta, af_meta) ────────────── */
+.atman-meta p, .atman-meta {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #94A3B8 !important;
+    letter-spacing: 0.02em !important;
+}
+.dark .atman-meta p, .dark .atman-meta { color: #64748B !important; }
+
+/* ── Tab intro markdown (optional, for any tab-top description) ──────── */
+.tab-intro p, .tab-intro {
+    font-size: 14px !important;
+    line-height: 1.65 !important;
+    color: #64748B !important;
+    max-width: 720px;
+}
+.dark .tab-intro p, .dark .tab-intro { color: #94A3B8 !important; }
+.tab-intro b { color: #0F172A !important; font-weight: 600 !important; }
+.dark .tab-intro b { color: #E2E8F0 !important; }
+
+/* ── Whitespace rhythm ───────────────────────────────────────────────── */
+.gradio-container .gr-form > * + * { margin-top: 16px !important; }
+.gradio-container > .block + .block,
+.gradio-container > .gr-form + .gr-form { margin-top: 24px !important; }
+#atman-hero + * { margin-top: 8px !important; }
+
+/* ── Footer (gr.HTML #atman-footer) ──────────────────────────────────── */
+#atman-footer {
+    text-align: center;
+    padding: 32px 0 24px;
+    border-top: 1px solid #E5E7EB;
+    margin-top: 48px;
+    font-size: 13px;
+    color: #94A3B8;
+}
+.dark #atman-footer {
+    border-top-color: #1F2937;
+    color: #64748B;
+}
+#atman-footer a {
+    color: #4F46E5;
+    text-decoration: none;
+    font-weight: 500;
+}
+.dark #atman-footer a { color: #818CF8; }
+#atman-footer a:hover { text-decoration: underline; }
+#atman-footer em {
+    font-style: italic;
+    color: #94A3B8;
+    display: block;
+    max-width: 560px;
+    margin: 0 auto 8px;
+}
+.dark #atman-footer em { color: #64748B; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Pair diagram (.apd-*)  —  used inside About accordions per tab.
+ * Mirrors the full architecture diagram, one row per tab.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.apd-pair {
+    display: grid;
+    grid-template-columns: 1fr 64px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin: 4px 0 18px;
+    max-width: 720px;
+}
+
+.apd-card {
+    position: relative;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 12px 14px 12px 18px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    display: flex;
+    align-items: center;
+}
+.dark .apd-card {
+    background: linear-gradient(180deg, #131826 0%, #0F1421 100%);
+    border-color: #2B3447;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+
+.apd-stripe {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 10px 0 0 10px;
+}
+.apd-left  .apd-stripe { background: #4F46E5; box-shadow: 0 0 12px rgba(79,70,229,0.35); }
+.apd-right .apd-stripe { background: #8B5CF6; box-shadow: 0 0 12px rgba(139,92,246,0.35); }
+.dark .apd-left  .apd-stripe { background: #6366F1; box-shadow: 0 0 12px rgba(99,102,241,0.45); }
+.dark .apd-right .apd-stripe { background: #A78BFA; box-shadow: 0 0 12px rgba(167,139,250,0.45); }
+
+.apd-card-body { width: 100%; }
+
+.apd-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.apd-name {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0F172A;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+.dark .apd-name { color: #F3F4F6; }
+
+.apd-sub {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 11px;
+    color: #64748B;
+    letter-spacing: 0.01em;
+}
+.dark .apd-sub { color: #9CA3AF; }
+
+.apd-tag {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 10px;
+    color: #64748B;
+    padding: 2px 6px;
+    border: 1px solid #E5E7EB;
+    border-radius: 4px;
+    background: #FFFFFF;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.dark .apd-tag {
+    color: #6B7280;
+    border-color: #2B3447;
+    background: rgba(255,255,255,0.02);
+}
+
+.apd-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0 4px;
+}
+.apd-arrow-line {
+    flex: 1 1 auto;
+    height: 2px;
+    background: linear-gradient(90deg, #6366F1 0%, #A855F7 100%);
+    border-radius: 1px;
+    box-shadow: 0 0 8px rgba(139,92,246,0.25);
+    margin-right: -1px;
+}
+.dark .apd-arrow-line {
+    background: linear-gradient(90deg, #818CF8 0%, #C084FC 100%);
+    box-shadow: 0 0 10px rgba(167,139,250,0.40);
+}
+.apd-arrow-head {
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid #A855F7;
+    flex-shrink: 0;
+}
+.dark .apd-arrow-head { border-left-color: #C084FC; }
+
+/* Responsive: stack on narrow viewports */
+@media (max-width: 640px) {
+    .apd-pair {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .apd-arrow {
+        transform: rotate(90deg);
+        width: 56px;
+        height: 16px;
+        margin: 0 auto;
+    }
+}
