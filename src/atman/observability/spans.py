@@ -190,3 +190,19 @@ def cron_span(monitor_slug: str) -> Generator[Any, None, None]:
     with sentry_sdk.start_span(op="cron", name=monitor_slug) as span:
         span.set_data("cron.monitor_slug", monitor_slug)
         yield span
+
+
+def set_conversation_id(session_id: str) -> None:
+    """Tag the current span and scope with gen_ai.conversation.id = session_id.
+
+    Enables Sentry's Explore > Conversations view to group all turns from one
+    session into a single conversation replay.
+    """
+    if _observability_disabled():
+        return
+    import sentry_sdk
+
+    span = sentry_sdk.get_current_span()
+    if span is not None:
+        span.set_data("gen_ai.conversation.id", session_id)
+    sentry_sdk.set_tag("conversation_id", session_id)

@@ -9,6 +9,8 @@ off       — no-op; sentry_sdk is never imported; zero overhead
 minimal   — errors + AI-route traces at 100 %, 10 % elsewhere, no profiling  (prod default)
 debug     — 100 % tracing + profiling + Spotlight  (dev default)
 verbose   — debug + SDK self-logging + attach_stacktrace + locals
+full      — debug mode for experiments: send_default_pii=True, all prompts captured,
+            all NLP/RAG/DB data in spans, no filtering. NOT for production use.
 """
 
 from __future__ import annotations
@@ -17,8 +19,8 @@ import logging
 import os
 from typing import Literal
 
-ObsLevel = Literal["off", "minimal", "debug", "verbose"]
-_VALID_LEVELS: frozenset[str] = frozenset({"off", "minimal", "debug", "verbose"})
+ObsLevel = Literal["off", "minimal", "debug", "verbose", "full"]
+_VALID_LEVELS: frozenset[str] = frozenset({"off", "minimal", "debug", "verbose", "full"})
 
 _LOG = logging.getLogger(__name__)
 
@@ -29,6 +31,11 @@ _current_level: str = "off"
 def is_enabled() -> bool:
     """Return True when Sentry was successfully initialised (level != off, DSN set)."""
     return _initialized
+
+
+def is_full_mode() -> bool:
+    """Return True when running at ATMAN_OBS_LEVEL=full (debug-only: all data captured)."""
+    return _current_level == "full"
 
 
 def _normalize_level(level: str | None) -> str:
@@ -42,7 +49,7 @@ def init_observability(level: str | None = None) -> None:
     """Initialise Sentry observability at the requested level.
 
     Args:
-        level: One of "off" | "minimal" | "debug" | "verbose".
+        level: One of "off" | "minimal" | "debug" | "verbose" | "full".
                Defaults to the ATMAN_OBS_LEVEL env var, or "minimal" when unset.
     """
     global _initialized, _current_level
@@ -81,21 +88,41 @@ def init_observability(level: str | None = None) -> None:
         make_event_scrubber,
     )
 
+    # full mode captures everything including prompts/completions/PII
+    _include_prompts = level == "full"
+    _log_level = logging.DEBUG if level == "full" else logging.WARNING
+
     integrations: list[Integration] = [
         AsyncioIntegration(),
         HttpxIntegration(),
-        LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
+        LoggingIntegration(level=_log_level, event_level=logging.ERROR),
     ]
 
-    # Wire AnthropicIntegration when the anthropic package is installed.
-    # Guarded by try/except so the observability module stays importable in
-    # environments that don't have the anthropic extra (e.g. lean CI builds).
+    # PydanticAIIntegration: auto-instruments Agent.run(), model calls, tool executions.
+    # include_prompts=True only in full mode (captures all prompt/completion text).
+    try:
+        from sentry_sdk.integrations.pydantic_ai import PydanticAIIntegration
+
+        integrations.append(
+            PydanticAIIntegration(
+                include_prompts=_include_prompts,
+                handled_tool_call_exceptions=True,
+            )
+        )
+    except (ImportError, Exception):
+        pass
+
+    # AnthropicIntegration: include_prompts=True in full mode.
     try:
         from sentry_sdk.integrations.anthropic import AnthropicIntegration
 
-        integrations.append(AnthropicIntegration())
+        integrations.append(AnthropicIntegration(include_prompts=_include_prompts))
     except ImportError:
         pass
+
+    # In full mode we skip event filtering so nothing is dropped.
+    _before_send = None if level == "full" else _make_before_send(level)
+    _before_send_tx = None if level == "full" else _make_before_send_transaction(level)
 
     common: dict[str, object] = {
         "dsn": dsn,
@@ -103,9 +130,9 @@ def init_observability(level: str | None = None) -> None:
         "release": os.getenv("SENTRY_RELEASE") or None,
         "integrations": integrations,
         "event_scrubber": make_event_scrubber(level),
-        "before_send": _make_before_send(level),
-        "before_send_transaction": _make_before_send_transaction(level),
-        "send_default_pii": False,
+        "before_send": _before_send,
+        "before_send_transaction": _before_send_tx,
+        "send_default_pii": level == "full",
         "enable_logs": True,
     }
 
@@ -130,7 +157,7 @@ def init_observability(level: str | None = None) -> None:
                 "spotlight": True,
             }
         )
-    else:  # verbose
+    elif level == "verbose":
         common.update(
             {
                 "traces_sample_rate": 1.0,  # 100 % in verbose — capture everything
@@ -140,6 +167,20 @@ def init_observability(level: str | None = None) -> None:
                 "spotlight": True,
                 "attach_stacktrace": True,
                 "include_local_variables": True,
+            }
+        )
+    else:  # full — debug-only mode, no filtering, all prompts/data captured
+        common.update(
+            {
+                "traces_sample_rate": 1.0,
+                "stream_gen_ai_spans": True,  # AI spans streamed separately (avoids payload limits)
+                "profiles_sample_rate": 1.0,
+                "max_breadcrumbs": 500,
+                "debug": True,
+                "spotlight": True,
+                "attach_stacktrace": True,
+                "include_local_variables": True,
+                "max_value_length": 100_000,  # don't truncate long strings in spans
             }
         )
 

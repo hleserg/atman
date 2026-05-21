@@ -135,6 +135,20 @@ async def record_key_moment(
         )
 
     try:
+        from contextlib import suppress as _suppress
+
+        import sentry_sdk as _sdk
+
+        from atman.adapters.observability.sentry import metric_increment as _mi
+        with _suppress(Exception):
+            _sdk.set_context("tool.record_key_moment", {
+                "what_happened": what_happened,
+                "why_it_matters": why_it_matters,
+                "emotional_valence": emotional_valence,
+                "emotional_intensity": emotional_intensity,
+                "depth": depth,
+                "session_id": str(ctx.deps.session_id),
+            })
         report = AgentMemoryReport(
             content=what_happened,
             emotional_valence=emotional_valence,
@@ -144,6 +158,8 @@ async def record_key_moment(
             tags=[f"depth:{depth}"],
         )
         await det.submit_self_report(report, session_id=ctx.deps.session_id)
+        with _suppress(Exception):
+            _mi("atman.key_moment.written", tags={"depth": depth})
         summary = what_happened if len(what_happened) <= 50 else f"{what_happened[:50]}..."
         return f"Key moment recorded via AffectDetector: {summary}"
     except Exception as e:
@@ -276,12 +292,25 @@ def resolve_pending_review(
         return f"Error: review_id is not a valid UUID: {review_id!r}"
 
     try:
+        from contextlib import suppress as _suppress
+
+        import sentry_sdk as _sdk
+
+        from atman.adapters.observability.sentry import metric_increment as _mi
+        with _suppress(Exception):
+            _sdk.set_context("tool.resolve_pending_review", {
+                "review_id": review_id,
+                "decision": resolution.value,
+                "note": note_clean,
+            })
         resolved = inbox.resolve(
             review_uuid,
             resolution=resolution,
             note=note_clean,
             resolved_at=datetime.now(UTC),
         )
+        with _suppress(Exception):
+            _mi("atman.pending_review.resolved", tags={"decision": resolution.value})
     except KeyError:
         return f"Error: no pending review with id {review_id}"
     except ValueError as exc:
@@ -343,10 +372,23 @@ def request_reflection(
         run_key=run_key,
         requested_at=now,
     )
+    from contextlib import suppress as _suppress
+
+    import sentry_sdk as _sdk
+
+    from atman.adapters.observability.sentry import metric_increment as _mi
+    with _suppress(Exception):
+        _sdk.set_context("tool.request_reflection", {
+            "reason": reason_clean,
+            "level": resolved_level.value,
+            "run_key": run_key,
+        })
     try:
         stored = queue.enqueue(request)
     except Exception as exc:
         return f"Error queuing reflection request: {exc!s}"
+    with _suppress(Exception):
+        _mi("atman.reflection.requested", tags={"level": resolved_level.value})
     if stored.id != request.id:
         return (
             f"Already queued (same reason within the hour): "

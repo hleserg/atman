@@ -459,11 +459,43 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                 cache_hit=True,
                 latency_ms=0,
             )
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.ner.cache_hit")
             return cached
+
+        from contextlib import suppress as _suppress
+
+        from atman.adapters.observability.sentry import metric_distribution as _md
+        from atman.adapters.observability.sentry import metric_increment as _mi
+        from atman.observability.spans import pipeline_span as _ps
+
+        _mi("atman.ner.cache_miss")
         _t0 = _time.monotonic()
-        entities = self._run_ner(text)
-        anchors = self._extract_anchors(entities, text)
-        language = self._detect_language(text)
+        with _ps("atman.ner.user", "GLiNER NER user message") as _span:
+            entities = self._run_ner(text)
+            anchors = self._extract_anchors(entities, text)
+            language = self._detect_language(text)
+            if _span is not None:
+                with _suppress(Exception):
+                    _span.set_data("ner.model", self._gliner_model)
+                    _span.set_data("ner.entity_count", len(entities))
+                    _span.set_data("ner.anchor_count", len(anchors))
+                    _span.set_data("ner.language", language)
+                    _span.set_data("ner.input_text", text)
+                    _span.set_data("ner.entities", [
+                        {
+                            "text": e.text,
+                            "type": e.entity_type.value,
+                            "score": round(e.confidence, 4),
+                        }
+                        for e in entities
+                    ])
+                    _span.set_data("ner.anchors", [
+                        {"text": a.text, "type": a.anchor_type}
+                        for a in anchors[:20]
+                    ])
+        _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
+        _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond", tags={"call": "user"})
         result = UserMessageAnalysis(
             text=text,
             entities=entities,
@@ -477,7 +509,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             entity_count=len(entities),
             anchor_count=len(anchors),
             cache_hit=False,
-            latency_ms=round((_time.monotonic() - _t0) * 1000, 1),
+            latency_ms=_latency_ms,
         )
         return result
 
@@ -489,48 +521,95 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         thinking: str | None = None,
     ) -> AgentMessageAnalysis:
         """Point A: analyse agent message with 13-label NER + 5 MiniLM classifications."""
+        from contextlib import suppress as _suppress
+
+        from atman.adapters.observability.sentry import metric_distribution as _md
+        from atman.observability.spans import pipeline_span as _ps
+
         _t0 = _time.monotonic()
-        # Legacy EntityType NER (used for entity registration)
-        message_entities = self._run_ner(message)
-        thinking_entities = self._run_ner(thinking) if thinking else []
+        with _ps("atman.ner.agent", "GLiNER+MiniLM agent message") as _span:
+            # Legacy EntityType NER (used for entity registration)
+            message_entities = self._run_ner(message)
+            thinking_entities = self._run_ner(thinking) if thinking else []
 
-        # Point A NER: 13 agent-specific labels
-        message_spans = self._run_raw_ner(message, _POINT_A_NER_LABELS)
+            # Point A NER: 13 agent-specific labels
+            message_spans = self._run_raw_ner(message, _POINT_A_NER_LABELS)
 
-        # Divergence (rule-based, thinking vs message)
-        divergence_signals: list[str] = []
-        if thinking:
-            divergence_signals = self._detect_divergence(thinking, message)
+            # Divergence (rule-based, thinking vs message)
+            divergence_signals: list[str] = []
+            if thinking:
+                divergence_signals = self._detect_divergence(thinking, message)
 
-        # Boundary markers (text heuristic)
-        boundary_markers = self._detect_boundary_markers(message)
+            # Boundary markers (text heuristic)
+            boundary_markers = self._detect_boundary_markers(message)
 
-        # Legacy cognitive_load heuristic
-        all_entities = message_entities + thinking_entities
-        cognitive_load_high = len(thinking or "") > 2000 and len(all_entities) >= 5
+            # Legacy cognitive_load heuristic
+            all_entities = message_entities + thinking_entities
+            cognitive_load_high = len(thinking or "") > 2000 and len(all_entities) >= 5
 
-        # Point A MiniLM classifications
-        def _classify(
-            task_name: str, candidates: list[str], norm_map: dict | None = None
-        ) -> str | None:
-            result = self._classify_task(message, task_name, candidates)
-            if result is not None and norm_map:
-                result = norm_map.get(result, result)
-            return result
+            # Point A MiniLM classifications — capture full scores dict for debug spans
+            _a_scores: dict[str, dict[str, float]] = {}
 
-        stance = _classify("stance", _POINT_A_CLASSIFICATIONS["stance"])
-        cognitive_mode = _classify("cognitive_mode", _POINT_A_CLASSIFICATIONS["cognitive_mode"])
-        self_orientation = _classify(
-            "self_orientation", _POINT_A_CLASSIFICATIONS["self_orientation"], _SELF_ORIENTATION_MAP
-        )
-        primary_emotion = _classify("primary_emotion", _POINT_A_CLASSIFICATIONS["primary_emotion"])
-        cognitive_load_label = _classify(
-            "cognitive_load_label",
-            _POINT_A_CLASSIFICATIONS["cognitive_load_label"],
-            _COGNITIVE_LOAD_MAP,
-        )
+            def _classify(
+                task_name: str, candidates: list[str], norm_map: dict | None = None
+            ) -> str | None:
+                scores = self._run_classification(message, candidates)
+                _a_scores[task_name] = scores
+                result = _pick_top(scores, self._classification_threshold)
+                if result is not None and norm_map:
+                    result = norm_map.get(result, result)
+                return result
 
-        language = self._detect_language(message)
+            stance = _classify("stance", _POINT_A_CLASSIFICATIONS["stance"])
+            cognitive_mode = _classify("cognitive_mode", _POINT_A_CLASSIFICATIONS["cognitive_mode"])
+            self_orientation = _classify(
+                "self_orientation",
+                _POINT_A_CLASSIFICATIONS["self_orientation"],
+                _SELF_ORIENTATION_MAP,
+            )
+            primary_emotion = _classify(
+                "primary_emotion", _POINT_A_CLASSIFICATIONS["primary_emotion"]
+            )
+            cognitive_load_label = _classify(
+                "cognitive_load_label",
+                _POINT_A_CLASSIFICATIONS["cognitive_load_label"],
+                _COGNITIVE_LOAD_MAP,
+            )
+
+            language = self._detect_language(message)
+
+            if _span is not None:
+                with _suppress(Exception):
+                    _span.set_data("ner.model", self._gliner_model)
+                    _span.set_data("ner.classify_model", self._minilm_model)
+                    _span.set_data("ner.input_text", message)
+                    _span.set_data("ner.thinking_text", thinking)
+                    _span.set_data("ner.entity_count", len(message_entities))
+                    _span.set_data("ner.thinking_entity_count", len(thinking_entities))
+                    _span.set_data("ner.span_count", len(message_spans))
+                    _span.set_data("ner.divergence_signals", divergence_signals)
+                    _span.set_data("ner.boundary_markers", boundary_markers)
+                    _span.set_data("ner.cognitive_load_high", cognitive_load_high)
+                    _span.set_data("ner.language", language)
+                    _span.set_data("ner.message_entities", [
+                        {
+                            "text": e.text,
+                            "type": e.entity_type.value,
+                            "score": round(e.confidence, 4),
+                        }
+                        for e in message_entities
+                    ])
+                    _span.set_data("ner.message_spans", [
+                        {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
+                        for s in message_spans
+                    ])
+                    _span.set_data("ner.classify_all_scores", {
+                        task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
+                        for task, scores in _a_scores.items()
+                    })
+
+        _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
+        _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond", tags={"call": "agent"})
 
         _slog(
             "ner_inference",
@@ -539,7 +618,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
             span_count=len(message_spans),
             divergence_signals=divergence_signals,
             boundary_markers_count=len(boundary_markers),
-            latency_ms=round((_time.monotonic() - _t0) * 1000, 1),
+            latency_ms=_latency_ms,
         )
         return AgentMessageAnalysis(
             message_entities=message_entities,
@@ -564,69 +643,110 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
         why_it_matters: str,
     ) -> KeyMomentAnalysis:
         """Point K: analyse key moment with 4-label NER + 7 MiniLM classifications."""
+        from contextlib import suppress as _suppress
+
+        from atman.adapters.observability.sentry import metric_distribution as _md
+        from atman.observability.spans import pipeline_span as _ps
+
         combined = f"{what_happened}\n{why_it_matters}"
-        entities = self._run_ner(combined)
+        _t0 = _time.monotonic()
+        with _ps("atman.ner.key_moment", "GLiNER+MiniLM key moment") as _span:
+            entities = self._run_ner(combined)
 
-        # Point K NER: 4 narrative marker labels
-        marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
+            # Point K NER: 4 narrative marker labels
+            marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
 
-        # Legacy classification for cognitive_load (float) and boundary_event
-        legacy_scores = self._run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)
-        boundary_markers = self._detect_boundary_markers(combined)
-        boundary_event = (
-            legacy_scores.get("boundary event", 0.0) > self._classification_threshold
-            or len(boundary_markers) > 0
-        )
-        principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
-        cognitive_load = min(1.0, max(0.0, legacy_scores.get(_HIGH_COGNITIVE_LOAD_LABEL, 0.0)))
+            # Legacy classification for cognitive_load (float) and boundary_event
+            legacy_scores = self._run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)
+            boundary_markers = self._detect_boundary_markers(combined)
+            boundary_event = (
+                legacy_scores.get("boundary event", 0.0) > self._classification_threshold
+                or len(boundary_markers) > 0
+            )
+            principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
+            cognitive_load = min(1.0, max(0.0, legacy_scores.get(_HIGH_COGNITIVE_LOAD_LABEL, 0.0)))
 
-        positive_score = legacy_scores.get("positive trust", 0.0)
-        negative_score = legacy_scores.get("negative trust", 0.0)
-        if positive_score > self._classification_threshold and positive_score > negative_score:
-            trust_signal: str | None = "positive"
-        elif negative_score > self._classification_threshold and negative_score > positive_score:
-            trust_signal = "negative"
-        else:
-            trust_signal = None
+            positive_score = legacy_scores.get("positive trust", 0.0)
+            negative_score = legacy_scores.get("negative trust", 0.0)
+            if positive_score > self._classification_threshold and positive_score > negative_score:
+                trust_signal: str | None = "positive"
+            elif negative_score > self._classification_threshold and negative_score > positive_score:
+                trust_signal = "negative"
+            else:
+                trust_signal = None
 
-        topic_labels = [
-            label
-            for label, score in legacy_scores.items()
-            if score > self._classification_threshold
-        ]
+            topic_labels = [
+                label
+                for label, score in legacy_scores.items()
+                if score > self._classification_threshold
+            ]
 
-        # Point K MiniLM classifications
-        def _k_classify(
-            task: str, candidates: list[str], norm_map: dict | None = None
-        ) -> str | None:
-            result = self._classify_task(combined, task, candidates)
-            if result is not None and norm_map:
-                result = norm_map.get(result, result)
-            return result
+            # Point K MiniLM classifications — capture full scores for debug spans
+            _k_scores: dict[str, dict[str, float]] = {}
 
-        agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
-        confidence_in_self = _k_classify(
-            "confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP
-        )
-        trust_signal_category = _k_classify(
-            "trust_signal_category",
-            _POINT_K_CLASSIFICATIONS["trust_signal_category"],
-            _TRUST_CAT_MAP,
-        )
-        boundary_event_category = _k_classify(
-            "boundary_event_category",
-            _POINT_K_CLASSIFICATIONS["boundary_event_category"],
-            _BOUNDARY_CAT_MAP,
-        )
-        connection_quality = _k_classify(
-            "connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"]
-        )
-        learning_signal = _k_classify(
-            "learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP
-        )
-        growth_indicator = _k_classify(
-            "growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"]
-        )
+            def _k_classify(
+                task: str, candidates: list[str], norm_map: dict | None = None
+            ) -> str | None:
+                scores = self._run_classification(combined, candidates)
+                _k_scores[task] = scores
+                result = _pick_top(scores, self._classification_threshold)
+                if result is not None and norm_map:
+                    result = norm_map.get(result, result)
+                return result
+
+            agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
+            confidence_in_self = _k_classify(
+                "confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP
+            )
+            trust_signal_category = _k_classify(
+                "trust_signal_category",
+                _POINT_K_CLASSIFICATIONS["trust_signal_category"],
+                _TRUST_CAT_MAP,
+            )
+            boundary_event_category = _k_classify(
+                "boundary_event_category",
+                _POINT_K_CLASSIFICATIONS["boundary_event_category"],
+                _BOUNDARY_CAT_MAP,
+            )
+            connection_quality = _k_classify(
+                "connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"]
+            )
+            learning_signal = _k_classify(
+                "learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP
+            )
+            growth_indicator = _k_classify(
+                "growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"]
+            )
+
+            if _span is not None:
+                with _suppress(Exception):
+                    _span.set_data("ner.model", self._gliner_model)
+                    _span.set_data("ner.classify_model", self._minilm_model)
+                    _span.set_data("ner.what_happened", what_happened)
+                    _span.set_data("ner.why_it_matters", why_it_matters)
+                    _span.set_data("ner.entity_count", len(entities))
+                    _span.set_data("ner.marker_span_count", len(marker_spans))
+                    _span.set_data("ner.boundary_event", boundary_event)
+                    _span.set_data("ner.cognitive_load", round(cognitive_load, 4))
+                    _span.set_data("ner.entities", [
+                        {"text": e.text, "type": e.entity_type.value, "score": round(e.confidence, 4)}
+                        for e in entities
+                    ])
+                    _span.set_data("ner.marker_spans", [
+                        {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
+                        for s in marker_spans
+                    ])
+                    _span.set_data("ner.legacy_scores", {
+                        lbl: round(sc, 4) for lbl, sc in legacy_scores.items()
+                    })
+                    _span.set_data("ner.classify_all_scores", {
+                        task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
+                        for task, scores in _k_scores.items()
+                    })
+
+        _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
+        _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond",
+            tags={"call": "key_moment"})
 
         return KeyMomentAnalysis(
             entities=entities,

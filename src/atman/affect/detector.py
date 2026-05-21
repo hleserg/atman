@@ -38,6 +38,21 @@ from atman.core.models.experience import ContextHalo, EmotionalDepth, FeltSense,
 from atman.core.ports.linguistic import LinguisticAnalyzer
 from atman.core.session_log import slog as _slog
 
+try:
+    from atman.adapters.observability.sentry import (
+        metric_distribution as _md,
+    )
+    from atman.adapters.observability.sentry import (
+        metric_increment as _mi,
+    )
+    from atman.observability.spans import pipeline_span as _pipeline_span
+    _OBS_OK = True
+except Exception:  # pragma: no cover
+    _OBS_OK = False
+    _pipeline_span = None  # type: ignore[assignment]
+    _mi = lambda *a, **kw: None  # type: ignore[misc]  # noqa: E731
+    _md = lambda *a, **kw: None  # type: ignore[misc]  # noqa: E731
+
 if TYPE_CHECKING:
     from atman.core.ports.divergence_events import DivergenceEventStore
     from atman.core.services.divergence_detector import DivergenceDetector
@@ -171,9 +186,13 @@ class AffectDetector:
         lang = _detect_lang(clean_text, self.config.default_lang)
         raw_score = emotion_score(clean_text, lang=lang)
         coverage = float(raw_score.get("_meta", {}).get("coverage", 0.0))
+        import time as _time
+        _t0 = _time.monotonic()
         metrics = self._compute_metrics(clean_text, lang)
         vec = self._metrics_vector(metrics)
         z = self._baseline.z_scores(vec)
+        with __import__("contextlib").suppress(Exception):
+            _md("atman.affect.latency_ms", (_time.monotonic() - _t0) * 1000, unit="millisecond")
 
         char_count = len(clean_text.strip())
         self._baseline.update(vec, char_count=char_count, extra={"phase": "process"})
@@ -301,6 +320,24 @@ class AffectDetector:
         )
         if session_id is not None:
             self._append_key_moment(session_id, excerpt, felt, record)
+        with __import__("contextlib").suppress(Exception):
+            _mi("atman.affect.key_moment_triggered", tags={"trigger": primary.value})
+            if _OBS_OK and _pipeline_span is not None:
+                import sentry_sdk as _sdk
+                _span = _sdk.get_current_span()
+                if _span is not None:
+                    _span.set_data("affect.nrc_valence", metrics.nrc_valence)
+                    _span.set_data("affect.hedge_density", metrics.hedge_density)
+                    _span.set_data("affect.length_z", metrics.length_z)
+                    _span.set_data("affect.question_tail_density", metrics.question_tail_density)
+                    _span.set_data("affect.self_reference_density", metrics.self_reference_density)
+                    _span.set_data("affect.disclaimer_density", metrics.disclaimer_density)
+                    _span.set_data("affect.negation_adjusted_valence", metrics.negation_adjusted_valence)
+                    _span.set_data("affect.emotion_lexical_energy", metrics.emotion_lexical_energy)
+                    _span.set_data("affect.sincerity_score", metrics.sincerity_score)
+                    _span.set_data("affect.trigger_reason", primary.value)
+                    _span.set_data("affect.all_reasons", [r.value for r in reasons])
+                    _span.set_data("affect.divergence_score", divergence)
         return record
 
     async def _handle_emphasis(

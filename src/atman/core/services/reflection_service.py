@@ -341,29 +341,47 @@ class MicroReflectionService:
                 experience_ids=[exp.id for exp in experiences],
             )
 
+        import time as _t
+        from contextlib import suppress as _suppress
+
+        from atman.observability.spans import pipeline_span as _ps
+        _t0 = _t.monotonic()
+
         # HLE-46: forward the session's KeyMoments to the prompt builder via
         # NarrativeRevisionService so the LLM sees actual moment content.
         key_moments_by_session = _top_moments_by_session({session_id: moments})
-        try:
-            proposed_update = self.narrative_revision.update_recent_layer(
-                experiences,
-                ReflectionLevel.MICRO,
-                key_moments_by_session=key_moments_by_session,
-            )
-        except NarrativePersistenceConflictError:
-            event = ReflectionEvent(
-                reflection_level=ReflectionLevel.MICRO,
-                experiences_analyzed=[exp.id for exp in experiences],
-                narrative_changes_proposed="",
-                key_insight=(
-                    "Micro reflection did not apply: narrative was modified "
-                    "concurrently since this snapshot was read."
-                ),
-                notes="outcome=micro_failed reason=narrative_conflict",
-                timestamp=self._clock.now(),
-            )
-            self.event_store.save(event)
-            return event
+        with _ps("atman.reflection.update", "micro narrative update") as _span:
+            if _span is not None:
+                with _suppress(Exception):
+                    _span.set_data("reflect.level", "micro")
+                    _span.set_data("reflect.experience_count", len(experiences))
+                    _span.set_data("reflect.moment_count", len(moments))
+            try:
+                proposed_update = self.narrative_revision.update_recent_layer(
+                    experiences,
+                    ReflectionLevel.MICRO,
+                    key_moments_by_session=key_moments_by_session,
+                )
+                if _span is not None:
+                    with _suppress(Exception):
+                        _span.set_data("reflect.narrative_proposed_len", len(proposed_update))
+            except NarrativePersistenceConflictError:
+                event = ReflectionEvent(
+                    reflection_level=ReflectionLevel.MICRO,
+                    experiences_analyzed=[exp.id for exp in experiences],
+                    narrative_changes_proposed="",
+                    key_insight=(
+                        "Micro reflection did not apply: narrative was modified "
+                        "concurrently since this snapshot was read."
+                    ),
+                    notes="outcome=micro_failed reason=narrative_conflict",
+                    timestamp=self._clock.now(),
+                )
+                self.event_store.save(event)
+                with _suppress(Exception):
+                    from atman.adapters.observability.sentry import metric_increment as _mi
+                    _mi("atman.reflection.completed", tags={"level": "micro", "outcome": "conflict"})
+                return event
 
         event = ReflectionEvent(
             reflection_level=ReflectionLevel.MICRO,
@@ -389,6 +407,13 @@ class MicroReflectionService:
                 self._skill_manager.process_session_skills(agent_id, session_id)
             except Exception as _exc:
                 logger.warning("Skill-loop processing failed for session %s: %s", session_id, _exc)
+
+        with _suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _latency = (_t.monotonic() - _t0) * 1000
+            _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "micro"})
+            _mi("atman.reflection.completed", tags={"level": "micro", "outcome": "success"})
 
         return event
 
@@ -623,6 +648,10 @@ class DailyReflectionService:
             self.identity_repo, identity, run_key
         )
 
+        import time as _t
+        from contextlib import suppress as _suppress
+        _t0 = _t.monotonic()
+
         agent_reasons = [r.reason for r in pending_requests]
         patterns_detected = self._detect_patterns(
             experiences,
@@ -717,6 +746,17 @@ class DailyReflectionService:
             persisted,
             self._clock.now(),
         )
+        with _suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _latency = (_t.monotonic() - _t0) * 1000
+            _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "daily"})
+            _mi("atman.reflection.completed", tags={
+                "level": "daily",
+                "outcome": "success",
+                "patterns": str(len(patterns_detected)),
+                "experiences": str(len(experiences)),
+            })
         return persisted
 
     def _process_skills_for_daily(self) -> DailySkillSummary | None:
@@ -1055,6 +1095,10 @@ class DeepReflectionService:
             self.identity_repo, identity, run_key
         )
 
+        import time as _t
+        from contextlib import suppress as _suppress
+        _t0 = _t.monotonic()
+
         health_assessment = self._perform_health_assessment(
             identity, experiences, run_key, key_moments_by_session=key_moments_by_session
         )
@@ -1200,6 +1244,17 @@ class DeepReflectionService:
             persisted,
             self._clock.now(),
         )
+        with _suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _latency = (_t.monotonic() - _t0) * 1000
+            _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "deep"})
+            _mi("atman.reflection.completed", tags={
+                "level": "deep",
+                "outcome": "success",
+                "patterns": str(len(patterns_detected)),
+                "experiences": str(len(experiences)),
+            })
         return persisted
 
     def _process_skills_for_deep(self) -> DeepSkillSummary | None:

@@ -8,10 +8,13 @@ the missing dependency and fall back to NoOpReranker.
 from __future__ import annotations
 
 import logging
+import time
+from contextlib import suppress
 from typing import Any
 
 from typing_extensions import override
 
+from atman.adapters.observability.sentry import metric_distribution
 from atman.core.ports.memory_reranker import MemoryReranker, SurfacedMemory
 from atman.observability.spans import ai_rerank_span
 
@@ -80,12 +83,21 @@ class BgeReranker(MemoryReranker):
         """
         if not candidates:
             return []
-        with ai_rerank_span("bge", self._model_name, len(candidates), top_n):
+        _t0 = time.monotonic()
+        with ai_rerank_span("bge", self._model_name, len(candidates), top_n) as _span:
             model = self._get_model()
             if model is None:
                 scored = [c.model_copy(update={"final_score": c.score}) for c in candidates]
                 scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
-                return scored[:top_n]
+                result = scored[:top_n]
+                with suppress(Exception):
+                    if _span is not None:
+                        _span.set_data("rerank.fallback", True)
+                        _span.set_data("rerank.candidates_out", [
+                            {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
+                            for c in result
+                        ])
+                return result
 
             pairs = [[query, c.text] for c in candidates]
             try:
@@ -105,4 +117,26 @@ class BgeReranker(MemoryReranker):
                 for c, s in zip(candidates, raw_scores, strict=False)
             ]
             scored.sort(key=lambda m: m.final_score or 0.0, reverse=True)
-            return scored[:top_n]
+            result = scored[:top_n]
+
+            with suppress(Exception):
+                if _span is not None:
+                    scores = [float(s) for s in raw_scores]
+                    _span.set_data("rerank.query", query)
+                    _span.set_data("rerank.candidates_in", [
+                        {"text": c.text[:200], "score_before": round(c.score or 0, 4)}
+                        for c in candidates
+                    ])
+                    _span.set_data("rerank.all_scores", [round(s, 4) for s in scores])
+                    _span.set_data("rerank.candidates_out", [
+                        {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
+                        for c in result
+                    ])
+                    if scores:
+                        _span.set_data("rerank.scores_min", round(min(scores), 4))
+                        _span.set_data("rerank.scores_max", round(max(scores), 4))
+                        _span.set_data("rerank.scores_mean", round(sum(scores) / len(scores), 4))
+
+        with suppress(Exception):
+            metric_distribution("atman.rerank.latency_ms", (time.monotonic() - _t0) * 1000, unit="millisecond")
+        return result
