@@ -722,38 +722,24 @@ class GLiNERPlusMiniLMAnalyzer:
             if score > self._classification_threshold
         ]
 
-        # Point K MiniLM classifications
-        def _k_classify(
-            task: str, candidates: list[str], norm_map: dict | None = None
-        ) -> str | None:
-            result = self._classify_task(combined, task, candidates)
-            if result is not None and norm_map:
-                result = norm_map.get(result, result)
-            return result
-
-        agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
-        confidence_in_self = _k_classify(
-            "confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP
+        # Point K MiniLM classifications — single batched call covering all 7 tasks
+        k_classified = self._classify_tasks_batch(
+            combined,
+            _POINT_K_CLASSIFICATIONS,
+            {
+                "confidence_in_self": _CONFIDENCE_MAP,
+                "trust_signal_category": _TRUST_CAT_MAP,
+                "boundary_event_category": _BOUNDARY_CAT_MAP,
+                "learning_signal": _LEARNING_MAP,
+            },
         )
-        trust_signal_category = _k_classify(
-            "trust_signal_category",
-            _POINT_K_CLASSIFICATIONS["trust_signal_category"],
-            _TRUST_CAT_MAP,
-        )
-        boundary_event_category = _k_classify(
-            "boundary_event_category",
-            _POINT_K_CLASSIFICATIONS["boundary_event_category"],
-            _BOUNDARY_CAT_MAP,
-        )
-        connection_quality = _k_classify(
-            "connection_quality", _POINT_K_CLASSIFICATIONS["connection_quality"]
-        )
-        learning_signal = _k_classify(
-            "learning_signal", _POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP
-        )
-        growth_indicator = _k_classify(
-            "growth_indicator", _POINT_K_CLASSIFICATIONS["growth_indicator"]
-        )
+        agency_level = k_classified.get("agency_level")
+        confidence_in_self = k_classified.get("confidence_in_self")
+        trust_signal_category = k_classified.get("trust_signal_category")
+        boundary_event_category = k_classified.get("boundary_event_category")
+        connection_quality = k_classified.get("connection_quality")
+        learning_signal = k_classified.get("learning_signal")
+        growth_indicator = k_classified.get("growth_indicator")
 
         return KeyMomentAnalysis(
             entities=entities,

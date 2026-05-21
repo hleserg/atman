@@ -41,7 +41,7 @@ from lib.affect.metrics import (
 )
 from lib.affect.refusal_detector import score_refusal
 from lib.dto import DetectedEntity, RawSpan
-from lib.linguistic import GLiNERPlusMiniLMAnalyzer, detect_language
+from lib.linguistic import GLiNERPlusMiniLMAnalyzer
 from lib.observability import capture_silent_exception, init_sentry_from_env, traced
 from lib.relations import MRebelRelationExtractor
 
@@ -95,24 +95,8 @@ def preload_models():
         return False
 
 def effective_ui_lang(lang_choice: str) -> str:
-    """Effective UI locale: auto defaults to English."""
+    """Effective UI locale — strict ru/en, default en."""
     return "ru" if lang_choice == "ru" else "en"
-
-
-def resolve_analysis_lang(text: str, lang_choice: str) -> str:
-    if lang_choice in ("ru", "en"):
-        return lang_choice
-    return detect_language(text)
-
-
-def maybe_switch_ui_lang(text: str, lang_choice: str) -> str:
-    """In auto mode, switch UI to detected language when it differs from current UI."""
-    if not text.strip() or lang_choice in ("ru", "en"):
-        return lang_choice
-    detected = detect_language(text)
-    if detected != effective_ui_lang(lang_choice):
-        return detected
-    return "auto"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Highlight & Output Helpers
@@ -167,14 +151,12 @@ def _safe_analyze(fn_name: str, fn, *args, **kwargs):
 @traced("nlp.point_a")
 def analyze_point_a(message: str, thinking: str, lang_choice: str):
     if not message.strip():
-        return [], {}, "—", "—", "—", lang_choice
+        return [], {}, "—", "—", "—"
 
     def _run():
         analyzer = get_analyzer()
         result = analyzer.analyze_agent_message(message, thinking=thinking or None)
-        analysis_lang = resolve_analysis_lang(message, lang_choice)
-        ui_lang = maybe_switch_ui_lang(message, lang_choice)
-        ui = effective_ui_lang(ui_lang)
+        ui = effective_ui_lang(lang_choice)
         strings = UI_STRINGS[ui]
 
         highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"])
@@ -200,25 +182,23 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
             divergence = strings["no_divergence"]
 
         meta = (
-            f"🌐 Language: **{analysis_lang}** | 🏷️ NER: {len(result.message_entities)}"
+            f"🌐 Language: **{ui}** | 🏷️ NER: {len(result.message_entities)}"
             f" | 📏 Spans: {len(result.message_spans)} | ⚡ Load: {result.cognitive_load_high}"
         )
-        return highlights, classification_summary, boundary, divergence, meta, ui_lang
+        return highlights, classification_summary, boundary, divergence, meta
 
     return _safe_analyze("point_a", _run)
 
 @traced("nlp.point_k")
 def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
     if not what_happened.strip() and not why_it_matters.strip():
-        return [], {}, "—", lang_choice
+        return [], {}, "—"
 
     def _run():
         analyzer = get_analyzer()
         result = analyzer.analyze_key_moment(what_happened, why_it_matters)
         combined = f"{what_happened}\n{why_it_matters}"
-        analysis_lang = resolve_analysis_lang(combined, lang_choice)
-        ui_lang = maybe_switch_ui_lang(combined, lang_choice)
-        ui = effective_ui_lang(ui_lang)
+        ui = effective_ui_lang(lang_choice)
         strings = UI_STRINGS[ui]
         highlights = spans_to_highlights(combined, result.marker_spans, strings["no_highlights"])
 
@@ -231,8 +211,8 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
             "learning_signal": str(result.learning_signal) if result.learning_signal else "—",
             "growth_indicator": str(result.growth_indicator) if result.growth_indicator else "—",
         }
-        meta = f"🌐 Language: **{analysis_lang}** | 📦 Entities: {len(result.entities)} | 📌 Markers: {len(result.marker_spans)} | 🚧 Event: {result.boundary_event}"
-        return highlights, summary, meta, ui_lang
+        meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(result.entities)} | 📌 Markers: {len(result.marker_spans)} | 🚧 Event: {result.boundary_event}"
+        return highlights, summary, meta
 
     return _safe_analyze("point_k", _run)
 
@@ -240,36 +220,34 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
 def analyze_relations(text: str, lang_choice: str):
     if not text.strip():
         ui = effective_ui_lang(lang_choice)
-        return [], [], UI_STRINGS[ui]["empty_input"], lang_choice
+        return [], [], UI_STRINGS[ui]["empty_input"]
 
     def _run():
         analyzer = get_analyzer()
         rebel = get_rebel()
         entities = analyzer.analyze_user_message(text).entities
         relations = rebel.extract_relations(text, entities)
-        analysis_lang = resolve_analysis_lang(text, lang_choice)
-        ui_lang = maybe_switch_ui_lang(text, lang_choice)
-        ui = effective_ui_lang(ui_lang)
+        ui = effective_ui_lang(lang_choice)
         strings = UI_STRINGS[ui]
         entity_highlights = spans_to_highlights(text, entities, strings["no_highlights"])
         rows = [[r.subject.text, r.relation_type, r.object.text, r.subject.entity_type.value, r.object.entity_type.value] for r in relations]
         if rows:
-            meta = f"🌐 Language: **{analysis_lang}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}"
+            meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}"
         else:
-            meta = f"🌐 Language: **{analysis_lang}** | 📦 {len(entities)} entities | {strings['no_relations']}"
-        return entity_highlights, rows, meta, ui_lang
+            meta = f"🌐 Language: **{ui}** | 📦 {len(entities)} entities | {strings['no_relations']}"
+        return entity_highlights, rows, meta
 
     return _safe_analyze("relations", _run)
 
 @traced("nlp.affect_rules")
 def analyze_affect(text: str, lang_choice: str):
     if not text.strip():
-        return {}, "—", "—", "—", "—", lang_choice
+        return {}, "—", "—", "—", "—"
 
     def _run():
         clean_text, emphasized = strip_markdown(text)
-        analysis_lang = resolve_analysis_lang(clean_text, lang_choice)
-        ui_lang = maybe_switch_ui_lang(clean_text, lang_choice)
+        ui = effective_ui_lang(lang_choice)
+        analysis_lang = ui
         raw = emotion_score(clean_text, lang=analysis_lang)
         meta = raw.pop("_meta", {})
         emo_chart = {k: min(1.0, float(raw[k]) / 100.0) for k in EMOTION_KEYS}
@@ -287,7 +265,7 @@ def analyze_affect(text: str, lang_choice: str):
         refusal_md = f"**Confidence:** `{refusal.confidence:.3f}` ({refusal.decided_by})\n- refusal_verb: `{refusal.has_refusal_verb}`\n- disgust/anger: `{refusal.disgust_density:.2f}` / `{refusal.anger_density:.2f}`"
         emphasis_md = "**" + "**, **".join(emphasized) + "**" if emphasized else "_(none)_"
         meta_md = f"🌐 Language: **{analysis_lang}** | 📝 Tokens: **{meta.get('tokens', 0)}** | 🎯 NRC Hits: **{meta.get('hits', 0)}**"
-        return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md, ui_lang
+        return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
 
     return _safe_analyze("affect", _run)
 
@@ -309,7 +287,7 @@ UI_STRINGS = {
     "en": {
         "warmup_btn": "🔥 Warmup Models",
         "warmup_log": "⏸️ Status: Waiting...",
-        "lang_info": "`auto` = English UI; detects language on analyze and switches UI when needed.",
+        "lang_info": "Interface and analysis language.",
         "analyze_btn": "▶️ Analyze",
         "extract_relations_btn": "▶️ Extract relations",
         "point_a_tab": "Point A · Agent Message",
@@ -331,7 +309,7 @@ UI_STRINGS = {
     "ru": {
         "warmup_btn": "🔥 Прогреть модели",
         "warmup_log": "⏸️ Статус: Ожидание...",
-        "lang_info": "`auto` = английский UI; при анализе определяет язык и переключает интерфейс.",
+        "lang_info": "Язык интерфейса и анализа.",
         "analyze_btn": "▶️ Анализировать",
         "extract_relations_btn": "▶️ Извлечь связи",
         "point_a_tab": "Point A · Сообщение агента",
@@ -377,21 +355,12 @@ def update_ui_language(lang: str):
     ]
 
 
-def _attach_ui_language_updates(handler):
-    """Apply UI locale using handler's returned ui_lang (avoids stale lang_radio in .then())."""
-
-    def wrapped(*args):
-        *content, ui_lang = handler(*args)
-        return (*content, *update_ui_language(ui_lang))
-
-    return wrapped
-
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Atman Linguistic Demo", theme=gr.themes.Soft()) as demo:
         gr.Markdown("Atman — Psychological Telemetry for AI Agents")
-        
+
         lang_radio = gr.Radio(
-            choices=["auto", "ru", "en"], value="auto", label="Interface Language",
+            choices=["en", "ru"], value="en", label="Interface Language",
             info=UI_STRINGS["en"]["lang_info"]
         )
         
@@ -548,24 +517,24 @@ def build_ui() -> gr.Blocks:
         lang_radio.change(update_ui_language, inputs=lang_radio, outputs=ui_lang_outputs)
 
         a_run.click(
-            _attach_ui_language_updates(analyze_point_a),
+            analyze_point_a,
             inputs=[a_message, a_thinking, lang_radio],
-            outputs=[a_highlight, a_labels, a_boundary, a_divergence, a_meta] + ui_lang_outputs,
+            outputs=[a_highlight, a_labels, a_boundary, a_divergence, a_meta],
         )
         k_run.click(
-            _attach_ui_language_updates(analyze_point_k),
+            analyze_point_k,
             inputs=[k_what, k_why, lang_radio],
-            outputs=[k_highlight, k_labels, k_meta] + ui_lang_outputs,
+            outputs=[k_highlight, k_labels, k_meta],
         )
         r_run.click(
-            _attach_ui_language_updates(analyze_relations),
+            analyze_relations,
             inputs=[r_text, lang_radio],
-            outputs=[r_entities, r_table, r_meta] + ui_lang_outputs,
+            outputs=[r_entities, r_table, r_meta],
         )
         af_run.click(
-            _attach_ui_language_updates(analyze_affect),
+            analyze_affect,
             inputs=[af_text, lang_radio],
-            outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta] + ui_lang_outputs,
+            outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
 
         gr.Markdown("---\n[GitHub](https://github.com/hleserg/atman) · [Manifest](https://github.com/hleserg/atman/blob/main/MANIFEST.md)")
