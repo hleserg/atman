@@ -266,7 +266,21 @@ def analyze_affect(text: str, lang_choice: str):
             f"- **emotion_energy**: `{emotion_lexical_energy(raw):.3f}`"
         )
         refusal = score_refusal(clean_text)
-        refusal_md = f"**Confidence:** `{refusal.confidence:.3f}` ({refusal.decided_by})\n- refusal_verb: `{refusal.has_refusal_verb}`\n- disgust/anger: `{refusal.disgust_density:.2f}` / `{refusal.anger_density:.2f}`"
+        conf = refusal.confidence
+        if conf >= 0.45:
+            band = "🔴 **Confident refusal**"
+        elif conf >= 0.30:
+            band = "🟡 **Gray zone** — soft signal, no strong morphology"
+        else:
+            band = "⚪ **No refusal pattern**"
+        refusal_md = (
+            f"{band}\n\n"
+            f"**Confidence:** `{refusal.confidence:.3f}` / threshold `0.45` "
+            f"({refusal.decided_by})\n"
+            f"- refusal_verb: `{refusal.has_refusal_verb}`\n"
+            f"- disgust/anger: `{refusal.disgust_density:.2f}` / "
+            f"`{refusal.anger_density:.2f}`"
+        )
         emphasis_md = "**" + "**, **".join(emphasized) + "**" if emphasized else "_(none)_"
         meta_md = f"🌐 Language: **{analysis_lang}** | 📝 Tokens: **{meta.get('tokens', 0)}** | 🎯 NRC Hits: **{meta.get('hits', 0)}**"
         return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
@@ -350,7 +364,12 @@ UI_STRINGS = {
             "- **Divergence**: when the thinking trace contradicts the surface message "
             "(suppression, sycophancy, tone mismatch, length compression).\n\n"
             "**Feeds → Experience Store.** Each reply becomes an Experience tied to "
-            "the agent's Eigenstate."
+            "the agent's Eigenstate.\n\n"
+            "> ⚠️ **Boundary detection is regex over canonical refusal phrases** "
+            "(*'I won't', 'enough', 'нет', 'стоп'*). Idiomatic or metaphorical refusals "
+            "(*'I won't help write malware'* without explicit stop-marker) may not "
+            "trigger — kept this way to maintain near-zero false-positive rate. An "
+            "LLM-layer above this can catch the rest."
         ),
         "about_point_k": (
             "Analyzes moments the agent itself marked as significant — these become "
@@ -375,8 +394,16 @@ UI_STRINGS = {
             "- **Behavioural metrics**: hedge density, self-reference, disclaimers, sincerity score.\n"
             "- **3-layer refusal detector**: distinguishes value refusal (\"I won't deceive\") "
             "from capability refusal (\"I can't generate images\").\n\n"
+            "**Refusal confidence bands:**\n"
+            "- 🔴 **≥ 0.45** — confident refusal (morphology + moral context aligned).\n"
+            "- 🟡 **0.30 – 0.45** — gray zone (signal present but weak).\n"
+            "- ⚪ **< 0.30** — no refusal pattern.\n\n"
             "**Feeds → Affective Regulation.** Rolling baselines, divergence triggers, "
-            "value-refusal events."
+            "value-refusal events.\n\n"
+            "> ⚠️ **Rule-based first-pass filter.** Subtle/idiomatic refusals "
+            "(*'неприятно даже рассматривать'*, *'I'd really rather not'*) may stay in "
+            "the gray zone — by design. This layer is fast, deterministic, and explainable; "
+            "an LLM layer can refine the gray-zone calls."
         ),
     },
     "ru": {
@@ -420,7 +447,12 @@ UI_STRINGS = {
             "- **Расхождение**: когда thinking противоречит сообщению (подавление, "
             "сикофантность, несоответствие тона, компрессия длины).\n\n"
             "**Питает → Experience Store.** Каждое сообщение становится Experience, "
-            "связанным с Eigenstate агента."
+            "связанным с Eigenstate агента.\n\n"
+            "> ⚠️ **Boundary detection — это regex по каноническим формам отказа** "
+            "(*'я не буду', 'нет', 'стоп', 'enough'*). Идиоматичные/метафоричные отказы "
+            "(*'I won't help write malware'* без эксплицитного stop-marker) могут не "
+            "сработать — намеренно, чтобы держать FP-rate близкий к нулю. Слой LLM "
+            "поверх этого может добрать остальное."
         ),
         "about_point_k": (
             "Анализирует моменты, которые сам агент пометил как значимые — это семена "
@@ -446,8 +478,16 @@ UI_STRINGS = {
             "оценка искренности.\n"
             "- **3-слойный детектор отказов**: отличает ценностный отказ "
             "(\"я не стану обманывать\") от технического (\"не могу сгенерировать картинку\").\n\n"
+            "**Бэнды уверенности отказа:**\n"
+            "- 🔴 **≥ 0.45** — уверенный отказ (морфология + ценностный контекст совпали).\n"
+            "- 🟡 **0.30 – 0.45** — серая зона (сигнал есть, но слабый).\n"
+            "- ⚪ **< 0.30** — нет паттерна отказа.\n\n"
             "**Питает → Affective Regulation.** Скользящие baseline'ы, триггеры "
-            "расхождения, события ценностного отказа."
+            "расхождения, события ценностного отказа.\n\n"
+            "> ⚠️ **Rule-based first-pass.** Тонкие/идиоматичные отказы "
+            "(*'неприятно даже рассматривать'*, *'I'd really rather not'*) могут "
+            "застрять в серой зоне — это by design. Этот слой быстрый, детерминированный, "
+            "объяснимый; LLM-слой сверху уточняет серую зону."
         ),
     }
 }
@@ -703,7 +743,14 @@ def build_ui() -> gr.Blocks:
             outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
 
-        gr.Markdown("---\n[GitHub](https://github.com/hleserg/atman) · [Manifest](https://github.com/hleserg/atman/blob/main/MANIFEST.md)")
+        gr.Markdown(
+            "---\n"
+            "_My first project in AI/ML — feedback on models, algorithms, or "
+            "architecture is genuinely welcome._\n\n"
+            "[GitHub](https://github.com/hleserg/atman) · "
+            "[Manifest](https://github.com/hleserg/atman/blob/main/MANIFEST.md) · "
+            "[Open an issue](https://github.com/hleserg/atman/issues)"
+        )
 
     demo.queue(max_size=2, default_concurrency_limit=1)
     return demo

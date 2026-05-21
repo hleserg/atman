@@ -94,6 +94,16 @@ This Space shows the **sensor**. The full runtime adds:
 → [MANIFEST.md](https://github.com/hleserg/atman/blob/main/MANIFEST.md)
 → [System overview](https://github.com/hleserg/atman/blob/main/docs/content/SYSTEM.md)
 
+## Feedback welcome
+
+This is my **first project in AI/ML**. I learned a lot building it and I know
+there are rough edges I can't see yet — better model choices, smarter
+algorithms, cleaner architectural moves. If you spot something that should be
+done more efficiently, I'd be genuinely grateful for the input.
+
+Open an [issue on GitHub](https://github.com/hleserg/atman/issues), or leave a
+note in the Space's **Community** tab. Both lead to me directly.
+
 ---
 
 This is a thin slice — a window into one sensor. The actual runtime keeps memory, builds identity, and reflects on what it sees.
@@ -126,3 +136,14 @@ Built by the Atman project • [GitHub](https://github.com/hleserg/atman) • [M
 Здесь только сенсор. В полном runtime есть устойчивая память между сессиями, Identity Store, три уровня рефлексии (micro/daily/deep), эмоциональная регуляция с rolling baselines, Session Manager со snapshot'ами личности, веб-дашборд, TUI, CLI.
 
 → [GitHub: hleserg/atman](https://github.com/hleserg/atman) · [MANIFEST](https://github.com/hleserg/atman/blob/main/MANIFEST.md) · [SYSTEM.md](https://github.com/hleserg/atman/blob/main/docs/content/SYSTEM.md)
+
+### Обратная связь
+
+Это мой **первый проект в AI/ML**. Я многому научился пока его делал, и
+понимаю что в реализации наверняка есть шероховатости которые я ещё не вижу —
+другой выбор моделей, лучший алгоритм, более грамотные архитектурные ходы.
+Если заметил что-то что можно сделать оптимальнее — буду искренне благодарен
+за совет.
+
+Открой [issue на GitHub](https://github.com/hleserg/atman/issues) или оставь
+комментарий в **Community** этого Space. Оба варианта ведут напрямую ко мне.
