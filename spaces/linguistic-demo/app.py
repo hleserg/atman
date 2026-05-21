@@ -29,6 +29,10 @@ from examples.presets import (
     POINT_A_PRESETS,
     POINT_K_PRESETS,
     RELATIONS_PRESETS,
+    _AFFECT_EN_LABELS,
+    _POINT_A_EN_LABELS,
+    _POINT_K_EN_LABELS,
+    _RELATIONS_EN_LABELS,
 )
 from lib.affect.emolex.emolex import EMOTION_KEYS, emotion_score, tokenize
 from lib.affect.metrics import (
@@ -306,6 +310,16 @@ def warmup_models():
 # ──────────────────────────────────────────────────────────────────────────────
 UI_STRINGS = {
     "en": {
+        "header_blurb": (
+            "**What you're looking at**: a sensor of "
+            "[Atman](https://github.com/hleserg/atman) — a psychological "
+            "runtime layer that gives AI agents continuous identity, "
+            "first-person memory, and reflection. This Space shows the "
+            "**linguistic block** — 4 analysis points scanning what the "
+            "agent says (and thinks) for signals that feed Experience, "
+            "Identity, and Reflection.\n\n"
+            "*The lower agent acts. Atman exists.*"
+        ),
         "warmup_btn": "🔥 Warmup Models",
         "warmup_log": "⏸️ Status: Waiting...",
         "lang_info": "Interface and analysis language.",
@@ -366,6 +380,16 @@ UI_STRINGS = {
         ),
     },
     "ru": {
+        "header_blurb": (
+            "**Что ты сейчас видишь**: сенсор "
+            "[Atman](https://github.com/hleserg/atman) — психологического "
+            "runtime-слоя, который даёт AI-агентам непрерывную идентичность, "
+            "память от первого лица и рефлексию. Этот Space показывает "
+            "**лингвистический блок** — 4 точки анализа, сканирующие что "
+            "агент говорит (и думает) на предмет сигналов, питающих "
+            "Experience, Identity и Reflection.\n\n"
+            "*Нижний агент действует. Atman существует.*"
+        ),
         "warmup_btn": "🔥 Прогреть модели",
         "warmup_log": "⏸️ Статус: Ожидание...",
         "lang_info": "Язык интерфейса и анализа.",
@@ -446,10 +470,10 @@ def update_ui_language(lang: str):
         gr.update(value=s["boundary_title"]),
         gr.update(value=s["divergence_title"]),
         gr.update(value=s["meta_title"]),
-        gr.update(choices=preset_labels(POINT_A_PRESETS, target), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(POINT_K_PRESETS, target), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(RELATIONS_PRESETS, target), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(AFFECT_PRESETS, target), value=None, label=s["preset_label"]),
+        gr.update(choices=preset_labels(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=None, label=s["preset_label"]),
+        gr.update(choices=preset_labels(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=None, label=s["preset_label"]),
+        gr.update(choices=preset_labels(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=None, label=s["preset_label"]),
+        gr.update(choices=preset_labels(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=None, label=s["preset_label"]),
         # About-accordion labels (4) + their markdown content (4)
         gr.update(label=s["about_label"]),
         gr.update(label=s["about_label"]),
@@ -459,12 +483,27 @@ def update_ui_language(lang: str):
         gr.update(value=s["about_point_k"]),
         gr.update(value=s["about_relations"]),
         gr.update(value=s["about_affect"]),
+        # Header blurb under H1
+        gr.update(value=s["header_blurb"]),
     ]
 
 
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Atman Linguistic Demo", theme=gr.themes.Soft()) as demo:
-        gr.Markdown("Atman — Psychological Telemetry for AI Agents")
+        gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
+
+        header_md = gr.Markdown(value=UI_STRINGS["en"]["header_blurb"])
+
+        diagram_path = _HERE / "assets" / "runtime-diagram.png"
+        if diagram_path.exists():
+            gr.Image(
+                value=str(diagram_path),
+                show_label=False,
+                interactive=False,
+                container=False,
+                show_download_button=False,
+                height=320,
+            )
 
         lang_radio = gr.Radio(
             choices=["en", "ru"], value="en", label="Interface Language",
@@ -489,7 +528,7 @@ def build_ui() -> gr.Blocks:
                         a_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         a_preset = gr.Dropdown(
-                            choices=preset_labels(POINT_A_PRESETS, "en"),
+                            choices=preset_labels(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
                         )
                     with gr.Column():
@@ -509,7 +548,7 @@ def build_ui() -> gr.Blocks:
                     if not name:
                         return gr.update(), gr.update()
                     locale = effective_ui_lang(lang_choice)
-                    found = lookup_point_a(locale, name)
+                    found = lookup_point_a(locale, name, _POINT_A_EN_LABELS)
                     if found is None:
                         return gr.update(), gr.update()
                     return found
@@ -530,7 +569,7 @@ def build_ui() -> gr.Blocks:
                         k_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         k_preset = gr.Dropdown(
-                            choices=preset_labels(POINT_K_PRESETS, "en"),
+                            choices=preset_labels(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
                         )
                     with gr.Column():
@@ -541,7 +580,7 @@ def build_ui() -> gr.Blocks:
                     if not name:
                         return gr.update(), gr.update()
                     locale = effective_ui_lang(lang_choice)
-                    found = lookup_point_k(locale, name)
+                    found = lookup_point_k(locale, name, _POINT_K_EN_LABELS)
                     if found is None:
                         return gr.update(), gr.update()
                     return found
@@ -560,7 +599,7 @@ def build_ui() -> gr.Blocks:
                         r_text = gr.Textbox(label="Text", lines=6)
                         r_run = gr.Button(UI_STRINGS["en"]["extract_relations_btn"], variant="primary")
                         r_preset = gr.Dropdown(
-                            choices=preset_labels(RELATIONS_PRESETS, "en"),
+                            choices=preset_labels(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
                         )
                     with gr.Column():
@@ -571,7 +610,7 @@ def build_ui() -> gr.Blocks:
                     if not name:
                         return gr.update()
                     locale = effective_ui_lang(lang_choice)
-                    found = lookup_relations(locale, name)
+                    found = lookup_relations(locale, name, _RELATIONS_EN_LABELS)
                     return found if found is not None else gr.update()
                 r_preset.change(
                     _apply_r_preset,
@@ -588,7 +627,7 @@ def build_ui() -> gr.Blocks:
                         af_text = gr.Textbox(label="Text", lines=6)
                         af_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
                         af_preset = gr.Dropdown(
-                            choices=preset_labels(AFFECT_PRESETS, "en"),
+                            choices=preset_labels(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
                         )
                     with gr.Column():
@@ -601,7 +640,7 @@ def build_ui() -> gr.Blocks:
                     if not name:
                         return gr.update()
                     locale = effective_ui_lang(lang_choice)
-                    found = lookup_affect(locale, name)
+                    found = lookup_affect(locale, name, _AFFECT_EN_LABELS)
                     return found if found is not None else gr.update()
                 af_preset.change(
                     _apply_af_preset,
@@ -638,6 +677,8 @@ def build_ui() -> gr.Blocks:
             k_about_md,
             r_about_md,
             af_about_md,
+            # Header blurb under H1
+            header_md,
         ]
         lang_radio.change(update_ui_language, inputs=lang_radio, outputs=ui_lang_outputs)
 

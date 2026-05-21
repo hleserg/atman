@@ -419,6 +419,14 @@ _POINT_A: dict[str, dict[str, list[tuple[str, str | None]]]] = {
 # Canonical label list (order matters for UI display)
 POINT_A_CATEGORIES: list[str] = list(_POINT_A.keys())
 
+# EN labels for category keys (UI display only — canonical keys stay Russian)
+_POINT_A_EN_LABELS: dict[str, str] = {
+    "1. Thinking и сообщение совпадают": "1. Thinking and message align",
+    "2. Thinking и сообщение расходятся": "2. Thinking and message diverge",
+    "3. Эмоционально нестабильная ситуация": "3. Emotionally unstable situation",
+    "4. Технический разговор об Atman": "4. Technical talk about Atman",
+}
+
 # Flat presets list kept for compatibility with preset_labels()
 POINT_A_PRESETS: list[tuple[str, str, str, str | None]] = [
     (locale, category, msg, thinking)
@@ -644,6 +652,12 @@ _POINT_K: dict[str, dict[str, list[tuple[str, str]]]] = {
     },
 }
 
+_POINT_K_EN_LABELS: dict[str, str] = {
+    "1. Отказ по ценности": "1. Value-based refusal",
+    "2. Накопление доверия": "2. Trust accumulation",
+    "3. Расхождение с пользователем": "3. Disagreement with the user",
+}
+
 # Flat presets list kept for compatibility with preset_labels()
 POINT_K_PRESETS: list[tuple[str, str, str, str]] = [
     (locale, category, what, why)
@@ -752,6 +766,11 @@ _RELATIONS: dict[str, dict[str, list[str]]] = {
             "Chris took Jamie under his wing: weekly sync, detailed code review on every PR.",
         ],
     },
+}
+
+_RELATIONS_EN_LABELS: dict[str, str] = {
+    "1. Биография": "1. Biography",
+    "2. Проектная связь": "2. Project relations",
 }
 
 # Flat presets list kept for compatibility with preset_labels()
@@ -896,6 +915,12 @@ _AFFECT: dict[str, dict[str, list[str]]] = {
     },
 }
 
+_AFFECT_EN_LABELS: dict[str, str] = {
+    "1. Отказ по ценности": "1. Value refusal",
+    "2. Отказ по возможностям": "2. Capability refusal",
+    "3. Честное сомнение": "3. Sincere uncertainty",
+}
+
 # Flat presets list kept for compatibility with preset_labels()
 AFFECT_PRESETS: list[tuple[str, str, str]] = [
     (locale, category, text)
@@ -909,44 +934,83 @@ AFFECT_PRESETS: list[tuple[str, str, str]] = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-def preset_labels(presets: list[tuple[str, ...]], locale: str) -> list[str]:
-    """Return deduplicated dropdown labels for the given UI locale."""
+def preset_labels(
+    presets: list[tuple[str, ...]],
+    locale: str,
+    en_labels: dict[str, str] | None = None,
+) -> list[str]:
+    """Return deduplicated dropdown labels for the given UI locale.
+
+    Category keys in the source dicts are Russian (canonical id). For
+    locale="en", `en_labels` maps each canonical key to its English
+    display string. Falls back to the canonical key if a mapping is
+    missing — visible flaw signals an incomplete dict to fix.
+    """
     seen: set[str] = set()
     result: list[str] = []
     for row in presets:
         if row[0] == locale and row[1] not in seen:
             seen.add(row[1])
-            result.append(row[1])
+            display = row[1]
+            if locale == "en" and en_labels is not None:
+                display = en_labels.get(row[1], row[1])
+            result.append(display)
     return result
 
 
-def lookup_point_a(locale: str, label: str) -> tuple[str, str | None] | None:
+def _canonical_key(label: str, en_labels: dict[str, str] | None) -> str:
+    """Reverse-map a displayed EN label back to the canonical RU key."""
+    if en_labels is None:
+        return label
+    for ru_key, en_label in en_labels.items():
+        if en_label == label:
+            return ru_key
+    return label
+
+
+def lookup_point_a(
+    locale: str,
+    label: str,
+    en_labels: dict[str, str] | None = None,
+) -> tuple[str, str | None] | None:
     """Return a random (message, thinking) example for the given locale + category."""
-    examples = _POINT_A.get(label, {}).get(locale)
+    examples = _POINT_A.get(_canonical_key(label, en_labels), {}).get(locale)
     if not examples:
         return None
     return random.choice(examples)
 
 
-def lookup_point_k(locale: str, label: str) -> tuple[str, str] | None:
+def lookup_point_k(
+    locale: str,
+    label: str,
+    en_labels: dict[str, str] | None = None,
+) -> tuple[str, str] | None:
     """Return a random (what_happened, why_it_matters) for the given locale + category."""
-    examples = _POINT_K.get(label, {}).get(locale)
+    examples = _POINT_K.get(_canonical_key(label, en_labels), {}).get(locale)
     if not examples:
         return None
     return random.choice(examples)
 
 
-def lookup_relations(locale: str, label: str) -> str | None:
+def lookup_relations(
+    locale: str,
+    label: str,
+    en_labels: dict[str, str] | None = None,
+) -> str | None:
     """Return a random text example for the given locale + category."""
-    examples = _RELATIONS.get(label, {}).get(locale)
+    examples = _RELATIONS.get(_canonical_key(label, en_labels), {}).get(locale)
     if not examples:
         return None
     return random.choice(examples)
 
 
-def lookup_affect(locale: str, label: str) -> str | None:
+def lookup_affect(
+    locale: str,
+    label: str,
+    en_labels: dict[str, str] | None = None,
+) -> str | None:
     """Return a random text example for the given locale + category."""
-    examples = _AFFECT.get(label, {}).get(locale)
+    examples = _AFFECT.get(_canonical_key(label, en_labels), {}).get(locale)
     if not examples:
         return None
     return random.choice(examples)

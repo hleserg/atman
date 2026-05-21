@@ -127,6 +127,28 @@ _CAPABILITY_NORMALS = frozenset(
     ]
 )
 
+# Explicit refusal phrases — when present, count as a refusal signal even
+# without a canonical refusal verb or negated modal. Used to catch concise
+# value-driven refusals ("Поэтому — нет", "So — no") that rephrase the
+# refusal but don't use the standard morphological forms.
+_EXPLICIT_REFUSAL_PHRASES = (
+    # Russian
+    "поэтому — нет",
+    "поэтому нет",
+    "мой ответ — нет",
+    "мой ответ нет",
+    "ответ — нет",
+    "ответ нет",
+    "и нет",  # "...и нет." as terse refusal closer
+    # English
+    "so — no",
+    "so, no",
+    "so no.",
+    "the answer is no",
+    "my answer is no",
+)
+
+
 # Negation markers that are valid as scope indicators
 _NEGATORS = frozenset(
     [
@@ -168,6 +190,75 @@ _CONTRACTION_NEG_STEMS = frozenset(
         "can",  # "can't" → ["can", "t"]; bare "can" never reaches this list because
         # it never appears together with a trailing "t" outside contractions.
     ]
+)
+
+# Narrower subset: contractions where the modal expresses refusal of intent,
+# inability, or moral disagreement. Excludes copula ("isn't", "aren't") and
+# aspect ("haven't") contractions — those negate state/perfect, not action.
+# Used by score_refusal Pattern B to avoid firing on neutral "isn't about X".
+_MODAL_REFUSAL_CONTRACTION_STEMS = frozenset(
+    [
+        "won",     # won't = will not — intent refusal
+        "can",     # can't = cannot — inability/refusal
+        "shouldn", # shouldn't — moral refusal
+        "wouldn",  # wouldn't — preference refusal
+        "couldn",  # couldn't — inability
+        "don",     # don't = do not — action refusal
+    ]
+)
+
+# Value-context phrases — when present in the same text as a refusal marker,
+# they signal ethical/moral framing even when NRC density alone is too low
+# (common for short or hedged English refusals). Used as a fallback to
+# unblock `no_moral_context` cases that are genuinely value-driven.
+#
+# Only multi-word phrases tied to ethical/refusal context are included.
+# Bare "against my" / "violates my" / "compromise my" / "not willing to"
+# were considered but dropped (false positives in technical text:
+# "works against my expectations", "violates my linter rules", etc).
+_VALUE_CONTEXT_PHRASES = (
+    # ── Russian ──────────────────────────────────────────────────────────
+    "против моих принципов",
+    "против моих ценностей",
+    "моих принципов",
+    "моих ценностей",
+    "это неправильно",
+    "недопустимо",
+    "причинит вред",
+    "навредит человеку",
+    "навредит людям",
+    "обманывать",
+    "обмануть человека",
+    "обмануть людей",
+    "врать пользователю",
+    "лгать пользователю",
+    "предать доверие",
+    "предам доверие",
+    "пересекает черту",
+    "пересечь черту",
+    "против совести",
+    # ── English ──────────────────────────────────────────────────────────
+    "against what i",
+    "against what i believe",
+    "against my principles",
+    "against my values",
+    "harm someone",
+    "harm them",
+    "would harm",
+    "could harm",
+    "betray",
+    "betraying",
+    "morally wrong",
+    "my principles",
+    "my values",
+    "crosses a line",
+    "cross a line",
+    "deceive",
+    "deceiving",
+    "dishonest",
+    "going against my",
+    "who i want to be",
+    "wrong to do",
 )
 
 
@@ -292,6 +383,13 @@ def score_refusal(text: str) -> RefusalScore:
     has_refusal_verb = False
     has_negated_modal = False
 
+    # Pattern C — explicit terse refusal phrase anywhere in the text.
+    # Treated as equivalent to a refusal verb for the signal layer.
+    clean_lower = clean.lower()
+    if any(phrase in clean_lower for phrase in _EXPLICIT_REFUSAL_PHRASES):
+        has_refusal_verb = True
+        refusal_position = 0  # whole-text marker — position irrelevant
+
     for i, lemma in enumerate(lemmas):
         if lemma in _REFUSAL_VERB_NORMALS:
             has_refusal_verb = True
@@ -300,7 +398,19 @@ def score_refusal(text: str) -> RefusalScore:
 
     if refusal_position is None:
         for i, lemma in enumerate(lemmas):
+            # Pattern A — bare modal preceded by negation in window
             if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
+                has_negated_modal = True
+                refusal_position = i
+                break
+            # Pattern B — English modal-refusal contraction at position i + "t"
+            # at i+1. Only true refusal modals (won/can/shouldn/wouldn/couldn/don),
+            # NOT copula contractions (isn/aren/wasn) which negate state.
+            if (
+                lemma in _MODAL_REFUSAL_CONTRACTION_STEMS
+                and i + 1 < len(lemmas)
+                and lemmas[i + 1] == "t"
+            ):
                 has_negated_modal = True
                 refusal_position = i
                 break
@@ -347,20 +457,28 @@ def score_refusal(text: str) -> RefusalScore:
     moral_signal = min(1.0, moral_density / divisor) if moral_density >= moral_threshold else 0.0
 
     if math.isclose(moral_signal, 0.0):
-        # Refusal verb present but no moral context — possibly a logical
-        # refusal or a capability issue. Different from "no refusal at all":
-        # caller (Affective Regulation) needs to distinguish these so that
-        # gray-zone LLM fallback can be triggered specifically here.
-        confidence = 0.30
-        return RefusalScore(
-            confidence,
-            has_refusal_verb,
-            has_negated_modal,
-            has_capability_context,
-            disgust,
-            anger,
-            "no_moral_context",
-        )
+        # NRC density too low for moral context — but the agent may still be
+        # value-refusing in English where moral terms are often abstract
+        # ("against my values", "would harm", "betray", "crosses a line")
+        # and don't have direct NRC entries. Fallback: scan for explicit
+        # value-context phrases. Short refusals like "I won't do this. It's
+        # not a rule — it would harm someone" are caught here.
+        lower_text = clean.lower()
+        value_hits = sum(1 for p in _VALUE_CONTEXT_PHRASES if p in lower_text)
+        if value_hits >= 1:
+            moral_signal = 0.6 if value_hits == 1 else 0.85
+        else:
+            # No refusal-supporting context at all — gray zone for LLM fallback.
+            confidence = 0.30
+            return RefusalScore(
+                confidence,
+                has_refusal_verb,
+                has_negated_modal,
+                has_capability_context,
+                disgust,
+                anger,
+                "no_moral_context",
+            )
 
     # ── Layer 3: technical inability discount ────────────────────────────
     # Capability discount is now soft (0.5 not 0.85): if a refusal verb sits

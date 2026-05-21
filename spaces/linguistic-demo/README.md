@@ -9,6 +9,7 @@ app_file: app.py
 pinned: false
 python_version: "3.11"
 license: mit
+thumbnail: assets/og-image.png
 tags:
   - psychology
   - agents
@@ -23,6 +24,8 @@ tags:
 # Atman — Psychological Linguistic Layer
 
 *What your AI agent's **own text** reveals about its internal state.*
+
+![Atman Linguistic Layer — 4 analysis points feeding the runtime](assets/runtime-diagram.png)
 
 [Atman](https://github.com/hleserg/atman) is a psychological runtime layer for AI agents — first-person memory, continuous identity, reflection. It doesn't replace the LLM. It sits on top.
 
