@@ -177,10 +177,7 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
         ui = effective_ui_lang(ui_lang)
         strings = UI_STRINGS[ui]
 
-        if result.message_spans:
-            highlights = spans_to_highlights(message, result.message_spans)
-        else:
-            highlights = [(strings["no_highlights"], None)]
+        highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"])
 
         classification_summary = {
             "stance": str(result.stance) if result.stance else "—",
@@ -242,7 +239,8 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
 @traced("nlp.relations_mrebel")
 def analyze_relations(text: str, lang_choice: str):
     if not text.strip():
-        return [], [], "Empty input.", lang_choice
+        ui = effective_ui_lang(lang_choice)
+        return [], [], UI_STRINGS[ui]["empty_input"], lang_choice
 
     def _run():
         analyzer = get_analyzer()
@@ -255,7 +253,10 @@ def analyze_relations(text: str, lang_choice: str):
         strings = UI_STRINGS[ui]
         entity_highlights = spans_to_highlights(text, entities, strings["no_highlights"])
         rows = [[r.subject.text, r.relation_type, r.object.text, r.subject.entity_type.value, r.object.entity_type.value] for r in relations]
-        meta = f"🌐 Language: **{analysis_lang}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}" if rows else f"🌐 Language: **{analysis_lang}** | 📦 {len(entities)} entities found, but no relations matched schema."
+        if rows:
+            meta = f"🌐 Language: **{analysis_lang}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}"
+        else:
+            meta = f"🌐 Language: **{analysis_lang}** | 📦 {len(entities)} entities | {strings['no_relations']}"
         return entity_highlights, rows, meta, ui_lang
 
     return _safe_analyze("relations", _run)
@@ -324,6 +325,8 @@ UI_STRINGS = {
         "boundary_title": "🚧 Boundary & Resistance Markers (Rule-Based)",
         "divergence_title": "🔍 Thinking vs Message Divergence",
         "meta_title": "📊 System Metadata",
+        "empty_input": "Empty input.",
+        "no_relations": "no relations matched schema",
     },
     "ru": {
         "warmup_btn": "🔥 Прогреть модели",
@@ -344,6 +347,8 @@ UI_STRINGS = {
         "boundary_title": "🚧 Маркеры границ и сопротивления (Правила)",
         "divergence_title": "🔍 Расхождение мыслей и сообщения",
         "meta_title": "📊 Метаданные системы",
+        "empty_input": "Пустой ввод.",
+        "no_relations": "связи не соответствуют схеме",
     }
 }
 
@@ -571,5 +576,4 @@ def build_ui() -> gr.Blocks:
 if __name__ == "__main__":
     preload_models()
     demo = build_ui()
-    demo.launch()
     demo.launch(server_name="0.0.0.0", server_port=7860)
