@@ -27,6 +27,7 @@ from atman.core.models.reflection_request import (
     ReflectionRequestLevel,
 )
 from atman.core.reflection_run_keys import agent_driven_run_key
+from atman.observability.spans import memory_span, pipeline_span
 
 # PLAYBOOK-START
 # id: error-returning-tool-callbacks
@@ -143,14 +144,15 @@ async def record_key_moment(
             why_it_matters=why_it_matters,
             tags=[f"depth:{depth}"],
         )
-        await det.submit_self_report(report, session_id=ctx.deps.session_id)
+        with memory_span("submit_self_report", "key_moments"):
+            await det.submit_self_report(report, session_id=ctx.deps.session_id)
         summary = what_happened if len(what_happened) <= 50 else f"{what_happened[:50]}..."
         return f"Key moment recorded via AffectDetector: {summary}"
     except Exception as e:
         return f"Error recording key moment: {e!s}"
 
 
-async def log_experience(
+async def log_experience(  # sentry: skip — deprecated no-op redirect; no I/O performed
     ctx: RunContext[AtmanDeps],
     what_happened: str,
     why_it_matters: str = "",
@@ -169,7 +171,7 @@ async def log_experience(
     )
 
 
-def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:
+def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:  # sentry: skip — sentinel only; restart telemetry in AtmanRunner._do_restart
     """
     Request immediate session restart.
 
@@ -187,13 +189,15 @@ def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:
     The sentinel format uses newline as delimiter when reason is provided
     to ensure unambiguous parsing.
     """
+    # sentry: skip — returns a sentinel string only; no I/O; actual restart telemetry
+    # is captured in AtmanRunner._do_restart which owns the session lifecycle spans.
     _ = ctx  # Unused; reserved for future validation
     if reason:
         return f"__ATMAN_RESTART_REQUESTED__\n{reason}"
     return "__ATMAN_RESTART_REQUESTED__"
 
 
-def wait_session(ctx: RunContext[AtmanDeps], minutes: int) -> str:
+def wait_session(ctx: RunContext[AtmanDeps], minutes: int) -> str:  # sentry: skip — returns sentinel string only; no I/O
     """
     Request session pause for specified minutes.
 
@@ -208,6 +212,7 @@ def wait_session(ctx: RunContext[AtmanDeps], minutes: int) -> str:
     and use to trigger wait/pause logic. The runner is responsible for
     handling the actual wait workflow (E22.5).
     """
+    # sentry: skip — returns a sentinel string only; no I/O performed
     _ = ctx  # Unused; reserved for future validation
 
     if minutes <= 0:
@@ -276,12 +281,13 @@ def resolve_pending_review(
         return f"Error: review_id is not a valid UUID: {review_id!r}"
 
     try:
-        resolved = inbox.resolve(
-            review_uuid,
-            resolution=resolution,
-            note=note_clean,
-            resolved_at=datetime.now(UTC),
-        )
+        with pipeline_span("atman.review.resolve", "resolve pending review"):
+            resolved = inbox.resolve(
+                review_uuid,
+                resolution=resolution,
+                note=note_clean,
+                resolved_at=datetime.now(UTC),
+            )
     except KeyError:
         return f"Error: no pending review with id {review_id}"
     except ValueError as exc:
@@ -344,7 +350,8 @@ def request_reflection(
         requested_at=now,
     )
     try:
-        stored = queue.enqueue(request)
+        with pipeline_span("atman.reflection.request", "enqueue reflection request"):
+            stored = queue.enqueue(request)
     except Exception as exc:
         return f"Error queuing reflection request: {exc!s}"
     if stored.id != request.id:

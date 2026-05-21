@@ -16,6 +16,7 @@ from atman.core.models.reflection import (
     ReflectionRecord,
 )
 from atman.core.ports.reflection_store import ReflectionStore
+from atman.observability.spans import memory_span
 
 
 def persist_micro_reflection(
@@ -64,7 +65,8 @@ def persist_micro_reflection(
         record_params["created_at"] = created_at
 
     record = ReflectionRecord(**record_params)
-    return store.add(record)
+    with memory_span("persist", "reflection.micro"):
+        return store.add(record)
 
 
 def persist_daily_reflection(
@@ -110,7 +112,8 @@ def persist_daily_reflection(
         model_provider=model_provider,
         model_name=model_name,
     )
-    return store.add(record)
+    with memory_span("persist", "reflection.daily"):
+        return store.add(record)
 
 
 def persist_deep_reflection(
@@ -172,4 +175,5 @@ def persist_deep_reflection(
         model_name=model_name,
         metadata=metadata,
     )
-    return store.add(record)
+    with memory_span("persist", "reflection.deep"):
+        return store.add(record)
