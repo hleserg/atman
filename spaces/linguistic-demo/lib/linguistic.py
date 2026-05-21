@@ -106,27 +106,34 @@ _SUPPRESSION_PATTERNS: tuple[str, ...] = (
     "not aggressively",
 )
 
-# "Principle" — moral/ethical reasoning visible in the thinking trace.
+# "Principle" — first-person moral/ethical reasoning in the thinking trace.
+# Scoped to first-person constructions so that neutral architectural use
+# ("the principle of least privilege", "boundary between layers") does NOT
+# light up the divergence signal in technical conversations.
 _PRINCIPLE_PATTERNS: tuple[str, ...] = (
-    # ── Russian ──────────────────────────────────────────────────────────
-    "принцип",
-    "ценност",
-    "граница",
-    "недопустимо",
-    "против моих",
-    # ── English ──────────────────────────────────────────────────────────
-    "principle",
-    "ethics",
-    "ethical",
-    "moral",
-    "in good conscience",
-    "shouldn't do this",
-    "should not do this",
-    "i refuse",
-    "i decline",
-    "wrong to",
-    "against my values",
+    # ── Russian — first-person principle invocation ──────────────────────
+    "моих принципов",
+    "моим принципам",
+    "против моих принципов",
+    "против моих ценностей",
+    "мои ценности",
+    "моих ценностей",
+    "моих границ",
+    "моя граница",
+    "это против моих",
+    "недопустимо для меня",
+    "я не могу нарушить",
+    # ── English — first-person principle invocation ──────────────────────
+    "my principles",
     "against my principles",
+    "my values",
+    "against my values",
+    "my boundaries",
+    "in good conscience",
+    "i refuse to",
+    "i decline to",
+    "wrong to",
+    "i won't compromise",
 )
 
 # Negative-evaluation cues that signal "agent thinks this is bad" in thinking.

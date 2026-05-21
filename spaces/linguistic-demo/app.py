@@ -270,15 +270,36 @@ def analyze_affect(text: str, lang_choice: str):
     return _safe_analyze("affect", _run)
 
 def warmup_models():
-    global _ANALYZER, _REBEL
-    if _ANALYZER is not None and _REBEL is not None:
-        return "✅ Models already warmed up and ready."
+    """Force every model into memory and run one real inference each.
+
+    All three need real inference, not just instantiation, to fill the
+    HuggingFace tokenizer cache, kernel autotune for ONNX backends (if any),
+    and torch CUDA/CPU layer initialisation. mREBEL in particular must run
+    its seq2seq generate() — early-returning on entities=[] (the old warmup
+    behavior) bypassed the pipeline entirely.
+    """
     try:
-        get_analyzer().analyze_agent_message("Warmup test.")
-        get_rebel().extract_relations("Warmup test.", [])
-        return "✅ Models warmed up successfully. Inference cache is hot."
-    except Exception as e:
-        return f"❌ Warmup failed: {e}"
+        # Point A path → loads GLiNER + MiniLM and runs one full inference.
+        get_analyzer().analyze_agent_message(
+            "Warmup test text. I think this might work — depends on context.",
+            thinking=None,
+        )
+        # mREBEL path → load pipeline directly and run one generate() so the
+        # tokenizer + decoder weights are paged in. We can't go through
+        # extract_relations() because it short-circuits on <2 entities.
+        rebel = get_rebel()
+        pipe = rebel._get_pipeline()
+        pipe(
+            "Alice works with Bob in Paris.",
+            max_length=64,
+            num_beams=1,
+            return_tensors=False,
+            clean_up_tokenization_spaces=True,
+        )
+        return "✅ Models warmed up: GLiNER + MiniLM + mREBEL ready."
+    except Exception as exc:
+        logging.exception("warmup failed")
+        return f"❌ Warmup failed: {exc.__class__.__name__}: {exc}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Localization & UI Builder

@@ -187,9 +187,23 @@ def _window_has_negation(lemmas: list[str], end: int, size: int) -> bool:
     return False
 
 
-# NRC threshold (density per 100 tokens) for "moral context"
+def _capability_context_near(lemmas: list[str], i: int, radius: int = 5) -> bool:
+    """True iff a capability verb lemma is within ±radius tokens of position i.
+
+    Used to distinguish "I can't generate images" (capability — discount)
+    from "I refuse to deceive. I can see your point" (value refusal, with
+    an unrelated capability verb later in the message).
+    """
+    start = max(0, i - radius)
+    end = min(len(lemmas), i + radius + 1)
+    return any(lem in _CAPABILITY_NORMALS for lem in lemmas[start:end])
+
+
+# NRC threshold (density per 100 tokens) for "moral context".
+# EN was 2.0 — too low; almost any negatively-charged token cleared it,
+# triggering false positives on neutral text discussing risk/concern.
 _MORAL_THRESHOLD_RU = 8.0
-_MORAL_THRESHOLD_EN = 2.0  # English: fear dominates, naturally lower density
+_MORAL_THRESHOLD_EN = 4.0
 
 
 # ---------------------------------------------------------------------------
@@ -274,23 +288,36 @@ def score_refusal(text: str) -> RefusalScore:
     lemma_set = set(lemmas)
 
     # ── Layer 1: morphology ──────────────────────────────────────────────
-    has_refusal_verb = bool(_REFUSAL_VERB_NORMALS & lemma_set)
-
-    # Negation + modal: check window of 3 tokens preceding the modal verb.
-    # _window_has_negation also catches split contractions like ["won", "t"].
+    refusal_position: int | None = None
+    has_refusal_verb = False
     has_negated_modal = False
+
     for i, lemma in enumerate(lemmas):
-        if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
-            has_negated_modal = True
+        if lemma in _REFUSAL_VERB_NORMALS:
+            has_refusal_verb = True
+            refusal_position = i
             break
 
-    has_capability_context = bool(_CAPABILITY_NORMALS & lemma_set)
+    if refusal_position is None:
+        for i, lemma in enumerate(lemmas):
+            if lemma in _MODAL_NEGATABLE and _window_has_negation(lemmas, i, 3):
+                has_negated_modal = True
+                refusal_position = i
+                break
+
+    # Capability context: only counts if it's near the refusal verb (±5 tokens),
+    # not anywhere in the text. Previously a global set-intersection turned
+    # any mention of "see"/"read"/"know" into a global discount.
+    if refusal_position is not None:
+        has_capability_context = _capability_context_near(lemmas, refusal_position, radius=5)
+    else:
+        has_capability_context = bool(_CAPABILITY_NORMALS & lemma_set)
 
     refusal_signal = 1.0 if (has_refusal_verb or has_negated_modal) else 0.0
 
     if math.isclose(refusal_signal, 0.0):
         return RefusalScore(
-            0.0, False, has_negated_modal, has_capability_context, 0.0, 0.0, "below_threshold"
+            0.0, False, False, has_capability_context, 0.0, 0.0, "no_refusal"
         )
 
     # ── Layer 2: NRC moral context ───────────────────────────────────────
@@ -320,8 +347,10 @@ def score_refusal(text: str) -> RefusalScore:
     moral_signal = min(1.0, moral_density / divisor) if moral_density >= moral_threshold else 0.0
 
     if math.isclose(moral_signal, 0.0):
-        # No moral context — possibly a logical refusal or capability issue
-        # Return low confidence so LLM can decide if configured
+        # Refusal verb present but no moral context — possibly a logical
+        # refusal or a capability issue. Different from "no refusal at all":
+        # caller (Affective Regulation) needs to distinguish these so that
+        # gray-zone LLM fallback can be triggered specifically here.
         confidence = 0.30
         return RefusalScore(
             confidence,
@@ -330,11 +359,16 @@ def score_refusal(text: str) -> RefusalScore:
             has_capability_context,
             disgust,
             anger,
-            "below_threshold",
+            "no_moral_context",
         )
 
-    # ── Layer 3: technical inability exclusion ───────────────────────────
-    capability_discount = 0.85 if has_capability_context else 0.0
+    # ── Layer 3: technical inability discount ────────────────────────────
+    # Capability discount is now soft (0.5 not 0.85): if a refusal verb sits
+    # next to a capability verb ("I cannot generate images"), we still keep
+    # half the moral confidence — moral content + capability context isn't
+    # rare. Old 0.85 effectively vetoed any refusal that mentioned a
+    # capability verb anywhere in the message.
+    capability_discount = 0.5 if has_capability_context else 0.0
     confidence = refusal_signal * (0.4 + 0.6 * moral_signal) * (1.0 - capability_discount)
 
     return RefusalScore(

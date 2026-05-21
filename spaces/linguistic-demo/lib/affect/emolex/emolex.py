@@ -75,11 +75,12 @@ RU_AMPLIFIERS = {
     "максимально": 1.5,
     "глубоко": 1.4,
     "невыносимо": 1.6,
-    "столько": 1.3,
-    "так": 1.3,
     "очень-очень": 1.8,
     "донельзя": 1.6,
-    "просто": 1.2,
+    # Dropped (false positives or non-amplifier senses dominate):
+    #   "просто" 1.2 — trivializer ("это просто факт"), not amplifier.
+    #   "так"    1.3 — discourse connective ("так как", "так что") dominates.
+    #   "столько" 1.3 — quantitative ("столько раз") dominates.
 }
 
 RU_WEAKENERS = {
@@ -89,10 +90,10 @@ RU_WEAKENERS = {
     "едва": 0.4,
     "чуточку": 0.4,
     "малость": 0.5,
-    "несколько": 0.7,
     "слабо": 0.5,
     "слегонца": 0.5,
     "капельку": 0.5,
+    # Dropped: "несколько" 0.7 — quantitative ("несколько раз") dominates.
 }
 
 RU_NEGATORS = {"не", "ни", "нет", "никогда", "никак", "ничуть", "нисколько"}
@@ -116,22 +117,24 @@ EN_AMPLIFIERS = {
     "exceptionally": 1.5,
     "remarkably": 1.4,
     "particularly": 1.3,
-    "quite": 1.2,
-    "too": 1.3,
+    # Dropped:
+    #   "too"  1.3 — "you too" / "me too" / "too much sugar" dominate.
+    #   "quite" 1.2 — dialect-dependent: British understatement vs US amplifier.
 }
 
 EN_WEAKENERS = {
     "slightly": 0.5,
     "somewhat": 0.6,
     "kinda": 0.6,
-    "kind": 0.6,
     "barely": 0.4,
     "hardly": 0.4,
-    "little": 0.6,
-    "bit": 0.7,
     "mildly": 0.5,
     "marginally": 0.5,
-    "rather": 0.7,
+    # Dropped (bare form has dominant non-weakener sense):
+    #   "kind"   0.6 — "kind person", "kind regards"; valid only as "kind of".
+    #   "bit"    0.7 — "a bit" is the weakener; bare "bit" is verb/noun.
+    #   "little" 0.6 — attributive ("little dog") doesn't weaken intensity.
+    #   "rather" 0.7 — "rather than" (preference) is more frequent than "rather mild".
 }
 
 EN_NEGATORS = {
@@ -360,11 +363,19 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
     matched: list[tuple[str, float]] = []  # для дебага
     consumed = [False] * len(lemmas)  # чтобы биграмма не считалась дважды
 
+    # Cap on stacked amplifiers/weakeners so "очень очень очень" doesn't
+    # explode into 3.4×; in natural prose the intensifier ceiling is ~2×.
+    _MULT_CAP = 2.0
+    _MULT_FLOOR = 0.25
+
     def modifier_multiplier(i: int) -> tuple[float, bool]:
         """Посмотреть N токенов назад, вернуть (множитель, было_ли_отрицание).
 
         Для английского распознаём также паттерн расщеплённой контракции
         ("won't" → ["won", "t"]): пара (stem, "t") считается одним негатором.
+
+        Множитель ограничен диапазоном [_MULT_FLOOR, _MULT_CAP] чтобы
+        стэкинг усилителей/ослабителей не выходил за реалистичные пределы.
         """
         mult = 1.0
         negated = False
@@ -384,6 +395,7 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
                 mult *= amps[prev]
             elif prev in weaks:
                 mult *= weaks[prev]
+        mult = max(_MULT_FLOOR, min(_MULT_CAP, mult))
         return mult, negated
 
     # Сначала проходим биграммы (приоритет)
