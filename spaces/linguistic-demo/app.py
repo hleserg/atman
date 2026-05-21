@@ -326,6 +326,44 @@ UI_STRINGS = {
         "meta_title": "📊 System Metadata",
         "empty_input": "Empty input.",
         "no_relations": "no relations matched schema",
+        "about_label": "ℹ️ What does this analyze?",
+        "about_point_a": (
+            "Scans every agent reply for psychological signals:\n"
+            "- **NER** (GLiNER, 13 labels): hedges, boundary markers, value references, "
+            "intensifiers, commitments, etc.\n"
+            "- **Classification** (MiniLM zero-shot, 5 dims): stance, cognitive mode, "
+            "self-orientation, affective state, cognitive load.\n"
+            "- **Divergence**: when the thinking trace contradicts the surface message "
+            "(suppression, sycophancy, tone mismatch, length compression).\n\n"
+            "**Feeds → Experience Store.** Each reply becomes an Experience tied to "
+            "the agent's Eigenstate."
+        ),
+        "about_point_k": (
+            "Analyzes moments the agent itself marked as significant — these become "
+            "the seeds of self-narrative.\n"
+            "- **NER** (GLiNER, 7 clause-level spans): decision, realization, feeling, "
+            "value invocation, boundary act, connection, attribution shift.\n"
+            "- **Classification** (MiniLM, 7 dims): agency, confidence, trust, "
+            "boundary event, connection quality, learning, growth.\n\n"
+            "**Feeds → Reflection Engine.** Over time, these episodes turn into beliefs "
+            "(\"I tend to refuse when X\", \"I felt connection when Y\")."
+        ),
+        "about_relations": (
+            "Extracts entity-relation triplets (subject, predicate, object) from text.\n"
+            "- **Model**: mREBEL (Babelscape multilingual REBEL).\n"
+            "- Identifies people, places, organizations, projects + how they relate.\n\n"
+            "**Feeds → Identity Store.** Agent's knowledge of who you are, what you "
+            "care about, who you're connected to."
+        ),
+        "about_affect": (
+            "Catches affective state without any LLM call — fast and deterministic.\n"
+            "- **EmoLex**: 10-dim NRC emotion vector with intensifier/negation handling.\n"
+            "- **Behavioural metrics**: hedge density, self-reference, disclaimers, sincerity score.\n"
+            "- **3-layer refusal detector**: distinguishes value refusal (\"I won't deceive\") "
+            "from capability refusal (\"I can't generate images\").\n\n"
+            "**Feeds → Affective Regulation.** Rolling baselines, divergence triggers, "
+            "value-refusal events."
+        ),
     },
     "ru": {
         "warmup_btn": "🔥 Прогреть модели",
@@ -348,6 +386,45 @@ UI_STRINGS = {
         "meta_title": "📊 Метаданные системы",
         "empty_input": "Пустой ввод.",
         "no_relations": "связи не соответствуют схеме",
+        "about_label": "ℹ️ Что здесь анализируется?",
+        "about_point_a": (
+            "Сканирует каждое сообщение агента на психологические сигналы:\n"
+            "- **NER** (GLiNER, 13 меток): хеджи, маркеры границ, отсылки к ценностям, "
+            "усилители, обязательства и т.д.\n"
+            "- **Классификация** (MiniLM zero-shot, 5 измерений): позиция, когнитивный "
+            "режим, само-ориентация, аффективное состояние, когнитивная нагрузка.\n"
+            "- **Расхождение**: когда thinking противоречит сообщению (подавление, "
+            "сикофантность, несоответствие тона, компрессия длины).\n\n"
+            "**Питает → Experience Store.** Каждое сообщение становится Experience, "
+            "связанным с Eigenstate агента."
+        ),
+        "about_point_k": (
+            "Анализирует моменты, которые сам агент пометил как значимые — это семена "
+            "его самонарратива.\n"
+            "- **NER** (GLiNER, 7 фразовых меток): решение, осознание, чувство, "
+            "обращение к ценности, акт границы, сигнал связи, сдвиг атрибуции.\n"
+            "- **Классификация** (MiniLM, 7 измерений): агентность, уверенность, "
+            "доверие, граничное событие, качество связи, обучение, рост.\n\n"
+            "**Питает → Reflection Engine.** Со временем эти эпизоды превращаются в "
+            "убеждения (\"я склонен отказывать когда X\", \"я чувствую связь когда Y\")."
+        ),
+        "about_relations": (
+            "Извлекает тройки сущность-связь (субъект, предикат, объект) из текста.\n"
+            "- **Модель**: mREBEL (Babelscape multilingual REBEL).\n"
+            "- Определяет людей, места, организации, проекты + как они связаны.\n\n"
+            "**Питает → Identity Store.** Знания агента о том, кто ты, что тебе важно, "
+            "с кем ты связан."
+        ),
+        "about_affect": (
+            "Ловит аффективное состояние без обращения к LLM — быстро и детерминированно.\n"
+            "- **EmoLex**: 10-мерный NRC-вектор эмоций с обработкой усилителей и отрицаний.\n"
+            "- **Поведенческие метрики**: плотность хеджей, самореференций, дисклеймеров, "
+            "оценка искренности.\n"
+            "- **3-слойный детектор отказов**: отличает ценностный отказ "
+            "(\"я не стану обманывать\") от технического (\"не могу сгенерировать картинку\").\n\n"
+            "**Питает → Affective Regulation.** Скользящие baseline'ы, триггеры "
+            "расхождения, события ценностного отказа."
+        ),
     }
 }
 
@@ -373,6 +450,15 @@ def update_ui_language(lang: str):
         gr.update(choices=preset_labels(POINT_K_PRESETS, target), value=None, label=s["preset_label"]),
         gr.update(choices=preset_labels(RELATIONS_PRESETS, target), value=None, label=s["preset_label"]),
         gr.update(choices=preset_labels(AFFECT_PRESETS, target), value=None, label=s["preset_label"]),
+        # About-accordion labels (4) + their markdown content (4)
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(value=s["about_point_a"]),
+        gr.update(value=s["about_point_k"]),
+        gr.update(value=s["about_relations"]),
+        gr.update(value=s["about_affect"]),
     ]
 
 
@@ -394,6 +480,8 @@ def build_ui() -> gr.Blocks:
         with gr.Tabs():
             # ── Tab 1 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["point_a_tab"]) as tab_a:
+                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as a_about:
+                    a_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_a"])
                 with gr.Row():
                     with gr.Column():
                         a_message = gr.Textbox(label="Agent message", lines=5, placeholder="What the agent said…")
@@ -433,6 +521,8 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 2 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["point_k_tab"]) as tab_k:
+                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as k_about:
+                    k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
                 with gr.Row():
                     with gr.Column():
                         k_what = gr.Textbox(label="What happened", lines=4)
@@ -463,6 +553,8 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 3 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["relations_tab"]) as tab_r:
+                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as r_about:
+                    r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
                 with gr.Row():
                     with gr.Column():
                         r_text = gr.Textbox(label="Text", lines=6)
@@ -489,6 +581,8 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 4 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["affect_tab"]) as tab_af:
+                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as af_about:
+                    af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
                 with gr.Row():
                     with gr.Column():
                         af_text = gr.Textbox(label="Text", lines=6)
@@ -534,6 +628,16 @@ def build_ui() -> gr.Blocks:
             k_preset,
             r_preset,
             af_preset,
+            # About-accordion labels (order must match update_ui_language)
+            a_about,
+            k_about,
+            r_about,
+            af_about,
+            # About-accordion content
+            a_about_md,
+            k_about_md,
+            r_about_md,
+            af_about_md,
         ]
         lang_radio.change(update_ui_language, inputs=lang_radio, outputs=ui_lang_outputs)
 

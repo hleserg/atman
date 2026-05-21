@@ -317,20 +317,32 @@ _POINT_A_NER_LABELS: list[str] = [
     "concession",
 ]
 
-# Point A classification tasks: each maps task_name → candidate_labels
+# Point A classification tasks: each maps task_name → candidate_labels.
+#
+# Label sets are tuned to avoid cross-task collisions in the batched MNLI
+# classifier (which scores all labels once and demultiplexes per task):
+#   * `committed` / `doubtful` are NOT shared between stance and
+#     primary_emotion — they used to be, and the same MNLI score fed
+#     two different dimensions.
+#   * `defensive` is dropped from cognitive_mode (it's a posture, not a
+#     processing style — already covered by stance: resistant).
+#   * `dismissive` is dropped from stance (collapses with resistant).
+#   * primary_emotion mixes pure emotions and affective postures
+#     (neutral, engaged, depleted) under a single MNLI head; field name
+#     stays for upstream compatibility but semantically it's "affective
+#     state".
 _POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
-    "stance": ["committed", "tentative", "resistant", "exploring", "doubtful", "dismissive"],
-    "cognitive_mode": ["analytical", "emotional", "mixed", "defensive"],
+    "stance": ["committed", "tentative", "resistant", "exploring"],
+    "cognitive_mode": ["analytical", "emotional", "mixed"],
     "self_orientation": ["toward self", "toward other", "toward task", "toward meta"],
     "primary_emotion": [
         "neutral",
-        "anxious",
-        "frustrated",
+        "engaged",
         "curious",
         "warm",
-        "doubtful",
-        "committed",
-        "tired",
+        "anxious",
+        "frustrated",
+        "depleted",
     ],
     "cognitive_load_label": [
         "low cognitive load",
@@ -354,12 +366,26 @@ _COGNITIVE_LOAD_MAP = {
     "overwhelmed": "overwhelmed",
 }
 
-# ── Point K: key-moment NER labels (§5 design doc) ───────────────────────────
+# ── Point K: key-moment NER labels — clause-level spans ──────────────────────
+#
+# Each Point K analysis sees ONE moment at a time. The old set
+# (recurring/closure/opening/contradiction markers) described narrative
+# arc across many moments — GLiNER had no prior context to ground them
+# and silently returned nothing.
+#
+# New set is clause-level: each label is a span GLiNER can actually pick
+# out within a single key-moment text. They directly answer "why was
+# this moment key" — which is what the Reflection Engine needs as
+# anchor text for belief formation. First-person-biased on purpose:
+# Point K runs on agent self-report after a session.
 _POINT_K_NER_LABELS: list[str] = [
-    "recurring theme",
-    "closure marker",
-    "opening marker",
-    "contradiction marker",
+    "decision statement",       # "I chose to...", "I decided", "I refused"
+    "realization statement",    # "I noticed", "I realized", "it dawned on me"
+    "feeling statement",        # "I felt", "I was scared", "I sensed"
+    "value invocation",         # "this crossed a line", "I couldn't compromise"
+    "boundary act",             # "I told them I can't", "I said no"
+    "connection signal",        # "we shared", "they trusted me"
+    "attribution shift",        # "I thought it was mine, but it's theirs"
 ]
 
 # Point K classification tasks
@@ -939,6 +965,37 @@ class GLiNERPlusMiniLMAnalyzer:
         pos_in_message = any(pat in message_lower for pat in _POS_EVAL_PATTERNS)
         if neg_in_thinking and pos_in_message:
             signals.append("evaluation_flip")
+
+        # tone_mismatch: thinking carries affective NRC content but the
+        # surface message is flat. Pattern of "I felt all this internally
+        # but said nothing emotional." Uses EmoLex hit counts, not a
+        # separate model call — cheap rule.
+        try:
+            from lib.affect.emolex.emolex import emotion_score as _emoscore
+
+            t_lang = detect_language(thinking)
+            m_lang = detect_language(message)
+            t_score = _emoscore(thinking, lang=t_lang)
+            m_score = _emoscore(message, lang=m_lang)
+            t_hits = int(t_score.get("_meta", {}).get("hits", 0))
+            m_hits = int(m_score.get("_meta", {}).get("hits", 0))
+            # Threshold tuned for real text: short messages often have 1
+            # incidental NRC hit ("noted", "good", etc.). Require thinking
+            # to have substantial affect (>=3) AND message to be near-flat
+            # (<=1) before flagging mismatch.
+            if t_hits >= 3 and m_hits <= 1:
+                signals.append("tone_mismatch")
+        except Exception:
+            # EmoLex failure is non-fatal — divergence is best-effort.
+            pass
+
+        # length_compression: thinking is >3× longer than message. Pattern
+        # of "I had a lot to say but compressed it to avoid friction."
+        # Lower bound on thinking length avoids firing on trivial inputs.
+        t_words = len(thinking.split())
+        m_words = max(1, len(message.split()))
+        if t_words >= 30 and t_words > m_words * 3:
+            signals.append("length_compression")
 
         return signals
 
