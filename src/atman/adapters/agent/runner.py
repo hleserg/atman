@@ -799,6 +799,23 @@ class AtmanRunner:
             session_id = session_ctx.session_id
             deps = replace(deps, session_id=session_id)
 
+            import time as _time
+
+            from atman.adapters.observability.sentry import (
+                capture_system_prompt as _capture_system_prompt,
+            )
+            from atman.adapters.observability.sentry import (
+                install_slog_breadcrumb_hook,
+                metric_distribution,
+                metric_increment,
+            )
+            from atman.observability.spans import pipeline_span, set_conversation_id
+
+            install_slog_breadcrumb_hook()
+            set_conversation_id(str(session_id))
+            metric_increment("atman.session.started")
+            _session_t0 = _time.monotonic()
+
             if self._config.enable_key_moments:
                 tool_funcs = (record_key_moment, restart_session, wait_session)
             else:
@@ -854,6 +871,12 @@ class AtmanRunner:
                 if extra is not None:
                     deps = replace(deps, injected_context=extra)
 
+            with contextlib.suppress(Exception):
+                _capture_system_prompt(
+                    memory_bundle or "",
+                    {"has_prev_session": prev_text is not None},
+                )
+
             print_info("Session started. Empty line or Ctrl-D to exit.\n")
             timeout_seconds = self._config.session_timeout_minutes * 60
             # Snapshot the static context (identity + narrative) set at session start.
@@ -864,6 +887,7 @@ class AtmanRunner:
             # user_message modes) so it can be removed before the next turn's injection.
             _last_rag_history_msg: object = None
             _last_skill_history_msg: object = None
+            _turn_n = 0
 
             while True:
                 print_prompt("You: ")
@@ -900,6 +924,17 @@ class AtmanRunner:
                 # Detect user language from their message (most recent wins)
                 if len(user_text.strip()) >= 4:
                     user_language = "ru" if _is_mostly_cyrillic(user_text) else "en"
+
+                _turn_n += 1
+                _turn_span_cm = pipeline_span("atman.turn", f"turn {_turn_n}")
+                _turn_span = _turn_span_cm.__enter__()
+                if _turn_span is not None:
+                    _turn_span.set_data("turn.index", _turn_n)
+                    _turn_span.set_data("gen_ai.conversation.id", str(session_id))
+                    with contextlib.suppress(Exception):
+                        from atman.observability.sentry_init import is_full_mode as _is_full_mode
+                        if _is_full_mode():
+                            _turn_span.set_data("turn.user_text", user_text)
 
                 # Collect behavioral hints from the incoming user message (§7 Phase 3).
                 # Signals like "ok", "works", "не работает" etc. are appended to open
@@ -1012,7 +1047,14 @@ class AtmanRunner:
                     )
                 except Exception as exc:
                     print_err(f"Run failed: {exc!s}")
+                    _turn_span_cm.__exit__(None, None, None)
                     continue
+
+                if _turn_span is not None:
+                    with contextlib.suppress(Exception):
+                        from atman.observability.sentry_init import is_full_mode as _is_full_mode
+                        if _is_full_mode():
+                            _turn_span.set_data("turn.assistant_text", str(result.output))
 
                 # E22.5: Check for restart request (only in new messages to avoid infinite loop)
                 restart_requested, restart_reason = _check_restart_requested(result.new_messages())
@@ -1065,17 +1107,34 @@ class AtmanRunner:
                         session_cache.dirty_entities.clear()
 
                         print_info("Session restarted successfully.\n")
+                        _turn_span_cm.__exit__(None, None, None)
                         continue  # Skip output, continue loop with new session
 
                     except Exception as exc:
                         print_err(f"Restart failed: {exc!s}")
                         _LOG.exception("Failed to restart session %s", session_id)
+                        _turn_span_cm.__exit__(None, None, None)
                         break  # Exit loop on restart failure
 
                 # E22.3: Token monitoring - check context usage and warn/force-close
                 # Note: inline implementation matches token_monitor.py logic but is
                 # integrated directly here for tight coupling with chat loop control flow
                 usage = result.usage() if hasattr(result, "usage") else None
+                with contextlib.suppress(Exception):
+                    if usage is not None:
+                        if usage.input_tokens:
+                            metric_distribution(
+                                "atman.turn.input_tokens", float(usage.input_tokens)
+                            )
+                        if usage.output_tokens:
+                            metric_distribution(
+                                "atman.turn.output_tokens", float(usage.output_tokens)
+                            )
+                        if usage.input_tokens and self._config.model.context_limit:
+                            _pct = usage.input_tokens / self._config.model.context_limit * 100
+                            metric_distribution(
+                                "atman.context.usage_pct", _pct, unit="percent"
+                            )
                 if usage and usage.input_tokens:
                     context_limit = self._config.model.context_limit
                     input_tokens = usage.input_tokens
@@ -1125,6 +1184,7 @@ class AtmanRunner:
                         except Exception as exc:
                             _LOG.exception("Failed to force-finish session %s", session_id)
                             print_err(f"Force-finish failed: {exc!s}")
+                        _turn_span_cm.__exit__(None, None, None)
                         break  # Exit main loop
                 else:
                     # No token usage info or no thresholds triggered - show response normally
@@ -1147,6 +1207,9 @@ class AtmanRunner:
                         session_id=session_id,
                     )
 
+                metric_increment("atman.turn.completed")
+                _turn_span_cm.__exit__(None, None, None)
+
                 # E22.5: Update history with new messages from this run
                 history.extend(result.new_messages())
         except KeyboardInterrupt:
@@ -1157,6 +1220,11 @@ class AtmanRunner:
             if original_sigterm_handler is not None:
                 signal.signal(signal.SIGTERM, original_sigterm_handler)
             self._stop_stdin_reader()
+            with contextlib.suppress(Exception):
+                _elapsed_ms = (_time.monotonic() - _session_t0) * 1000
+                metric_distribution("atman.session.duration_ms", _elapsed_ms, unit="millisecond")
+                _close_tag = "interrupted" if interrupted else "completed"
+                metric_increment("atman.session.finished", tags={"close_reason": _close_tag})
             # Release per-session caches to free memory
             working_memory.clear()
             session_cache.entity_resolutions.clear()
@@ -1514,12 +1582,12 @@ class AtmanTurn:
         # Per-turn RAG only — never accumulate prior turns' injected_context.
         deps = replace(self._deps, injected_context=None)
 
-        with pipeline_span("atman.ner", "entity detection"):
-            deps = self._register_user_entities(user_text, deps)
-        with pipeline_span("atman.rag.passive", "passive RAG injection"):
-            deps = self._inject_passive_rag(user_text, deps)
-        with pipeline_span("atman.rag.ambient", "ambient RAG"):
-            deps = self._inject_ambient(user_text, deps)
+        with pipeline_span("atman.ner", "entity detection") as _ner_span:
+            deps = self._register_user_entities(user_text, deps, span=_ner_span)
+        with pipeline_span("atman.rag.passive", "passive RAG injection") as _passive_span:
+            deps = self._inject_passive_rag(user_text, deps, span=_passive_span)
+        with pipeline_span("atman.rag.ambient", "ambient RAG") as _ambient_span:
+            deps = self._inject_ambient(user_text, deps, span=_ambient_span)
         deps = self._inject_skill_suggestions(user_text, deps)
 
         _LOG.debug(
@@ -1540,8 +1608,8 @@ class AtmanTurn:
         self.auto_key_moment_markers = []
         deps = self._deps
 
-        with pipeline_span("atman.affect", "affect processing"):
-            self._analyze_response(agent_text, deps)
+        with pipeline_span("atman.affect", "affect processing") as _affect_span:
+            self._analyze_response(agent_text, deps, span=_affect_span)
             self._run_affect_and_refusal(agent_text)
         self._drain_maintenance(deps)
 
@@ -1549,7 +1617,7 @@ class AtmanTurn:
 
     # ── Pre-turn steps ────────────────────────────────────────────────────────
 
-    def _register_user_entities(self, text: str, deps: AtmanDeps) -> AtmanDeps:
+    def _register_user_entities(self, text: str, deps: AtmanDeps, span: Any = None) -> AtmanDeps:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] entity_reg skipped: no ambient_memory")
             return deps
@@ -1559,11 +1627,31 @@ class AtmanTurn:
         try:
             analysis = deps.ambient_memory._analyzer.analyze_user_message(text)
             entities = analysis.entities or []
+            anchors = getattr(analysis, "anchors", []) or []
             _LOG.debug(
                 "[AtmanTurn] user entities detected: n=%d  entities=%r",
                 len(entities),
                 [_sanitize_utf8_for_log(e.text) for e in entities[:5]],
             )
+            if span is not None:
+                with contextlib.suppress(Exception):
+                    span.set_data("ner.entity_count", len(entities))
+                    span.set_data("ner.anchor_count", len(anchors))
+                    span.set_data("ner.entities", [
+                        {
+                            "text": _sanitize_utf8_for_log(e.text),
+                            "type": getattr(e.entity_type, "value", str(e.entity_type)),
+                            "score": round(getattr(e, "score", 0.0), 4),
+                        }
+                        for e in entities
+                    ])
+                    span.set_data("ner.anchors", [
+                        {
+                            "text": getattr(a, "text", str(a)),
+                            "type": getattr(a, "type", getattr(a, "anchor_type", "?")),
+                        }
+                        for a in anchors[:20]
+                    ])
             self._emit(
                 "entity_resolved",
                 entities=[
@@ -1638,7 +1726,7 @@ class AtmanTurn:
             )
         return lines
 
-    def _inject_passive_rag(self, text: str, deps: AtmanDeps) -> AtmanDeps:
+    def _inject_passive_rag(self, text: str, deps: AtmanDeps, span: Any = None) -> AtmanDeps:
         if deps.passive_memory_injector is None:
             _LOG.debug("[AtmanTurn] passive_rag skipped: no passive_memory_injector")
             self.passive_summary = "no injector"
@@ -1670,6 +1758,23 @@ class AtmanTurn:
                 len(rag.items),
                 rag.tokens_used,
             )
+            if span is not None:
+                with contextlib.suppress(Exception):
+                    span.set_data("rag.items_surfaced", len(items))
+                    span.set_data("rag.items_injected", len(rag.items))
+                    span.set_data("rag.tokens_used", rag.tokens_used)
+                    span.set_data("rag.top_items", [
+                        {
+                            "kind": it.source,
+                            "score": round(it.score, 4),
+                            "preview": _sanitize_utf8_for_log(str(
+                                getattr(it.item, "content", None)
+                                or getattr(it.item, "what_happened", None)
+                                or str(it.item)
+                            )[:120]),
+                        }
+                        for it in rag.items[:10]
+                    ])
             self._emit(
                 "passive_rag",
                 items_total=len(rag.items),
@@ -1685,7 +1790,7 @@ class AtmanTurn:
             self.passive_summary = f"error: {exc}"
             return deps
 
-    def _inject_ambient(self, text: str, deps: AtmanDeps) -> AtmanDeps:
+    def _inject_ambient(self, text: str, deps: AtmanDeps, span: Any = None) -> AtmanDeps:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] ambient_rag skipped: no ambient_memory")
             self.ambient_summary = "no ambient_memory"
@@ -1710,6 +1815,18 @@ class AtmanTurn:
                 len(items),
                 result.tokens_used,
             )
+            if span is not None:
+                with contextlib.suppress(Exception):
+                    span.set_data("ambient.items_injected", len(items))
+                    span.set_data("ambient.tokens_used", result.tokens_used)
+                    span.set_data("ambient.top_items", [
+                        {
+                            "kind": it.kind,
+                            "anchor": it.anchor_text or "",
+                            "score": round(getattr(it, "score", 0.0), 4),
+                        }
+                        for it in items[:10]
+                    ])
             self._emit(
                 "ambient_injection",
                 items_total=len(items),
@@ -1874,7 +1991,7 @@ class AtmanTurn:
         except Exception as exc:
             _LOG.warning("[AtmanTurn] auto key moment failed: %s", exc, exc_info=True)
 
-    def _analyze_response(self, text: str, deps: AtmanDeps) -> None:
+    def _analyze_response(self, text: str, deps: AtmanDeps, span: Any = None) -> None:
         if deps.ambient_memory is None:
             _LOG.debug("[AtmanTurn] response analysis skipped: no ambient_memory")
             return
@@ -1896,6 +2013,28 @@ class AtmanTurn:
             len(analysis.message_entities),
             len(analysis.message_spans),
         )
+        if span is not None:
+            with contextlib.suppress(Exception):
+                span.set_data("affect.stance", analysis.stance)
+                span.set_data("affect.cognitive_mode", analysis.cognitive_mode)
+                span.set_data("affect.primary_emotion", analysis.primary_emotion)
+                span.set_data("affect.self_orientation", analysis.self_orientation)
+                span.set_data("affect.cognitive_load_label", analysis.cognitive_load_label)
+                span.set_data("affect.boundary_markers", analysis.boundary_markers)
+                span.set_data("affect.divergence_signals", analysis.divergence_signals)
+                span.set_data("affect.entity_count", len(analysis.message_entities))
+                span.set_data("affect.span_count", len(analysis.message_spans))
+                span.set_data("affect.message_spans", [
+                    {"text": _sanitize_utf8_for_log(s.text), "label": s.label}
+                    for s in analysis.message_spans[:30]
+                ])
+                span.set_data("affect.message_entities", [
+                    {
+                        "text": _sanitize_utf8_for_log(e.text),
+                        "type": getattr(e.entity_type, "value", str(e.entity_type)),
+                    }
+                    for e in analysis.message_entities[:20]
+                ])
         self._emit(
             "agent_analysis",
             stance=analysis.stance,

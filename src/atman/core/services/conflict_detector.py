@@ -6,6 +6,7 @@ a cognitive tension signal (small, not overwhelming).
 """
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -95,6 +96,13 @@ class ConflictDetector:
             if conflict:
                 conflicts.append(conflict)
 
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _md("atman.conflict_detector.conflicts_found", float(len(conflicts)), tags={"trigger": "check_fact"})
+            for c in conflicts:
+                _mi("atman.conflict_detector.conflict_type", tags={"type": c.conflict_type})
+
         return conflicts
 
     def scan_all_conflicts(self, limit: int = 100) -> list[FactConflict]:
@@ -117,6 +125,14 @@ class ConflictDetector:
                 conflict = self._detect_conflict(fact1, fact2)
                 if conflict:
                     conflicts.append(conflict)
+
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _md("atman.conflict_detector.conflicts_found", float(len(conflicts)), tags={"trigger": "scan_all"})
+            _md("atman.conflict_detector.facts_scanned", float(len(active_facts)), tags={"trigger": "scan_all"})
+            for c in conflicts:
+                _mi("atman.conflict_detector.conflict_type", tags={"type": c.conflict_type})
 
         return conflicts
 
@@ -209,4 +225,10 @@ class ConflictDetector:
         # Sum confidence scores, cap at 1.0
         # Use diminishing returns for multiple conflicts
         total = sum(c.confidence for c in conflicts)
-        return min(1.0, total / (1 + total * 0.5))
+        tension = min(1.0, total / (1 + total * 0.5))
+
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_gauge as _mg
+            _mg("atman.conflict_detector.cognitive_tension", tension)
+
+        return tension

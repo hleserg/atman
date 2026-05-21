@@ -331,13 +331,22 @@ class PostgresFactualMemory(FactualMemory):
 
         agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
 
-        with db_span("postgresql", "insert", collection="facts"):
+        from atman.adapters.observability.sentry import capture_db_state as _cds
+        with db_span("postgresql", "insert", collection="facts") as _ins_span:
+            _cds("fact", [record.model_dump()], context="before_write")
+            if _ins_span is not None:
+                from contextlib import suppress as _suppress
+                with _suppress(Exception):
+                    _ins_span.set_data("db.fact_id", str(record.id))
+                    _ins_span.set_data("db.fact_source", record.source)
+                    _ins_span.set_data("db.fact_content_preview", str(record.content or "")[:200])
             with conn.cursor() as cur:
                 self._insert_fact_rows(cur, record, agent_id)
 
             conn.commit()
         stored = record.model_copy(deep=True)
         stored.agent_id = agent_id
+        _cds("fact", [stored.model_dump()], context="after_write")
 
         _slog(
             "fact_added",
@@ -426,9 +435,30 @@ class PostgresFactualMemory(FactualMemory):
                     "db.query.mode",
                     "vector" if (query and vec is not None) else "text" if query else "salience",
                 )
+                from contextlib import suppress as _suppress
+                with _suppress(Exception):
+                    span.set_data("db.query.limit", limit)
+                    span.set_data("db.query.has_tags_filter", bool(tags))
+                    span.set_data("db.query.include_invalidated", include_invalidated)
             with conn.cursor() as cur:
                 rows = self._load_rows(cur, where_sql, params, order_sql, limit)
             conn.commit()
+        from atman.adapters.observability.sentry import capture_db_state as _cds
+        _cds(
+            "facts",
+            [
+                {
+                    "id": str(r.id),
+                    "content": str(r.content or "")[:300],
+                    "source": r.source,
+                    "salience": r.salience,
+                    "tags": r.tags,
+                    "status": r.status.value if r.status else None,
+                }
+                for r in rows
+            ],
+            context="read",
+        )
         return rows
 
     def invalidate_fact(

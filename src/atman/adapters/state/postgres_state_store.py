@@ -43,6 +43,8 @@ else:
             stacklevel=2,
         )
 
+from contextlib import suppress
+
 from atman.core.models import (
     Eigenstate,
     ExperienceRecord,
@@ -57,6 +59,7 @@ from atman.core.models.session import Session
 from atman.core.ports.state_store import ExperienceQuery, StateStore
 from atman.core.session_log import slog as _slog
 from atman.db_url import resolve_database_url
+from atman.observability.spans import db_span
 
 
 def _row_to_session(row: Any) -> Session:
@@ -271,41 +274,45 @@ class PostgresStateStore(StateStore):
     # ------------------------------------------------------------------
 
     def create_session(self, session: Session) -> Session:
-        schema = self._schema_ident(session.agent_id)
-        conn = self._get_conn()
-        with conn.transaction(), conn.cursor() as cur:
-            q = sql.SQL(
-                """
-                INSERT INTO {s}.sessions (
-                    id, agent_id, started_at, ended_at, status, identity_snapshot_id,
-                    close_reason, agent_recap, restart_reason, user_language,
-                    overall_tone, key_insight, unexamined_fact_refs
-                ) VALUES (
-                    %(id)s, %(agent_id)s, %(started_at)s, %(ended_at)s, %(status)s,
-                    %(identity_snapshot_id)s, %(close_reason)s, %(agent_recap)s,
-                    %(restart_reason)s, %(user_language)s, %(overall_tone)s,
-                    %(key_insight)s, %(unexamined_fact_refs)s
+        with db_span("postgresql", "INSERT", collection="sessions"):
+            schema = self._schema_ident(session.agent_id)
+            conn = self._get_conn()
+            with conn.transaction(), conn.cursor() as cur:
+                q = sql.SQL(
+                    """
+                    INSERT INTO {s}.sessions (
+                        id, agent_id, started_at, ended_at, status, identity_snapshot_id,
+                        close_reason, agent_recap, restart_reason, user_language,
+                        overall_tone, key_insight, unexamined_fact_refs
+                    ) VALUES (
+                        %(id)s, %(agent_id)s, %(started_at)s, %(ended_at)s, %(status)s,
+                        %(identity_snapshot_id)s, %(close_reason)s, %(agent_recap)s,
+                        %(restart_reason)s, %(user_language)s, %(overall_tone)s,
+                        %(key_insight)s, %(unexamined_fact_refs)s
+                    )
+                    """
+                ).format(s=schema)
+                cur.execute(
+                    q,
+                    {
+                        "id": session.id,
+                        "agent_id": session.agent_id,
+                        "started_at": session.started_at,
+                        "ended_at": session.ended_at,
+                        "status": session.status,
+                        "identity_snapshot_id": session.identity_snapshot_id,
+                        "close_reason": session.close_reason,
+                        "agent_recap": session.agent_recap,
+                        "restart_reason": session.restart_reason,
+                        "user_language": session.user_language,
+                        "overall_tone": session.overall_tone,
+                        "key_insight": session.key_insight,
+                        "unexamined_fact_refs": list(session.unexamined_fact_refs),
+                    },
                 )
-                """
-            ).format(s=schema)
-            cur.execute(
-                q,
-                {
-                    "id": session.id,
-                    "agent_id": session.agent_id,
-                    "started_at": session.started_at,
-                    "ended_at": session.ended_at,
-                    "status": session.status,
-                    "identity_snapshot_id": session.identity_snapshot_id,
-                    "close_reason": session.close_reason,
-                    "agent_recap": session.agent_recap,
-                    "restart_reason": session.restart_reason,
-                    "user_language": session.user_language,
-                    "overall_tone": session.overall_tone,
-                    "key_insight": session.key_insight,
-                    "unexamined_fact_refs": list(session.unexamined_fact_refs),
-                },
-            )
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.session_created")
         return session
 
     def get_session(self, session_id: UUID) -> Session | None:
@@ -327,41 +334,45 @@ class PostgresStateStore(StateStore):
         return _row_to_session(row) if row else None
 
     def update_session(self, session: Session) -> Session:
-        schema = self._schema_ident(session.agent_id)
-        conn = self._get_conn()
-        with conn.transaction(), conn.cursor() as cur:
-            q = sql.SQL(
-                """
-                UPDATE {s}.sessions
-                SET ended_at = %(ended_at)s,
-                    status = %(status)s,
-                    identity_snapshot_id = %(identity_snapshot_id)s,
-                    close_reason = %(close_reason)s,
-                    agent_recap = %(agent_recap)s,
-                    restart_reason = %(restart_reason)s,
-                    user_language = %(user_language)s,
-                    overall_tone = %(overall_tone)s,
-                    key_insight = %(key_insight)s,
-                    unexamined_fact_refs = %(unexamined_fact_refs)s
-                WHERE id = %(id)s
-                """
-            ).format(s=schema)
-            cur.execute(
-                q,
-                {
-                    "id": session.id,
-                    "ended_at": session.ended_at,
-                    "status": session.status,
-                    "identity_snapshot_id": session.identity_snapshot_id,
-                    "close_reason": session.close_reason,
-                    "agent_recap": session.agent_recap,
-                    "restart_reason": session.restart_reason,
-                    "user_language": session.user_language,
-                    "overall_tone": session.overall_tone,
-                    "key_insight": session.key_insight,
-                    "unexamined_fact_refs": list(session.unexamined_fact_refs),
-                },
-            )
+        with db_span("postgresql", "UPDATE", collection="sessions"):
+            schema = self._schema_ident(session.agent_id)
+            conn = self._get_conn()
+            with conn.transaction(), conn.cursor() as cur:
+                q = sql.SQL(
+                    """
+                    UPDATE {s}.sessions
+                    SET ended_at = %(ended_at)s,
+                        status = %(status)s,
+                        identity_snapshot_id = %(identity_snapshot_id)s,
+                        close_reason = %(close_reason)s,
+                        agent_recap = %(agent_recap)s,
+                        restart_reason = %(restart_reason)s,
+                        user_language = %(user_language)s,
+                        overall_tone = %(overall_tone)s,
+                        key_insight = %(key_insight)s,
+                        unexamined_fact_refs = %(unexamined_fact_refs)s
+                    WHERE id = %(id)s
+                    """
+                ).format(s=schema)
+                cur.execute(
+                    q,
+                    {
+                        "id": session.id,
+                        "ended_at": session.ended_at,
+                        "status": session.status,
+                        "identity_snapshot_id": session.identity_snapshot_id,
+                        "close_reason": session.close_reason,
+                        "agent_recap": session.agent_recap,
+                        "restart_reason": session.restart_reason,
+                        "user_language": session.user_language,
+                        "overall_tone": session.overall_tone,
+                        "key_insight": session.key_insight,
+                        "unexamined_fact_refs": list(session.unexamined_fact_refs),
+                    },
+                )
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.session_updated", tags={"status": str(session.status)})
         return session
 
     def list_recent_sessions(self, agent_id: UUID, *, limit: int = 10) -> list[Session]:
@@ -510,13 +521,17 @@ class PostgresStateStore(StateStore):
             )
         schema = self._schema_ident(existing.agent_id)
         conn = self._get_conn()
-        try:
-            with conn.transaction(), conn.cursor() as cur:
-                self._insert_moment_rows(
-                    cur, schema, key_moment, existing.agent_id, on_conflict_upsert=False
-                )
-        except psycopg.errors.UniqueViolation as exc:
-            raise ValueError(f"KeyMoment {key_moment.id} already exists") from exc
+        with db_span("postgresql", "INSERT", collection="key_moments"):
+            try:
+                with conn.transaction(), conn.cursor() as cur:
+                    self._insert_moment_rows(
+                        cur, schema, key_moment, existing.agent_id, on_conflict_upsert=False
+                    )
+            except psycopg.errors.UniqueViolation as exc:
+                raise ValueError(f"KeyMoment {key_moment.id} already exists") from exc
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.key_moment_created")
         return key_moment
 
     def store_key_moment(self, moment: KeyMoment) -> KeyMoment:
@@ -533,10 +548,13 @@ class PostgresStateStore(StateStore):
             )
         schema = self._schema_ident(existing.agent_id)
         conn = self._get_conn()
-        with conn.transaction(), conn.cursor() as cur:
+        with db_span("postgresql", "UPSERT", collection="key_moments"), conn.transaction(), conn.cursor() as cur:
             self._insert_moment_rows(
                 cur, schema, moment, existing.agent_id, on_conflict_upsert=True
             )
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.key_moment_stored")
         return moment
 
     def store_key_moments(self, session_id: UUID, moments: list[KeyMoment]) -> None:
@@ -581,13 +599,17 @@ class PostgresStateStore(StateStore):
         if schema is None:
             return []
         conn = self._get_conn()
-        with conn.transaction(), conn.cursor() as cur:
+        with db_span("postgresql", "SELECT", collection="key_moments"), conn.transaction(), conn.cursor() as cur:
             q = sql.SQL(
                 "SELECT * FROM {s}.key_moments WHERE session_id = %(sid)s ORDER BY recorded_at ASC"
             ).format(s=schema)
             cur.execute(q, {"sid": session_id})
             rows = cur.fetchall()
-        return [_row_to_key_moment(r) for r in rows]
+        result = [_row_to_key_moment(r) for r in rows]
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_distribution as _md
+            _md("atman.state_store.moments_returned", float(len(result)))
+        return result
 
     def mark_moment_accessed(self, moment_id: UUID) -> None:
         schema = self._resolve_schema_for_moment(moment_id)
@@ -757,7 +779,7 @@ class PostgresStateStore(StateStore):
             )
         conn = self._get_conn()
         state = Jsonb(identity.model_dump(mode="json"))
-        with conn.transaction(), conn.cursor() as cur:
+        with db_span("postgresql", "UPSERT", collection="identity"), conn.transaction(), conn.cursor() as cur:
             q = sql.SQL(
                 """
                 INSERT INTO {s}.identity
@@ -794,6 +816,9 @@ class PostgresStateStore(StateStore):
                     "st": state,
                 },
             )
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.identity_saved")
         return identity
 
     def create_identity_snapshot(self, snapshot: IdentitySnapshot) -> IdentitySnapshot:
@@ -876,7 +901,7 @@ class PostgresStateStore(StateStore):
             raise ValueError("Concurrent update detected (updated_at mismatch)")
         conn = self._get_conn()
         state = Jsonb(narrative.model_dump(mode="json"))
-        with conn.transaction(), conn.cursor() as cur:
+        with db_span("postgresql", "UPSERT", collection="narrative"), conn.transaction(), conn.cursor() as cur:
             q = sql.SQL(
                 """
                 INSERT INTO {s}.narrative
@@ -909,6 +934,9 @@ class PostgresStateStore(StateStore):
                     "fs": list(narrative.finished_session_ids),
                 },
             )
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.narrative_saved")
         return narrative
 
     def archive_narrative(self, narrative_id: UUID, reason: str) -> None:
@@ -931,11 +959,14 @@ class PostgresStateStore(StateStore):
         schema = self._schema_ident(agent_id)
         conn = self._get_conn()
         blob = Jsonb(eigenstate.model_dump(mode="json"))
-        with conn.transaction(), conn.cursor() as cur:
+        with db_span("postgresql", "UPDATE", collection="eigenstate"), conn.transaction(), conn.cursor() as cur:
             q = sql.SQL(
                 "UPDATE {s}.identity SET eigenstate = %(blob)s WHERE agent_id = %(aid)s"
             ).format(s=schema)
             cur.execute(q, {"blob": blob, "aid": agent_id})
+        with suppress(Exception):
+            from atman.adapters.observability.sentry import metric_increment as _mi
+            _mi("atman.state_store.eigenstate_saved")
         return eigenstate
 
     def load_latest_eigenstate(

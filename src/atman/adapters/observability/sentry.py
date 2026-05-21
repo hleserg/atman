@@ -367,3 +367,81 @@ def cron_checkin(monitor_slug: str) -> Generator[None, None, None]:
 
     with sentry_sdk.monitor(monitor_slug=monitor_slug):
         yield
+
+
+# ---------------------------------------------------------------------------
+# Full-mode debug helpers (ATMAN_OBS_LEVEL=full only)
+# ---------------------------------------------------------------------------
+
+
+def _is_full_mode() -> bool:
+    """True when ATMAN_OBS_LEVEL=full — debug-only mode with no PII filtering."""
+    with suppress(Exception):
+        from atman.observability.sentry_init import is_full_mode
+
+        return is_full_mode()
+    return False
+
+
+def capture_db_state(table: str, rows: list[Any], *, context: str = "read") -> None:
+    """Capture database rows as a Sentry context snapshot + JSON attachment.
+
+    Only active in ATMAN_OBS_LEVEL=full. Attaches all rows to the current
+    transaction so the full DB state before/after each operation is visible
+    in Sentry Issues and Traces.
+
+    Args:
+        table:   Table name (used in context key and filename).
+        rows:    List of row dicts / dataclass-like objects with __dict__.
+        context: "read" | "before_write" | "after_write" — shown in context key.
+    """
+    if not _sentry_sdk_active() or not _is_full_mode():
+        return
+    with suppress(Exception):
+        import json
+
+        import sentry_sdk
+
+        # Inline context: row count + first 5 rows for quick inspection
+        sample = rows[:5] if rows else []
+        sentry_sdk.set_context(
+            f"db.{context}.{table}",
+            {"row_count": len(rows), "sample": sample},
+        )
+        if not rows:
+            return
+        scope = sentry_sdk.get_current_scope()
+        scope.add_attachment(
+            bytes=json.dumps(rows, default=str, ensure_ascii=False).encode("utf-8"),
+            filename=f"db_{context}_{table}.json",
+            content_type="application/json",
+            add_to_transactions=True,
+        )
+
+
+def capture_system_prompt(prompt_text: str, bundle_meta: dict[str, Any]) -> None:
+    """Capture the full system prompt as a Sentry attachment + context.
+
+    Only active in ATMAN_OBS_LEVEL=full. Stores the rendered identity/narrative
+    bundle so every session's starting context is visible in Sentry.
+
+    Args:
+        prompt_text: Full rendered memory bundle string.
+        bundle_meta: Metadata dict (has_identity, has_narrative, etc.).
+    """
+    if not _sentry_sdk_active() or not _is_full_mode():
+        return
+    with suppress(Exception):
+        import sentry_sdk
+
+        sentry_sdk.set_context(
+            "atman.system_prompt",
+            {"chars": len(prompt_text), **bundle_meta},
+        )
+        scope = sentry_sdk.get_current_scope()
+        scope.add_attachment(
+            bytes=prompt_text.encode("utf-8", "replace"),
+            filename="system_prompt.txt",
+            content_type="text/plain",
+            add_to_transactions=True,
+        )

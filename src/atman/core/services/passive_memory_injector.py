@@ -210,85 +210,140 @@ class PassiveMemoryInjector:
         5. Expand 1-hop via associative graph; associative items get
            a real embedding similarity score, not a hardcoded constant.
         """
+        from contextlib import suppress as _suppress
+
+        from atman.observability.spans import pipeline_span as _ps
+
         surfaced: list[SurfacedMemoryItem] = []
         seen_ids: set[UUID] = set()
 
-        query_embedding = self.embedding.embed(context_text)
+        with _ps("atman.rag.pipeline", "surface_for_context") as _rag_span:
+            query_embedding = self.embedding.embed(context_text)
 
-        candidate_facts = self.factual_memory.search(
-            query=None,
-            limit=self.candidate_pool_size,
-            include_invalidated=False,
-        )
-        _slog("passive_candidates", count=len(candidate_facts), pool_size=self.candidate_pool_size)
-
-        # Embedding scoring + working-memory dedup + empty-content skip.
-        # Use embed_batch so remote adapters (Ollama, flag) make one round-trip
-        # instead of one per fact.
-        eligible: list[FactRecord] = [
-            fact
-            for fact in candidate_facts
-            if fact.content.strip() and not (working_memory and working_memory.has(fact.id))
-        ]
-        scored_facts: list[tuple[FactRecord, float]] = []
-        if eligible:
-            _t0_embed = _time.monotonic()
-            batch_embeddings = self.embedding.embed_batch([f.content for f in eligible])
-            for fact, fact_embedding in zip(eligible, batch_embeddings, strict=True):
-                score = self.embedding.similarity(query_embedding, fact_embedding)
-                if score >= self.min_threshold:
-                    scored_facts.append((fact, float(score)))
-            _slog(
-                "passive_embedded",
-                eligible_count=len(eligible),
-                passed_threshold=len(scored_facts),
-                threshold=self.min_threshold,
-                latency_ms=round((_time.monotonic() - _t0_embed) * 1000, 1),
-            )
-
-        if not scored_facts:
-            return surfaced
-
-        # Optional BM25 RRF fusion — lifts exact lexical matches that the
-        # dense encoder might rank low, without dropping semantic matches.
-        ordered = self._fuse_with_bm25(context_text, scored_facts)
-
-        # Optional cross-encoder reranking (ambient mode).
-        if self._ambient_mode:
-            _t0_rerank = _time.monotonic()
-            pre_rerank_count = len(ordered)
-            ordered = self._apply_reranker(context_text, ordered)
-            _slog(
-                "passive_reranked",
-                input_count=min(pre_rerank_count, self._reranker_top_n),
-                output_count=len(ordered),
-                latency_ms=round((_time.monotonic() - _t0_rerank) * 1000, 1),
-            )
-        else:
-            ordered = self._apply_reranker(context_text, ordered)
-
-        for fact, score in ordered[: self.top_k]:
-            surfaced.append(SurfacedMemoryItem(item=fact, source="similarity", score=score))
-            seen_ids.add(fact.id)
-            if working_memory:
-                working_memory.add_fact(fact)
-
-        # Associative graph expansion (1-hop) — score by real embedding
-        # similarity, capped at 0.5 so associative items never outrank a
-        # direct semantic match.
-        if self.associative_expand:
-            related_facts = self._associative_expand(seen_ids)
-            for fact in related_facts:
-                if fact.id in seen_ids or not fact.content.strip():
-                    continue
-                rel_embedding = self.embedding.embed(fact.content)
-                rel_score = float(self.embedding.similarity(query_embedding, rel_embedding))
-                surfaced.append(
-                    SurfacedMemoryItem(item=fact, source="associative", score=min(rel_score, 0.5))
+            with _ps("atman.rag.db_candidates", "fetch candidates") as _cand_span:
+                candidate_facts = self.factual_memory.search(
+                    query=None,
+                    limit=self.candidate_pool_size,
+                    include_invalidated=False,
                 )
+                if _cand_span is not None:
+                    with _suppress(Exception):
+                        _cand_span.set_data("rag.candidates_fetched", len(candidate_facts))
+                        _cand_span.set_data("rag.pool_size", self.candidate_pool_size)
+            _slog("passive_candidates", count=len(candidate_facts), pool_size=self.candidate_pool_size)
+
+            # Embedding scoring + working-memory dedup + empty-content skip.
+            # Use embed_batch so remote adapters (Ollama, flag) make one round-trip
+            # instead of one per fact.
+            eligible: list[FactRecord] = [
+                fact
+                for fact in candidate_facts
+                if fact.content.strip() and not (working_memory and working_memory.has(fact.id))
+            ]
+            scored_facts: list[tuple[FactRecord, float]] = []
+            if eligible:
+                _t0_embed = _time.monotonic()
+                with _ps("atman.rag.embed_batch", "embed candidates") as _emb_span:
+                    batch_embeddings = self.embedding.embed_batch([f.content for f in eligible])
+                    for fact, fact_embedding in zip(eligible, batch_embeddings, strict=True):
+                        score = self.embedding.similarity(query_embedding, fact_embedding)
+                        if score >= self.min_threshold:
+                            scored_facts.append((fact, float(score)))
+                    if _emb_span is not None:
+                        with _suppress(Exception):
+                            _emb_span.set_data("rag.eligible_count", len(eligible))
+                            _emb_span.set_data("rag.passed_threshold", len(scored_facts))
+                            _emb_span.set_data("rag.threshold", self.min_threshold)
+                _slog(
+                    "passive_embedded",
+                    eligible_count=len(eligible),
+                    passed_threshold=len(scored_facts),
+                    threshold=self.min_threshold,
+                    latency_ms=round((_time.monotonic() - _t0_embed) * 1000, 1),
+                )
+
+            if not scored_facts:
+                return surfaced
+
+            # Optional BM25 RRF fusion — lifts exact lexical matches that the
+            # dense encoder might rank low, without dropping semantic matches.
+            with _ps("atman.rag.bm25_fusion", "BM25 RRF fusion") as _bm25_span:
+                pre_bm25 = [(f.id, sc) for f, sc in scored_facts[:10]]
+                ordered = self._fuse_with_bm25(context_text, scored_facts)
+                if _bm25_span is not None:
+                    with _suppress(Exception):
+                        _bm25_span.set_data("rag.bm25_enabled", self._bm25 is not None)
+                        _bm25_span.set_data("rag.pre_fusion_top10", [
+                            {"id": str(fid), "score": round(sc, 4)} for fid, sc in pre_bm25
+                        ])
+                        _bm25_span.set_data("rag.post_fusion_top10", [
+                            {"id": str(f.id), "score": round(sc, 4)} for f, sc in ordered[:10]
+                        ])
+
+            # Optional cross-encoder reranking (ambient mode).
+            if self._ambient_mode:
+                _t0_rerank = _time.monotonic()
+                pre_rerank_count = len(ordered)
+                with _ps("atman.rag.rerank", "cross-encoder rerank") as _rr_span:
+                    ordered = self._apply_reranker(context_text, ordered)
+                    if _rr_span is not None:
+                        with _suppress(Exception):
+                            _rr_span.set_data("rag.rerank_input_count", min(pre_rerank_count, self._reranker_top_n))
+                            _rr_span.set_data("rag.rerank_output_count", len(ordered))
+                            _rr_span.set_data("rag.reranked_top10", [
+                                {"id": str(f.id), "score": round(sc, 4), "preview": str(f.content or "")[:80]}
+                                for f, sc in ordered[:10]
+                            ])
+                _slog(
+                    "passive_reranked",
+                    input_count=min(pre_rerank_count, self._reranker_top_n),
+                    output_count=len(ordered),
+                    latency_ms=round((_time.monotonic() - _t0_rerank) * 1000, 1),
+                )
+            else:
+                ordered = self._apply_reranker(context_text, ordered)
+
+            for fact, score in ordered[: self.top_k]:
+                surfaced.append(SurfacedMemoryItem(item=fact, source="similarity", score=score))
                 seen_ids.add(fact.id)
                 if working_memory:
                     working_memory.add_fact(fact)
+
+            # Associative graph expansion (1-hop) — score by real embedding
+            # similarity, capped at 0.5 so associative items never outrank a
+            # direct semantic match.
+            if self.associative_expand:
+                related_facts = self._associative_expand(seen_ids)
+                for fact in related_facts:
+                    if fact.id in seen_ids or not fact.content.strip():
+                        continue
+                    rel_embedding = self.embedding.embed(fact.content)
+                    rel_score = float(self.embedding.similarity(query_embedding, rel_embedding))
+                    surfaced.append(
+                        SurfacedMemoryItem(item=fact, source="associative", score=min(rel_score, 0.5))
+                    )
+                    seen_ids.add(fact.id)
+                    if working_memory:
+                        working_memory.add_fact(fact)
+
+            if _rag_span is not None:
+                with _suppress(Exception):
+                    _rag_span.set_data("rag.final_count", len(surfaced))
+                    _rag_span.set_data("rag.direct_count",
+                                       sum(1 for s in surfaced if s.source != "associative"))
+                    _rag_span.set_data("rag.associative_count",
+                                       sum(1 for s in surfaced if s.source == "associative"))
+                    _rag_span.set_data("rag.final_items", [
+                        {
+                            "id": str(s.item.id),
+                            "source": s.source,
+                            "score": round(s.score, 4),
+                            "preview": str(getattr(s.item, "content", None)
+                                          or getattr(s.item, "what_happened", None)
+                                          or "")[:120],
+                        }
+                        for s in surfaced[:20]
+                    ])
 
         _slog(
             "passive_surfaced",

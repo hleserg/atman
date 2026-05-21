@@ -42,6 +42,7 @@ System-prompt mode:
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Literal
 
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -82,6 +83,12 @@ def inject_memory(
     """
     if not content:
         return None
+
+    with suppress(Exception):
+        from atman.adapters.observability.sentry import metric_distribution as _md
+        from atman.adapters.observability.sentry import metric_increment as _mi
+        _mi("atman.memory_injection.inject", tags={"mode": mode, "prepend": str(prepend)})
+        _md("atman.memory_injection.content_chars", float(len(content)), tags={"mode": mode})
 
     if mode == "system_prompt":
         return content
