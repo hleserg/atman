@@ -20,7 +20,7 @@ import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar
 
 _LOG = logging.getLogger(__name__)
 _initialized = False
@@ -87,7 +87,7 @@ def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any
     try:
         import sentry_sdk
 
-        with sentry_sdk.push_scope() as scope:
+        with sentry_sdk.new_scope() as scope:
             if context:
                 scope.set_tag("silent_context", context)
             for k, v in extra.items():
@@ -109,7 +109,7 @@ def traced(op: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             with pipeline_span(op, fn.__name__):
                 try:
-                    return cast(R, fn(*args, **kwargs))
+                    return fn(*args, **kwargs)
                 except Exception as exc:
                     if _initialized:
                         with suppress(Exception):

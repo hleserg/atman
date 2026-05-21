@@ -7,6 +7,7 @@ sdk: gradio
 sdk_version: 4.44.0
 app_file: app.py
 pinned: false
+python_version: "3.11"
 license: mit
 tags:
   - psychology
@@ -60,6 +61,20 @@ Errors and pipeline spans flow into Sentry when configured. The Space launcher r
 - `SENTRY_TRACES_SAMPLE_RATE` — default `0.2`
 
 Without `SENTRY_DSN` all helpers no-op silently; the Space still runs.
+
+## Standalone vendoring
+
+The Space does **not** import the `atman` Python package. Core logic is vendored under `lib/`:
+
+| Demo module | Upstream source | Sync command |
+|---|---|---|
+| `lib/affect/*` | `src/atman/affect/` | `make sync-demo-affect` |
+| `lib/linguistic.py` | `src/atman/adapters/linguistic/gliner_minilm_adapter.py` | `make sync-demo-linguistic` |
+| `lib/dto.py` | `src/atman/core/ports/linguistic.py` + `core/models/entity.py` | `make sync-demo-linguistic` |
+| `lib/relations.py` | `src/atman/adapters/linguistic/mrebel_adapter.py` | manual port |
+| `lib/observability.py` | `src/atman/adapters/observability/sentry.py` | manual mirror |
+
+CI runs `make check-demo-affect-drift` and `make check-demo-linguistic-drift` to catch forgotten propagations.
 
 ## The bigger picture
 
