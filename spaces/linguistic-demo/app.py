@@ -541,7 +541,6 @@ def build_ui() -> gr.Blocks:
                 show_label=False,
                 interactive=False,
                 container=False,
-                show_download_button=False,
                 height=320,
             )
 
