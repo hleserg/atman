@@ -17,6 +17,7 @@ to enforce context limits during interactive sessions.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
@@ -105,13 +106,11 @@ class TokenMonitor:
         # Calculate ratio
         ratio = usage.input_tokens / context_limit
 
-        try:
+        with suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
             _md("atman.token_monitor.usage_ratio", ratio)
             _md("atman.token_monitor.input_tokens", float(usage.input_tokens))
             _md("atman.token_monitor.context_limit", float(context_limit))
-        except Exception:
-            pass
 
         # Check 95% - force close
         if ratio >= 0.95 and 95 not in self._triggered:
@@ -122,12 +121,10 @@ class TokenMonitor:
             )
             self._inject_warning(warning)
             self._triggered.add(95)
-            try:
+            with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "95"})
                 _mi("atman.token_monitor.context_limit_exceeded")
-            except Exception:
-                pass
             raise ContextLimitExceeded(f"Context usage at {ratio:.1%} (95% threshold)")
 
         # Check 90%
@@ -139,11 +136,9 @@ class TokenMonitor:
             )
             self._inject_warning(warning)
             self._triggered.add(90)
-            try:
+            with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "90"})
-            except Exception:
-                pass
 
         # Check 80%
         if ratio >= 0.80 and 80 not in self._triggered:
@@ -151,11 +146,9 @@ class TokenMonitor:
             warning = f"[SYSTEM INFO] Context at 80% — {remaining} tokens remaining."
             self._inject_warning(warning)
             self._triggered.add(80)
-            try:
+            with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "80"})
-            except Exception:
-                pass
 
         # Check 70% - full warning
         if ratio >= 0.70 and 70 not in self._triggered:
@@ -167,11 +160,9 @@ class TokenMonitor:
             )
             self._inject_warning(warning)
             self._triggered.add(70)
-            try:
+            with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "70"})
-            except Exception:
-                pass
 
     def _inject_warning(self, warning: str) -> None:
         """
