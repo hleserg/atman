@@ -537,7 +537,20 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     font-style: italic;
     color: #94A3B8;
     display: block;
-    max-width: 560px;
+    max-width: 640px;
     margin: 0 auto 8px;
 }
 .dark #atman-footer em { color: #64748B; }
+#atman-footer code {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    padding: 1px 5px;
+    background: rgba(79, 70, 229, 0.10);
+    border-radius: 4px;
+    color: #4F46E5;
+    font-style: normal;
+}
+.dark #atman-footer code {
+    background: rgba(99, 102, 241, 0.14);
+    color: #A5B4FC;
+}

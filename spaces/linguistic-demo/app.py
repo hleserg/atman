@@ -875,6 +875,9 @@ def build_ui() -> gr.Blocks:
 <div id="atman-footer">
   <em>My first project in AI/ML — feedback on models, algorithms,
       or architecture is genuinely welcome.</em>
+  <em>Если кто-то знает как переучить
+      <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
+      отзовитесь, механизм станет намного оптимальнее.</em>
   <a href="https://github.com/hleserg/atman">GitHub</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
