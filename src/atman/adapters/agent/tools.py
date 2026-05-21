@@ -171,7 +171,9 @@ async def log_experience(  # sentry: skip — deprecated no-op redirect; no I/O 
     )
 
 
-def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:  # sentry: skip — sentinel only; restart telemetry in AtmanRunner._do_restart
+def restart_session(
+    ctx: RunContext[AtmanDeps], reason: str = ""
+) -> str:  # sentry: skip — sentinel only; restart telemetry in AtmanRunner._do_restart
     """
     Request immediate session restart.
 
@@ -197,7 +199,9 @@ def restart_session(ctx: RunContext[AtmanDeps], reason: str = "") -> str:  # sen
     return "__ATMAN_RESTART_REQUESTED__"
 
 
-def wait_session(ctx: RunContext[AtmanDeps], minutes: int) -> str:  # sentry: skip — returns sentinel string only; no I/O
+def wait_session(
+    ctx: RunContext[AtmanDeps], minutes: int
+) -> str:  # sentry: skip — returns sentinel string only; no I/O
     """
     Request session pause for specified minutes.
 
