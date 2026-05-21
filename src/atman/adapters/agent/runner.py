@@ -180,7 +180,7 @@ def _auto_record_refusal_if_needed(
 # PLAYBOOK-END
 
 
-def chat(
+def chat(  # sentry: skip — stub pending P2.4; production telemetry in AtmanRunner.chat() via AtmanTurn
     session_manager: SessionManager,
     session_id: UUID,
     *,
@@ -214,6 +214,8 @@ def chat(
         ... except SystemExit:
         ...     print("Session finished gracefully")
     """
+    # sentry: skip — stub pending P2.4 (Anthropic adapter + AtmanTurn wiring);
+    # production telemetry lives in AtmanRunner.chat() via AtmanTurn.pre()/post().
     interrupted = False
     pending_system_exit: SystemExit | None = None
     # Parameter reserved for future chat-loop paths that distinguish normal vs. forced closure.

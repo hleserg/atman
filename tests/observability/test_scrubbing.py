@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from atman.observability.scrubbing import (
     _HEALTH_ROUTES,
+    _LLM_IO_KEYS,
     ATMAN_EXTRA_KEYS,
     _make_before_send,
     _make_before_send_transaction,
@@ -94,3 +97,33 @@ def test_health_routes_set():
     assert "/metrics" in _HEALTH_ROUTES
     assert "/livez" in _HEALTH_ROUTES
     assert "/readyz" in _HEALTH_ROUTES
+
+
+def test_send_prompts_off_by_default(monkeypatch):
+    monkeypatch.delenv("ATMAN_SEND_PROMPTS", raising=False)
+    scrubber = make_event_scrubber("debug")
+    assert "prompt" in scrubber.denylist
+    assert "completion" in scrubber.denylist
+
+
+@pytest.mark.parametrize("level", ["debug", "verbose"])
+def test_send_prompts_enabled_removes_llm_keys(monkeypatch, level):
+    monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    scrubber = make_event_scrubber(level)
+    for key in _LLM_IO_KEYS:
+        assert key not in scrubber.denylist, f"Expected {key!r} absent when ATMAN_SEND_PROMPTS=1"
+
+
+def test_send_prompts_ignored_at_minimal_level(monkeypatch):
+    monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    scrubber = make_event_scrubber("minimal")
+    assert "prompt" in scrubber.denylist
+    assert "completion" in scrubber.denylist
+
+
+def test_send_prompts_non_llm_keys_always_scrubbed(monkeypatch):
+    monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    scrubber = make_event_scrubber("verbose")
+    assert "memory_content" in scrubber.denylist
+    assert "reflection_text" in scrubber.denylist
+    assert "identity_payload" in scrubber.denylist

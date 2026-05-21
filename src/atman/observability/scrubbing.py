@@ -2,10 +2,14 @@
 
 Extends sentry-sdk's DEFAULT_DENYLIST with Atman-specific keys that must
 never reach Sentry SaaS: memory contents, reflections, embeddings, prompts.
+
+Set ATMAN_SEND_PROMPTS=1 together with debug or verbose level to allow raw
+LLM payloads through to Sentry for local debugging. Never use in production.
 """
 
 from __future__ import annotations
 
+import os
 import traceback
 from typing import Any
 
@@ -36,16 +40,26 @@ ATMAN_EXTRA_KEYS: list[str] = [
     "authorization",
 ]
 
+# LLM I/O keys removed from the denylist when ATMAN_SEND_PROMPTS=1
+_LLM_IO_KEYS: frozenset[str] = frozenset(
+    {"embedding_input", "rerank_documents", "prompt", "prompt_text", "completion", "response_text"}
+)
 
-def make_event_scrubber(_level: str) -> Any:
+
+def make_event_scrubber(level: str) -> Any:
     """Return an EventScrubber configured with ATMAN_DENYLIST.
 
-    In verbose mode we still scrub — developer must opt-in to raw payloads
-    via ATMAN_SEND_PROMPTS=1 at the SDK level if needed.
+    When ATMAN_SEND_PROMPTS=1 and level is debug or verbose, LLM I/O keys
+    are removed from the denylist so raw payloads flow through to Sentry.
+    Only use in fully isolated dev environments — never in production.
     """
     from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber  # lazy import
 
-    denylist: list[str] = list(DEFAULT_DENYLIST) + ATMAN_EXTRA_KEYS
+    send_prompts = os.getenv("ATMAN_SEND_PROMPTS", "").strip() == "1"
+    allow_prompts = send_prompts and level in ("debug", "verbose")
+
+    extra_keys = [k for k in ATMAN_EXTRA_KEYS if not (allow_prompts and k in _LLM_IO_KEYS)]
+    denylist: list[str] = list(DEFAULT_DENYLIST) + extra_keys
     return EventScrubber(denylist=denylist, recursive=True)
 
 

@@ -46,14 +46,7 @@ adapters.agent.preflight.start_warmup_background
 adapters.agent.preflight.run_cli_preflight
 adapters.agent.preflight.run_streamlit_preflight
 
-# Agent tools (P2.x — will be instrumented when Anthropic/Cohere adapters land)
-adapters.agent.runner.chat
-adapters.agent.tools.record_key_moment
-adapters.agent.tools.log_experience
-adapters.agent.tools.restart_session
-adapters.agent.tools.wait_session
-adapters.agent.tools.resolve_pending_review
-adapters.agent.tools.request_reflection
+# Agent tools — all instrumented in P2.x (spans or # sentry: skip markers inline)
 
 # Legacy sentry helpers — ARE the instrumentation layer, instrumenting them
 # would be circular
@@ -77,8 +70,4 @@ adapters.reflection.fixture_loader.load_reflection_session_experiences
 adapters.reflection.fixture_loader.load_reflection_identity
 adapters.reflection.fixture_loader.anchor_session_experiences_to_utc_day_window
 
-# Storage helpers (thin wrappers — P2.8 will add parent business-op spans)
-adapters.storage._atomic_write.write_atomically
-adapters.storage.reflection_persistence_helper.persist_micro_reflection
-adapters.storage.reflection_persistence_helper.persist_daily_reflection
-adapters.storage.reflection_persistence_helper.persist_deep_reflection
+# Storage helpers — all instrumented in P2.8/P2.9 (db_span / memory_span inline)

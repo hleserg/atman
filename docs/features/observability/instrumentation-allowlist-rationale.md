@@ -48,18 +48,18 @@ why it is exempt from the Sentry instrumentation requirement.
 
 | Function | Rationale |
 |----------|-----------|
-| `chat` | Will be instrumented in P2.4 (Anthropic adapter + AtmanTurn) |
+| `chat` | Stub pending P2.4 (Anthropic adapter + AtmanTurn); `# sentry: skip` inline. Production telemetry lives in `AtmanRunner.chat()` via `AtmanTurn.pre()/post()`. |
 
 ## adapters/agent/tools.*
 
 | Function | Rationale |
 |----------|-----------|
-| `record_key_moment` | Will be instrumented in P2.x (memory_span) |
-| `log_experience` | Will be instrumented in P2.x (memory_span) |
-| `restart_session` | Thin session lifecycle helper; will be instrumented in P2.x |
-| `wait_session` | Thin session lifecycle helper |
-| `resolve_pending_review` | Will be instrumented in P2.x |
-| `request_reflection` | Will be instrumented in P2.9 (reflection cron) |
+| `record_key_moment` | Instrumented via `memory_span("submit_self_report", "key_moments")` (P2.x ✓) |
+| `log_experience` | Deprecated no-op redirect; `# sentry: skip` inline (P2.x ✓) |
+| `restart_session` | Returns sentinel string only; `# sentry: skip` inline; restart telemetry owned by `AtmanRunner._do_restart` (P2.x ✓) |
+| `wait_session` | Returns sentinel string only; `# sentry: skip` inline (P2.x ✓) |
+| `resolve_pending_review` | Instrumented via `pipeline_span("atman.review.resolve", ...)` (P2.x ✓) |
+| `request_reflection` | Instrumented via `pipeline_span("atman.reflection.request", ...)` (P2.9 ✓) |
 
 ## adapters/observability/sentry.*
 
@@ -101,12 +101,12 @@ The callers (reflection services) own the spans around the full reflection cycle
 
 | Function | Rationale |
 |----------|-----------|
-| `write_atomically` | Low-level file I/O helper; will be covered by parent `db_span` in P2.8 |
+| `write_atomically` | Instrumented via `db_span("filesystem", "write", collection=path.name)` (P2.8 ✓) |
 
 ## adapters/storage/reflection_persistence_helper.*
 
 | Function | Rationale |
 |----------|-----------|
-| `persist_micro_reflection` | Will be instrumented in P2.9 (reflection spans) |
-| `persist_daily_reflection` | Will be instrumented in P2.9 |
-| `persist_deep_reflection` | Will be instrumented in P2.9 |
+| `persist_micro_reflection` | Instrumented via `memory_span("persist", "reflection.micro")` (P2.9 ✓) |
+| `persist_daily_reflection` | Instrumented via `memory_span("persist", "reflection.daily")` (P2.9 ✓) |
+| `persist_deep_reflection` | Instrumented via `memory_span("persist", "reflection.deep")` (P2.9 ✓) |

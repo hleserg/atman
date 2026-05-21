@@ -10,6 +10,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from atman.observability.spans import db_span
+
 
 def write_atomically(path: Path, content: str) -> None:
     """Write content to path via temp file + fsync + replace.
@@ -17,6 +19,11 @@ def write_atomically(path: Path, content: str) -> None:
     Creates parent dirs if missing. Preserves existing file mode,
     defaults to 0o600. Atomic across crashes via os.replace.
     """
+    with db_span("filesystem", "write", collection=path.name):
+        _write_atomically_impl(path, content)
+
+
+def _write_atomically_impl(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     file_mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
     temp_file = tempfile.NamedTemporaryFile(
