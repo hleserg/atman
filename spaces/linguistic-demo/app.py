@@ -529,7 +529,7 @@ def update_ui_language(lang: str):
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Atman Linguistic Demo", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Atman Linguistic Demo") as demo:
         gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
 
         header_md = gr.Markdown(value=UI_STRINGS["en"]["header_blurb"])
@@ -757,4 +757,8 @@ def build_ui() -> gr.Blocks:
 if __name__ == "__main__":
     preload_models()
     demo = build_ui()
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=gr.themes.Soft(),
+    )
