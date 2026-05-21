@@ -16,9 +16,17 @@ PRE-FLIGHT: import the theme + css before `def build_ui()`
 # At the top of app.py (after `import gradio as gr`), add:
 
 from theme import theme
+from pair_diagram import POINT_A_PAIR, POINT_K_PAIR, RELATIONS_PAIR, AFFECT_PAIR
 
 with open(_HERE / "style.css") as _f:
     css = _f.read()
+
+# Pre-rendered pair diagrams for each tab's About accordion.
+# (Defined in pair_diagram.py — these are inline-HTML snippets.)
+#     POINT_A_PAIR     → "Point A → Experience Store"
+#     POINT_K_PAIR     → "Point K → Reflection Engine"
+#     RELATIONS_PAIR   → "Relations → Identity Store"
+#     AFFECT_PAIR      → "Affect → Affective Regulation"
 
 
 ──────────────────────────────────────────────────────────────────────────────
@@ -122,6 +130,7 @@ with gr.Tab(UI_STRINGS["en"]["point_a_tab"]) as tab_a:
         open=False,
         elem_classes=["atman-about-accordion"],
     ) as a_about:
+        gr.HTML(POINT_A_PAIR)
         a_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_a"])
 
     with gr.Row():
@@ -208,6 +217,7 @@ with gr.Tab(UI_STRINGS["en"]["point_k_tab"]) as tab_k:
         open=False,
         elem_classes=["atman-about-accordion"],
     ) as k_about:
+        gr.HTML(POINT_K_PAIR)
         k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
 
     with gr.Row():
@@ -264,6 +274,7 @@ with gr.Tab(UI_STRINGS["en"]["relations_tab"]) as tab_r:
         open=False,
         elem_classes=["atman-about-accordion"],
     ) as r_about:
+        gr.HTML(RELATIONS_PAIR)
         r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
 
     with gr.Row():
@@ -313,6 +324,7 @@ with gr.Tab(UI_STRINGS["en"]["affect_tab"]) as tab_af:
         open=False,
         elem_classes=["atman-about-accordion"],
     ) as af_about:
+        gr.HTML(AFFECT_PAIR)
         af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
 
     with gr.Row():

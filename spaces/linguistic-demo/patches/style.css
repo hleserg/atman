@@ -541,3 +541,134 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     margin: 0 auto 8px;
 }
 .dark #atman-footer em { color: #64748B; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Pair diagram (.apd-*)  —  used inside About accordions per tab.
+ * Mirrors the full architecture diagram, one row per tab.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.apd-pair {
+    display: grid;
+    grid-template-columns: 1fr 64px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin: 4px 0 18px;
+    max-width: 720px;
+}
+
+.apd-card {
+    position: relative;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 12px 14px 12px 18px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    display: flex;
+    align-items: center;
+}
+.dark .apd-card {
+    background: linear-gradient(180deg, #131826 0%, #0F1421 100%);
+    border-color: #2B3447;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+
+.apd-stripe {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 10px 0 0 10px;
+}
+.apd-left  .apd-stripe { background: #4F46E5; box-shadow: 0 0 12px rgba(79,70,229,0.35); }
+.apd-right .apd-stripe { background: #8B5CF6; box-shadow: 0 0 12px rgba(139,92,246,0.35); }
+.dark .apd-left  .apd-stripe { background: #6366F1; box-shadow: 0 0 12px rgba(99,102,241,0.45); }
+.dark .apd-right .apd-stripe { background: #A78BFA; box-shadow: 0 0 12px rgba(167,139,250,0.45); }
+
+.apd-card-body { width: 100%; }
+
+.apd-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.apd-name {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0F172A;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+.dark .apd-name { color: #F3F4F6; }
+
+.apd-sub {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 11px;
+    color: #64748B;
+    letter-spacing: 0.01em;
+}
+.dark .apd-sub { color: #9CA3AF; }
+
+.apd-tag {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 10px;
+    color: #64748B;
+    padding: 2px 6px;
+    border: 1px solid #E5E7EB;
+    border-radius: 4px;
+    background: #FFFFFF;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.dark .apd-tag {
+    color: #6B7280;
+    border-color: #2B3447;
+    background: rgba(255,255,255,0.02);
+}
+
+.apd-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0 4px;
+}
+.apd-arrow-line {
+    flex: 1 1 auto;
+    height: 2px;
+    background: linear-gradient(90deg, #6366F1 0%, #A855F7 100%);
+    border-radius: 1px;
+    box-shadow: 0 0 8px rgba(139,92,246,0.25);
+    margin-right: -1px;
+}
+.dark .apd-arrow-line {
+    background: linear-gradient(90deg, #818CF8 0%, #C084FC 100%);
+    box-shadow: 0 0 10px rgba(167,139,250,0.40);
+}
+.apd-arrow-head {
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid #A855F7;
+    flex-shrink: 0;
+}
+.dark .apd-arrow-head { border-left-color: #C084FC; }
+
+/* Responsive: stack on narrow viewports */
+@media (max-width: 640px) {
+    .apd-pair {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .apd-arrow {
+        transform: rotate(90deg);
+        width: 56px;
+        height: 16px;
+        margin: 0 auto;
+    }
+}
