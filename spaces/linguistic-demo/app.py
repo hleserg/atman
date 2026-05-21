@@ -154,6 +154,8 @@ def _safe_analyze(fn_name: str, fn, *args, **kwargs):
 # ──────────────────────────────────────────────────────────────────────────────
 @traced("nlp.point_a")
 def analyze_point_a(message: str, thinking: str, lang_choice: str):
+    message = message or ""
+    thinking = thinking or ""
     if not message.strip():
         return [], {}, "—", "—", "—"
 
@@ -195,6 +197,8 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
 
 @traced("nlp.point_k")
 def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
+    what_happened = what_happened or ""
+    why_it_matters = why_it_matters or ""
     if not what_happened.strip() and not why_it_matters.strip():
         return [], {}, "—"
 
@@ -222,6 +226,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
 
 @traced("nlp.relations_mrebel")
 def analyze_relations(text: str, lang_choice: str):
+    text = text or ""
     if not text.strip():
         ui = effective_ui_lang(lang_choice)
         return [], [], UI_STRINGS[ui]["empty_input"]
@@ -245,8 +250,10 @@ def analyze_relations(text: str, lang_choice: str):
 
 @traced("nlp.affect_rules")
 def analyze_affect(text: str, lang_choice: str):
+    text = text or ""
     if not text.strip():
-        return {}, "—", "—", "—", "—"
+        # gr.Label in Gradio 6 rejects {} — use None or a placeholder dict.
+        return None, "—", "—", "—", "—"
 
     def _run():
         clean_text, emphasized = strip_markdown(text)
@@ -528,60 +535,119 @@ def update_ui_language(lang: str):
     ]
 
 
+from theme import theme
+
+with open(_HERE / "style.css", encoding="utf-8") as _f:
+    _CSS = _f.read()
+
+
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Atman Linguistic Demo") as demo:
-        gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
+    with gr.Blocks(title="Atman Linguistic Demo", theme=theme, css=_CSS) as demo:
+        with gr.Column(elem_id="atman-hero"):
+            gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
 
-        header_md = gr.Markdown(value=UI_STRINGS["en"]["header_blurb"])
-
-        diagram_path = _HERE / "assets" / "runtime-diagram.png"
-        if diagram_path.exists():
-            gr.Image(
-                value=str(diagram_path),
-                show_label=False,
-                interactive=False,
-                container=False,
-                height=320,
+            header_md = gr.Markdown(
+                value=UI_STRINGS["en"]["header_blurb"],
+                elem_id="atman-header-md",
             )
 
-        lang_radio = gr.Radio(
-            choices=["en", "ru"], value="en", label="Interface Language",
-            info=UI_STRINGS["en"]["lang_info"]
-        )
-        
-        with gr.Row():
-            warmup_btn = gr.Button(UI_STRINGS["en"]["warmup_btn"], variant="secondary")
-            warmup_log = gr.Textbox(label="Status", interactive=False, lines=1, value=UI_STRINGS["en"]["warmup_log"])
+            diagram_path = _HERE / "assets" / "runtime-diagram.png"
+            if diagram_path.exists():
+                gr.Image(
+                    value=str(diagram_path),
+                    show_label=False,
+                    interactive=False,
+                    container=False,
+                    height=320,
+                    elem_id="atman-diagram",
+                )
+
+            lang_radio = gr.Radio(
+                choices=["en", "ru"], value="en", label="Interface Language",
+                info=UI_STRINGS["en"]["lang_info"],
+                elem_id="atman-lang",
+            )
+
+        with gr.Row(elem_id="atman-warmup-row"):
+            warmup_btn = gr.Button(
+                UI_STRINGS["en"]["warmup_btn"], variant="secondary",
+                elem_id="atman-warmup-btn",
+            )
+            warmup_log = gr.Textbox(
+                label="Status", interactive=False, lines=1,
+                value=UI_STRINGS["en"]["warmup_log"],
+                elem_id="atman-warmup-log",
+            )
             
         warmup_btn.click(fn=warmup_models, outputs=warmup_log)
 
         with gr.Tabs():
             # ── Tab 1 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["point_a_tab"]) as tab_a:
-                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as a_about:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as a_about:
                     a_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_a"])
                 with gr.Row():
                     with gr.Column():
-                        a_message = gr.Textbox(label="Agent message", lines=5, placeholder="What the agent said…")
-                        a_thinking = gr.Textbox(label="Thinking trace (optional)", lines=3)
-                        a_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
+                        a_message = gr.Textbox(
+                            label="Agent message", lines=5,
+                            placeholder="What the agent said…",
+                            elem_id="a-message",
+                        )
+                        a_thinking = gr.Textbox(
+                            label="Thinking trace (optional)", lines=3,
+                            elem_id="a-thinking",
+                        )
+                        a_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="a-run",
+                        )
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         a_preset = gr.Dropdown(
                             choices=preset_labels(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
+                            elem_id="a-preset",
                         )
                     with gr.Column():
-                        a_highlight = gr.HighlightedText(label="Point A NER (13 psychological labels)", combine_adjacent=False, show_legend=True)
-                        a_labels = gr.JSON(label="🧠 Zero-Shot Classification Results", value={})
-                        
-                        with gr.Group():
+                        a_highlight = gr.HighlightedText(
+                            label="Point A NER (13 psychological labels)",
+                            combine_adjacent=False, show_legend=True,
+                            elem_id="a-highlight",
+                        )
+                        a_labels = gr.JSON(
+                            label="🧠 Zero-Shot Classification Results", value={},
+                            elem_id="a-labels",
+                        )
+
+                        with gr.Group(elem_classes=["atman-report-group"]):
                             gr.Markdown("### 📑 Detailed Analysis Report")
-                            a_boundary_hdr = gr.Markdown(value=UI_STRINGS["en"]["boundary_title"])
-                            a_boundary = gr.Markdown(value="—")
-                            a_divergence_hdr = gr.Markdown(value=UI_STRINGS["en"]["divergence_title"])
-                            a_divergence = gr.Markdown(value="—")
-                            a_meta_hdr = gr.Markdown(value=UI_STRINGS["en"]["meta_title"])
-                            a_meta = gr.Markdown(value="—")
+                            a_boundary_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["boundary_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_boundary = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                            )
+                            a_divergence_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["divergence_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_divergence = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                            )
+                            a_meta_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["meta_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_meta = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body", "atman-meta-block"],
+                            )
 
                 def _apply_a_preset(name: str, lang_choice: str):
                     if not name:
@@ -599,22 +665,40 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 2 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["point_k_tab"]) as tab_k:
-                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as k_about:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as k_about:
                     k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
                 with gr.Row():
                     with gr.Column():
-                        k_what = gr.Textbox(label="What happened", lines=4)
-                        k_why = gr.Textbox(label="Why it matters", lines=3)
-                        k_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
+                        k_what = gr.Textbox(label="What happened", lines=4, elem_id="k-what")
+                        k_why = gr.Textbox(label="Why it matters", lines=3, elem_id="k-why")
+                        k_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="k-run",
+                        )
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         k_preset = gr.Dropdown(
                             choices=preset_labels(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
+                            elem_id="k-preset",
                         )
                     with gr.Column():
-                        k_highlight = gr.HighlightedText(label="Narrative markers", combine_adjacent=False, show_legend=True)
-                        k_labels = gr.JSON(label="🧠 Key Moment Classifications", value={})
-                        k_meta = gr.Markdown(value=UI_STRINGS["en"]["meta_title"])
+                        k_highlight = gr.HighlightedText(
+                            label="Narrative markers",
+                            combine_adjacent=False, show_legend=True,
+                            elem_id="k-highlight",
+                        )
+                        k_labels = gr.JSON(
+                            label="🧠 Key Moment Classifications", value={},
+                            elem_id="k-labels",
+                        )
+                        k_meta = gr.Markdown(
+                            value=UI_STRINGS["en"]["meta_title"],
+                            elem_classes=["atman-meta"],
+                        )
                 def _apply_k_preset(name: str, lang_choice: str):
                     if not name:
                         return gr.update(), gr.update()
@@ -631,20 +715,39 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 3 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["relations_tab"]) as tab_r:
-                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as r_about:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as r_about:
                     r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
                 with gr.Row():
                     with gr.Column():
-                        r_text = gr.Textbox(label="Text", lines=6)
-                        r_run = gr.Button(UI_STRINGS["en"]["extract_relations_btn"], variant="primary")
+                        r_text = gr.Textbox(label="Text", lines=6, elem_id="r-text")
+                        r_run = gr.Button(
+                            UI_STRINGS["en"]["extract_relations_btn"], variant="primary",
+                            elem_id="r-run",
+                        )
                         r_preset = gr.Dropdown(
                             choices=preset_labels(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
+                            elem_id="r-preset",
                         )
                     with gr.Column():
-                        r_entities = gr.HighlightedText(label="Detected entities", combine_adjacent=False, show_legend=True)
-                        r_table = gr.Dataframe(headers=["subject", "relation", "object", "subj type", "obj type"], label="Extracted relations", wrap=True)
-                        r_meta = gr.Markdown(value=UI_STRINGS["en"]["meta_title"])
+                        r_entities = gr.HighlightedText(
+                            label="Detected entities",
+                            combine_adjacent=False, show_legend=True,
+                            elem_id="r-entities",
+                        )
+                        r_table = gr.Dataframe(
+                            headers=["subject", "relation", "object", "subj type", "obj type"],
+                            label="Extracted relations", wrap=True,
+                            elem_id="r-table",
+                        )
+                        r_meta = gr.Markdown(
+                            value=UI_STRINGS["en"]["meta_title"],
+                            elem_classes=["atman-meta"],
+                        )
                 def _apply_r_preset(name: str, lang_choice: str):
                     if not name:
                         return gr.update()
@@ -659,22 +762,36 @@ def build_ui() -> gr.Blocks:
 
             # ── Tab 4 ──────────────────────────────────────────────────────
             with gr.Tab(UI_STRINGS["en"]["affect_tab"]) as tab_af:
-                with gr.Accordion(UI_STRINGS["en"]["about_label"], open=False) as af_about:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as af_about:
                     af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
                 with gr.Row():
                     with gr.Column():
-                        af_text = gr.Textbox(label="Text", lines=6)
-                        af_run = gr.Button(UI_STRINGS["en"]["analyze_btn"], variant="primary")
+                        af_text = gr.Textbox(label="Text", lines=6, elem_id="af-text")
+                        af_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="af-run",
+                        )
                         af_preset = gr.Dropdown(
                             choices=preset_labels(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
                             label=UI_STRINGS["en"]["preset_label"],
+                            elem_id="af-preset",
                         )
                     with gr.Column():
-                        af_emo = gr.Label(label="EmoLex emotion density", num_top_classes=10)
-                        af_metrics = gr.Markdown(label="Behavioural metrics")
-                        af_refusal = gr.Markdown(label="RefusalDetector")
-                        af_emphasis = gr.Markdown(label="Markdown emphasis")
-                        af_meta = gr.Markdown(value=UI_STRINGS["en"]["meta_title"])
+                        af_emo = gr.Label(
+                            label="EmoLex emotion density", num_top_classes=10,
+                            elem_id="af-emo",
+                        )
+                        af_metrics = gr.Markdown(label="Behavioural metrics", elem_id="af-metrics")
+                        af_refusal = gr.Markdown(label="RefusalDetector", elem_id="af-refusal")
+                        af_emphasis = gr.Markdown(label="Markdown emphasis", elem_id="af-emphasis")
+                        af_meta = gr.Markdown(
+                            value=UI_STRINGS["en"]["meta_title"],
+                            elem_classes=["atman-meta"],
+                        )
                 def _apply_af_preset(name: str, lang_choice: str):
                     if not name:
                         return gr.update()
@@ -742,13 +859,29 @@ def build_ui() -> gr.Blocks:
             outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
 
-        gr.Markdown(
-            "---\n"
-            "_My first project in AI/ML — feedback on models, algorithms, or "
-            "architecture is genuinely welcome._\n\n"
-            "[GitHub](https://github.com/hleserg/atman) · "
-            "[Manifest](https://github.com/hleserg/atman/blob/main/MANIFEST.md) · "
-            "[Open an issue](https://github.com/hleserg/atman/issues)"
+        # ── Auto-detect browser language on first page load ──
+        # JS reads navigator.language ("ru-RU" → "ru", "en-US" → "en"). The
+        # value is passed as the input to update_ui_language(), which then
+        # cascades to every localized component (incl. lang_radio itself).
+        demo.load(
+            fn=update_ui_language,
+            inputs=lang_radio,
+            outputs=ui_lang_outputs,
+            js="() => (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en'",
+        )
+
+        gr.HTML(
+            """
+<div id="atman-footer">
+  <em>My first project in AI/ML — feedback on models, algorithms,
+      or architecture is genuinely welcome.</em>
+  <a href="https://github.com/hleserg/atman">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/issues">Open an issue</a>
+</div>
+            """
         )
 
     demo.queue(max_size=2, default_concurrency_limit=1)
@@ -760,5 +893,4 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
-        theme=gr.themes.Soft(),
     )
