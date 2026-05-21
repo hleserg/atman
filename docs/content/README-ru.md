@@ -5,6 +5,8 @@
 > **Непрерывная личность для ваших агентов**
 
 [![CI](https://github.com/hleserg/atman/actions/workflows/ci.yml/badge.svg)](https://github.com/hleserg/atman/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/hleserg/atman/graph/badge.svg?token=1S9D9U8QZP)](https://codecov.io/github/hleserg/atman)
+[![CodeFactor](https://www.codefactor.io/repository/github/hleserg/atman/badge)](https://www.codefactor.io/repository/github/hleserg/atman)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
@@ -60,20 +62,27 @@ Atman - это инфраструктура с открытым исходным
 ● Исследование          ✅ Завершено
 ● Проектирование        ✅ Завершено
 ● Прототипирование      ← Мы здесь
-  ├─ Factual Memory     ✅ Реализовано (v0.1.0)
-  ├─ Experience Store   ✅ Реализовано (WP02)
-  ├─ Identity Store     ✅ Реализовано (WP03)
-  ├─ Reflection Engine  ✅ Реализовано (WP04)
-  ├─ Session Manager    ✅ Реализовано (WP05)
+  ├─ Factual Memory     ✅ Стабильно (v0.1.0)
+  ├─ Experience Store   ✅ Стабильно (WP02)
+  ├─ Session Manager    🔧 Высокая готовность — отладка (текущий фокус)
+  ├─ Reflection Engine  🔧 Средняя готовность — в разработке
+  ├─ Skill Manager      🔧 Средняя готовность — в разработке
+  ├─ Identity Store     🔧 Низкая готовность — в разработке
   └─ CI и покрытие тестами ✅ GitHub Actions для `main`/PR (`make check`, pytest-cov ≥90%)
-○ Первая реализация
+○ Первый продакшен-срез
 ○ Интеграция
 ○ Развитие
 ```
 
-### Готовые компоненты
+**Честный срез (май 2026):** основы памяти (факты + опыт от первого лица) можно использовать отдельно. У **сессии**, **рефлексии**, **идентичности** и **навыков** уже есть прототипы, демо и тесты — но полный цикл «непрерывной личности» **ещё не готов к продакшену**. Сейчас команда на **Session Manager**: интеграция и отладка перед более широким онбордингом.
+
+Легенда готовности: **высокая** = основной путь есть, идёт доводка · **средняя** = зрелый прототип, пробелы в интеграции · **низкая** = ранний срез, пока не тянет продуктовую историю.
+
+### Статус компонентов
 
 - 🌐 **Сайт — демо в терминале:** [atmanai.dev/demo.html](https://atmanai.dev/demo.html) (переключатель RU/EN, как на главной)
+
+#### Стабильный фундамент
 
 **✅ Factual Memory Adapter** ([PR #73](https://github.com/hleserg/atman/pull/73))
 Минимальный слой для хранения проверяемых фактов без интерпретаций.
@@ -93,23 +102,30 @@ Atman - это инфраструктура с открытым исходным
 - 📚 [Руководство (RU)](docs/features/experience-store/README-ru.md) · [EN](docs/features/experience-store/README.md)
 - ▶️ Демо: `make demo-experience` или `python3 src/demo_experience_store.py` (мгновенно: `make demo-experience-fast`)
 
-**✅ Identity Store** (рабочий пакет 03)
-Честный bootstrap идентичности, eigenstate, трёхслойный self-narrative, снимки, CLI.
+#### В активной разработке
 
-- 📚 [Руководство (RU)](docs/features/identity-store/README-ru.md) · [EN](docs/features/identity-store/README.md)
-- ▶️ Демо: `make demo-identity` или `python3 src/demo_identity.py` (мгновенно: `make demo-identity-fast`)
+**🔧 Session Manager** (рабочий пакет 05) — **высокая готовность · текущий фокус**
+Сессионный runtime в реальном времени: окраска опыта от первого лица, key moments с обязательной эмоциональной меткой, генерация eigenstate, обновление нарратива. Прототип на месте; сейчас — проводка, краевые случаи и отладка перед более широкой аудиторией.
 
-**✅ Reflection Engine** (рабочий пакет 04)
-Micro / daily / deep рефлексия, паттерны, хуки правки нарратива, оценка здоровья по Джаходе, советник по принципам.
+- 📚 [Руководство (RU)](docs/features/session-manager/README-ru.md) · [EN](docs/features/session-manager/README.md)
+- ▶️ Демо: `make demo-session` или `python3 src/demo_session_manager.py` (мгновенно: `make demo-session-fast`)
+
+**🔧 Reflection Engine** (рабочий пакет 04) — **средняя готовность**
+Micro / daily / deep рефлексия, паттерны, хуки правки нарратива, оценка здоровья по Джаходе, советник по принципам. Демо и тесты есть; «внутренняя жизнь» между сессиями для продакшен-агентов пока не опирается на это надёжно.
 
 - 📚 [Руководство (RU)](docs/features/reflection-engine/README-ru.md) · [EN](docs/features/reflection-engine/README.md)
 - ▶️ Демо: `make demo-reflection` или `python3 src/demo_reflection.py` (мгновенно: `make demo-reflection-fast`)
 
-**✅ Session Manager** (рабочий пакет 05)
-Сессионный runtime в реальном времени: окраска опыта от первого лица, key moments с обязательной эмоциональной меткой, генерация eigenstate, обновление нарратива.
+**🔧 Skill Manager** (рабочий пакет 08) — **средняя готовность**
+Слой переносимых навыков (дизайн + бэклог; реализация в процессе). Форма API и хранения может меняться по мере стабилизации сессии и рефлексии.
 
-- 📚 [Руководство (RU)](docs/features/session-manager/README-ru.md) · [EN](docs/features/session-manager/README.md)
-- ▶️ Демо: `make demo-session` или `python3 src/demo_session_manager.py` (мгновенно: `make demo-session-fast`)
+- 📚 Заметки по дизайну: [`docs/archive/2026-05/skill-manager-design.md`](docs/archive/2026-05/skill-manager-design.md)
+
+**🔧 Identity Store** (рабочий пакет 03) — **низкая готовность**
+Честный bootstrap идентичности, eigenstate, трёхслойный self-narrative, снимки, CLI. Полезно для экспериментов; относительно сессионного пути, который сейчас укрепляем, — ещё рано.
+
+- 📚 [Руководство (RU)](docs/features/identity-store/README-ru.md) · [EN](docs/features/identity-store/README.md)
+- ▶️ Демо: `make demo-identity` или `python3 src/demo_identity.py` (мгновенно: `make demo-identity-fast`)
 
 ```bash
 # Быстрый старт (установка + интерактивный CLI фактов)
