@@ -69,6 +69,8 @@ MANIFEST
 .coverage
 htmlcov/
 .tox/
+coverage.xml
+junit.xml
 
 # Atman
 .atman/
