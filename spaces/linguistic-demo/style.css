@@ -13,11 +13,14 @@
  */
 
 /* ── Root: font, page bg, smoothing ──────────────────────────────────── */
+body, html { overflow-x: hidden !important; }
 .gradio-container {
     font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
     font-feature-settings: "ss01", "cv02", "cv11";  /* Inter numeral variants */
     -webkit-font-smoothing: antialiased;
     max-width: 100% !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
     padding-left: 40px !important;
     padding-right: 40px !important;
     margin: 0 auto !important;
@@ -278,6 +281,16 @@
     max-width: 100% !important;
     overflow-x: hidden !important;
     min-width: 0 !important;
+}
+.atman-about-accordion .markdown,
+.atman-about-accordion .prose,
+.atman-about-accordion p,
+.atman-about-accordion li,
+.atman-about-accordion pre {
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-x: auto !important;
 }
 .dark .atman-about-accordion,
 html.dark .atman-about-accordion {
