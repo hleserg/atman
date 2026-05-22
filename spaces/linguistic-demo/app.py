@@ -656,10 +656,10 @@ def update_ui_language(lang: str):
         gr.update(value=s["divergence_title"]),
         gr.update(value=s["meta_title"]),
         gr.update(value=s["meta_title"]),
-        gr.update(choices=preset_choices(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
-        gr.update(choices=preset_choices(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
-        gr.update(choices=preset_choices(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
-        gr.update(choices=preset_choices(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
+        gr.update(choices=preset_choices(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
         # About-accordion labels (4) + their markdown content (4)
         gr.update(label=s["about_label"]),
         gr.update(label=s["about_label"]),
@@ -743,11 +743,10 @@ def build_ui() -> gr.Blocks:
                             UI_STRINGS["en"]["analyze_btn"], variant="primary",
                             elem_id="a-run",
                         )
-                        gr.Markdown(UI_STRINGS["en"]["presets"])
                         a_preset = gr.Dropdown(
                             choices=preset_choices(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
                             value=PRESET_PLACEHOLDERS["en"],
-                            label=UI_STRINGS["en"]["preset_label"],
+                            label=UI_STRINGS["en"]["presets"],
                             elem_id="a-preset",
                         )
                     with gr.Column():
@@ -832,11 +831,10 @@ def build_ui() -> gr.Blocks:
                             UI_STRINGS["en"]["analyze_btn"], variant="primary",
                             elem_id="k-run",
                         )
-                        gr.Markdown(UI_STRINGS["en"]["presets"])
                         k_preset = gr.Dropdown(
                             choices=preset_choices(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
                             value=PRESET_PLACEHOLDERS["en"],
-                            label=UI_STRINGS["en"]["preset_label"],
+                            label=UI_STRINGS["en"]["presets"],
                             elem_id="k-preset",
                         )
                     with gr.Column():
@@ -895,7 +893,7 @@ def build_ui() -> gr.Blocks:
                         r_preset = gr.Dropdown(
                             choices=preset_choices(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
                             value=PRESET_PLACEHOLDERS["en"],
-                            label=UI_STRINGS["en"]["preset_label"],
+                            label=UI_STRINGS["en"]["presets"],
                             elem_id="r-preset",
                         )
                     with gr.Column():
@@ -949,7 +947,7 @@ def build_ui() -> gr.Blocks:
                         af_preset = gr.Dropdown(
                             choices=preset_choices(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
                             value=PRESET_PLACEHOLDERS["en"],
-                            label=UI_STRINGS["en"]["preset_label"],
+                            label=UI_STRINGS["en"]["presets"],
                             elem_id="af-preset",
                         )
                     with gr.Column():

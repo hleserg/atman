@@ -570,12 +570,20 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .dark .gr-button-secondary:hover { background: rgba(99,102,241,0.12) !important; }
 
 /* ── Detailed Analysis Report group (.atman-report-group) ────────────── */
-.atman-report-group {
+.atman-report-group,
+.atman-report-group.generating,
+.atman-report-group[data-loading],
+.atman-report-group:has(.generating) {
     padding: 22px !important;
     border: 1px solid var(--block-border-color, #1F2937) !important;
     border-radius: 12px !important;
     background: var(--block-background-fill, #13131F) !important;
     box-shadow: var(--shadow-card, none) !important;
+}
+/* Kill loading shimmer overlay on the group */
+.atman-report-group::before,
+.atman-report-group::after {
+    display: none !important;
 }
 /* The parent .block wrapper around our Group — make it transparent so we
    don't get a doubled card frame (Gradio adds its own block chrome). */
