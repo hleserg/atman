@@ -795,22 +795,23 @@ class AtmanRunner:
             original_sigterm_handler = signal.signal(signal.SIGTERM, _request_shutdown)
 
         _turn_span_cm: object = None
+        import time as _time
+
+        from atman.adapters.observability.sentry import (
+            capture_system_prompt as _capture_system_prompt,
+        )
+        from atman.adapters.observability.sentry import (
+            install_slog_breadcrumb_hook,
+            metric_distribution,
+            metric_increment,
+        )
+        from atman.observability.spans import pipeline_span, set_conversation_id
+
+        _session_t0: float = _time.monotonic()
         try:
             session_ctx = session_manager.start_session(self._agent_id)
             session_id = session_ctx.session_id
             deps = replace(deps, session_id=session_id)
-
-            import time as _time
-
-            from atman.adapters.observability.sentry import (
-                capture_system_prompt as _capture_system_prompt,
-            )
-            from atman.adapters.observability.sentry import (
-                install_slog_breadcrumb_hook,
-                metric_distribution,
-                metric_increment,
-            )
-            from atman.observability.spans import pipeline_span, set_conversation_id
 
             install_slog_breadcrumb_hook()
             set_conversation_id(str(session_id))

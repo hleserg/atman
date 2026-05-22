@@ -26,8 +26,12 @@ from atman.core.session_log import slog as _slog  # noqa: E402
 from atman.observability.spans import job_scope as _job_scope  # noqa: E402
 
 try:
-    from atman.adapters.observability.sentry import metric_distribution as _md
-    from atman.adapters.observability.sentry import metric_increment as _mi
+    from atman.adapters.observability.sentry import (
+        metric_distribution as _md,  # type: ignore[assignment]
+    )
+    from atman.adapters.observability.sentry import (
+        metric_increment as _mi,  # type: ignore[assignment]
+    )
 except Exception:  # pragma: no cover
 
     def _mi(*_a: object, **_kw: object) -> None: ...  # type: ignore[misc]
