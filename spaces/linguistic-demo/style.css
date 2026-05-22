@@ -432,39 +432,48 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 }
 
 /* HighlightedText — Gradio 6 actual svelte class names */
-/* Compact text container */
+/* Reorder: text first, legend second (DOM has legend before textfield) */
+.atman-highlight .container.svelte-1akrbo3 {
+    display: flex !important;
+    flex-direction: column !important;
+}
+/* Text block floats to top */
 .atman-highlight .textfield.svelte-1akrbo3 {
-    line-height: 1.55 !important;
+    order: 1 !important;
+    line-height: 1.6 !important;
     font-size: 14px !important;
 }
-/* Token pill: both plain and highlighted spans */
+/* Token pill */
 .atman-highlight .token.svelte-1akrbo3 {
     border-radius: 4px !important;
-    padding: 1px 5px !important;
+    padding: 1px 6px !important;
     font-size: 13.5px !important;
     box-shadow: none !important;
 }
-/* Legend row */
+/* Legend moves to bottom with separator */
 .atman-highlight .legend.svelte-1akrbo3 {
+    order: 2 !important;
     display: flex !important;
-    gap: 12px !important;
+    gap: 8px !important;
     flex-wrap: wrap !important;
+    align-items: center !important;
     margin-top: 10px !important;
-    padding-top: 10px !important;
-    border-top: 1px dashed var(--block-border-color, #E5E7EB) !important;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--block-border-color, #2D2F3E) !important;
 }
+/* Legend chips — keep inline background-color (set by Gradio), just tighten appearance */
 .atman-highlight .legend-item.svelte-1akrbo3 {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     font-size: 10px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.05em !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.07em !important;
     text-transform: uppercase !important;
-    color: var(--body-text-color-subdued, #64748B) !important;
-    background: transparent !important;
+    color: var(--body-text-color) !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 2px 6px !important;
-    border-radius: 3px !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    cursor: default !important;
 }
 
 /* ── gr.JSON output (replaces gr.Label for classification) ───────────── */
