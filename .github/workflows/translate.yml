@@ -45,7 +45,7 @@ jobs:
           python -m scripts.codemap translate --lang ru $STALE_FLAG
 
       - name: Commit translated blocks
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "docs(ru): auto-translate stale codemap blocks"
           file_pattern: "docs/architecture/SYSTEM_MAP-ru.md README-ru.md .codemap/en_hashes.json"
