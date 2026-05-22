@@ -95,7 +95,7 @@ jobs:
 
       - name: Create Sentry release
         if: env.SENTRY_ENABLED == 'true'
-        uses: getsentry/action-release@v1
+        uses: getsentry/action-release@v3
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
