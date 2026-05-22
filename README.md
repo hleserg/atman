@@ -159,3 +159,15 @@ I welcome any communication, feedback, or exchange of ideas:
 
 - Email: [hello@atmanai.dev](mailto:hello@atmanai.dev)
 - Telegram: [@skhlebnikov](https://t.me/skhlebnikov)
+
+---
+
+## Acknowledgements
+
+<a href="https://sentry.io" target="_blank">
+  <img src="https://raw.githubusercontent.com/getsentry/sentry-brand/master/sentry-wordmark-dark.png" 
+       alt="Sentry" width="150" />
+</a>
+
+Error monitoring and observability for Atman is powered by [Sentry](https://sentry.io) —  
+thank you for supporting open-source projects. 🙏
