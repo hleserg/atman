@@ -397,7 +397,7 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     letter-spacing: 0.05em !important;
     font-size: 11px !important;
     font-weight: 500 !important;
-    color: #64748B !important;
+    color: var(--body-text-color-subdued, #64748B) !important;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     background: transparent !important;
     padding: 0 0 8px 0 !important;
@@ -405,12 +405,22 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    display: block !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
 }
-:is(.dark, html.dark, body.dark) .gradio-container .block > .block-label,
-:is(.dark, html.dark, body.dark) .gradio-container .block > label.block-label,
-:is(.dark, html.dark, body.dark) .gradio-container [data-testid="block-label"] {
-    color: #94A3B8 !important;
+/* Constrain the SVG icon in block labels — prevents it filling the whole block */
+.gradio-container [data-testid="block-label"] svg,
+.gradio-container [data-testid="block-label"] span > svg {
+    width: 12px !important;
+    height: 12px !important;
+    flex-shrink: 0 !important;
+}
+.gradio-container [data-testid="block-label"] > span {
+    width: 12px !important;
+    height: 12px !important;
+    display: inline-flex !important;
+    flex-shrink: 0 !important;
 }
 
 /* HighlightedText pills — calmer than Gradio's default rainbow */
@@ -576,9 +586,11 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     padding: 0 !important;
 }
 
-/* Kill nested .block chrome inside the report group — single card, no doubled rims */
+/* Kill nested .block chrome inside the report group — single card, no doubled rims.
+   Gradio 6 Group renders as .styler; child blocks have .padded — target both. */
 .atman-report-group .block,
 .atman-report-group .gr-block,
+.atman-report-group .styler > .block,
 .atman-report-group .markdown,
 .atman-report-group .prose {
     background: transparent !important;
@@ -589,6 +601,11 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     overflow: visible !important;
     max-height: none !important;
     min-height: 0 !important;
+}
+.atman-report-group .block.padded,
+.atman-report-group .styler > .block.padded {
+    padding: 0 !important;
+    margin: 0 !important;
 }
 /* Kill scrollbars on every Markdown subsection inside the report group */
 .atman-report-group .atman-sec-hdr,
