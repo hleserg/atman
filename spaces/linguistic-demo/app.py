@@ -494,18 +494,19 @@ def warmup_models():
             "Warmup test text. I think this might work — depends on context.",
             thinking=None,
         )
-        # mREBEL path → load pipeline directly and run one generate() so the
-        # tokenizer + decoder weights are paged in. We can't go through
-        # extract_relations() because it short-circuits on <2 entities.
+        # mREBEL path → load model weights and run one generate() so the
+        # tokenizer + decoder weights are paged in.
         rebel = get_rebel()
-        pipe = rebel._get_pipeline()
-        pipe(
-            "Alice works with Bob in Paris.",
-            max_length=64,
-            num_beams=1,
-            return_tensors=False,
-            clean_up_tokenization_spaces=True,
-        )
+        rebel._load()
+        import torch as _torch
+        _inputs = rebel._tokenizer("Alice works with Bob in Paris.", return_tensors="pt")
+        with _torch.no_grad():
+            rebel._model.generate(
+                _inputs["input_ids"],
+                forced_bos_token_id=rebel._tp_xx_id,
+                max_length=64,
+                num_beams=1,
+            )
         return "✅ Models warmed up: GLiNER + MiniLM + mREBEL ready."
     except Exception as exc:
         logging.exception("warmup failed")
