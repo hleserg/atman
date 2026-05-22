@@ -193,6 +193,39 @@ _POINT_A_COLOR_MAP: dict[str, str] = {
     "affect":       "#EC4899",
 }
 
+# Maps 7 Point K narrative labels → 4 display groups
+_POINT_K_LABEL_GROUPS: dict[str, str] = {
+    "decision statement":    "agency",
+    "boundary act":          "agency",
+    "realization statement": "inner_state",
+    "attribution shift":     "inner_state",
+    "feeling statement":     "inner_state",
+    "connection signal":     "connection",
+    "value invocation":      "values",
+}
+
+_POINT_K_COLOR_MAP: dict[str, str] = {
+    "agency":      "#60A5FA",
+    "inner_state": "#A78BFA",
+    "connection":  "#34D399",
+    "values":      "#FBBF24",
+}
+
+# Colors for Relations entity types (EntityType enum values)
+_RELATIONS_COLOR_MAP: dict[str, str] = {
+    "person":           "#F472B6",
+    "organization":     "#60A5FA",
+    "place":            "#34D399",
+    "event":            "#FB923C",
+    "topic":            "#A78BFA",
+    "value":            "#FBBF24",
+    "principle":        "#E879F9",
+    "object":           "#94A3B8",
+    "tool":             "#4ADE80",
+    "skill":            "#38BDF8",
+    "health_condition": "#F87171",
+}
+
 
 def spans_to_highlights(
     text: str,
@@ -319,7 +352,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
         combined = f"{what_happened}\n{why_it_matters}"
         ui = effective_ui_lang(lang_choice)
         strings = UI_STRINGS[ui]
-        highlights = spans_to_highlights(combined, result.marker_spans, strings["no_highlights"])
+        highlights = spans_to_highlights(combined, result.marker_spans, strings["no_highlights"], _POINT_K_LABEL_GROUPS)
 
         summary = json.dumps({
             "agency_level": str(result.agency_level) if result.agency_level else "—",
@@ -868,8 +901,9 @@ def build_ui() -> gr.Blocks:
                         )
                     with gr.Column():
                         k_highlight = gr.HighlightedText(
-                            label="Point K NER · narrative markers",
+                            label="Point K NER · 4 groups",
                             combine_adjacent=False, show_legend=True,
+                            color_map=_POINT_K_COLOR_MAP,
                             elem_id="k-highlight",
                             elem_classes=["atman-highlight"],
                         )
@@ -929,6 +963,7 @@ def build_ui() -> gr.Blocks:
                         r_entities = gr.HighlightedText(
                             label="Relations · detected entities",
                             combine_adjacent=False, show_legend=True,
+                            color_map=_RELATIONS_COLOR_MAP,
                             elem_id="r-entities",
                             elem_classes=["atman-highlight"],
                         )

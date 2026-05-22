@@ -656,13 +656,9 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     font-size: 14px !important;
     font-weight: 600 !important;
     margin: 0 0 14px !important;
-    color: #0F172A !important;
+    color: var(--body-text-color) !important;
     padding-bottom: 12px !important;
-    border-bottom: 1px solid #E5E7EB !important;
-}
-:is(.dark, html.dark, body.dark) .atman-report-group h3 {
-    color: #E2E8F0 !important;
-    border-bottom-color: #1F2937 !important;
+    border-bottom: 1px solid var(--block-border-color) !important;
 }
 
 /* Section-header markdown elements (a_boundary_hdr, a_divergence_hdr, a_meta_hdr) */
