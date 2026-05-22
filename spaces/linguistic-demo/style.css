@@ -88,11 +88,10 @@
 :is(.dark, html.dark, body.dark) #atman-header-md p { color: #94A3B8 !important; }
 
 #atman-header-md em {
-    color: #0F172A !important; opacity: .85;
+    color: var(--body-text-color-subdued, #94A3B8) !important;
     display: block !important; margin-top: 10px;
     font-size: 14px !important; font-style: italic !important;
 }
-:is(.dark, html.dark, body.dark) #atman-header-md em { color: #E2E8F0 !important; }
 
 /* Strong contrast for bold/emph text — uses Gradio theme var so it auto-swaps
    between light and dark mode without relying on .dark/html.dark selectors. */
