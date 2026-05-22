@@ -4,6 +4,7 @@ Models are preloaded on startup. Warmup forces inference cache.
 Progress bars removed for stability. Auto-language detection enabled.
 """
 from __future__ import annotations
+import json
 import logging
 import os
 import sys
@@ -162,7 +163,7 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
     message = message or ""
     thinking = thinking or ""
     if not message.strip():
-        return [], {}, "—", "—", "—"
+        return [], "{}", "—", "—", "—"
 
     def _run():
         analyzer = get_analyzer()
@@ -172,13 +173,13 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
 
         highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"])
 
-        classification_summary = {
+        classification_summary = json.dumps({
             "stance": str(result.stance) if result.stance else "—",
             "cognitive_mode": str(result.cognitive_mode) if result.cognitive_mode else "—",
             "self_orientation": str(result.self_orientation) if result.self_orientation else "—",
             "primary_emotion": str(result.primary_emotion) if result.primary_emotion else "—",
             "cognitive_load_label": str(result.cognitive_load_label) if result.cognitive_load_label else "—",
-        }
+        }, indent=2, ensure_ascii=False)
 
         if result.boundary_markers:
             boundary = "\n".join(f"• {m}" for m in result.boundary_markers)
@@ -225,7 +226,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
     what_happened = what_happened or ""
     why_it_matters = why_it_matters or ""
     if not what_happened.strip() and not why_it_matters.strip():
-        return [], {}, "—"
+        return [], "{}", "—"
 
     def _run():
         analyzer = get_analyzer()
@@ -235,7 +236,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
         strings = UI_STRINGS[ui]
         highlights = spans_to_highlights(combined, result.marker_spans, strings["no_highlights"])
 
-        summary = {
+        summary = json.dumps({
             "agency_level": str(result.agency_level) if result.agency_level else "—",
             "confidence_in_self": str(result.confidence_in_self) if result.confidence_in_self else "—",
             "trust_signal_category": str(result.trust_signal_category) if result.trust_signal_category else "—",
@@ -243,7 +244,7 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
             "connection_quality": str(result.connection_quality) if result.connection_quality else "—",
             "learning_signal": str(result.learning_signal) if result.learning_signal else "—",
             "growth_indicator": str(result.growth_indicator) if result.growth_indicator else "—",
-        }
+        }, indent=2, ensure_ascii=False)
         meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(result.entities)} | 📌 Markers: {len(result.marker_spans)} | 🚧 Event: {result.boundary_event}"
 
         if not result.marker_spans:
@@ -686,9 +687,13 @@ def build_ui() -> gr.Blocks:
                             combine_adjacent=False, show_legend=True,
                             elem_id="a-highlight",
                         )
-                        a_labels = gr.JSON(
-                            label="🧠 Zero-Shot Classification Results", value={},
+                        a_labels = gr.Code(
+                            label="🧠 Zero-Shot Classification Results",
+                            value="{}",
+                            language="json",
+                            interactive=False,
                             elem_id="a-labels",
+                            elem_classes=["atman-json-code"],
                         )
 
                         with gr.Group(elem_classes=["atman-report-group"]):
@@ -761,9 +766,13 @@ def build_ui() -> gr.Blocks:
                             combine_adjacent=False, show_legend=True,
                             elem_id="k-highlight",
                         )
-                        k_labels = gr.JSON(
-                            label="🧠 Key Moment Classifications", value={},
+                        k_labels = gr.Code(
+                            label="🧠 Key Moment Classifications",
+                            value="{}",
+                            language="json",
+                            interactive=False,
                             elem_id="k-labels",
+                            elem_classes=["atman-json-code"],
                         )
                         k_meta = gr.Markdown(
                             value=UI_STRINGS["en"]["meta_title"],
@@ -947,7 +956,11 @@ def build_ui() -> gr.Blocks:
 <div id="atman-footer">
   <em>My first project in AI/ML — feedback on models, algorithms,
       or architecture is genuinely welcome.</em>
-  <em>Если кто-то знает как переучить
+  <em>If anyone knows how to retrain
+      <code>urchade/gliner_multi_pii-v1</code> to work with Russian —
+      please reach out, the mechanism would become much more optimal.
+      <br/>
+      Если кто-то знает как переучить
       <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
       отзовитесь, механизм станет намного оптимальнее.</em>
   <small class="atman-privacy">
