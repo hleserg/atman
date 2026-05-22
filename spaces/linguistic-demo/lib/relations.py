@@ -134,14 +134,17 @@ class MRebelRelationExtractor:
 def parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
     """Parse mREBEL output into (subject, object, relation) tuples.
 
-    Expected format: <s>tp_XX<triplet> S <TYPE> O <TYPE> R </s>
-    TYPE tokens from _MREBEL_TYPE_TOKENS act as field separators.
-    First type token = end of subject / start of object.
-    Second type token = end of object / start of relation.
+    Single triplet format:
+        <s>tp_XX<triplet> SUBJ <SUBJ_TYPE> OBJ <OBJ_TYPE> RELATION</s>
+
+    Continuation format (multiple triplets sharing the same subject):
+        <triplet> SUBJ <SUBJ_TYPE> OBJ1 <OBJ1_TYPE> REL1 <SUBJ_TYPE> OBJ2 <OBJ2_TYPE> REL2 …
+
+    The subject's type token reappears in the relation field to mark the
+    start of the next (OBJ, REL) pair for the same subject.
     """
     if not decoded:
         return []
-    # Strip wrapper tokens; tp_XX appears as a bare word after tokenizer decode
     cleaned = (
         decoded
         .replace("<s>", "")
@@ -159,22 +162,34 @@ def parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
         obj_tokens: list[str] = []
         rel_tokens: list[str] = []
         state = "subj"
+        subj_type: str | None = None
+
+        def _flush() -> None:
+            s = " ".join(subj_tokens).strip()
+            o = " ".join(obj_tokens).strip()
+            r = " ".join(rel_tokens).strip()
+            if s and o and r:
+                out.append((s, o, r))
+
         for tok in chunk.split():
             if tok in _MREBEL_TYPE_TOKENS:
                 if state == "subj":
+                    subj_type = tok
                     state = "obj"
                 elif state == "obj":
                     state = "rel"
+                elif state == "rel" and tok == subj_type:
+                    # Continuation: flush current triplet, start new (obj, rel) pair
+                    _flush()
+                    obj_tokens = []
+                    rel_tokens = []
+                    state = "obj"
             else:
                 if state == "subj":
                     subj_tokens.append(tok)
                 elif state == "obj":
                     obj_tokens.append(tok)
-                else:
+                elif state == "rel":
                     rel_tokens.append(tok)
-        subj_text = " ".join(subj_tokens).strip()
-        obj_text = " ".join(obj_tokens).strip()
-        relation = " ".join(rel_tokens).strip()
-        if subj_text and obj_text and relation:
-            out.append((subj_text, obj_text, relation))
+        _flush()
     return out
