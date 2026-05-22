@@ -381,12 +381,19 @@ UI_STRINGS = {
         "about_point_k": (
             "Analyzes moments the agent itself marked as significant — these become "
             "the seeds of self-narrative.\n"
-            "- **NER** (GLiNER, 7 clause-level spans): decision, realization, feeling, "
-            "value invocation, boundary act, connection, attribution shift.\n"
+            "- **NER** (GLiNER + RU/EN substring fallback, 7 clause-level spans): "
+            "decision, realization, feeling, value invocation, boundary act, "
+            "connection, attribution shift.\n"
             "- **Classification** (MiniLM, 7 dims): agency, confidence, trust, "
             "boundary event, connection quality, learning, growth.\n\n"
             "**Feeds → Reflection Engine.** Over time, these episodes turn into beliefs "
-            "(\"I tend to refuse when X\", \"I felt connection when Y\")."
+            "(\"I tend to refuse when X\", \"I felt connection when Y\").\n\n"
+            "> ⚠️ **GLiNER NER works best on long biographical/narrative text.** "
+            "On short key-moment snippets, the multilingual NER may return no "
+            "spans — that's why a substring heuristic for canonical RU/EN "
+            "first-person markers runs as a primary pass. The MiniLM "
+            "**classification** (7 dims on the right) is the more stable "
+            "signal here regardless."
         ),
         "about_relations": (
             "Extracts entity-relation triplets (subject, predicate, object) from text.\n"
@@ -464,12 +471,19 @@ UI_STRINGS = {
         "about_point_k": (
             "Анализирует моменты, которые сам агент пометил как значимые — это семена "
             "его самонарратива.\n"
-            "- **NER** (GLiNER, 7 фразовых меток): решение, осознание, чувство, "
-            "обращение к ценности, акт границы, сигнал связи, сдвиг атрибуции.\n"
+            "- **NER** (GLiNER + RU/EN substring fallback, 7 фразовых меток): "
+            "решение, осознание, чувство, обращение к ценности, акт границы, "
+            "сигнал связи, сдвиг атрибуции.\n"
             "- **Классификация** (MiniLM, 7 измерений): агентность, уверенность, "
             "доверие, граничное событие, качество связи, обучение, рост.\n\n"
             "**Питает → Reflection Engine.** Со временем эти эпизоды превращаются в "
-            "убеждения (\"я склонен отказывать когда X\", \"я чувствую связь когда Y\")."
+            "убеждения (\"я склонен отказывать когда X\", \"я чувствую связь когда Y\").\n\n"
+            "> ⚠️ **GLiNER NER лучше работает на длинных биографических текстах.** "
+            "На коротких ключевых моментах мультилингвальный NER может не "
+            "вернуть spans — поэтому первичным проходом работает substring-"
+            "эвристика на канонические RU/EN маркеры от первого лица. "
+            "MiniLM-**классификация** (7 измерений справа) — более стабильный "
+            "сигнал здесь."
         ),
         "about_relations": (
             "Извлекает тройки сущность-связь (субъект, предикат, объект) из текста.\n"
@@ -536,6 +550,7 @@ def update_ui_language(lang: str):
 
 
 from theme import theme
+from pair_diagram import POINT_A_PAIR, POINT_K_PAIR, RELATIONS_PAIR, AFFECT_PAIR
 
 with open(_HERE / "style.css", encoding="utf-8") as _f:
     _CSS = _f.read()
@@ -589,6 +604,7 @@ def build_ui() -> gr.Blocks:
                     open=False,
                     elem_classes=["atman-about-accordion"],
                 ) as a_about:
+                    gr.HTML(POINT_A_PAIR)
                     a_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_a"])
                 with gr.Row():
                     with gr.Column():
@@ -670,6 +686,7 @@ def build_ui() -> gr.Blocks:
                     open=False,
                     elem_classes=["atman-about-accordion"],
                 ) as k_about:
+                    gr.HTML(POINT_K_PAIR)
                     k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
                 with gr.Row():
                     with gr.Column():
@@ -720,6 +737,7 @@ def build_ui() -> gr.Blocks:
                     open=False,
                     elem_classes=["atman-about-accordion"],
                 ) as r_about:
+                    gr.HTML(RELATIONS_PAIR)
                     r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
                 with gr.Row():
                     with gr.Column():
@@ -767,6 +785,7 @@ def build_ui() -> gr.Blocks:
                     open=False,
                     elem_classes=["atman-about-accordion"],
                 ) as af_about:
+                    gr.HTML(AFFECT_PAIR)
                     af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
                 with gr.Row():
                     with gr.Column():

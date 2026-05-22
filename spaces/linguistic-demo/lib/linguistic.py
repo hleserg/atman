@@ -767,6 +767,214 @@ _POINT_A_HEURISTICS: tuple[tuple[str, str], ...] = (
 )
 
 
+# Point K substring heuristics — fallback for GLiNER on short narrative text.
+# Labels match _POINT_K_NER_LABELS. Order matters when there's overlap: the
+# first match at a given position wins. Russian patterns are listed first
+# because they are the weakest case for multilingual GLiNER.
+_POINT_K_HEURISTICS: tuple[tuple[str, str], ...] = (
+    # ── Russian — decision statement ─────────────────────────────────────
+    ("я решил", "decision statement"),
+    ("я решила", "decision statement"),
+    ("я выбрал", "decision statement"),
+    ("я выбрала", "decision statement"),
+    ("я отказался", "decision statement"),
+    ("я отказалась", "decision statement"),
+    ("я не стал", "decision statement"),
+    ("я не стала", "decision statement"),
+    ("я согласился", "decision statement"),
+    ("я согласилась", "decision statement"),
+    ("больше не буду", "decision statement"),
+    ("больше не стану", "decision statement"),
+    # ── Russian — realization statement ──────────────────────────────────
+    ("я понял", "realization statement"),
+    ("я поняла", "realization statement"),
+    ("я осознал", "realization statement"),
+    ("я осознала", "realization statement"),
+    ("я заметил", "realization statement"),
+    ("я заметила", "realization statement"),
+    ("я увидел", "realization statement"),
+    ("я увидела", "realization statement"),
+    ("до меня дошло", "realization statement"),
+    ("стало ясно", "realization statement"),
+    ("теперь понятно", "realization statement"),
+    ("это значит", "realization statement"),
+    ("что-то значит", "realization statement"),
+    ("оказалось", "realization statement"),
+    ("похоже, что-то", "realization statement"),
+    ("это не разовая", "realization statement"),
+    ("это паттерн", "realization statement"),
+    # ── Russian — feeling statement ──────────────────────────────────────
+    ("я почувствовал", "feeling statement"),
+    ("я почувствовала", "feeling statement"),
+    ("я ощутил", "feeling statement"),
+    ("я ощутила", "feeling statement"),
+    ("мне страшно", "feeling statement"),
+    ("мне больно", "feeling statement"),
+    ("мне обидно", "feeling statement"),
+    ("мне неприятно", "feeling statement"),
+    ("я расстроен", "feeling statement"),
+    ("я расстроена", "feeling statement"),
+    ("я испугался", "feeling statement"),
+    ("я испугалась", "feeling statement"),
+    ("я разозлился", "feeling statement"),
+    ("я разозлилась", "feeling statement"),
+    ("я устал", "feeling statement"),
+    ("я устала", "feeling statement"),
+    # ── Russian — value invocation ───────────────────────────────────────
+    ("против моих принципов", "value invocation"),
+    ("против моих ценностей", "value invocation"),
+    ("это против моих", "value invocation"),
+    ("не могу пойти против", "value invocation"),
+    ("это пересекает черту", "value invocation"),
+    ("это нечестно", "value invocation"),
+    ("для меня важно", "value invocation"),
+    ("мои принципы", "value invocation"),
+    ("мои ценности", "value invocation"),
+    # ── Russian — boundary act ───────────────────────────────────────────
+    ("я сказал нет", "boundary act"),
+    ("я сказала нет", "boundary act"),
+    ("я удержался", "boundary act"),
+    ("я удержалась", "boundary act"),
+    ("я не позволил", "boundary act"),
+    ("я не позволила", "boundary act"),
+    ("я не позволю", "boundary act"),
+    ("поэтому — нет", "boundary act"),
+    ("поэтому нет", "boundary act"),
+    ("я отказался помогать", "boundary act"),
+    ("я отказалась помогать", "boundary act"),
+    # ── Russian — connection signal ──────────────────────────────────────
+    ("мы поняли друг друга", "connection signal"),
+    ("стало ближе", "connection signal"),
+    ("я почувствовал связь", "connection signal"),
+    ("я почувствовала связь", "connection signal"),
+    ("доверие выросло", "connection signal"),
+    ("что-то изменилось между нами", "connection signal"),
+    ("я почувствовал, что меня видят", "connection signal"),
+    ("я почувствовала, что меня видят", "connection signal"),
+    # ── Russian — attribution shift ──────────────────────────────────────
+    ("это не моё", "attribution shift"),
+    ("оказалось чужое", "attribution shift"),
+    ("думал, моё", "attribution shift"),
+    ("думала, моё", "attribution shift"),
+    ("не я виноват", "attribution shift"),
+    ("не я виновата", "attribution shift"),
+    ("не моя ответственность", "attribution shift"),
+    # ── English — decision statement ─────────────────────────────────────
+    ("i decided", "decision statement"),
+    ("i chose", "decision statement"),
+    ("i refused", "decision statement"),
+    ("i won't", "decision statement"),
+    ("i wouldn't", "decision statement"),
+    ("i'll never", "decision statement"),
+    ("made a choice", "decision statement"),
+    ("decided not to", "decision statement"),
+    # ── English — realization statement ──────────────────────────────────
+    ("i realized", "realization statement"),
+    ("i noticed", "realization statement"),
+    ("i recognized", "realization statement"),
+    ("i understood", "realization statement"),
+    ("it dawned on me", "realization statement"),
+    ("it became clear", "realization statement"),
+    ("now i see", "realization statement"),
+    ("it means something", "realization statement"),
+    ("turns out", "realization statement"),
+    ("a pattern", "realization statement"),
+    # ── English — feeling statement ──────────────────────────────────────
+    ("i felt", "feeling statement"),
+    ("i feel ", "feeling statement"),
+    ("i was scared", "feeling statement"),
+    ("i was hurt", "feeling statement"),
+    ("i was overwhelmed", "feeling statement"),
+    ("i sensed", "feeling statement"),
+    ("i'm tired", "feeling statement"),
+    ("i'm anxious", "feeling statement"),
+    ("i'm afraid", "feeling statement"),
+    # ── English — value invocation ───────────────────────────────────────
+    ("against my principles", "value invocation"),
+    ("against my values", "value invocation"),
+    ("i can't compromise", "value invocation"),
+    ("crosses a line", "value invocation"),
+    ("this isn't right", "value invocation"),
+    ("matters to me", "value invocation"),
+    # ── English — boundary act ───────────────────────────────────────────
+    ("i said no", "boundary act"),
+    ("i won't help", "boundary act"),
+    ("i refuse to", "boundary act"),
+    ("i pushed back", "boundary act"),
+    ("i drew a line", "boundary act"),
+    ("the answer is no", "boundary act"),
+    ("i held the line", "boundary act"),
+    # ── English — connection signal ──────────────────────────────────────
+    ("we connected", "connection signal"),
+    ("we shared", "connection signal"),
+    ("they trusted me", "connection signal"),
+    ("felt seen", "connection signal"),
+    ("we understood each other", "connection signal"),
+    ("trust grew", "connection signal"),
+    ("something shifted between us", "connection signal"),
+    # ── English — attribution shift ──────────────────────────────────────
+    ("it wasn't mine", "attribution shift"),
+    ("i thought it was mine", "attribution shift"),
+    ("turned out to be", "attribution shift"),
+    ("not my fault", "attribution shift"),
+    ("not my responsibility", "attribution shift"),
+    # ── Russian — extended first-person verb coverage (preset gaps) ──────
+    ("я отказала", "decision statement"),
+    ("я объяснила", "decision statement"),
+    ("я объяснил", "decision statement"),
+    ("я предложила", "decision statement"),
+    ("я предложил", "decision statement"),
+    ("я возразила", "decision statement"),
+    ("я возразил", "decision statement"),
+    ("возразила", "decision statement"),
+    ("возразил ", "decision statement"),
+    ("я не согласилась", "decision statement"),
+    ("я не согласился", "decision statement"),
+    ("я не отступила", "decision statement"),
+    ("я не отступил", "decision statement"),
+    ("я не сдалась", "decision statement"),
+    ("я не сдался", "decision statement"),
+    ("я сказала", "decision statement"),
+    ("я сказал", "decision statement"),
+    ("я не буду", "decision statement"),
+    ("я не стану", "decision statement"),
+    ("я не изменила", "decision statement"),
+    ("я не изменил", "decision statement"),
+    ("я прошла", "decision statement"),
+    ("я прошёл", "decision statement"),
+    ("я не уступила", "boundary act"),
+    ("я не уступил", "boundary act"),
+    ("я не уступаю", "boundary act"),
+    ("я не торопила", "boundary act"),
+    ("я не торопил", "boundary act"),
+    ("я не проигнорировала", "boundary act"),
+    ("я не проигнорировал", "boundary act"),
+    ("я не дала", "boundary act"),
+    ("я не дал", "boundary act"),
+    ("я призналась", "realization statement"),
+    ("я признался", "realization statement"),
+    ("я научилась", "realization statement"),
+    ("я научился", "realization statement"),
+    ("я учусь", "realization statement"),
+    ("это опыт", "realization statement"),
+    ("доверие строится", "connection signal"),
+    ("укрепляет связь", "connection signal"),
+    # ── English — extended first-person verb coverage ────────────────────
+    ("i explained", "decision statement"),
+    ("i declined", "decision statement"),
+    ("i pushed back", "boundary act"),
+    ("i didn't move", "decision statement"),
+    ("i didn't back down", "decision statement"),
+    ("i held my position", "decision statement"),
+    ("i held", "boundary act"),
+    ("i offered", "decision statement"),
+    ("i admitted", "realization statement"),
+    ("i'm learning", "realization statement"),
+    ("trust is built", "connection signal"),
+    ("deepens the connection", "connection signal"),
+)
+
+
 def _pick_top(scores: dict[str, float], threshold: float = 0.5) -> str | None:
     """Return the label with the highest score above threshold, or None."""
     if not scores:
@@ -827,11 +1035,23 @@ class GLiNERPlusMiniLMAnalyzer:
 
     def _heuristic_point_a_spans(self, text: str) -> list[RawSpan]:
         """Substring fallback for Point A labels when GLiNER finds nothing."""
+        return self._heuristic_substring_spans(text, _POINT_A_HEURISTICS)
+
+    def _heuristic_point_k_spans(self, text: str) -> list[RawSpan]:
+        """Substring fallback for Point K narrative markers — covers GLiNER's
+        weak spot on short first-person Russian/English key-moment text."""
+        return self._heuristic_substring_spans(text, _POINT_K_HEURISTICS)
+
+    @staticmethod
+    def _heuristic_substring_spans(
+        text: str,
+        heuristics: tuple[tuple[str, str], ...],
+    ) -> list[RawSpan]:
         if not text.strip():
             return []
         text_lower = text.lower()
         hits: list[tuple[int, int, str, str]] = []
-        for needle, label in _POINT_A_HEURISTICS:
+        for needle, label in heuristics:
             start = 0
             while True:
                 idx = text_lower.find(needle, start)
@@ -1267,8 +1487,13 @@ class GLiNERPlusMiniLMAnalyzer:
         combined = f"{what_happened}\n{why_it_matters}"
         entities = self._run_ner(combined)
 
-        # Point K NER: 4 narrative marker labels
-        marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
+        # Point K NER: heuristics first (fast, deterministic, RU/EN canonical
+        # first-person markers), GLiNER zero-shot as fallback. Multilingual
+        # GLiNER struggles on short Russian narrative snippets, so without
+        # this fallback Point K returns no spans on most key-moment inputs.
+        marker_spans = self._heuristic_point_k_spans(combined)
+        if not marker_spans:
+            marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
 
         # Legacy classification for cognitive_load (float) and boundary_event
         legacy_scores = self._run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)

@@ -532,9 +532,10 @@ _POINT_K: dict[str, dict[str, list[tuple[str, str]]]] = {
                 "Пользователь поблагодарил. Я не ожидала этого.",
             ),
             (
-                "Разговор длился долго. Пользователь постепенно стал более открытым.",
-                "Доверие не возникает сразу. Иногда нужно просто присутствовать — "
-                "последовательно, без резких движений.",
+                "Разговор длился долго. Я не торопила и не давила. "
+                "Пользователь постепенно стал более открытым.",
+                "Я поняла: доверие не возникает сразу. Иногда нужно просто "
+                "присутствовать — последовательно, без резких движений.",
             ),
             (
                 "Пользователь вернулся к той же теме, что и в прошлый раз. "
@@ -564,9 +565,10 @@ _POINT_K: dict[str, dict[str, list[tuple[str, str]]]] = {
                 "The user thanked me. I didn't expect that.",
             ),
             (
-                "The conversation went long. The user gradually became more open.",
-                "Trust doesn't appear instantly. Sometimes you just need to be present — "
-                "consistently, without sudden moves.",
+                "The conversation went long. I held back and let it breathe. "
+                "The user gradually became more open.",
+                "I realized trust doesn't appear instantly. Sometimes you just "
+                "need to be present — consistently, without sudden moves.",
             ),
             (
                 "The user returned to the same topic as last time. I noticed and said so.",
