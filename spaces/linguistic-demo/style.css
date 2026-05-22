@@ -18,8 +18,8 @@
     font-feature-settings: "ss01", "cv02", "cv11";  /* Inter numeral variants */
     -webkit-font-smoothing: antialiased;
     max-width: 100% !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-left: 40px !important;
+    padding-right: 40px !important;
     margin: 0 auto !important;
 }
 .gradio-container, .gradio-container * { letter-spacing: -0.003em; }
@@ -50,7 +50,7 @@
 }
 
 /* ── Hero column (#atman-hero — wraps H1 + header_md) ────────────────── */
-#atman-hero { padding: 32px 16px 16px; text-align: center; }
+#atman-hero { padding: 32px 0 16px; text-align: center; }
 
 /* Strip card chrome from descriptive Markdown blocks inside hero */
 #atman-hero > .block,
