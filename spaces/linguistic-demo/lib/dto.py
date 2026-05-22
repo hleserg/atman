@@ -1,11 +1,7 @@
 """Standalone DTOs for the Atman linguistic demo.
 
 Vendored from `src/atman/core/ports/linguistic.py`, `entity_relations.py`
-and `core/models/entity.py` to keep the HuggingFace Space free of the
-full `atman` package (which pulls psycopg, textual, pydantic-ai-slim, etc).
-
-Keep field shapes in sync with the originals — this is presentation-only
-code and the upstream models are the source of truth.
+and `core/models/entity.py`. Regenerate with `make sync-demo-linguistic`.
 """
 
 from __future__ import annotations
@@ -27,6 +23,7 @@ class EntityType(StrEnum):
     skill = "skill"
     core_value = "value"
     principle = "principle"
+
 
 
 class AmbientAnchor(BaseModel):

@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from typing import Sequence
 
 try:
     import pymorphy3
@@ -75,11 +75,12 @@ RU_AMPLIFIERS = {
     "максимально": 1.5,
     "глубоко": 1.4,
     "невыносимо": 1.6,
-    "столько": 1.3,
-    "так": 1.3,
     "очень-очень": 1.8,
     "донельзя": 1.6,
-    "просто": 1.2,
+    # Dropped (false positives or non-amplifier senses dominate):
+    #   "просто" 1.2 — trivializer ("это просто факт"), not amplifier.
+    #   "так"    1.3 — discourse connective ("так как", "так что") dominates.
+    #   "столько" 1.3 — quantitative ("столько раз") dominates.
 }
 
 RU_WEAKENERS = {
@@ -89,10 +90,10 @@ RU_WEAKENERS = {
     "едва": 0.4,
     "чуточку": 0.4,
     "малость": 0.5,
-    "несколько": 0.7,
     "слабо": 0.5,
     "слегонца": 0.5,
     "капельку": 0.5,
+    # Dropped: "несколько" 0.7 — quantitative ("несколько раз") dominates.
 }
 
 RU_NEGATORS = {"не", "ни", "нет", "никогда", "никак", "ничуть", "нисколько"}
@@ -116,22 +117,24 @@ EN_AMPLIFIERS = {
     "exceptionally": 1.5,
     "remarkably": 1.4,
     "particularly": 1.3,
-    "quite": 1.2,
-    "too": 1.3,
+    # Dropped:
+    #   "too"  1.3 — "you too" / "me too" / "too much sugar" dominate.
+    #   "quite" 1.2 — dialect-dependent: British understatement vs US amplifier.
 }
 
 EN_WEAKENERS = {
     "slightly": 0.5,
     "somewhat": 0.6,
     "kinda": 0.6,
-    "kind": 0.6,
     "barely": 0.4,
     "hardly": 0.4,
-    "little": 0.6,
-    "bit": 0.7,
     "mildly": 0.5,
     "marginally": 0.5,
-    "rather": 0.7,
+    # Dropped (bare form has dominant non-weakener sense):
+    #   "kind"   0.6 — "kind person", "kind regards"; valid only as "kind of".
+    #   "bit"    0.7 — "a bit" is the weakener; bare "bit" is verb/noun.
+    #   "little" 0.6 — attributive ("little dog") doesn't weaken intensity.
+    #   "rather" 0.7 — "rather than" (preference) is more frequent than "rather mild".
 }
 
 EN_NEGATORS = {
@@ -251,18 +254,11 @@ def _lemma_ru_cached(word: str) -> str:
     return parsed[0].normal_form
 
 
-def _dedupe_candidates(cands: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for c in cands:
-        if c not in seen and c:
-            seen.add(c)
-            result.append(c)
-    return result
-
-
-def _en_collect_suffix_variants(w: str, cands: list[str]) -> None:
-    """Append English lemma guesses for ``w`` (lowercase) to ``cands``."""
+def _en_base_form_candidates(word: str) -> list[str]:
+    """Английский: NRC хранит базовые формы (terror, не terrified). Делаем дешёвую
+    де-инфлекцию: пробуем сам токен и несколько суффиксных вариантов."""
+    w = word.lower()
+    cands = [w]
     # -ied → -y (terrified → terrify? нет, у NRC нет terrify, есть terror;
     # но scary → scare работает)
     if w.endswith("ied"):
@@ -295,15 +291,14 @@ def _en_collect_suffix_variants(w: str, cands: list[str]) -> None:
         cands.append(w[:-2])
     if w.endswith("est") and len(w) > 5:
         cands.append(w[:-3])
-
-
-def _en_base_form_candidates(word: str) -> list[str]:
-    """Английский: NRC хранит базовые формы (terror, не terrified). Делаем дешёвую
-    де-инфлекцию: пробуем сам токен и несколько суффиксных вариантов."""
-    w = word.lower()
-    cands = [w]
-    _en_collect_suffix_variants(w, cands)
-    return _dedupe_candidates(cands)
+    # dedupe preserving order
+    seen = set()
+    result = []
+    for c in cands:
+        if c not in seen and c:
+            seen.add(c)
+            result.append(c)
+    return result
 
 
 def normalize(tokens: Sequence[str], lang: str) -> list[str]:
@@ -324,131 +319,6 @@ def _lookup(words_dict: dict, lemma: str, lang: str) -> list | None:
 
 
 # ============== Подсчёт эмоций ==============
-
-
-def _modifier_multiplier_at_index(
-    lemmas: list[str],
-    i: int,
-    *,
-    window: int,
-    lang: str,
-    negs: set[str],
-    amps: dict[str, float],
-    weaks: dict[str, float],
-    consumed: list[bool],
-) -> tuple[float, bool]:
-    """Посмотреть N токенов назад, вернуть (множитель, было ли отрицание)."""
-    mult = 1.0
-    negated = False
-    lo = max(0, i - window)
-    for j in range(lo, i):
-        if consumed[j]:
-            continue
-        prev = lemmas[j]
-        if prev in negs or (
-            lang == "en"
-            and prev == "t"
-            and j - 1 >= lo
-            and not consumed[j - 1]
-            and lemmas[j - 1] in _EN_CONTRACTION_NEG_STEMS
-        ):
-            negated = not negated
-        elif prev in amps:
-            mult *= amps[prev]
-        elif prev in weaks:
-            mult *= weaks[prev]
-    return mult, negated
-
-
-def _emotion_apply_bigrams(
-    lemmas: list[str],
-    phrases_dict: dict,
-    *,
-    lang: str,
-    window: int,
-    negs: set[str],
-    amps: dict[str, float],
-    weaks: dict[str, float],
-    consumed: list[bool],
-    acc: list[float],
-    matched: list[tuple[str, float]],
-) -> int:
-    """Добавить вклад фразового словаря; вернуть число совпадений."""
-    hits = 0
-    if not phrases_dict:
-        return hits
-    i = 0
-    while i < len(lemmas) - 1:
-        if consumed[i] or consumed[i + 1]:
-            i += 1
-            continue
-        bigram = f"{lemmas[i]} {lemmas[i + 1]}"
-        vec = phrases_dict.get(bigram)
-        if vec is None:
-            i += 1
-            continue
-        mult, negated = _modifier_multiplier_at_index(
-            lemmas,
-            i,
-            window=window,
-            lang=lang,
-            negs=negs,
-            amps=amps,
-            weaks=weaks,
-            consumed=consumed,
-        )
-        if negated:
-            mult *= 0.3
-        for k in range(10):
-            acc[k] += vec[k] * mult
-        consumed[i] = True
-        consumed[i + 1] = True
-        hits += 1
-        matched.append((bigram, round(mult, 2)))
-        i += 2
-    return hits
-
-
-def _emotion_apply_unigrams(
-    lemmas: list[str],
-    words_dict: dict,
-    *,
-    lang: str,
-    window: int,
-    modifier_set: set[str],
-    negs: set[str],
-    amps: dict[str, float],
-    weaks: dict[str, float],
-    consumed: list[bool],
-    acc: list[float],
-    matched: list[tuple[str, float]],
-) -> int:
-    hits = 0
-    for i, lemma in enumerate(lemmas):
-        if consumed[i]:
-            continue
-        if lemma in modifier_set:
-            continue
-        vec = _lookup(words_dict, lemma, lang)
-        if vec is None:
-            continue
-        mult, negated = _modifier_multiplier_at_index(
-            lemmas,
-            i,
-            window=window,
-            lang=lang,
-            negs=negs,
-            amps=amps,
-            weaks=weaks,
-            consumed=consumed,
-        )
-        if negated:
-            mult *= 0.3
-        for k in range(10):
-            acc[k] += vec[k] * mult
-        hits += 1
-        matched.append((lemma, round(mult, 2)))
-    return hits
 
 
 def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
@@ -489,34 +359,81 @@ def emotion_score(text: str, lang: str = "ru", window: int = 3) -> dict:
     lemmas = normalize(tokens, lang)
 
     acc = [0.0] * 10
+    hits = 0
     matched: list[tuple[str, float]] = []  # для дебага
     consumed = [False] * len(lemmas)  # чтобы биграмма не считалась дважды
 
-    hits = _emotion_apply_bigrams(
-        lemmas,
-        phrases_dict,
-        lang=lang,
-        window=window,
-        negs=negs,
-        amps=amps,
-        weaks=weaks,
-        consumed=consumed,
-        acc=acc,
-        matched=matched,
-    )
-    hits += _emotion_apply_unigrams(
-        lemmas,
-        words_dict,
-        lang=lang,
-        window=window,
-        modifier_set=modifier_set,
-        negs=negs,
-        amps=amps,
-        weaks=weaks,
-        consumed=consumed,
-        acc=acc,
-        matched=matched,
-    )
+    # Cap on stacked amplifiers/weakeners so "очень очень очень" doesn't
+    # explode into 3.4×; in natural prose the intensifier ceiling is ~2×.
+    _MULT_CAP = 2.0
+    _MULT_FLOOR = 0.25
+
+    def modifier_multiplier(i: int) -> tuple[float, bool]:
+        """Посмотреть N токенов назад, вернуть (множитель, было_ли_отрицание).
+
+        Для английского распознаём также паттерн расщеплённой контракции
+        ("won't" → ["won", "t"]): пара (stem, "t") считается одним негатором.
+
+        Множитель ограничен диапазоном [_MULT_FLOOR, _MULT_CAP] чтобы
+        стэкинг усилителей/ослабителей не выходил за реалистичные пределы.
+        """
+        mult = 1.0
+        negated = False
+        for j in range(max(0, i - window), i):
+            if consumed[j]:
+                continue
+            prev = lemmas[j]
+            if prev in negs or (
+                lang == "en"
+                and prev == "t"
+                and j - 1 >= max(0, i - window)
+                and not consumed[j - 1]
+                and lemmas[j - 1] in _EN_CONTRACTION_NEG_STEMS
+            ):
+                negated = not negated
+            elif prev in amps:
+                mult *= amps[prev]
+            elif prev in weaks:
+                mult *= weaks[prev]
+        mult = max(_MULT_FLOOR, min(_MULT_CAP, mult))
+        return mult, negated
+
+    # Сначала проходим биграммы (приоритет)
+    if phrases_dict:
+        i = 0
+        while i < len(lemmas) - 1:
+            if not consumed[i] and not consumed[i + 1]:
+                bigram = f"{lemmas[i]} {lemmas[i + 1]}"
+                vec = phrases_dict.get(bigram)
+                if vec is not None:
+                    mult, negated = modifier_multiplier(i)
+                    if negated:
+                        mult *= 0.3
+                    for k in range(10):
+                        acc[k] += vec[k] * mult
+                    consumed[i] = consumed[i + 1] = True
+                    hits += 1
+                    matched.append((bigram, round(mult, 2)))
+                    i += 2
+                    continue
+            i += 1
+
+    # Потом одиночные слова — но НЕ модификаторы
+    for i, lemma in enumerate(lemmas):
+        if consumed[i]:
+            continue
+        if lemma in modifier_set:
+            continue  # модификаторы не считаются как эмо-сигналы
+        vec = _lookup(words_dict, lemma, lang)
+        if vec is None:
+            continue
+        mult, negated = modifier_multiplier(i)
+        if negated:
+            mult *= 0.3
+        for k in range(10):
+            acc[k] += vec[k] * mult
+        hits += 1
+        matched.append((lemma, round(mult, 2)))
 
     n = len(tokens)
     result = {k: round(acc[idx] / n * 100, 2) for idx, k in enumerate(EMOTION_KEYS)}

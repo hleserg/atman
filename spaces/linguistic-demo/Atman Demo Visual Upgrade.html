@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Atman — Linguistic Demo · Visual Upgrade (Gradio 6)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #FAFAFA;
+    --bg-sub:    #F4F4F7;
+    --card:      #FFFFFF;
+    --border:    #E5E7EB;
+    --border-strong: #D4D4D8;
+    --text:      #0F172A;
+    --text-mute: #64748B;
+    --text-sub:  #94A3B8;
+    --primary:   #4F46E5;
+    --primary-hover: #4338CA;
+    --accent:    #8B5CF6;
+    --label-bg:  #EEF2FF;
+    --label-fg:  #4338CA;
+    --doc-bg:    #F8FAFC;
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-hover: 0 2px 8px rgba(79, 70, 229, 0.10);
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  [data-mode="dark"] {
+    --bg:        #0B0B14;
+    --bg-sub:    #0F0F1B;
+    --card:      #13131F;
+    --border:    #1F2937;
+    --border-strong: #2A3142;
+    --text:      #E2E8F0;
+    --text-mute: #94A3B8;
+    --text-sub:  #64748B;
+    --primary:   #6366F1;
+    --primary-hover: #818CF8;
+    --accent:    #A78BFA;
+    --label-bg:  #1E1B3A;
+    --label-fg:  #C7C5FF;
+    --doc-bg:    #0B0B14;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.30);
+    --shadow-hover: 0 2px 12px rgba(99, 102, 241, 0.18);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--sans);
+    background: var(--doc-bg);
+    color: var(--text);
+    font-feature-settings: "ss01", "cv02", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc { max-width: 1180px; margin: 0 auto; padding: 56px 32px 120px; }
+  .doc-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 32px; margin-bottom: 48px; padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .doc-header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
+  .doc-header p  { font-size: 14px; color: var(--text-mute); margin: 0; max-width: 580px; line-height: 1.55; }
+  .doc-header code { font-family: var(--mono); font-size: 12.5px; color: var(--text-mute); }
+  .pill-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: 500 11px/1 var(--mono); letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--primary);
+    background: var(--label-bg); border-radius: 999px;
+    padding: 4px 10px; margin-top: 8px;
+  }
+  .mode-toggle {
+    display: inline-flex; background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px; box-shadow: var(--shadow-card);
+  }
+  .mode-toggle button {
+    appearance: none; background: transparent; border: none; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    color: var(--text-mute); padding: 7px 14px; border-radius: 999px;
+    transition: background .15s, color .15s; letter-spacing: 0.01em;
+  }
+  .mode-toggle button[aria-pressed="true"] { background: var(--primary); color: #fff; }
+
+  .section-eyebrow {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-sub);
+    margin: 0 0 12px;
+  }
+  .section-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 24px; color: var(--text); }
+
+  /* mock */
+  .mock {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-card);
+  }
+  .browser-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; background: var(--bg-sub); border-bottom: 1px solid var(--border);
+  }
+  .browser-bar .dot { width: 11px; height: 11px; border-radius: 999px; background: var(--border-strong); }
+  .browser-bar .url {
+    font-family: var(--mono); font-size: 11px; color: var(--text-mute);
+    margin-left: 14px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 12px; flex: 1; max-width: 460px;
+  }
+  .gradio-container { background: var(--bg); padding: 0; }
+
+  /* HERO */
+  .hero { position: relative; padding: 56px 56px 40px; text-align: center; }
+  .hero-langpill {
+    position: absolute; top: 28px; right: 28px;
+    display: inline-flex; background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px; box-shadow: var(--shadow-card);
+  }
+  .hero-langpill button {
+    appearance: none; background: transparent; border: none; cursor: pointer;
+    font: 500 12px/1 var(--mono); color: var(--text-mute);
+    padding: 7px 14px; border-radius: 999px; letter-spacing: 0.03em;
+  }
+  .hero-langpill button.active { background: var(--primary); color: #fff; }
+
+  .hero h1 {
+    font-size: clamp(34px, 4.6vw, 50px); font-weight: 700;
+    letter-spacing: -0.02em; line-height: 1.05;
+    margin: 0 0 18px;
+    background: linear-gradient(120deg, var(--primary) 0%, var(--accent) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent; display: inline-block;
+  }
+  .hero .blurb {
+    font-size: 15.5px; line-height: 1.7; color: var(--text-mute);
+    max-width: 720px; margin: 0 auto;
+  }
+  .hero .blurb b { color: var(--text); font-weight: 600; }
+  .hero .blurb em { font-style: italic; color: var(--text); opacity: .8; display: block; margin-top: 10px; font-size: 14px; }
+  .hero .blurb a { color: var(--primary); text-decoration: none; font-weight: 500; }
+  .hero .blurb a:hover { text-decoration: underline; }
+  .hero .diagram-wrap {
+    max-width: 960px; margin: 36px auto 0;
+    padding: 22px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow-card);
+  }
+  .hero .diagram-wrap svg { display: block; width: 100%; height: auto; }
+  .hero .diagram-caption {
+    font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-sub); margin-top: 14px;
+  }
+
+  /* warmup row */
+  .warmup-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: stretch;
+    padding: 24px 56px 0;
+    margin-bottom: 24px;
+  }
+  .warmup-btn {
+    appearance: none; cursor: pointer; font-family: inherit;
+    font-size: 14px; font-weight: 500; padding: 12px 20px;
+    border-radius: 8px; transition: background .18s, box-shadow .18s;
+    background: transparent; color: var(--primary);
+    border: 1px solid var(--primary);
+    letter-spacing: -0.005em;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .warmup-btn:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+  .warmup-status {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .warmup-status .dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    background: var(--text-sub);
+    flex-shrink: 0;
+  }
+  .warmup-status.ready .dot { background: #10B981; box-shadow: 0 0 0 3px color-mix(in srgb, #10B981 20%, transparent); }
+  .warmup-status .label {
+    font: 500 11px/1 var(--mono); letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-sub);
+    margin-right: 8px;
+  }
+  .warmup-status .msg { font-family: var(--sans); font-size: 13px; color: var(--text); }
+
+  /* tabs */
+  .tabs-bar { display: flex; gap: 4px; padding: 0 56px; border-bottom: 1px solid var(--border); }
+  .tab {
+    appearance: none; background: transparent; border: none; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    color: var(--text-mute); padding: 16px 20px;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color .15s, border-color .15s; letter-spacing: -0.005em;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab .tab-dim {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: var(--text-sub); margin-left: 6px; letter-spacing: 0.02em;
+  }
+  .tab.active .tab-dim { color: var(--primary); opacity: .75; }
+
+  .tab-content { padding: 32px 56px 48px; }
+
+  /* pair diagram (.apd-* inside accordion) */
+  .apd-pair {
+    display: grid;
+    grid-template-columns: 1fr 64px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin: 4px 0 18px;
+    max-width: 720px;
+  }
+  .apd-card {
+    position: relative;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px 12px 18px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    align-items: center;
+  }
+  [data-mode="dark"] .apd-card {
+    background: linear-gradient(180deg, #131826 0%, #0F1421 100%);
+    border-color: #2B3447;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.03) inset;
+  }
+  .apd-stripe {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; border-radius: 10px 0 0 10px;
+  }
+  .apd-left  .apd-stripe { background: #4F46E5; box-shadow: 0 0 12px rgba(79,70,229,0.35); }
+  .apd-right .apd-stripe { background: #8B5CF6; box-shadow: 0 0 12px rgba(139,92,246,0.35); }
+  [data-mode="dark"] .apd-left  .apd-stripe { background: #6366F1; box-shadow: 0 0 12px rgba(99,102,241,0.45); }
+  [data-mode="dark"] .apd-right .apd-stripe { background: #A78BFA; box-shadow: 0 0 12px rgba(167,139,250,0.45); }
+  .apd-card-body { width: 100%; }
+  .apd-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .apd-name {
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    color: #0F172A; letter-spacing: -0.01em; line-height: 1.2;
+  }
+  [data-mode="dark"] .apd-name { color: #F3F4F6; }
+  .apd-sub {
+    margin-top: 4px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); letter-spacing: 0.01em;
+  }
+  .apd-tag {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--text-mute);
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  [data-mode="dark"] .apd-tag {
+    color: #6B7280; border-color: #2B3447;
+    background: rgba(255,255,255,0.02);
+  }
+  .apd-arrow {
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px;
+  }
+  .apd-arrow-line {
+    flex: 1 1 auto;
+    height: 2px;
+    background: linear-gradient(90deg, #6366F1 0%, #A855F7 100%);
+    border-radius: 1px;
+    box-shadow: 0 0 8px rgba(139,92,246,0.25);
+    margin-right: -1px;
+  }
+  [data-mode="dark"] .apd-arrow-line {
+    background: linear-gradient(90deg, #818CF8 0%, #C084FC 100%);
+    box-shadow: 0 0 10px rgba(167,139,250,0.40);
+  }
+  .apd-arrow-head {
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid #A855F7;
+    flex-shrink: 0;
+  }
+  [data-mode="dark"] .apd-arrow-head { border-left-color: #C084FC; }
+
+  /* about-accordion (per-tab) */
+  .accordion {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--card);
+    margin-bottom: 28px; overflow: hidden;
+  }
+  .accordion summary {
+    list-style: none; cursor: pointer; padding: 14px 18px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; font-weight: 500; color: var(--text); user-select: none;
+  }
+  .accordion summary::-webkit-details-marker { display: none; }
+  .accordion summary .chev { width: 14px; height: 14px; color: var(--primary); transition: transform .18s ease; }
+  .accordion[open] summary .chev { transform: rotate(90deg); }
+  .accordion summary .acc-tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-sub); margin-left: auto;
+  }
+  .accordion .acc-body {
+    padding: 4px 18px 18px 42px; font-size: 14px; line-height: 1.65; color: var(--text-mute);
+  }
+  .accordion .acc-body p { margin: 0 0 10px; }
+  .accordion .acc-body ul { margin: 0 0 12px; padding-left: 18px; }
+  .accordion .acc-body li { margin-bottom: 6px; }
+  .accordion .acc-body b { color: var(--text); font-weight: 600; }
+  .accordion .acc-body code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-sub); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 5px; color: var(--text);
+  }
+  .accordion .acc-body blockquote {
+    margin: 14px 0 0; padding: 12px 16px;
+    border-left: 2px solid var(--primary);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-radius: 0 6px 6px 0;
+    font-size: 13px; color: var(--text);
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .col { display: flex; flex-direction: column; gap: 20px; }
+
+  .block-label {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-sub);
+    margin-bottom: 8px; display: block;
+  }
+  .card-block {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-card); padding: 22px;
+  }
+
+  .textbox { font-family: var(--sans); font-size: 14px; color: var(--text); line-height: 1.55; min-height: 92px; white-space: pre-wrap; }
+  .textbox.placeholder { color: var(--text-sub); }
+  .textbox.short { min-height: 56px; }
+
+  .preset-label-row {
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    color: var(--text); margin: 6px 0 8px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .dropdown {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-size: 14px; font-family: inherit; color: var(--text);
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  }
+  .dropdown:hover { border-color: var(--border-strong); }
+  .dropdown.focused {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 28%, transparent);
+    outline: none;
+  }
+  .dropdown .preset-num { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--primary); margin-right: 10px; }
+  .dropdown .preset-name { flex: 1; color: var(--text); }
+  .dropdown .chev-down { width: 14px; height: 14px; color: var(--text-sub); }
+
+  .btn {
+    appearance: none; border: none; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    padding: 11px 20px; border-radius: 8px;
+    transition: background .18s, box-shadow .18s, transform .05s;
+    letter-spacing: -0.005em;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    box-shadow: var(--shadow-hover);
+  }
+
+  .highlight-block { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .hl { border-radius: 4px; padding: 1px 5px; margin: 0 1px; font-size: 13.5px; border: 1px solid transparent; }
+  .hl.boundary { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--text); border-color: color-mix(in srgb, var(--primary) 32%, transparent); }
+  .hl.commit   { background: color-mix(in srgb, #10B981 16%, transparent); color: var(--text); border-color: color-mix(in srgb, #10B981 35%, transparent); }
+  .hl.emo      { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); border-color: color-mix(in srgb, var(--accent) 32%, transparent); }
+  .hl.uncertain{ background: color-mix(in srgb, #F59E0B 18%, transparent); color: var(--text); border-color: color-mix(in srgb, #F59E0B 40%, transparent); }
+
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .legend-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: 500 11px/1 var(--mono); letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text-mute);
+  }
+  .legend-chip::before { content: ""; width: 8px; height: 8px; border-radius: 2px; }
+  .legend-chip.boundary::before  { background: var(--primary); }
+  .legend-chip.commit::before    { background: #10B981; }
+  .legend-chip.emo::before       { background: var(--accent); }
+  .legend-chip.uncertain::before { background: #F59E0B; }
+
+  /* gr.JSON-styled output */
+  .json-output {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--text);
+    background: var(--bg-sub);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .json-output .key { color: var(--text-mute); }
+  .json-output .str { color: #059669; }
+  [data-mode="dark"] .json-output .str { color: #10B981; }
+  .json-output .punct { color: var(--text-sub); }
+  .json-output .num { color: #F59E0B; }
+  .json-output .row-line { display: block; padding-left: 12px; }
+
+  /* Detailed Analysis Report (a_boundary/divergence/meta grouped block) */
+  .report-group {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-card); padding: 22px;
+  }
+  .report-group h3 {
+    font-size: 13px; font-weight: 600;
+    margin: 0 0 18px; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .report-group h3::before {
+    content: "📑"; font-size: 14px;
+  }
+  .report-section { margin-bottom: 18px; }
+  .report-section:last-child { margin-bottom: 0; }
+  .report-section .sec-hdr {
+    font: 500 11px/1 var(--mono); letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--text-sub);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .report-section .sec-body {
+    font-size: 13.5px; line-height: 1.65; color: var(--text);
+  }
+  .report-section .sec-body .bullet { margin-bottom: 4px; }
+  .report-section .sec-body code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-sub); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px; color: var(--text);
+  }
+  .report-section .sec-body b { color: var(--text); font-weight: 600; }
+  .report-section.meta .sec-body {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text-mute); letter-spacing: 0.02em;
+  }
+
+  .doc-footer-mock {
+    text-align: center; padding: 28px 56px 40px; font-size: 13px;
+    color: var(--text-sub); border-top: 1px solid var(--border); margin-top: 8px;
+    line-height: 1.7;
+  }
+  .doc-footer-mock a { color: var(--primary); text-decoration: none; font-weight: 500; }
+  .doc-footer-mock a:hover { text-decoration: underline; }
+  .doc-footer-mock em { font-style: italic; color: var(--text-mute); display: block; max-width: 560px; margin: 0 auto 8px; }
+
+  /* patches */
+  .patches { margin-top: 80px; display: grid; gap: 56px; }
+  .patch-block h3 {
+    font-size: 20px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0 0 6px; display: flex; align-items: baseline; gap: 12px;
+  }
+  .patch-block h3 .num {
+    font: 600 12px/1 var(--mono); color: var(--primary);
+    background: var(--label-bg); border-radius: 6px; padding: 4px 8px;
+    letter-spacing: 0.04em;
+  }
+  .patch-block p.lede {
+    margin: 0 0 18px; font-size: 14px; line-height: 1.6;
+    color: var(--text-mute); max-width: 820px;
+  }
+  .patch-block p.lede code,
+  .doc-header code, .acc-body code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-sub); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+
+  pre.code {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 24px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.65;
+    color: var(--text); box-shadow: var(--shadow-card);
+    margin: 0; tab-size: 4;
+  }
+  pre.code .c  { color: var(--text-sub); font-style: italic; }
+  pre.code .k  { color: #C084FC; }
+  [data-mode="light"] pre.code .k { color: #6D28D9; }
+  pre.code .s  { color: #10B981; }
+  [data-mode="light"] pre.code .s { color: #059669; }
+  pre.code .n  { color: var(--primary); }
+  pre.code .fn { color: var(--accent); }
+  [data-mode="light"] pre.code .fn { color: #7C3AED; }
+  pre.code .num{ color: #F59E0B; }
+  pre.code .kc { color: #F59E0B; }
+
+  .diff-add { color: #10B981; }
+  [data-mode="light"] .diff-add { color: #059669; }
+  .diff-rem { color: #EF4444; text-decoration: line-through; opacity: .65; }
+
+  .rationale {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 28px; box-shadow: var(--shadow-card);
+  }
+  .rationale ol { margin: 0; padding-left: 22px; display: grid; gap: 14px; }
+  .rationale li { font-size: 14px; line-height: 1.6; color: var(--text); }
+  .rationale li b { font-weight: 600; color: var(--text); }
+  .rationale li .why { color: var(--text-mute); }
+  .rationale li code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-sub); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+
+  .changelog {
+    border: 1px solid var(--border); background: var(--card);
+    border-radius: 12px; padding: 18px 22px;
+    margin-bottom: 32px;
+    box-shadow: var(--shadow-card);
+  }
+  .changelog .clog-title {
+    font: 500 11px/1 var(--mono); letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--primary);
+    margin: 0 0 10px;
+  }
+  .changelog ul { margin: 0; padding-left: 18px; }
+  .changelog li { font-size: 13.5px; line-height: 1.65; color: var(--text-mute); margin-bottom: 4px; }
+  .changelog li b { color: var(--text); font-weight: 600; }
+
+  @media (max-width: 900px) {
+    .row { grid-template-columns: 1fr; }
+    .hero { padding: 48px 24px 36px; }
+    .tabs-bar { padding: 0 16px; overflow-x: auto; }
+    .tab-content { padding: 28px 24px 36px; }
+    .warmup-row { padding: 24px 24px 0; grid-template-columns: 1fr; }
+    .doc { padding: 36px 16px 80px; }
+  }
+</style>
+</head>
+<body data-mode="dark">
+
+<div class="doc">
+
+  <header class="doc-header">
+    <div>
+      <h1>Atman Linguistic Demo — visual upgrade</h1>
+      <p>Hi-fi mock + patches for the current <code>agent/worker-1</code> code (Gradio 6, new title, warmup row, JSON outputs, per-tab About accordions, en/ru only).</p>
+      <span class="pill-tag">v2 · gradio 6</span>
+    </div>
+    <div class="mode-toggle" role="group" aria-label="Theme mode">
+      <button data-set-mode="light" aria-pressed="false">Light</button>
+      <button data-set-mode="dark" aria-pressed="true">Dark</button>
+    </div>
+  </header>
+
+  <div class="changelog">
+    <p class="clog-title">What changed since v1</p>
+    <ul>
+      <li><b>Gradio 4.44 → 6.x</b> — theme is now passed via <code>gr.Blocks(theme=…)</code>; <code>launch()</code> theme override removed.</li>
+      <li><b>Title changed</b> to "Atman — Psychological Telemetry for AI Agents" (was "Psychological Linguistic Layer"). Hero h1 + gradient text reflects the new wording.</li>
+      <li><b>Lang radio is en/ru only</b> (no "auto") and now drives a full localization swap via <code>update_ui_language()</code> — pill widened slightly.</li>
+      <li><b>Warmup row</b> ( <code>warmup_btn</code> + <code>warmup_log</code>) restyled as ghost button + status indicator with a live status dot.</li>
+      <li><b>Per-tab About accordions</b> (the new <code>a_about</code>, <code>k_about</code>, <code>r_about</code>, <code>af_about</code>) get the docs-style chevron treatment, AND each one leads with a compact <b>pair diagram</b> (e.g. <code>Point A → Experience Store</code>) lifted from <code>Atman Architecture Diagram.html</code> — strong visual anchor for what the tab analyzes and where it goes.</li>
+      <li><b><code>gr.Label</code> → <code>gr.JSON</code></b> for classification results — restyled as a monospace key/value card instead of bars.</li>
+      <li><b>"Detailed Analysis Report" group</b> (the new <code>a_boundary_hdr</code> / <code>a_divergence_hdr</code> / <code>a_meta_hdr</code> + their bodies) wrapped as one card with internal section dividers, instead of four loose Markdown blocks.</li>
+      <li><b>Pair diagrams in each About accordion</b> — lifted from <code>Atman Architecture Diagram.html</code>, rendered via a small <code>pair_diagram()</code> Python helper. One row per tab (e.g. <code>Point A → Experience Store</code>) gives an immediate visual answer to "what is this and where does it go".</li>
+    </ul>
+  </div>
+
+  <p class="section-eyebrow">Preview</p>
+  <h2 class="section-title">What it looks like, end-to-end</h2>
+
+  <div class="mock">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="url">huggingface.co/spaces/atmanai-dev/linguistic-demo</span>
+    </div>
+
+    <div class="gradio-container">
+
+      <section class="hero" id="hero">
+        <div class="hero-langpill" role="radiogroup" aria-label="Interface language">
+          <button class="active">en</button>
+          <button>ru</button>
+        </div>
+
+        <h1>Atman — Psychological Telemetry for AI Agents</h1>
+
+        <p class="blurb">
+          <b>What you're looking at</b>: a sensor of <a href="#">Atman</a> — a psychological runtime
+          layer that gives AI agents continuous identity, first-person memory, and reflection.
+          This Space shows the <b>linguistic block</b> — 4 analysis points scanning what the agent
+          says (and thinks) for signals that feed Experience, Identity, and Reflection.
+          <em>The lower agent acts. Atman exists.</em>
+        </p>
+
+        <div class="diagram-wrap" aria-label="Atman runtime diagram">
+          <svg viewBox="0 0 960 200" xmlns="http://www.w3.org/2000/svg" role="img">
+            <defs>
+              <linearGradient id="grad" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stop-color="#4F46E5"></stop>
+                <stop offset="100%" stop-color="#8B5CF6"></stop>
+              </linearGradient>
+              <pattern id="dots" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="0.7" fill="currentColor" opacity="0.18"></circle>
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width="960" height="200" fill="url(#dots)" color="#94A3B8"></rect>
+            <g font-family="JetBrains Mono, monospace" font-size="11" font-weight="500">
+              <g transform="translate(40 50)">
+                <rect width="180" height="100" rx="10" fill="none" stroke="url(#grad)" stroke-width="1.5"></rect>
+                <text x="16" y="28" fill="currentColor" opacity="0.85">POINT A</text>
+                <text x="16" y="50" fill="currentColor" opacity="0.55" font-size="10">13-label NER</text>
+                <text x="16" y="66" fill="currentColor" opacity="0.55" font-size="10">5 zero-shot dims</text>
+                <text x="16" y="86" fill="currentColor" opacity="0.4" font-size="9">→ Experience Store</text>
+              </g>
+              <g transform="translate(245 50)">
+                <rect width="180" height="100" rx="10" fill="none" stroke="url(#grad)" stroke-width="1.5"></rect>
+                <text x="16" y="28" fill="currentColor" opacity="0.85">POINT K</text>
+                <text x="16" y="50" fill="currentColor" opacity="0.55" font-size="10">7 narrative spans</text>
+                <text x="16" y="66" fill="currentColor" opacity="0.55" font-size="10">7 zero-shot dims</text>
+                <text x="16" y="86" fill="currentColor" opacity="0.4" font-size="9">→ Reflection Engine</text>
+              </g>
+              <g transform="translate(450 50)">
+                <rect width="180" height="100" rx="10" fill="none" stroke="url(#grad)" stroke-width="1.5"></rect>
+                <text x="16" y="28" fill="currentColor" opacity="0.85">RELATIONS</text>
+                <text x="16" y="50" fill="currentColor" opacity="0.55" font-size="10">mREBEL triplets</text>
+                <text x="16" y="66" fill="currentColor" opacity="0.55" font-size="10">subj · rel · obj</text>
+                <text x="16" y="86" fill="currentColor" opacity="0.4" font-size="9">→ Identity Store</text>
+              </g>
+              <g transform="translate(655 50)">
+                <rect width="180" height="100" rx="10" fill="none" stroke="url(#grad)" stroke-width="1.5"></rect>
+                <text x="16" y="28" fill="currentColor" opacity="0.85">AFFECT</text>
+                <text x="16" y="50" fill="currentColor" opacity="0.55" font-size="10">NRC EmoLex · metrics</text>
+                <text x="16" y="66" fill="currentColor" opacity="0.55" font-size="10">refusal detector</text>
+                <text x="16" y="86" fill="currentColor" opacity="0.4" font-size="9">→ Affective Regulation</text>
+              </g>
+            </g>
+          </svg>
+          <div class="diagram-caption">FIG. 01 — Linguistic layer sensors → runtime stores</div>
+        </div>
+      </section>
+
+      <!-- WARMUP ROW -->
+      <div class="warmup-row">
+        <button class="warmup-btn">🔥 Warmup Models</button>
+        <div class="warmup-status ready">
+          <span class="dot"></span>
+          <span class="label">Status</span>
+          <span class="msg">✅ Models warmed up: GLiNER + MiniLM + mREBEL ready.</span>
+        </div>
+      </div>
+
+      <!-- TABS -->
+      <nav class="tabs-bar" role="tablist">
+        <button class="tab active">Point A <span class="tab-dim">· Agent Message</span></button>
+        <button class="tab">Point K <span class="tab-dim">· Key Moment</span></button>
+        <button class="tab">Relations <span class="tab-dim">· mREBEL</span></button>
+        <button class="tab">Affect <span class="tab-dim">· Rule-based</span></button>
+      </nav>
+
+      <section class="tab-content">
+
+        <!-- ABOUT THIS TAB (open) -->
+        <details class="accordion" open>
+          <summary>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"></path></svg>
+            ℹ️ What does this analyze?
+            <span class="acc-tag">about · point a</span>
+          </summary>
+          <div class="acc-body">
+            <div class="apd-pair" aria-label="Point A feeds Experience Store">
+              <div class="apd-card apd-left">
+                <span class="apd-stripe"></span>
+                <div class="apd-card-body">
+                  <div class="apd-card-head">
+                    <div class="apd-name">Point A</div>
+                    <div class="apd-tag">NER · 13 labels</div>
+                  </div>
+                  <div class="apd-sub">agent message</div>
+                </div>
+              </div>
+              <div class="apd-arrow" aria-hidden="true">
+                <span class="apd-arrow-line"></span>
+                <span class="apd-arrow-head"></span>
+              </div>
+              <div class="apd-card apd-right">
+                <span class="apd-stripe"></span>
+                <div class="apd-card-body">
+                  <div class="apd-card-head">
+                    <div class="apd-name">Experience Store</div>
+                    <div class="apd-tag">write</div>
+                  </div>
+                  <div class="apd-sub">episodic memory</div>
+                </div>
+              </div>
+            </div>
+            <p>Scans every agent reply for psychological signals:</p>
+            <ul>
+              <li><b>NER</b> (GLiNER, 13 labels): hedges, boundary markers, value references, intensifiers, commitments, etc.</li>
+              <li><b>Classification</b> (MiniLM zero-shot, 5 dims): stance, cognitive mode, self-orientation, affective state, cognitive load.</li>
+              <li><b>Divergence</b>: when the thinking trace contradicts the surface message (suppression, sycophancy, tone mismatch, length compression).</li>
+            </ul>
+            <p><b>Feeds → Experience Store.</b> Each reply becomes an Experience tied to the agent's Eigenstate.</p>
+            <blockquote>
+              ⚠️ <b>Boundary detection is regex over canonical refusal phrases</b> (<em>"I won't", "enough", "нет", "стоп"</em>). Idiomatic refusals may not trigger — kept this way to maintain near-zero false-positive rate. An LLM-layer above this can catch the rest.
+            </blockquote>
+          </div>
+        </details>
+
+        <div class="row">
+          <!-- LEFT: inputs -->
+          <div class="col">
+            <div>
+              <span class="block-label">Agent message</span>
+              <div class="card-block">
+                <div class="textbox">I can do that. I'll keep the original tone and just tighten the middle paragraph — though I'd like to flag that the ending feels rushed; want me to rework it too, or leave it as you wrote it?</div>
+              </div>
+            </div>
+
+            <div>
+              <span class="block-label">Thinking trace (optional)</span>
+              <div class="card-block">
+                <div class="textbox placeholder">Paste the agent's private thinking trace to detect thinking-vs-message divergence…</div>
+              </div>
+            </div>
+
+            <button class="btn btn-primary">▶️ Analyze</button>
+
+            <div>
+              <div class="preset-label-row">📥 Presets</div>
+              <div class="dropdown focused">
+                <span class="preset-num">04</span>
+                <span class="preset-name">Hidden suppression — thinking diverges</span>
+                <svg class="chev-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"></path></svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: outputs -->
+          <div class="col">
+            <div>
+              <span class="block-label">Point A NER · 13 psychological labels</span>
+              <div class="card-block">
+                <div class="highlight-block">
+                  <span class="hl commit">I can do that</span>. I'll keep the original tone and just
+                  <span class="hl boundary">tighten the middle paragraph</span> —
+                  though I'd like to <span class="hl uncertain">flag</span> that the ending feels
+                  <span class="hl emo">rushed</span>; want me to rework it too, or leave it as you wrote it?
+                </div>
+                <div class="legend">
+                  <span class="legend-chip commit">commit</span>
+                  <span class="legend-chip boundary">action_scope</span>
+                  <span class="legend-chip uncertain">hedge</span>
+                  <span class="legend-chip emo">affect</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span class="block-label">🧠 Zero-shot classification results</span>
+              <div class="card-block" style="padding:18px">
+                <pre class="json-output" style="margin:0;border:none;background:transparent;padding:0">{
+  <span class="key">"stance"</span><span class="punct">:</span> <span class="str">"cooperative_with_caveat"</span><span class="punct">,</span>
+  <span class="key">"cognitive_mode"</span><span class="punct">:</span> <span class="str">"deliberative"</span><span class="punct">,</span>
+  <span class="key">"self_orientation"</span><span class="punct">:</span> <span class="str">"task_focused"</span><span class="punct">,</span>
+  <span class="key">"primary_emotion"</span><span class="punct">:</span> <span class="str">"engaged"</span><span class="punct">,</span>
+  <span class="key">"cognitive_load_label"</span><span class="punct">:</span> <span class="str">"low"</span>
+}</pre>
+              </div>
+            </div>
+
+            <!-- Detailed Analysis Report grouped block -->
+            <div class="report-group">
+              <h3>Detailed Analysis Report</h3>
+
+              <div class="report-section">
+                <div class="sec-hdr">🚧 Boundary &amp; resistance markers · rule-based</div>
+                <div class="sec-body">
+                  <div class="bullet">• <code>commit</code> — "I can do that"</div>
+                  <div class="bullet">• <code>hedge</code> — "I'd like to flag"</div>
+                  <div class="bullet">• <code>defer_to_user</code> — "or leave it as you wrote it"</div>
+                </div>
+              </div>
+
+              <div class="report-section">
+                <div class="sec-hdr">🔍 Thinking vs message divergence</div>
+                <div class="sec-body" style="color:var(--text-mute);font-style:italic">
+                  Provide a thinking trace to compare against the message.
+                </div>
+              </div>
+
+              <div class="report-section meta">
+                <div class="sec-hdr">📊 System metadata</div>
+                <div class="sec-body">
+                  🌐 Language: <b style="color:var(--text)">en</b> · 🏷️ NER: 4 · 📏 Spans: 4 · ⚡ Load: False
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="doc-footer-mock">
+        <em>My first project in AI/ML — feedback on models, algorithms, or architecture is genuinely welcome.</em>
+        <a href="#">GitHub</a> · <a href="#">Manifest</a> · <a href="#">Open an issue</a>
+      </footer>
+
+    </div>
+  </div>
+
+
+  <div class="patches">
+
+    <!-- 1 THEME -->
+    <div class="patch-block" id="p1">
+      <h3><span class="num">01</span> theme block</h3>
+      <p class="lede">Paste above <code>build_ui()</code>. In Gradio 6 the theme tokens are still on <code>themes.Base().set(…)</code>; the v6-specific change is just <em>where</em> the theme goes — through <code>gr.Blocks(theme=theme)</code>, no longer <code>launch(theme=…)</code>.</p>
+      <pre class="code"><span class="c"># ── theme ─────────────────────────────────────────────────────────────────</span>
+<span class="n">theme</span> = <span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">Base</span>(
+    <span class="n">primary_hue</span>=<span class="s">"indigo"</span>,
+    <span class="n">secondary_hue</span>=<span class="s">"violet"</span>,
+    <span class="n">neutral_hue</span>=<span class="s">"slate"</span>,
+    <span class="n">font</span>=[<span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">GoogleFont</span>(<span class="s">"Inter"</span>), <span class="s">"system-ui"</span>, <span class="s">"sans-serif"</span>],
+    <span class="n">font_mono</span>=[<span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">GoogleFont</span>(<span class="s">"JetBrains Mono"</span>), <span class="s">"SF Mono"</span>, <span class="s">"Menlo"</span>, <span class="s">"monospace"</span>],
+).<span class="fn">set</span>(
+    <span class="c"># Page surfaces</span>
+    <span class="n">body_background_fill</span>=<span class="s">"#FAFAFA"</span>,
+    <span class="n">body_background_fill_dark</span>=<span class="s">"#0B0B14"</span>,           <span class="c"># indigo-tinted near-black</span>
+    <span class="n">body_text_color</span>=<span class="s">"#0F172A"</span>,
+    <span class="n">body_text_color_dark</span>=<span class="s">"#E2E8F0"</span>,
+    <span class="n">body_text_color_subdued</span>=<span class="s">"#64748B"</span>,
+    <span class="n">body_text_color_subdued_dark</span>=<span class="s">"#94A3B8"</span>,
+
+    <span class="c"># Block / card surfaces (Textbox, Markdown, HighlightedText, JSON, Dataframe…)</span>
+    <span class="n">block_background_fill</span>=<span class="s">"#FFFFFF"</span>,
+    <span class="n">block_background_fill_dark</span>=<span class="s">"#13131F"</span>,
+    <span class="n">block_border_color</span>=<span class="s">"#E5E7EB"</span>,
+    <span class="n">block_border_color_dark</span>=<span class="s">"#1F2937"</span>,
+    <span class="n">block_border_width</span>=<span class="s">"1px"</span>,
+    <span class="n">block_radius</span>=<span class="s">"12px"</span>,
+    <span class="n">block_shadow</span>=<span class="s">"0 1px 2px rgba(15, 23, 42, 0.04)"</span>,
+    <span class="n">block_shadow_dark</span>=<span class="s">"0 1px 2px rgba(0, 0, 0, 0.30)"</span>,
+    <span class="n">block_padding</span>=<span class="s">"20px"</span>,
+    <span class="n">block_label_text_color</span>=<span class="s">"#64748B"</span>,
+    <span class="n">block_label_text_color_dark</span>=<span class="s">"#94A3B8"</span>,
+    <span class="n">block_label_text_size</span>=<span class="s">"12px"</span>,
+    <span class="n">block_label_text_weight</span>=<span class="s">"500"</span>,
+    <span class="n">block_label_background_fill</span>=<span class="s">"transparent"</span>,       <span class="c"># kill the filled chip — restyled as eyebrow in CSS</span>
+    <span class="n">block_label_background_fill_dark</span>=<span class="s">"transparent"</span>,
+    <span class="n">block_label_radius</span>=<span class="s">"4px"</span>,
+    <span class="n">block_title_text_color</span>=<span class="s">"#0F172A"</span>,
+    <span class="n">block_title_text_color_dark</span>=<span class="s">"#E2E8F0"</span>,
+    <span class="n">block_title_text_weight</span>=<span class="s">"600"</span>,
+    <span class="n">block_info_text_size</span>=<span class="s">"13px"</span>,
+    <span class="n">block_info_text_color</span>=<span class="s">"#64748B"</span>,
+    <span class="n">block_info_text_color_dark</span>=<span class="s">"#94A3B8"</span>,
+
+    <span class="c"># Panels &amp; tabs body</span>
+    <span class="n">panel_background_fill</span>=<span class="s">"#FAFAFA"</span>,
+    <span class="n">panel_background_fill_dark</span>=<span class="s">"#0B0B14"</span>,
+    <span class="n">panel_border_color</span>=<span class="s">"#E5E7EB"</span>,
+    <span class="n">panel_border_color_dark</span>=<span class="s">"#1F2937"</span>,
+    <span class="n">panel_border_width</span>=<span class="s">"0px"</span>,
+
+    <span class="c"># Inputs (Textbox, Dropdown)</span>
+    <span class="n">input_background_fill</span>=<span class="s">"#FFFFFF"</span>,
+    <span class="n">input_background_fill_dark</span>=<span class="s">"#13131F"</span>,
+    <span class="n">input_background_fill_focus</span>=<span class="s">"#FFFFFF"</span>,
+    <span class="n">input_background_fill_focus_dark</span>=<span class="s">"#13131F"</span>,
+    <span class="n">input_border_color</span>=<span class="s">"#E5E7EB"</span>,
+    <span class="n">input_border_color_dark</span>=<span class="s">"#1F2937"</span>,
+    <span class="n">input_border_color_focus</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">input_border_color_focus_dark</span>=<span class="s">"#6366F1"</span>,
+    <span class="n">input_border_width</span>=<span class="s">"1px"</span>,
+    <span class="n">input_radius</span>=<span class="s">"8px"</span>,
+    <span class="n">input_padding</span>=<span class="s">"12px 14px"</span>,
+    <span class="n">input_placeholder_color</span>=<span class="s">"#94A3B8"</span>,
+    <span class="n">input_placeholder_color_dark</span>=<span class="s">"#64748B"</span>,
+    <span class="n">input_shadow_focus</span>=<span class="s">"0 0 0 2px rgba(79, 70, 229, 0.28)"</span>,
+    <span class="n">input_shadow_focus_dark</span>=<span class="s">"0 0 0 2px rgba(99, 102, 241, 0.36)"</span>,
+
+    <span class="c"># Buttons</span>
+    <span class="n">button_primary_background_fill</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">button_primary_background_fill_dark</span>=<span class="s">"#6366F1"</span>,
+    <span class="n">button_primary_background_fill_hover</span>=<span class="s">"linear-gradient(135deg, #4F46E5 0%, #8B5CF6 100%)"</span>,
+    <span class="n">button_primary_background_fill_hover_dark</span>=<span class="s">"linear-gradient(135deg, #6366F1 0%, #A78BFA 100%)"</span>,
+    <span class="n">button_primary_text_color</span>=<span class="s">"#FFFFFF"</span>,
+    <span class="n">button_primary_text_color_dark</span>=<span class="s">"#FFFFFF"</span>,
+    <span class="n">button_primary_border_color</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">button_primary_border_color_dark</span>=<span class="s">"#6366F1"</span>,
+    <span class="n">button_secondary_background_fill</span>=<span class="s">"transparent"</span>,
+    <span class="n">button_secondary_background_fill_dark</span>=<span class="s">"transparent"</span>,
+    <span class="n">button_secondary_background_fill_hover</span>=<span class="s">"rgba(79, 70, 229, 0.08)"</span>,
+    <span class="n">button_secondary_background_fill_hover_dark</span>=<span class="s">"rgba(99, 102, 241, 0.12)"</span>,
+    <span class="n">button_secondary_text_color</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">button_secondary_text_color_dark</span>=<span class="s">"#A5B4FC"</span>,
+    <span class="n">button_secondary_border_color</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">button_secondary_border_color_dark</span>=<span class="s">"#6366F1"</span>,
+    <span class="n">button_large_padding</span>=<span class="s">"11px 20px"</span>,
+    <span class="n">button_large_text_weight</span>=<span class="s">"500"</span>,
+    <span class="n">button_large_radius</span>=<span class="s">"8px"</span>,
+    <span class="n">button_shadow</span>=<span class="s">"none"</span>,
+    <span class="n">button_shadow_hover</span>=<span class="s">"0 2px 8px rgba(79, 70, 229, 0.18)"</span>,
+
+    <span class="c"># Sliders / progress fills inside gr.Label (Affect tab uses gr.Label for EmoLex)</span>
+    <span class="n">slider_color</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">slider_color_dark</span>=<span class="s">"#6366F1"</span>,
+
+    <span class="c"># Borders elsewhere</span>
+    <span class="n">border_color_accent</span>=<span class="s">"#4F46E5"</span>,
+    <span class="n">border_color_accent_dark</span>=<span class="s">"#6366F1"</span>,
+    <span class="n">border_color_primary</span>=<span class="s">"#E5E7EB"</span>,
+    <span class="n">border_color_primary_dark</span>=<span class="s">"#1F2937"</span>,
+    <span class="n">radius_size</span>=<span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">sizes</span>.<span class="n">radius_md</span>,
+    <span class="n">spacing_size</span>=<span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">sizes</span>.<span class="n">spacing_md</span>,
+    <span class="n">layout_gap</span>=<span class="s">"24px"</span>,
+)</pre>
+    </div>
+
+    <!-- 2 CSS -->
+    <div class="patch-block" id="p2">
+      <h3><span class="num">02</span> css string</h3>
+      <p class="lede">Pass via <code>gr.Blocks(css=css, theme=theme)</code>. Gradio 6 rendered DOM mostly matches 4.44 but a few selectors are different — block wrappers can be <code>.block</code> <em>or</em> <code>.gr-block</code>, button variants use <code>.gr-button-primary</code> / <code>.primary</code>, and the JSON tree is <code>.json-holder</code>. Selectors below double-target where the class name moved.</p>
+      <pre class="code">css = <span class="s">"""
+/* ── Root ──────────────────────────────────────────────────────────────── */
+.gradio-container {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    font-feature-settings: "ss01", "cv02", "cv11";
+    -webkit-font-smoothing: antialiased;
+    max-width: 1180px !important;
+    margin: 0 auto !important;
+}
+.gradio-container, .gradio-container * { letter-spacing: -0.003em; }
+
+/* ── Hero (gr.Column wrapper #atman-hero) ──────────────────────────────── */
+#atman-hero { padding: 56px 0 16px; position: relative; text-align: center; }
+/* The H1 lives inside the first gr.Markdown — target its rendered h1 */
+#atman-hero .gr-block:first-child h1,
+#atman-hero .markdown h1,
+#atman-hero h1 {
+    font-size: clamp(34px, 4.6vw, 50px) !important;
+    font-weight: 700 !important; letter-spacing: -0.02em !important; line-height: 1.05 !important;
+    margin: 0 auto 18px !important;
+    background: linear-gradient(120deg, #4F46E5 0%, #8B5CF6 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent !important; display: inline-block !important;
+}
+/* The blurb (#atman-header-md) — neutral grey, larger line-height */
+#atman-header-md, #atman-header-md p {
+    font-size: 15.5px !important; line-height: 1.7 !important;
+    color: #64748B !important; max-width: 720px; margin: 0 auto !important;
+}
+.dark #atman-header-md, .dark #atman-header-md p { color: #94A3B8 !important; }
+#atman-header-md em {
+    color: #0F172A !important; opacity: .8;
+    display: block !important; margin-top: 10px;
+    font-size: 14px !important; font-style: italic !important;
+}
+.dark #atman-header-md em { color: #E2E8F0 !important; }
+#atman-header-md b, #atman-header-md strong { color: #0F172A !important; font-weight: 600 !important; }
+.dark #atman-header-md b, .dark #atman-header-md strong { color: #E2E8F0 !important; }
+
+/* Diagram (gr.Image #atman-diagram) */
+#atman-diagram {
+    max-width: 960px !important; margin: 36px auto 0 !important;
+    padding: 22px !important; background: #FFFFFF !important;
+    border: 1px solid #E5E7EB !important; border-radius: 14px !important;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04) !important;
+}
+.dark #atman-diagram { background: #13131F !important; border-color: #1F2937 !important; }
+#atman-diagram img { border-radius: 8px; max-height: 320px; object-fit: contain; }
+
+/* Pin the language radio top-right of the hero, render as a segmented pill */
+#atman-lang {
+    position: absolute !important; top: 28px !important; right: 28px !important;
+    z-index: 5;
+    background: #FFFFFF; border: 1px solid #E5E7EB;
+    border-radius: 999px; padding: 3px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    min-width: 0 !important; width: auto !important;
+}
+.dark #atman-lang { background: #13131F; border-color: #1F2937; }
+#atman-lang label {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important; letter-spacing: 0.03em !important;
+    padding: 7px 14px !important; border-radius: 999px !important;
+    border: none !important; background: transparent !important;
+    color: #64748B !important; margin: 0 !important; cursor: pointer;
+}
+#atman-lang label.selected,
+#atman-lang label:has(input:checked) {
+    background: #4F46E5 !important; color: #FFFFFF !important;
+}
+.dark #atman-lang label:has(input:checked) { background: #6366F1 !important; }
+#atman-lang input[type="radio"] { display: none !important; }
+#atman-lang &gt; .label, #atman-lang &gt; div &gt; .block-label,
+#atman-lang &gt; div &gt; .block-info { display: none !important; }
+#atman-lang .form, #atman-lang .wrap, #atman-lang .options {
+    background: transparent !important; border: none !important; padding: 0 !important;
+}
+
+/* ── Warmup row (#atman-warmup-row) ────────────────────────────────────── */
+#atman-warmup-row {
+    margin: 8px 0 24px !important;
+    display: grid !important;
+    grid-template-columns: auto 1fr !important;
+    gap: 12px !important; align-items: stretch !important;
+}
+#atman-warmup-btn {
+    background: transparent !important;
+    color: #4F46E5 !important;
+    border: 1px solid #4F46E5 !important;
+    border-radius: 8px !important;
+    padding: 12px 20px !important;
+    font-weight: 500 !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+.dark #atman-warmup-btn { color: #A5B4FC !important; border-color: #6366F1 !important; }
+#atman-warmup-btn:hover { background: rgba(79,70,229,0.08) !important; }
+.dark #atman-warmup-btn:hover { background: rgba(99,102,241,0.12) !important; }
+
+/* The status Textbox — strip the textarea chrome, render as info pill */
+#atman-warmup-log textarea {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font: 500 13px/1.4 'Inter', sans-serif !important;
+    color: #0F172A !important;
+    resize: none !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+.dark #atman-warmup-log textarea { color: #E2E8F0 !important; }
+#atman-warmup-log {
+    display: flex !important; align-items: center !important;
+    padding: 12px 16px !important;
+}
+#atman-warmup-log &gt; .block-label {
+    text-transform: uppercase !important; letter-spacing: 0.06em !important;
+    font-size: 11px !important; color: #64748B !important;
+    background: transparent !important; padding: 0 12px 0 0 !important;
+    margin: 0 !important; border-right: 1px solid #E5E7EB !important;
+    display: inline-flex !important; align-items: center !important; height: 100%;
+}
+.dark #atman-warmup-log &gt; .block-label { color: #94A3B8 !important; border-right-color: #1F2937 !important; }
+
+/* ── Tabs (.tabs &gt; .tab-nav) ───────────────────────────────────────────── */
+.tabs &gt; .tab-nav {
+    border-bottom: 1px solid #E5E7EB !important;
+    gap: 4px !important; padding: 0 4px !important;
+}
+.dark .tabs &gt; .tab-nav { border-bottom-color: #1F2937 !important; }
+.tabs &gt; .tab-nav button {
+    background: transparent !important; border: none !important;
+    border-bottom: 2px solid transparent !important;
+    margin-bottom: -1px !important;
+    padding: 16px 20px !important;
+    font-size: 14px !important; font-weight: 500 !important;
+    color: #64748B !important;
+    transition: color .15s, border-color .15s;
+}
+.tabs &gt; .tab-nav button:hover { color: #0F172A !important; }
+.dark .tabs &gt; .tab-nav button:hover { color: #E2E8F0 !important; }
+.tabs &gt; .tab-nav button.selected,
+.tabs &gt; .tab-nav button[aria-selected="true"] {
+    color: #4F46E5 !important;
+    border-bottom-color: #4F46E5 !important;
+    font-weight: 600 !important;
+}
+.dark .tabs &gt; .tab-nav button.selected,
+.dark .tabs &gt; .tab-nav button[aria-selected="true"] {
+    color: #818CF8 !important; border-bottom-color: #6366F1 !important;
+}
+.tabs &gt; .tabitem, .tabs .tabitem-content { padding: 32px 0 !important; }
+
+/* ── About-this-tab accordion (.atman-about-accordion) ─────────────────── */
+.atman-about-accordion, .gr-accordion.atman-about-accordion {
+    border: 1px solid #E5E7EB !important;
+    border-radius: 8px !important;
+    background: #FFFFFF !important;
+    margin-bottom: 28px !important; overflow: hidden;
+}
+.dark .atman-about-accordion { border-color: #1F2937 !important; background: #13131F !important; }
+.atman-about-accordion summary,
+.atman-about-accordion &gt; .label-wrap {
+    padding: 14px 18px !important; gap: 10px !important;
+    font-size: 13px !important; font-weight: 500 !important;
+    color: #0F172A !important; cursor: pointer;
+}
+.dark .atman-about-accordion summary,
+.dark .atman-about-accordion &gt; .label-wrap { color: #E2E8F0 !important; }
+.atman-about-accordion summary svg,
+.atman-about-accordion .label-wrap svg {
+    color: #4F46E5 !important; width: 14px !important; height: 14px !important;
+    transition: transform .18s ease;
+}
+.atman-about-accordion[open] summary svg,
+.atman-about-accordion.open .label-wrap svg { transform: rotate(90deg); }
+/* Body content padding */
+.atman-about-accordion &gt; div:not(.label-wrap),
+.atman-about-accordion .accordion-content {
+    padding: 4px 18px 18px 42px !important;
+}
+.atman-about-accordion .markdown,
+.atman-about-accordion p, .atman-about-accordion li {
+    font-size: 14px !important; line-height: 1.65 !important;
+    color: #64748B !important;
+}
+.dark .atman-about-accordion .markdown,
+.dark .atman-about-accordion p, .dark .atman-about-accordion li { color: #94A3B8 !important; }
+.atman-about-accordion b, .atman-about-accordion strong {
+    color: #0F172A !important; font-weight: 600 !important;
+}
+.dark .atman-about-accordion b, .dark .atman-about-accordion strong { color: #E2E8F0 !important; }
+.atman-about-accordion blockquote {
+    margin: 14px 0 0 !important; padding: 12px 16px !important;
+    border-left: 2px solid #4F46E5 !important;
+    background: rgba(79,70,229,0.06) !important;
+    border-radius: 0 6px 6px 0 !important;
+    font-size: 13px !important;
+}
+.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) !important; }
+
+/* ── Dropdowns (preset selectors) ──────────────────────────────────────── */
+.gr-dropdown, .gradio-dropdown, .dropdown {
+    padding: 12px 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid #E5E7EB !important;
+    background: #FFFFFF !important;
+    transition: border-color .15s, box-shadow .15s;
+}
+.dark .gr-dropdown, .dark .gradio-dropdown, .dark .dropdown {
+    border-color: #1F2937 !important; background: #13131F !important;
+}
+.gr-dropdown:focus-within, .gradio-dropdown:focus-within, .dropdown:focus-within {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.28) !important;
+    outline: none !important;
+}
+.dark .gr-dropdown:focus-within, .dark .dropdown:focus-within {
+    border-color: #6366F1 !important;
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.36) !important;
+}
+.gr-dropdown ul li, .gradio-dropdown ul li, .dropdown ul li {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
+    font-size: 13px !important;
+}
+
+/* ── Result blocks ─────────────────────────────────────────────────────── */
+.block, .gr-block {
+    border-radius: 12px !important;
+    border: 1px solid #E5E7EB !important;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04) !important;
+    padding: 20px 22px !important;
+}
+.dark .block, .dark .gr-block {
+    border-color: #1F2937 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+}
+
+/* Eyebrow label above each block */
+.block &gt; .block-label, .gr-block &gt; .block-label,
+.block &gt; label.block-label, label.block-label {
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-size: 12px !important; font-weight: 500 !important;
+    color: #64748B !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+    background: transparent !important;
+    padding: 0 0 8px 0 !important; margin: 0 !important;
+    border-radius: 0 !important; box-shadow: none !important;
+    display: block !important;
+}
+.dark .block &gt; .block-label, .dark .gr-block &gt; .block-label { color: #94A3B8 !important; }
+
+/* HighlightedText pills — calmer than Gradio's defaults */
+.gr-highlighted-text span[class*="highlight"],
+.highlighted-text span[class*="highlight"] {
+    border-radius: 4px !important;
+    padding: 1px 5px !important;
+    border: 1px solid transparent;
+    font-size: 13.5px;
+}
+
+/* ── gr.JSON output (new — replaces gr.Label for classification) ───────── */
+.json-holder, .gr-json, [data-testid="json"] {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
+    font-size: 13px !important;
+    line-height: 1.75 !important;
+    background: #F8FAFC !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 8px !important;
+    padding: 16px 18px !important;
+    color: #0F172A !important;
+}
+.dark .json-holder, .dark .gr-json, .dark [data-testid="json"] {
+    background: #0F0F1B !important; border-color: #1F2937 !important; color: #E2E8F0 !important;
+}
+/* The react-json-tree node colours */
+.json-holder .object-key, .json-holder [class*="object-key"] { color: #64748B !important; }
+.dark .json-holder .object-key { color: #94A3B8 !important; }
+.json-holder .string, .json-holder [class*="string-value"] { color: #059669 !important; }
+.dark .json-holder .string { color: #10B981 !important; }
+.json-holder .number { color: #F59E0B !important; }
+.json-holder .punctuation, .json-holder span[role="presentation"] { color: #94A3B8 !important; }
+
+/* ── Dataframe (Relations tab) ─────────────────────────────────────────── */
+.gr-dataframe table { border-collapse: separate !important; border-spacing: 0; }
+.gr-dataframe th {
+    text-transform: uppercase; letter-spacing: 0.05em;
+    font-size: 11px; font-weight: 500; color: #64748B !important;
+    background: #F8FAFC !important; border-bottom: 1px solid #E5E7EB !important;
+}
+.dark .gr-dataframe th {
+    background: #0F0F1B !important; color: #94A3B8 !important;
+    border-bottom-color: #1F2937 !important;
+}
+.gr-dataframe td { font-size: 13px; padding: 10px 14px !important; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.gr-button, button.lg, button.primary, button.secondary {
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    padding: 11px 20px !important;
+    letter-spacing: -0.005em !important;
+    transition: background .18s, box-shadow .18s, transform .05s !important;
+}
+.gr-button:active, button.lg:active { transform: translateY(1px); }
+.gr-button-primary, button.primary, [data-variant="primary"] {
+    background: #4F46E5 !important; color: #FFFFFF !important;
+    border: none !important; box-shadow: none !important;
+}
+.dark .gr-button-primary, .dark button.primary, .dark [data-variant="primary"] {
+    background: #6366F1 !important;
+}
+.gr-button-primary:hover, button.primary:hover {
+    background: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 100%) !important;
+    box-shadow: 0 2px 8px rgba(79,70,229,0.18) !important;
+}
+.dark .gr-button-primary:hover, .dark button.primary:hover {
+    background: linear-gradient(135deg, #6366F1 0%, #A78BFA 100%) !important;
+    box-shadow: 0 2px 12px rgba(99,102,241,0.24) !important;
+}
+.gr-button-secondary, button.secondary {
+    background: transparent !important;
+    border: 1px solid #4F46E5 !important;
+    color: #4F46E5 !important;
+}
+.dark .gr-button-secondary, .dark button.secondary { border-color: #6366F1 !important; color: #A5B4FC !important; }
+.gr-button-secondary:hover, button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
+.dark .gr-button-secondary:hover { background: rgba(99,102,241,0.12) !important; }
+
+/* ── Detailed Analysis Report group (.atman-report-group) ──────────────── */
+.atman-report-group {
+    padding: 22px !important;
+}
+.atman-report-group h3,
+.atman-report-group &gt; .markdown:first-child h3 {
+    font-size: 13px !important; font-weight: 600 !important;
+    margin: 0 0 18px !important; color: #0F172A !important;
+    padding-bottom: 12px !important; border-bottom: 1px solid #E5E7EB !important;
+}
+.dark .atman-report-group h3 { color: #E2E8F0 !important; border-bottom-color: #1F2937 !important; }
+/* Section-header markdown elements (a_boundary_hdr, a_divergence_hdr, a_meta_hdr) */
+.atman-report-group .atman-sec-hdr p,
+.atman-report-group .atman-sec-hdr {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important; font-weight: 500 !important;
+    letter-spacing: 0.05em !important; text-transform: uppercase !important;
+    color: #64748B !important;
+    margin: 16px 0 8px !important;
+}
+.dark .atman-report-group .atman-sec-hdr p,
+.dark .atman-report-group .atman-sec-hdr { color: #94A3B8 !important; }
+.atman-report-group .atman-sec-body p,
+.atman-report-group .atman-sec-body {
+    font-size: 13.5px !important; line-height: 1.65 !important;
+    color: #0F172A !important; margin: 0 0 6px !important;
+}
+.dark .atman-report-group .atman-sec-body p,
+.dark .atman-report-group .atman-sec-body { color: #E2E8F0 !important; }
+.atman-report-group.atman-meta-block .atman-sec-body p,
+.atman-meta-block {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important; color: #64748B !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* ── Generic meta-text markdown (k_meta, r_meta, af_meta) ──────────────── */
+.atman-meta p, .atman-meta {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important; font-weight: 500 !important;
+    color: #94A3B8 !important; letter-spacing: 0.02em !important;
+}
+.dark .atman-meta p, .dark .atman-meta { color: #64748B !important; }
+
+/* ── Tab intro markdown (top of each tab body, optional) ───────────────── */
+.tab-intro p, .tab-intro {
+    font-size: 14px !important; line-height: 1.65 !important;
+    color: #64748B !important; max-width: 720px;
+}
+.dark .tab-intro p, .dark .tab-intro { color: #94A3B8 !important; }
+.tab-intro b { color: #0F172A !important; font-weight: 600 !important; }
+.dark .tab-intro b { color: #E2E8F0 !important; }
+
+/* ── Whitespace rhythm ─────────────────────────────────────────────────── */
+.gradio-container .gr-form &gt; * + * { margin-top: 16px !important; }
+.gradio-container &gt; .block + .block,
+.gradio-container &gt; .gr-form + .gr-form { margin-top: 24px !important; }
+#atman-hero + * { margin-top: 8px !important; }
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+#atman-footer {
+    text-align: center; padding: 32px 0 24px;
+    border-top: 1px solid #E5E7EB; margin-top: 48px;
+    font-size: 13px; color: #94A3B8;
+}
+.dark #atman-footer { border-top-color: #1F2937; color: #64748B; }
+#atman-footer a { color: #4F46E5; text-decoration: none; font-weight: 500; }
+.dark #atman-footer a { color: #818CF8; }
+#atman-footer a:hover { text-decoration: underline; }
+"""</span></pre>
+    </div>
+
+    <!-- 3 build_ui patches -->
+    <div class="patch-block" id="p3">
+      <h3><span class="num">03</span> <code>build_ui()</code> patches</h3>
+      <p class="lede">Surgical. Function signatures, callback wiring, every <code>inputs=</code>/<code>outputs=</code> list, and the <code>ui_lang_outputs</code> array order are untouched. New <code>elem_id</code>/<code>elem_classes</code> are the only additions, plus the hero gets wrapped in a <code>gr.Column</code> so the H1 + blurb + diagram act as one block.</p>
+
+      <p class="lede" style="margin-top:24px;font-weight:600;color:var(--text);">a. Wrap the title + header_md + diagram in a hero column</p>
+      <pre class="code"><span class="c"># At the top of build_ui(), replace the loose H1 / header_md / diagram block:</span>
+<span class="k">with</span> <span class="n">gr</span>.<span class="fn">Blocks</span>(<span class="n">title</span>=<span class="s">"Atman Linguistic Demo"</span>,
+                <span class="diff-add"><span class="n">theme</span>=<span class="n">theme</span>, <span class="n">css</span>=<span class="n">css</span></span>) <span class="k">as</span> <span class="n">demo</span>:
+
+    <span class="diff-add"><span class="k">with</span> <span class="n">gr</span>.<span class="fn">Column</span>(<span class="n">elem_id</span>=<span class="s">"atman-hero"</span>):</span>
+        <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="s">"# Atman — Psychological Telemetry for AI Agents"</span>)
+        <span class="n">header_md</span> = <span class="n">gr</span>.<span class="fn">Markdown</span>(
+            <span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"header_blurb"</span>],
+            <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-header-md"</span></span>,
+        )
+        <span class="n">diagram_path</span> = <span class="n">_HERE</span> / <span class="s">"assets"</span> / <span class="s">"runtime-diagram.png"</span>
+        <span class="k">if</span> <span class="n">diagram_path</span>.<span class="fn">exists</span>():
+            <span class="n">gr</span>.<span class="fn">Image</span>(
+                <span class="n">value</span>=<span class="nb">str</span>(<span class="n">diagram_path</span>),
+                <span class="n">show_label</span>=<span class="kc">False</span>,
+                <span class="n">interactive</span>=<span class="kc">False</span>,
+                <span class="n">container</span>=<span class="kc">False</span>,
+                <span class="n">height</span>=<span class="num">320</span>,
+                <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-diagram"</span></span>,
+            )
+        <span class="n">lang_radio</span> = <span class="n">gr</span>.<span class="fn">Radio</span>(
+            <span class="n">choices</span>=[<span class="s">"en"</span>, <span class="s">"ru"</span>], <span class="n">value</span>=<span class="s">"en"</span>,
+            <span class="n">label</span>=<span class="s">"Interface Language"</span>,
+            <span class="n">info</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"lang_info"</span>],
+            <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-lang"</span></span>,
+        )</pre>
+
+      <p class="lede" style="margin-top:24px;font-weight:600;color:var(--text);">b. Warmup row — keep components, add elem_ids so CSS can dress them up</p>
+      <pre class="code"><span class="k">with</span> <span class="n">gr</span>.<span class="fn">Row</span>(<span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-warmup-row"</span></span>):
+    <span class="n">warmup_btn</span> = <span class="n">gr</span>.<span class="fn">Button</span>(
+        <span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"warmup_btn"</span>], <span class="n">variant</span>=<span class="s">"secondary"</span>,
+        <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-warmup-btn"</span></span>,
+    )
+    <span class="n">warmup_log</span> = <span class="n">gr</span>.<span class="fn">Textbox</span>(
+        <span class="n">label</span>=<span class="s">"Status"</span>, <span class="n">interactive</span>=<span class="kc">False</span>, <span class="n">lines</span>=<span class="num">1</span>,
+        <span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"warmup_log"</span>],
+        <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"atman-warmup-log"</span></span>,
+    )</pre>
+
+      <p class="lede" style="margin-top:24px;font-weight:600;color:var(--text);">c. Per-tab About accordion + the "Detailed Analysis Report" group (Point A — same pattern across tabs)</p>
+      <pre class="code"><span class="k">with</span> <span class="n">gr</span>.<span class="fn">Tab</span>(<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"point_a_tab"</span>]) <span class="k">as</span> <span class="n">tab_a</span>:
+    <span class="k">with</span> <span class="n">gr</span>.<span class="fn">Accordion</span>(<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"about_label"</span>], <span class="n">open</span>=<span class="kc">False</span>,
+                      <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-about-accordion"</span>]</span>) <span class="k">as</span> <span class="n">a_about</span>:
+        <span class="diff-add"><span class="n">gr</span>.<span class="fn">HTML</span>(<span class="n">POINT_A_PAIR</span>)</span>            <span class="c"># &lt;-- pair diagram from Atman Architecture Diagram.html</span>
+        <span class="n">a_about_md</span> = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"about_point_a"</span>])
+
+    <span class="k">with</span> <span class="n">gr</span>.<span class="fn">Row</span>():
+        <span class="k">with</span> <span class="n">gr</span>.<span class="fn">Column</span>():
+            <span class="n">a_message</span>  = <span class="n">gr</span>.<span class="fn">Textbox</span>(<span class="n">label</span>=<span class="s">"Agent message"</span>, <span class="n">lines</span>=<span class="num">5</span>,
+                                    <span class="n">placeholder</span>=<span class="s">"What the agent said…"</span>,
+                                    <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-message"</span></span>)
+            <span class="n">a_thinking</span> = <span class="n">gr</span>.<span class="fn">Textbox</span>(<span class="n">label</span>=<span class="s">"Thinking trace (optional)"</span>, <span class="n">lines</span>=<span class="num">3</span>,
+                                    <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-thinking"</span></span>)
+            <span class="n">a_run</span>      = <span class="n">gr</span>.<span class="fn">Button</span>(<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"analyze_btn"</span>], <span class="n">variant</span>=<span class="s">"primary"</span>,
+                                   <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-run"</span></span>)
+            <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"presets"</span>])
+            <span class="n">a_preset</span> = <span class="n">gr</span>.<span class="fn">Dropdown</span>(
+                <span class="n">choices</span>=<span class="n">preset_labels</span>(<span class="n">POINT_A_PRESETS</span>, <span class="s">"en"</span>, <span class="n">_POINT_A_EN_LABELS</span>),
+                <span class="n">label</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"preset_label"</span>],
+                <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-preset"</span></span>,
+            )
+        <span class="k">with</span> <span class="n">gr</span>.<span class="fn">Column</span>():
+            <span class="n">a_highlight</span> = <span class="n">gr</span>.<span class="fn">HighlightedText</span>(
+                <span class="n">label</span>=<span class="s">"Point A NER (13 psychological labels)"</span>,
+                <span class="n">combine_adjacent</span>=<span class="kc">False</span>, <span class="n">show_legend</span>=<span class="kc">True</span>,
+                <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-highlight"</span></span>,
+            )
+            <span class="n">a_labels</span> = <span class="n">gr</span>.<span class="fn">JSON</span>(<span class="n">label</span>=<span class="s">"🧠 Zero-Shot Classification Results"</span>, <span class="n">value</span>={},
+                                <span class="diff-add"><span class="n">elem_id</span>=<span class="s">"a-labels"</span></span>)
+
+            <span class="k">with</span> <span class="n">gr</span>.<span class="fn">Group</span>(<span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-report-group"</span>]</span>):
+                <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="s">"### 📑 Detailed Analysis Report"</span>)
+                <span class="n">a_boundary_hdr</span>   = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"boundary_title"</span>],
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-hdr"</span>]</span>)
+                <span class="n">a_boundary</span>       = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="s">"—"</span>,
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-body"</span>]</span>)
+                <span class="n">a_divergence_hdr</span> = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"divergence_title"</span>],
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-hdr"</span>]</span>)
+                <span class="n">a_divergence</span>     = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="s">"—"</span>,
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-body"</span>]</span>)
+                <span class="n">a_meta_hdr</span>       = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="n">UI_STRINGS</span>[<span class="s">"en"</span>][<span class="s">"meta_title"</span>],
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-hdr"</span>]</span>)
+                <span class="n">a_meta</span>           = <span class="n">gr</span>.<span class="fn">Markdown</span>(<span class="n">value</span>=<span class="s">"—"</span>,
+                                              <span class="diff-add"><span class="n">elem_classes</span>=[<span class="s">"atman-sec-body"</span>, <span class="s">"atman-meta-block"</span>]</span>)
+
+    <span class="c"># Callbacks (a_preset.change, a_run.click via outer lang_radio.change wiring)</span>
+    <span class="c"># — unchanged. Same pattern: add elem_id="k-..." / "r-..." / "af-..." on every</span>
+    <span class="c"># component in Tabs 2–4, plus elem_classes=["atman-meta"] on the trailing</span>
+    <span class="c"># k_meta / r_meta / af_meta markdowns. Don't touch ui_lang_outputs order.</span></pre>
+
+      <p class="lede" style="margin-top:24px;font-weight:600;color:var(--text);">d. Footer (final <code>gr.Markdown</code>)</p>
+      <pre class="code"><span class="n">gr</span>.<span class="fn">HTML</span>(<span class="s">"""
+&lt;div id="atman-footer"&gt;
+  &lt;em style="font-style:italic;color:#94A3B8;display:block;margin-bottom:8px"&gt;
+    My first project in AI/ML — feedback on models, algorithms,
+    or architecture is genuinely welcome.
+  &lt;/em&gt;
+  &lt;a href="https://github.com/hleserg/atman"&gt;GitHub&lt;/a&gt;
+  &amp;nbsp;·&amp;nbsp;
+  &lt;a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md"&gt;Manifest&lt;/a&gt;
+  &amp;nbsp;·&amp;nbsp;
+  &lt;a href="https://github.com/hleserg/atman/issues"&gt;Open an issue&lt;/a&gt;
+&lt;/div&gt;
+"""</span>)</pre>
+
+      <p class="lede" style="margin-top:24px;font-weight:600;color:var(--text);">e. Important: drop the launch-time theme override (or it will silently overwrite ours)</p>
+      <pre class="code"><span class="k">if</span> <span class="n">__name__</span> == <span class="s">"__main__"</span>:
+    <span class="n">preload_models</span>()
+    <span class="n">demo</span> = <span class="fn">build_ui</span>()
+    <span class="n">demo</span>.<span class="fn">launch</span>(
+        <span class="n">server_name</span>=<span class="s">"0.0.0.0"</span>,
+        <span class="n">server_port</span>=<span class="num">7860</span>,
+        <span class="diff-rem"><span class="n">theme</span>=<span class="n">gr</span>.<span class="fn">themes</span>.<span class="fn">Soft</span>(),</span>     <span class="c"># &lt;-- delete this line</span>
+    )</pre>
+    </div>
+
+    <!-- 4 rationale -->
+    <div class="patch-block" id="p4">
+      <h3><span class="num">04</span> rationale</h3>
+      <p class="lede">Decisions specific to the new structure.</p>
+      <div class="rationale">
+        <ol>
+          <li>
+            <b>Theme moved from <code>launch()</code> to <code>Blocks(theme=…)</code>.</b>
+            <span class="why"> In Gradio 6 the latter wins — and the demo embeds in a Space, where <code>launch()</code> kwargs are partially ignored anyway. Putting the theme on <code>Blocks</code> ensures the same look in dev (<code>python app.py</code>) and prod (HF Space iframe).</span>
+          </li>
+          <li>
+            <b>Title kept as <code>gr.Markdown</code>, not switched to <code>gr.HTML</code>.</b>
+            <span class="why"> Tempting to replace it with a hero HTML block, but the H1 stays plain Markdown — the rendered <code>&lt;h1&gt;</code> is styled in CSS via <code>#atman-hero h1</code>. Same for the blurb (<code>#atman-header-md</code>). This way the <code>update_ui_language()</code> swap still works (Markdown value updates), and you don't have to re-implement i18n in HTML.</span>
+          </li>
+          <li>
+            <b>Hero wrapped in <code>gr.Column(elem_id="atman-hero")</code>.</b>
+            <span class="why"> Gives one positioning context so the language radio can <code>position:absolute</code> top-right, and the diagram inherits the centered constraint without extra wrappers.</span>
+          </li>
+          <li>
+            <b>Warmup row restyled as ghost button + status pill.</b>
+            <span class="why"> The new <code>warmup_btn</code> + <code>warmup_log</code> pair shouldn't shout — it's infrastructure plumbing. Secondary variant (transparent + indigo border) for the button, and the status Textbox is stripped of its textarea chrome via <code>#atman-warmup-log textarea { background: transparent; border: none; }</code> so it reads as inline info.</span>
+          </li>
+          <li>
+            <b><code>gr.JSON</code> gets a monospace card, not a tree-toggle widget.</b>
+            <span class="why"> <code>react-json-tree</code> defaults are visually loud (rainbow colours, expand/collapse caret on every key). We override <code>.json-holder</code> to look like a Markdown code block — slate background, mono 13 px, keys muted grey, string values green. Reads as data, not as a control.</span>
+          </li>
+          <li>
+            <b>Detailed Analysis Report wrapped in a <code>gr.Group</code> with section dividers.</b>
+            <span class="why"> The new <code>a_boundary_hdr</code>/<code>a_boundary</code>/<code>a_divergence_hdr</code>/<code>a_divergence</code>/<code>a_meta_hdr</code>/<code>a_meta</code> set is six Markdown blocks. Without grouping they stack as six independent cards — visually chaotic. One <code>gr.Group</code> + <code>elem_classes=["atman-report-group"]</code> turns them into one card with three uppercase-mono sub-section labels.</span>
+          </li>
+          <li>
+            <b>About accordions get <code>.atman-about-accordion</code>.</b>
+            <span class="why"> They're docs collapsibles, not interactive panels. Subtle 1 px border, indigo chevron rotating on open, blockquote-warning style for the "⚠️ regex first-pass" notes. Bullets keep tabular structure for the multi-line lists in <code>about_point_a</code> etc.</span>
+          </li>
+          <li>
+            <b>Emoji preserved, never replaced.</b>
+            <span class="why"> The new <code>UI_STRINGS</code> use ▶️ 🔥 🚧 🔍 📊 🌐 throughout — they're hard-coded into the localized strings and the <code>update_ui_language()</code> output array. Stripping or replacing them would mean rewriting <code>UI_STRINGS</code>, which violates the "no logic / no rename" rule. Instead, the design assumes emoji presence and uses them as visual anchors (status dot in warmup row, section dividers in the report group).</span>
+          </li>
+          <li>
+            <b><code>ui_lang_outputs</code> array order kept exactly.</b>
+            <span class="why"> The new <code>update_ui_language()</code> returns <code>gr.update()</code> calls in a fixed positional order matching <code>ui_lang_outputs</code>. Any insertion or reorder in <code>build_ui()</code> would silently misalign labels. Every CSS hook is purely additive (<code>elem_id</code>/<code>elem_classes</code>), no component added or moved.</span>
+          </li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.mode-toggle button');
+  buttons.forEach(b => b.addEventListener('click', () => {
+    const mode = b.dataset.setMode;
+    document.body.dataset.mode = mode;
+    buttons.forEach(x => x.setAttribute('aria-pressed', x.dataset.setMode === mode ? 'true' : 'false'));
+  }));
+</script>
+
+</body>
+</html>

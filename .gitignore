@@ -85,3 +85,7 @@ eval/external/
 requirements-prod.txt
 requirements-eval.txt
 coverage.json
+
+# spaces
+spaces/linguistic-demo/.hf_cache/
+spaces/linguistic-demo/.venv/

@@ -1,27 +1,32 @@
 ---
-title: Atman — Psychological Linguistic Layer
+title: Atman — Psychological Telemetry for AI Agents
 emoji: 🧠
 colorFrom: indigo
 colorTo: purple
 sdk: gradio
-sdk_version: 4.44.0
+sdk_version: 6.14.0
 app_file: app.py
 pinned: false
+python_version: "3.11"
 license: mit
+thumbnail: assets/og-image.png
 tags:
   - psychology
   - agents
   - ner
   - relation-extraction
+  - zero-shot-classification
+  - text-classification
   - multilingual
   - russian
   - affect-detection
-  - ai-safety
 ---
 
-# Atman — Psychological Linguistic Layer
+# Atman — Psychological Telemetry for AI Agents
 
 *What your AI agent's **own text** reveals about its internal state.*
+
+![Atman — 4 analysis points feeding the runtime](assets/runtime-diagram.png)
 
 [Atman](https://github.com/hleserg/atman) is a psychological runtime layer for AI agents — first-person memory, continuous identity, reflection. It doesn't replace the LLM. It sits on top.
 
@@ -51,15 +56,6 @@ Everything is **bilingual** — RU and EN — at every layer. All ML models are 
 
 Each tab has dropdowns with bilingual presets — value refusals, capability refusals, hidden suppression in thinking, biographic graphs, sincere disclosure, and more. **First model load takes 30–60 s.** mREBEL is ~1.5 GB and ~10–20 s per inference on CPU-basic.
 
-## Observability
-
-Errors and pipeline spans flow into Sentry when configured. The Space launcher reads three env vars (set under **Settings → Variables and secrets**):
-
-- `SENTRY_DSN` — required to enable
-- `SENTRY_ENVIRONMENT` — default `demo`
-- `SENTRY_TRACES_SAMPLE_RATE` — default `0.2`
-
-Without `SENTRY_DSN` all helpers no-op silently; the Space still runs.
 
 ## The bigger picture
 
@@ -75,6 +71,16 @@ This Space shows the **sensor**. The full runtime adds:
 → [GitHub: hleserg/atman](https://github.com/hleserg/atman)
 → [MANIFEST.md](https://github.com/hleserg/atman/blob/main/MANIFEST.md)
 → [System overview](https://github.com/hleserg/atman/blob/main/docs/content/SYSTEM.md)
+
+## Feedback welcome
+
+This is my **first project in AI/ML**. I learned a lot building it and I know
+there are rough edges I can't see yet — better model choices, smarter
+algorithms, cleaner architectural moves. If you spot something that should be
+done more efficiently, I'd be genuinely grateful for the input.
+
+Open an [issue on GitHub](https://github.com/hleserg/atman/issues), or leave a
+note in the Space's **Community** tab. Both lead to me directly.
 
 ---
 
@@ -108,3 +114,14 @@ Built by the Atman project • [GitHub](https://github.com/hleserg/atman) • [M
 Здесь только сенсор. В полном runtime есть устойчивая память между сессиями, Identity Store, три уровня рефлексии (micro/daily/deep), эмоциональная регуляция с rolling baselines, Session Manager со snapshot'ами личности, веб-дашборд, TUI, CLI.
 
 → [GitHub: hleserg/atman](https://github.com/hleserg/atman) · [MANIFEST](https://github.com/hleserg/atman/blob/main/MANIFEST.md) · [SYSTEM.md](https://github.com/hleserg/atman/blob/main/docs/content/SYSTEM.md)
+
+### Обратная связь
+
+Это мой **первый проект в AI/ML**. Я многому научился пока его делал, и
+понимаю что в реализации наверняка есть шероховатости которые я ещё не вижу —
+другой выбор моделей, лучший алгоритм, более грамотные архитектурные ходы.
+Если заметил что-то что можно сделать оптимальнее — буду искренне благодарен
+за совет.
+
+Открой [issue на GitHub](https://github.com/hleserg/atman/issues) или оставь
+комментарий в **Community** этого Space. Оба варианта ведут напрямую ко мне.
