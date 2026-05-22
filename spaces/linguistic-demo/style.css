@@ -20,8 +20,44 @@
 }
 .gradio-container, .gradio-container * { letter-spacing: -0.003em; }
 
-/* ── Hero column (#atman-hero — wraps H1 + header_md + diagram) ──────── */
-#atman-hero { padding: 56px 56px 16px; position: relative; text-align: center; }
+/* ── Header row (#atman-header-row — lang pill, sits ABOVE hero) ─────── */
+#atman-header-row {
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    padding: 16px 24px 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+#atman-header-row > .block,
+#atman-header-row > .gr-block,
+#atman-header-row > .form,
+#atman-header-row > div {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+}
+
+/* ── Hero column (#atman-hero — wraps H1 + header_md) ────────────────── */
+#atman-hero { padding: 32px 56px 16px; text-align: center; }
+
+/* Strip card chrome from descriptive Markdown blocks inside hero */
+#atman-hero > .block,
+#atman-hero > .gr-block,
+#atman-hero .markdown,
+#atman-hero > div > .markdown {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
 
 /* The H1 lives inside the first gr.Markdown — target its rendered h1 */
 #atman-hero .gr-block:first-child h1,
@@ -46,17 +82,24 @@
     max-width: 720px;
     margin: 0 auto !important;
 }
-.dark #atman-header-md, .dark #atman-header-md p { color: #94A3B8 !important; }
+:is(.dark, html.dark, body.dark) #atman-header-md,
+:is(.dark, html.dark, body.dark) #atman-header-md p { color: #94A3B8 !important; }
+
 #atman-header-md em {
-    color: #0F172A !important; opacity: .8;
+    color: #0F172A !important; opacity: .85;
     display: block !important; margin-top: 10px;
     font-size: 14px !important; font-style: italic !important;
 }
-.dark #atman-header-md em { color: #E2E8F0 !important; }
-#atman-header-md b, #atman-header-md strong {
-    color: #0F172A !important; font-weight: 600 !important;
+:is(.dark, html.dark, body.dark) #atman-header-md em { color: #E2E8F0 !important; }
+
+#atman-header-md b, #atman-header-md strong, #atman-header-md [class*="bold"] {
+    color: #0F172A !important; font-weight: 700 !important;
 }
-.dark #atman-header-md b, .dark #atman-header-md strong { color: #E2E8F0 !important; }
+:is(.dark, html.dark, body.dark) #atman-header-md b,
+:is(.dark, html.dark, body.dark) #atman-header-md strong,
+:is(.dark, html.dark, body.dark) #atman-header-md [class*="bold"] {
+    color: #F8FAFC !important;
+}
 
 /* Pin the language radio top-right of the hero, render as a segmented pill */
 #atman-lang {
@@ -208,16 +251,18 @@ html.dark .atman-about-accordion summary,
 html.dark .atman-about-accordion > .label-wrap { color: #E2E8F0 !important; }
 html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) !important; }
 .atman-about-accordion summary,
-.atman-about-accordion > .label-wrap {
+.atman-about-accordion > .label-wrap,
+.atman-about-accordion > button {
     padding: 14px 18px !important;
     gap: 10px !important;
     font-size: 13px !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     color: #0F172A !important;
     cursor: pointer;
 }
-.dark .atman-about-accordion summary,
-.dark .atman-about-accordion > .label-wrap { color: #E2E8F0 !important; }
+:is(.dark, html.dark, body.dark) .atman-about-accordion summary,
+:is(.dark, html.dark, body.dark) .atman-about-accordion > .label-wrap,
+:is(.dark, html.dark, body.dark) .atman-about-accordion > button { color: #F1F5F9 !important; }
 .atman-about-accordion summary svg,
 .atman-about-accordion .label-wrap svg {
     color: #4F46E5 !important;
@@ -236,18 +281,24 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 .atman-about-accordion li {
     font-size: 14px !important;
     line-height: 1.65 !important;
-    color: #64748B !important;
+    color: #475569 !important;
 }
-.dark .atman-about-accordion .markdown,
-.dark .atman-about-accordion p,
-.dark .atman-about-accordion li { color: #94A3B8 !important; }
+:is(.dark, html.dark, body.dark) .atman-about-accordion .markdown,
+:is(.dark, html.dark, body.dark) .atman-about-accordion p,
+:is(.dark, html.dark, body.dark) .atman-about-accordion li { color: #CBD5E1 !important; }
+
 .atman-about-accordion b,
-.atman-about-accordion strong {
+.atman-about-accordion strong,
+.atman-about-accordion [class*="bold"] {
     color: #0F172A !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
 }
-.dark .atman-about-accordion b,
-.dark .atman-about-accordion strong { color: #E2E8F0 !important; }
+:is(.dark, html.dark, body.dark) .atman-about-accordion b,
+:is(.dark, html.dark, body.dark) .atman-about-accordion strong,
+:is(.dark, html.dark, body.dark) .atman-about-accordion [class*="bold"] {
+    color: #F8FAFC !important;
+}
+
 .atman-about-accordion blockquote {
     margin: 14px 0 0 !important;
     padding: 12px 16px !important;
@@ -255,8 +306,24 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     background: rgba(79,70,229,0.06) !important;
     border-radius: 0 6px 6px 0 !important;
     font-size: 13px !important;
+    color: #1E293B !important;
 }
-.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) !important; }
+:is(.dark, html.dark, body.dark) .atman-about-accordion blockquote {
+    background: rgba(99,102,241,0.12) !important;
+    color: #E2E8F0 !important;
+}
+
+/* Kill nested .block chrome inside accordions — single container, no doubled rims */
+.atman-about-accordion .block,
+.atman-about-accordion .gr-block,
+.atman-about-accordion .markdown,
+.atman-about-accordion .html,
+.atman-about-accordion .prose {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
 
 /* ── Dropdowns (preset selectors) ────────────────────────────────────── */
 .gr-dropdown, .gradio-dropdown, .dropdown {
