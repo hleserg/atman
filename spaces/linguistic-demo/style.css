@@ -629,24 +629,17 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     font-weight: 500 !important;
     letter-spacing: 0.05em !important;
     text-transform: uppercase !important;
-    color: #64748B !important;
-    margin: 14px 0 6px !important;
-}
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-hdr,
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-hdr p {
-    color: #94A3B8 !important;
+    color: var(--body-text-color-subdued, #64748B) !important;
+    margin: 10px 0 2px !important;
+    line-height: 1.3 !important;
 }
 
 .atman-report-group .atman-sec-body,
 .atman-report-group .atman-sec-body p {
-    font-size: 13.5px !important;
-    line-height: 1.65 !important;
-    color: #0F172A !important;
-    margin: 0 0 4px !important;
-}
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-body,
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-body p {
-    color: #E2E8F0 !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    color: var(--body-text-color, #E2E8F0) !important;
+    margin: 0 !important;
 }
 
 .atman-meta-block,
@@ -654,17 +647,23 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .atman-report-group .atman-sec-body.atman-meta-block p {
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 12px !important;
-    color: #64748B !important;
+    color: var(--body-text-color-subdued, #94A3B8) !important;
     letter-spacing: 0.02em !important;
-}
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-body.atman-meta-block,
-:is(.dark, html.dark, body.dark) .atman-report-group .atman-sec-body.atman-meta-block p {
-    color: #94A3B8 !important;
+    line-height: 1.4 !important;
 }
 
-/* ── gr.Code (JSON output) — make it look like a flat <pre> ──────────── */
-.atman-json-code,
-.atman-json-code > .block,
+/* ── gr.Code (JSON output) — flat <pre> on block background ──────────── */
+/* Outer wrapper takes the theme background — CodeMirror internals are
+   transparent so they can't override with their own injected styles. */
+.atman-json-code {
+    background: var(--block-background-fill, #1e1e2e) !important;
+    border: 1px solid var(--block-border-color, #E5E7EB) !important;
+    border-radius: 8px !important;
+}
+.atman-json-code > .block {
+    background: transparent !important;
+    border: none !important;
+}
 .atman-json-code .codemirror-wrapper,
 .atman-json-code .code-wrap,
 .atman-json-code .cm-editor,
@@ -672,16 +671,11 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .atman-json-code .cm-content,
 .atman-json-code .cm-gutters,
 .atman-json-code pre {
-    background: var(--block-background-fill, #F8FAFC) !important;
-    color: var(--body-text-color, #0F172A) !important;
+    background: transparent !important;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     font-size: 13px !important;
-    line-height: 1.75 !important;
-}
-.atman-json-code,
-.atman-json-code > .block {
-    border: 1px solid var(--block-border-color, #E5E7EB) !important;
-    border-radius: 8px !important;
+    line-height: 1.6 !important;
+    color: var(--body-text-color, #E2E8F0) !important;
 }
 
 /* Hide all chrome inside gr.Code: line numbers, copy/fullscreen buttons,
@@ -748,13 +742,10 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 #atman-hero + * { margin-top: 4px !important; }
 
 /* ── Kill empty-state placeholders (aa / </> icons) ─────────────────────
-   Hide them entirely — they appear in HighlightedText and Code before any
-   analysis runs. Never target SVGs outside .empty wrappers (breaks chevrons,
-   hero diagram, etc.). */
-.atman-highlight .empty,
-.atman-highlight [class*="empty"],
-.atman-json-code .empty,
-.atman-json-code [class*="empty"],
+   Gradio 6 Empty component renders: <div aria-label="Empty value"><div class="icon">
+   That aria-label is stable across versions. Also keep legacy class selectors
+   as belt-and-suspenders for older cached builds. */
+div[aria-label="Empty value"],
 .gradio-container .empty,
 .gradio-container [class*="empty-state"],
 .gradio-container .empty-holder {
