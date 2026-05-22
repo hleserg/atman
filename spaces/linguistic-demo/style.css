@@ -111,7 +111,8 @@
     padding: 0 !important;
 }
 .atman-hero-diagram {
-    max-width: 960px;
+    max-width: 100%;
+    width: 100%;
     margin: 36px auto 0;
     padding: 22px;
     background: var(--block-background-fill, #13131F) !important;
