@@ -230,7 +230,9 @@ class PassiveMemoryInjector:
                     with _suppress(Exception):
                         _cand_span.set_data("rag.candidates_fetched", len(candidate_facts))
                         _cand_span.set_data("rag.pool_size", self.candidate_pool_size)
-            _slog("passive_candidates", count=len(candidate_facts), pool_size=self.candidate_pool_size)
+            _slog(
+                "passive_candidates", count=len(candidate_facts), pool_size=self.candidate_pool_size
+            )
 
             # Embedding scoring + working-memory dedup + empty-content skip.
             # Use embed_batch so remote adapters (Ollama, flag) make one round-trip
@@ -273,12 +275,14 @@ class PassiveMemoryInjector:
                 if _bm25_span is not None:
                     with _suppress(Exception):
                         _bm25_span.set_data("rag.bm25_enabled", self._bm25 is not None)
-                        _bm25_span.set_data("rag.pre_fusion_top10", [
-                            {"id": str(fid), "score": round(sc, 4)} for fid, sc in pre_bm25
-                        ])
-                        _bm25_span.set_data("rag.post_fusion_top10", [
-                            {"id": str(f.id), "score": round(sc, 4)} for f, sc in ordered[:10]
-                        ])
+                        _bm25_span.set_data(
+                            "rag.pre_fusion_top10",
+                            [{"id": str(fid), "score": round(sc, 4)} for fid, sc in pre_bm25],
+                        )
+                        _bm25_span.set_data(
+                            "rag.post_fusion_top10",
+                            [{"id": str(f.id), "score": round(sc, 4)} for f, sc in ordered[:10]],
+                        )
 
             # Optional cross-encoder reranking (ambient mode).
             if self._ambient_mode:
@@ -288,12 +292,22 @@ class PassiveMemoryInjector:
                     ordered = self._apply_reranker(context_text, ordered)
                     if _rr_span is not None:
                         with _suppress(Exception):
-                            _rr_span.set_data("rag.rerank_input_count", min(pre_rerank_count, self._reranker_top_n))
+                            _rr_span.set_data(
+                                "rag.rerank_input_count",
+                                min(pre_rerank_count, self._reranker_top_n),
+                            )
                             _rr_span.set_data("rag.rerank_output_count", len(ordered))
-                            _rr_span.set_data("rag.reranked_top10", [
-                                {"id": str(f.id), "score": round(sc, 4), "preview": str(f.content or "")[:80]}
-                                for f, sc in ordered[:10]
-                            ])
+                            _rr_span.set_data(
+                                "rag.reranked_top10",
+                                [
+                                    {
+                                        "id": str(f.id),
+                                        "score": round(sc, 4),
+                                        "preview": str(f.content or "")[:80],
+                                    }
+                                    for f, sc in ordered[:10]
+                                ],
+                            )
                 _slog(
                     "passive_reranked",
                     input_count=min(pre_rerank_count, self._reranker_top_n),
@@ -320,7 +334,9 @@ class PassiveMemoryInjector:
                     rel_embedding = self.embedding.embed(fact.content)
                     rel_score = float(self.embedding.similarity(query_embedding, rel_embedding))
                     surfaced.append(
-                        SurfacedMemoryItem(item=fact, source="associative", score=min(rel_score, 0.5))
+                        SurfacedMemoryItem(
+                            item=fact, source="associative", score=min(rel_score, 0.5)
+                        )
                     )
                     seen_ids.add(fact.id)
                     if working_memory:
@@ -329,21 +345,29 @@ class PassiveMemoryInjector:
             if _rag_span is not None:
                 with _suppress(Exception):
                     _rag_span.set_data("rag.final_count", len(surfaced))
-                    _rag_span.set_data("rag.direct_count",
-                                       sum(1 for s in surfaced if s.source != "associative"))
-                    _rag_span.set_data("rag.associative_count",
-                                       sum(1 for s in surfaced if s.source == "associative"))
-                    _rag_span.set_data("rag.final_items", [
-                        {
-                            "id": str(s.item.id),
-                            "source": s.source,
-                            "score": round(s.score, 4),
-                            "preview": str(getattr(s.item, "content", None)
-                                          or getattr(s.item, "what_happened", None)
-                                          or "")[:120],
-                        }
-                        for s in surfaced[:20]
-                    ])
+                    _rag_span.set_data(
+                        "rag.direct_count", sum(1 for s in surfaced if s.source != "associative")
+                    )
+                    _rag_span.set_data(
+                        "rag.associative_count",
+                        sum(1 for s in surfaced if s.source == "associative"),
+                    )
+                    _rag_span.set_data(
+                        "rag.final_items",
+                        [
+                            {
+                                "id": str(s.item.id),
+                                "source": s.source,
+                                "score": round(s.score, 4),
+                                "preview": str(
+                                    getattr(s.item, "content", None)
+                                    or getattr(s.item, "what_happened", None)
+                                    or ""
+                                )[:120],
+                            }
+                            for s in surfaced[:20]
+                        ],
+                    )
 
         _slog(
             "passive_surfaced",

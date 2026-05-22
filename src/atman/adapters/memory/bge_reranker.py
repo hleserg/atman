@@ -93,10 +93,13 @@ class BgeReranker(MemoryReranker):
                 with suppress(Exception):
                     if _span is not None:
                         _span.set_data("rerank.fallback", True)
-                        _span.set_data("rerank.candidates_out", [
-                            {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
-                            for c in result
-                        ])
+                        _span.set_data(
+                            "rerank.candidates_out",
+                            [
+                                {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
+                                for c in result
+                            ],
+                        )
                 return result
 
             pairs = [[query, c.text] for c in candidates]
@@ -123,20 +126,28 @@ class BgeReranker(MemoryReranker):
                 if _span is not None:
                     scores = [float(s) for s in raw_scores]
                     _span.set_data("rerank.query", query)
-                    _span.set_data("rerank.candidates_in", [
-                        {"text": c.text[:200], "score_before": round(c.score or 0, 4)}
-                        for c in candidates
-                    ])
+                    _span.set_data(
+                        "rerank.candidates_in",
+                        [
+                            {"text": c.text[:200], "score_before": round(c.score or 0, 4)}
+                            for c in candidates
+                        ],
+                    )
                     _span.set_data("rerank.all_scores", [round(s, 4) for s in scores])
-                    _span.set_data("rerank.candidates_out", [
-                        {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
-                        for c in result
-                    ])
+                    _span.set_data(
+                        "rerank.candidates_out",
+                        [
+                            {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
+                            for c in result
+                        ],
+                    )
                     if scores:
                         _span.set_data("rerank.scores_min", round(min(scores), 4))
                         _span.set_data("rerank.scores_max", round(max(scores), 4))
                         _span.set_data("rerank.scores_mean", round(sum(scores) / len(scores), 4))
 
         with suppress(Exception):
-            metric_distribution("atman.rerank.latency_ms", (time.monotonic() - _t0) * 1000, unit="millisecond")
+            metric_distribution(
+                "atman.rerank.latency_ms", (time.monotonic() - _t0) * 1000, unit="millisecond"
+            )
         return result

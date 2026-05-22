@@ -140,15 +140,19 @@ async def record_key_moment(
         import sentry_sdk as _sdk
 
         from atman.adapters.observability.sentry import metric_increment as _mi
+
         with _suppress(Exception):
-            _sdk.set_context("tool.record_key_moment", {
-                "what_happened": what_happened,
-                "why_it_matters": why_it_matters,
-                "emotional_valence": emotional_valence,
-                "emotional_intensity": emotional_intensity,
-                "depth": depth,
-                "session_id": str(ctx.deps.session_id),
-            })
+            _sdk.set_context(
+                "tool.record_key_moment",
+                {
+                    "what_happened": what_happened,
+                    "why_it_matters": why_it_matters,
+                    "emotional_valence": emotional_valence,
+                    "emotional_intensity": emotional_intensity,
+                    "depth": depth,
+                    "session_id": str(ctx.deps.session_id),
+                },
+            )
         report = AgentMemoryReport(
             content=what_happened,
             emotional_valence=emotional_valence,
@@ -297,12 +301,16 @@ def resolve_pending_review(
         import sentry_sdk as _sdk
 
         from atman.adapters.observability.sentry import metric_increment as _mi
+
         with _suppress(Exception):
-            _sdk.set_context("tool.resolve_pending_review", {
-                "review_id": review_id,
-                "decision": resolution.value,
-                "note": note_clean,
-            })
+            _sdk.set_context(
+                "tool.resolve_pending_review",
+                {
+                    "review_id": review_id,
+                    "decision": resolution.value,
+                    "note": note_clean,
+                },
+            )
         resolved = inbox.resolve(
             review_uuid,
             resolution=resolution,
@@ -377,12 +385,16 @@ def request_reflection(
     import sentry_sdk as _sdk
 
     from atman.adapters.observability.sentry import metric_increment as _mi
+
     with _suppress(Exception):
-        _sdk.set_context("tool.request_reflection", {
-            "reason": reason_clean,
-            "level": resolved_level.value,
-            "run_key": run_key,
-        })
+        _sdk.set_context(
+            "tool.request_reflection",
+            {
+                "reason": reason_clean,
+                "level": resolved_level.value,
+                "run_key": run_key,
+            },
+        )
     try:
         stored = queue.enqueue(request)
     except Exception as exc:

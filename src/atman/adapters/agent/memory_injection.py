@@ -87,6 +87,7 @@ def inject_memory(
     with suppress(Exception):
         from atman.adapters.observability.sentry import metric_distribution as _md
         from atman.adapters.observability.sentry import metric_increment as _mi
+
         _mi("atman.memory_injection.inject", tags={"mode": mode, "prepend": str(prepend)})
         _md("atman.memory_injection.content_chars", float(len(content)), tags={"mode": mode})
 

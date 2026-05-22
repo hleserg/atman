@@ -108,6 +108,7 @@ class TokenMonitor:
 
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
+
             _md("atman.token_monitor.usage_ratio", ratio)
             _md("atman.token_monitor.input_tokens", float(usage.input_tokens))
             _md("atman.token_monitor.context_limit", float(context_limit))
@@ -123,6 +124,7 @@ class TokenMonitor:
             self._triggered.add(95)
             with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
+
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "95"})
                 _mi("atman.token_monitor.context_limit_exceeded")
             raise ContextLimitExceeded(f"Context usage at {ratio:.1%} (95% threshold)")
@@ -138,6 +140,7 @@ class TokenMonitor:
             self._triggered.add(90)
             with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
+
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "90"})
 
         # Check 80%
@@ -148,6 +151,7 @@ class TokenMonitor:
             self._triggered.add(80)
             with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
+
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "80"})
 
         # Check 70% - full warning
@@ -162,6 +166,7 @@ class TokenMonitor:
             self._triggered.add(70)
             with suppress(Exception):
                 from atman.adapters.observability.sentry import metric_increment as _mi
+
                 _mi("atman.token_monitor.threshold_crossed", tags={"threshold": "70"})
 
     def _inject_warning(self, warning: str) -> None:

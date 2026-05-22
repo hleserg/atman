@@ -933,6 +933,7 @@ class AtmanRunner:
                     _turn_span.set_data("gen_ai.conversation.id", str(session_id))
                     with contextlib.suppress(Exception):
                         from atman.observability.sentry_init import is_full_mode as _is_full_mode
+
                         if _is_full_mode():
                             _turn_span.set_data("turn.user_text", user_text)
 
@@ -1053,6 +1054,7 @@ class AtmanRunner:
                 if _turn_span is not None:
                     with contextlib.suppress(Exception):
                         from atman.observability.sentry_init import is_full_mode as _is_full_mode
+
                         if _is_full_mode():
                             _turn_span.set_data("turn.assistant_text", str(result.output))
 
@@ -1132,9 +1134,7 @@ class AtmanRunner:
                             )
                         if usage.input_tokens and self._config.model.context_limit:
                             _pct = usage.input_tokens / self._config.model.context_limit * 100
-                            metric_distribution(
-                                "atman.context.usage_pct", _pct, unit="percent"
-                            )
+                            metric_distribution("atman.context.usage_pct", _pct, unit="percent")
                 if usage and usage.input_tokens:
                     context_limit = self._config.model.context_limit
                     input_tokens = usage.input_tokens
@@ -1637,21 +1637,27 @@ class AtmanTurn:
                 with contextlib.suppress(Exception):
                     span.set_data("ner.entity_count", len(entities))
                     span.set_data("ner.anchor_count", len(anchors))
-                    span.set_data("ner.entities", [
-                        {
-                            "text": _sanitize_utf8_for_log(e.text),
-                            "type": getattr(e.entity_type, "value", str(e.entity_type)),
-                            "score": round(getattr(e, "score", 0.0), 4),
-                        }
-                        for e in entities
-                    ])
-                    span.set_data("ner.anchors", [
-                        {
-                            "text": getattr(a, "text", str(a)),
-                            "type": getattr(a, "type", getattr(a, "anchor_type", "?")),
-                        }
-                        for a in anchors[:20]
-                    ])
+                    span.set_data(
+                        "ner.entities",
+                        [
+                            {
+                                "text": _sanitize_utf8_for_log(e.text),
+                                "type": getattr(e.entity_type, "value", str(e.entity_type)),
+                                "score": round(getattr(e, "score", 0.0), 4),
+                            }
+                            for e in entities
+                        ],
+                    )
+                    span.set_data(
+                        "ner.anchors",
+                        [
+                            {
+                                "text": getattr(a, "text", str(a)),
+                                "type": getattr(a, "type", getattr(a, "anchor_type", "?")),
+                            }
+                            for a in anchors[:20]
+                        ],
+                    )
             self._emit(
                 "entity_resolved",
                 entities=[
@@ -1763,18 +1769,23 @@ class AtmanTurn:
                     span.set_data("rag.items_surfaced", len(items))
                     span.set_data("rag.items_injected", len(rag.items))
                     span.set_data("rag.tokens_used", rag.tokens_used)
-                    span.set_data("rag.top_items", [
-                        {
-                            "kind": it.source,
-                            "score": round(it.score, 4),
-                            "preview": _sanitize_utf8_for_log(str(
-                                getattr(it.item, "content", None)
-                                or getattr(it.item, "what_happened", None)
-                                or str(it.item)
-                            )[:120]),
-                        }
-                        for it in rag.items[:10]
-                    ])
+                    span.set_data(
+                        "rag.top_items",
+                        [
+                            {
+                                "kind": it.source,
+                                "score": round(it.score, 4),
+                                "preview": _sanitize_utf8_for_log(
+                                    str(
+                                        getattr(it.item, "content", None)
+                                        or getattr(it.item, "what_happened", None)
+                                        or str(it.item)
+                                    )[:120]
+                                ),
+                            }
+                            for it in rag.items[:10]
+                        ],
+                    )
             self._emit(
                 "passive_rag",
                 items_total=len(rag.items),
@@ -1819,14 +1830,17 @@ class AtmanTurn:
                 with contextlib.suppress(Exception):
                     span.set_data("ambient.items_injected", len(items))
                     span.set_data("ambient.tokens_used", result.tokens_used)
-                    span.set_data("ambient.top_items", [
-                        {
-                            "kind": it.kind,
-                            "anchor": it.anchor_text or "",
-                            "score": round(getattr(it, "score", 0.0), 4),
-                        }
-                        for it in items[:10]
-                    ])
+                    span.set_data(
+                        "ambient.top_items",
+                        [
+                            {
+                                "kind": it.kind,
+                                "anchor": it.anchor_text or "",
+                                "score": round(getattr(it, "score", 0.0), 4),
+                            }
+                            for it in items[:10]
+                        ],
+                    )
             self._emit(
                 "ambient_injection",
                 items_total=len(items),
@@ -2024,17 +2038,23 @@ class AtmanTurn:
                 span.set_data("affect.divergence_signals", analysis.divergence_signals)
                 span.set_data("affect.entity_count", len(analysis.message_entities))
                 span.set_data("affect.span_count", len(analysis.message_spans))
-                span.set_data("affect.message_spans", [
-                    {"text": _sanitize_utf8_for_log(s.text), "label": s.label}
-                    for s in analysis.message_spans[:30]
-                ])
-                span.set_data("affect.message_entities", [
-                    {
-                        "text": _sanitize_utf8_for_log(e.text),
-                        "type": getattr(e.entity_type, "value", str(e.entity_type)),
-                    }
-                    for e in analysis.message_entities[:20]
-                ])
+                span.set_data(
+                    "affect.message_spans",
+                    [
+                        {"text": _sanitize_utf8_for_log(s.text), "label": s.label}
+                        for s in analysis.message_spans[:30]
+                    ],
+                )
+                span.set_data(
+                    "affect.message_entities",
+                    [
+                        {
+                            "text": _sanitize_utf8_for_log(e.text),
+                            "type": getattr(e.entity_type, "value", str(e.entity_type)),
+                        }
+                        for e in analysis.message_entities[:20]
+                    ],
+                )
         self._emit(
             "agent_analysis",
             stance=analysis.stance,

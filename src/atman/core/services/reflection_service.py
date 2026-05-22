@@ -345,6 +345,7 @@ class MicroReflectionService:
         from contextlib import suppress as _suppress
 
         from atman.observability.spans import pipeline_span as _ps
+
         _t0 = _t.monotonic()
 
         # HLE-46: forward the session's KeyMoments to the prompt builder via
@@ -380,7 +381,10 @@ class MicroReflectionService:
                 self.event_store.save(event)
                 with _suppress(Exception):
                     from atman.adapters.observability.sentry import metric_increment as _mi
-                    _mi("atman.reflection.completed", tags={"level": "micro", "outcome": "conflict"})
+
+                    _mi(
+                        "atman.reflection.completed", tags={"level": "micro", "outcome": "conflict"}
+                    )
                 return event
 
         event = ReflectionEvent(
@@ -411,8 +415,11 @@ class MicroReflectionService:
         with _suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _latency = (_t.monotonic() - _t0) * 1000
-            _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "micro"})
+            _md(
+                "atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "micro"}
+            )
             _mi("atman.reflection.completed", tags={"level": "micro", "outcome": "success"})
 
         return event
@@ -650,6 +657,7 @@ class DailyReflectionService:
 
         import time as _t
         from contextlib import suppress as _suppress
+
         _t0 = _t.monotonic()
 
         agent_reasons = [r.reason for r in pending_requests]
@@ -749,14 +757,20 @@ class DailyReflectionService:
         with _suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _latency = (_t.monotonic() - _t0) * 1000
-            _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "daily"})
-            _mi("atman.reflection.completed", tags={
-                "level": "daily",
-                "outcome": "success",
-                "patterns": str(len(patterns_detected)),
-                "experiences": str(len(experiences)),
-            })
+            _md(
+                "atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "daily"}
+            )
+            _mi(
+                "atman.reflection.completed",
+                tags={
+                    "level": "daily",
+                    "outcome": "success",
+                    "patterns": str(len(patterns_detected)),
+                    "experiences": str(len(experiences)),
+                },
+            )
         return persisted
 
     def _process_skills_for_daily(self) -> DailySkillSummary | None:
@@ -1097,6 +1111,7 @@ class DeepReflectionService:
 
         import time as _t
         from contextlib import suppress as _suppress
+
         _t0 = _t.monotonic()
 
         health_assessment = self._perform_health_assessment(
@@ -1247,14 +1262,18 @@ class DeepReflectionService:
         with _suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _latency = (_t.monotonic() - _t0) * 1000
             _md("atman.reflection.latency_ms", _latency, unit="millisecond", tags={"level": "deep"})
-            _mi("atman.reflection.completed", tags={
-                "level": "deep",
-                "outcome": "success",
-                "patterns": str(len(patterns_detected)),
-                "experiences": str(len(experiences)),
-            })
+            _mi(
+                "atman.reflection.completed",
+                tags={
+                    "level": "deep",
+                    "outcome": "success",
+                    "patterns": str(len(patterns_detected)),
+                    "experiences": str(len(experiences)),
+                },
+            )
         return persisted
 
     def _process_skills_for_deep(self) -> DeepSkillSummary | None:

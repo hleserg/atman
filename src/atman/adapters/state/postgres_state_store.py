@@ -312,6 +312,7 @@ class PostgresStateStore(StateStore):
                 )
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.session_created")
         return session
 
@@ -372,6 +373,7 @@ class PostgresStateStore(StateStore):
                 )
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.session_updated", tags={"status": str(session.status)})
         return session
 
@@ -531,6 +533,7 @@ class PostgresStateStore(StateStore):
                 raise ValueError(f"KeyMoment {key_moment.id} already exists") from exc
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.key_moment_created")
         return key_moment
 
@@ -548,12 +551,17 @@ class PostgresStateStore(StateStore):
             )
         schema = self._schema_ident(existing.agent_id)
         conn = self._get_conn()
-        with db_span("postgresql", "UPSERT", collection="key_moments"), conn.transaction(), conn.cursor() as cur:
+        with (
+            db_span("postgresql", "UPSERT", collection="key_moments"),
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             self._insert_moment_rows(
                 cur, schema, moment, existing.agent_id, on_conflict_upsert=True
             )
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.key_moment_stored")
         return moment
 
@@ -599,7 +607,11 @@ class PostgresStateStore(StateStore):
         if schema is None:
             return []
         conn = self._get_conn()
-        with db_span("postgresql", "SELECT", collection="key_moments"), conn.transaction(), conn.cursor() as cur:
+        with (
+            db_span("postgresql", "SELECT", collection="key_moments"),
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             q = sql.SQL(
                 "SELECT * FROM {s}.key_moments WHERE session_id = %(sid)s ORDER BY recorded_at ASC"
             ).format(s=schema)
@@ -608,6 +620,7 @@ class PostgresStateStore(StateStore):
         result = [_row_to_key_moment(r) for r in rows]
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_distribution as _md
+
             _md("atman.state_store.moments_returned", float(len(result)))
         return result
 
@@ -779,7 +792,11 @@ class PostgresStateStore(StateStore):
             )
         conn = self._get_conn()
         state = Jsonb(identity.model_dump(mode="json"))
-        with db_span("postgresql", "UPSERT", collection="identity"), conn.transaction(), conn.cursor() as cur:
+        with (
+            db_span("postgresql", "UPSERT", collection="identity"),
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             q = sql.SQL(
                 """
                 INSERT INTO {s}.identity
@@ -818,6 +835,7 @@ class PostgresStateStore(StateStore):
             )
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.identity_saved")
         return identity
 
@@ -901,7 +919,11 @@ class PostgresStateStore(StateStore):
             raise ValueError("Concurrent update detected (updated_at mismatch)")
         conn = self._get_conn()
         state = Jsonb(narrative.model_dump(mode="json"))
-        with db_span("postgresql", "UPSERT", collection="narrative"), conn.transaction(), conn.cursor() as cur:
+        with (
+            db_span("postgresql", "UPSERT", collection="narrative"),
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             q = sql.SQL(
                 """
                 INSERT INTO {s}.narrative
@@ -936,6 +958,7 @@ class PostgresStateStore(StateStore):
             )
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.narrative_saved")
         return narrative
 
@@ -959,13 +982,18 @@ class PostgresStateStore(StateStore):
         schema = self._schema_ident(agent_id)
         conn = self._get_conn()
         blob = Jsonb(eigenstate.model_dump(mode="json"))
-        with db_span("postgresql", "UPDATE", collection="eigenstate"), conn.transaction(), conn.cursor() as cur:
+        with (
+            db_span("postgresql", "UPDATE", collection="eigenstate"),
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             q = sql.SQL(
                 "UPDATE {s}.identity SET eigenstate = %(blob)s WHERE agent_id = %(aid)s"
             ).format(s=schema)
             cur.execute(q, {"blob": blob, "aid": agent_id})
         with suppress(Exception):
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.state_store.eigenstate_saved")
         return eigenstate
 

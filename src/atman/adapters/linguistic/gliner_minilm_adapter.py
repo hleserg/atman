@@ -460,6 +460,7 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                 latency_ms=0,
             )
             from atman.adapters.observability.sentry import metric_increment as _mi
+
             _mi("atman.ner.cache_hit")
             return cached
 
@@ -482,18 +483,21 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                     _span.set_data("ner.anchor_count", len(anchors))
                     _span.set_data("ner.language", language)
                     _span.set_data("ner.input_text", text)
-                    _span.set_data("ner.entities", [
-                        {
-                            "text": e.text,
-                            "type": e.entity_type.value,
-                            "score": round(e.confidence, 4),
-                        }
-                        for e in entities
-                    ])
-                    _span.set_data("ner.anchors", [
-                        {"text": a.text, "type": a.anchor_type}
-                        for a in anchors[:20]
-                    ])
+                    _span.set_data(
+                        "ner.entities",
+                        [
+                            {
+                                "text": e.text,
+                                "type": e.entity_type.value,
+                                "score": round(e.confidence, 4),
+                            }
+                            for e in entities
+                        ],
+                    )
+                    _span.set_data(
+                        "ner.anchors",
+                        [{"text": a.text, "type": a.anchor_type} for a in anchors[:20]],
+                    )
         _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
         _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond", tags={"call": "user"})
         result = UserMessageAnalysis(
@@ -591,22 +595,31 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                     _span.set_data("ner.boundary_markers", boundary_markers)
                     _span.set_data("ner.cognitive_load_high", cognitive_load_high)
                     _span.set_data("ner.language", language)
-                    _span.set_data("ner.message_entities", [
+                    _span.set_data(
+                        "ner.message_entities",
+                        [
+                            {
+                                "text": e.text,
+                                "type": e.entity_type.value,
+                                "score": round(e.confidence, 4),
+                            }
+                            for e in message_entities
+                        ],
+                    )
+                    _span.set_data(
+                        "ner.message_spans",
+                        [
+                            {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
+                            for s in message_spans
+                        ],
+                    )
+                    _span.set_data(
+                        "ner.classify_all_scores",
                         {
-                            "text": e.text,
-                            "type": e.entity_type.value,
-                            "score": round(e.confidence, 4),
-                        }
-                        for e in message_entities
-                    ])
-                    _span.set_data("ner.message_spans", [
-                        {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
-                        for s in message_spans
-                    ])
-                    _span.set_data("ner.classify_all_scores", {
-                        task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
-                        for task, scores in _a_scores.items()
-                    })
+                            task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
+                            for task, scores in _a_scores.items()
+                        },
+                    )
 
         _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
         _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond", tags={"call": "agent"})
@@ -663,14 +676,18 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                 legacy_scores.get("boundary event", 0.0) > self._classification_threshold
                 or len(boundary_markers) > 0
             )
-            principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
+            principle_invocations = [
+                pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()
+            ]
             cognitive_load = min(1.0, max(0.0, legacy_scores.get(_HIGH_COGNITIVE_LOAD_LABEL, 0.0)))
 
             positive_score = legacy_scores.get("positive trust", 0.0)
             negative_score = legacy_scores.get("negative trust", 0.0)
             if positive_score > self._classification_threshold and positive_score > negative_score:
                 trust_signal: str | None = "positive"
-            elif negative_score > self._classification_threshold and negative_score > positive_score:
+            elif (
+                negative_score > self._classification_threshold and negative_score > positive_score
+            ):
                 trust_signal = "negative"
             else:
                 trust_signal = None
@@ -696,7 +713,9 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
 
             agency_level = _k_classify("agency_level", _POINT_K_CLASSIFICATIONS["agency_level"])
             confidence_in_self = _k_classify(
-                "confidence_in_self", _POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP
+                "confidence_in_self",
+                _POINT_K_CLASSIFICATIONS["confidence_in_self"],
+                _CONFIDENCE_MAP,
             )
             trust_signal_category = _k_classify(
                 "trust_signal_category",
@@ -728,25 +747,43 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                     _span.set_data("ner.marker_span_count", len(marker_spans))
                     _span.set_data("ner.boundary_event", boundary_event)
                     _span.set_data("ner.cognitive_load", round(cognitive_load, 4))
-                    _span.set_data("ner.entities", [
-                        {"text": e.text, "type": e.entity_type.value, "score": round(e.confidence, 4)}
-                        for e in entities
-                    ])
-                    _span.set_data("ner.marker_spans", [
-                        {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
-                        for s in marker_spans
-                    ])
-                    _span.set_data("ner.legacy_scores", {
-                        lbl: round(sc, 4) for lbl, sc in legacy_scores.items()
-                    })
-                    _span.set_data("ner.classify_all_scores", {
-                        task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
-                        for task, scores in _k_scores.items()
-                    })
+                    _span.set_data(
+                        "ner.entities",
+                        [
+                            {
+                                "text": e.text,
+                                "type": e.entity_type.value,
+                                "score": round(e.confidence, 4),
+                            }
+                            for e in entities
+                        ],
+                    )
+                    _span.set_data(
+                        "ner.marker_spans",
+                        [
+                            {"text": s.text, "label": s.label, "score": round(s.confidence, 4)}
+                            for s in marker_spans
+                        ],
+                    )
+                    _span.set_data(
+                        "ner.legacy_scores",
+                        {lbl: round(sc, 4) for lbl, sc in legacy_scores.items()},
+                    )
+                    _span.set_data(
+                        "ner.classify_all_scores",
+                        {
+                            task: {lbl: round(sc, 4) for lbl, sc in scores.items()}
+                            for task, scores in _k_scores.items()
+                        },
+                    )
 
         _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
-        _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond",
-            tags={"call": "key_moment"})
+        _md(
+            "atman.ner.latency_ms",
+            float(_latency_ms),
+            unit="millisecond",
+            tags={"call": "key_moment"},
+        )
 
         return KeyMomentAnalysis(
             entities=entities,

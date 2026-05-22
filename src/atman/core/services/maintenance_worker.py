@@ -29,6 +29,7 @@ try:
     from atman.adapters.observability.sentry import metric_distribution as _md
     from atman.adapters.observability.sentry import metric_increment as _mi
 except Exception:  # pragma: no cover
+
     def _mi(*_a: object, **_kw: object) -> None: ...  # type: ignore[misc]
     def _md(*_a: object, **_kw: object) -> None: ...  # type: ignore[misc]
 
@@ -117,8 +118,16 @@ class MaintenanceWorker:
                     result=result,
                     elapsed_ms=elapsed_ms,
                 )
-                _mi("atman.maintenance.job_done", tags={"job": job.job_name.value, "outcome": outcome.value})
-                _md("atman.maintenance.job_latency_ms", float(elapsed_ms), unit="millisecond", tags={"job": job.job_name.value})
+                _mi(
+                    "atman.maintenance.job_done",
+                    tags={"job": job.job_name.value, "outcome": outcome.value},
+                )
+                _md(
+                    "atman.maintenance.job_latency_ms",
+                    float(elapsed_ms),
+                    unit="millisecond",
+                    tags={"job": job.job_name.value},
+                )
             except Exception as exc:
                 elapsed_ms = round((_time.monotonic() - _t0) * 1000)
                 _LOG.exception("maintenance job %s failed", job.id)
@@ -130,7 +139,10 @@ class MaintenanceWorker:
                     error=str(exc),
                     elapsed_ms=elapsed_ms,
                 )
-                _mi("atman.maintenance.job_done", tags={"job": job.job_name.value, "outcome": "failed"})
+                _mi(
+                    "atman.maintenance.job_done",
+                    tags={"job": job.job_name.value, "outcome": "failed"},
+                )
 
     def _handle(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         if job.job_name == JobName.salience_decay:

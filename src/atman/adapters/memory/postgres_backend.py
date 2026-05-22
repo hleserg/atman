@@ -332,10 +332,12 @@ class PostgresFactualMemory(FactualMemory):
         agent_id = record.agent_id or UUID(os.environ.get("ATMAN_CURRENT_AGENT", ""))
 
         from atman.adapters.observability.sentry import capture_db_state as _cds
+
         with db_span("postgresql", "insert", collection="facts") as _ins_span:
             _cds("fact", [record.model_dump()], context="before_write")
             if _ins_span is not None:
                 from contextlib import suppress as _suppress
+
                 with _suppress(Exception):
                     _ins_span.set_data("db.fact_id", str(record.id))
                     _ins_span.set_data("db.fact_source", record.source)
@@ -436,6 +438,7 @@ class PostgresFactualMemory(FactualMemory):
                     "vector" if (query and vec is not None) else "text" if query else "salience",
                 )
                 from contextlib import suppress as _suppress
+
                 with _suppress(Exception):
                     span.set_data("db.query.limit", limit)
                     span.set_data("db.query.has_tags_filter", bool(tags))
@@ -444,6 +447,7 @@ class PostgresFactualMemory(FactualMemory):
                 rows = self._load_rows(cur, where_sql, params, order_sql, limit)
             conn.commit()
         from atman.adapters.observability.sentry import capture_db_state as _cds
+
         _cds(
             "facts",
             [

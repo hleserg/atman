@@ -46,6 +46,7 @@ try:
         metric_increment as _mi,
     )
     from atman.observability.spans import pipeline_span as _pipeline_span
+
     _OBS_OK = True
 except Exception:  # pragma: no cover
     _OBS_OK = False
@@ -187,6 +188,7 @@ class AffectDetector:
         raw_score = emotion_score(clean_text, lang=lang)
         coverage = float(raw_score.get("_meta", {}).get("coverage", 0.0))
         import time as _time
+
         _t0 = _time.monotonic()
         metrics = self._compute_metrics(clean_text, lang)
         vec = self._metrics_vector(metrics)
@@ -324,6 +326,7 @@ class AffectDetector:
             _mi("atman.affect.key_moment_triggered", tags={"trigger": primary.value})
             if _OBS_OK and _pipeline_span is not None:
                 import sentry_sdk as _sdk
+
                 _span = _sdk.get_current_span()
                 if _span is not None:
                     _span.set_data("affect.nrc_valence", metrics.nrc_valence)
@@ -332,7 +335,9 @@ class AffectDetector:
                     _span.set_data("affect.question_tail_density", metrics.question_tail_density)
                     _span.set_data("affect.self_reference_density", metrics.self_reference_density)
                     _span.set_data("affect.disclaimer_density", metrics.disclaimer_density)
-                    _span.set_data("affect.negation_adjusted_valence", metrics.negation_adjusted_valence)
+                    _span.set_data(
+                        "affect.negation_adjusted_valence", metrics.negation_adjusted_valence
+                    )
                     _span.set_data("affect.emotion_lexical_energy", metrics.emotion_lexical_energy)
                     _span.set_data("affect.sincerity_score", metrics.sincerity_score)
                     _span.set_data("affect.trigger_reason", primary.value)
