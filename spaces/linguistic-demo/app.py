@@ -108,6 +108,20 @@ def effective_ui_lang(lang_choice: str) -> str:
     """Effective UI locale — strict ru/en, default en."""
     return "ru" if lang_choice == "ru" else "en"
 
+
+# Placeholder shown as the default-selected option in preset Dropdowns.
+# Looks like a hint, doesn't match any key in _POINT_A / _POINT_K / _RELATIONS /
+# _AFFECT dicts, so lookup_* returns None and handlers no-op when selected.
+PRESET_PLACEHOLDERS: dict[str, str] = {
+    "en": "— Select a ready-made example —",
+    "ru": "— Выберите готовый пример —",
+}
+
+
+def preset_choices(presets, lang: str, en_labels: dict[str, str] | None = None) -> list[str]:
+    """preset_labels(...) with the locale-specific placeholder prepended."""
+    return [PRESET_PLACEHOLDERS[lang], *preset_labels(presets, lang, en_labels)]
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Highlight & Output Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -599,10 +613,10 @@ def update_ui_language(lang: str):
         gr.update(value=s["divergence_title"]),
         gr.update(value=s["meta_title"]),
         gr.update(value=s["meta_title"]),
-        gr.update(choices=preset_labels(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=None, label=s["preset_label"]),
-        gr.update(choices=preset_labels(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=None, label=s["preset_label"]),
+        gr.update(choices=preset_choices(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
+        gr.update(choices=preset_choices(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
+        gr.update(choices=preset_choices(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
+        gr.update(choices=preset_choices(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["preset_label"]),
         # About-accordion labels (4) + their markdown content (4)
         gr.update(label=s["about_label"]),
         gr.update(label=s["about_label"]),
@@ -686,7 +700,8 @@ def build_ui() -> gr.Blocks:
                         )
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         a_preset = gr.Dropdown(
-                            choices=preset_labels(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
+                            choices=preset_choices(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
                             label=UI_STRINGS["en"]["preset_label"],
                             elem_id="a-preset",
                         )
@@ -790,7 +805,8 @@ def build_ui() -> gr.Blocks:
                         )
                         gr.Markdown(UI_STRINGS["en"]["presets"])
                         k_preset = gr.Dropdown(
-                            choices=preset_labels(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
+                            choices=preset_choices(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
                             label=UI_STRINGS["en"]["preset_label"],
                             elem_id="k-preset",
                         )
@@ -858,7 +874,8 @@ def build_ui() -> gr.Blocks:
                             elem_id="r-run",
                         )
                         r_preset = gr.Dropdown(
-                            choices=preset_labels(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
+                            choices=preset_choices(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
                             label=UI_STRINGS["en"]["preset_label"],
                             elem_id="r-preset",
                         )
@@ -911,7 +928,8 @@ def build_ui() -> gr.Blocks:
                             elem_id="af-run",
                         )
                         af_preset = gr.Dropdown(
-                            choices=preset_labels(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
+                            choices=preset_choices(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
                             label=UI_STRINGS["en"]["preset_label"],
                             elem_id="af-preset",
                         )
