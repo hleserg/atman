@@ -598,8 +598,15 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     padding: 0 !important;
 }
 
-/* Kill nested .block chrome inside the report group — single card, no doubled rims.
-   Gradio 6 Group renders as .styler; child blocks have .padded — target both. */
+/* The Group's inner .styler div gets --form-background-fill from Gradio — make transparent */
+.atman-report-group > .styler,
+.atman-report-group .styler.svelte-1p9262q {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+/* Kill nested .block chrome inside the report group — single card, no doubled rims. */
 .atman-report-group .block,
 .atman-report-group .gr-block,
 .atman-report-group .styler > .block,
