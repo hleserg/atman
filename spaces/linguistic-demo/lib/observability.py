@@ -80,6 +80,49 @@ def pipeline_span(op: str, description: str = "") -> Generator[None, None, None]
         yield
 
 
+def capture_empty_result(
+    tab: str,
+    locale: str,
+    input_text: str,
+    *,
+    reason: str = "empty",
+    signals: dict[str, Any] | None = None,
+    max_text_chars: int = 4000,
+) -> None:
+    """Record an empty/failed analysis event to Sentry (no-op when disabled).
+
+    Used by the demo to track how often analyzers return nothing — so we
+    know where the rule-based / NER layer needs more lexicon / patterns.
+    The input text is included verbatim (truncated) because the verbatim
+    failing input is the actionable diagnostic for fixing detector gaps.
+    Disclosed to users in the demo footer.
+    """
+    if not _initialized:
+        return
+    try:
+        import sentry_sdk
+
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("event_type", "empty_result")
+            scope.set_tag("tab", tab)
+            scope.set_tag("locale", locale)
+            scope.set_tag("reason", reason)
+            raw = input_text or ""
+            scope.set_context(
+                "input",
+                {
+                    "text": raw[:max_text_chars],
+                    "length": len(raw),
+                    "truncated": len(raw) > max_text_chars,
+                },
+            )
+            if signals is not None:
+                scope.set_extra("signals", signals)
+            sentry_sdk.capture_message(f"empty_result:{tab}", level="info")
+    except Exception:  # nosec B110 — observability must never raise
+        pass
+
+
 def capture_silent_exception(exc: BaseException, context: str = "", **extra: Any) -> None:
     """Capture an exception that was handled (logged, fallback applied) to Sentry."""
     if not _initialized:

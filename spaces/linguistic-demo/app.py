@@ -46,7 +46,12 @@ from lib.affect.metrics import (
 from lib.affect.refusal_detector import score_refusal
 from lib.dto import DetectedEntity, RawSpan
 from lib.linguistic import GLiNERPlusMiniLMAnalyzer
-from lib.observability import capture_silent_exception, init_sentry_from_env, traced
+from lib.observability import (
+    capture_empty_result,
+    capture_silent_exception,
+    init_sentry_from_env,
+    traced,
+)
 from lib.relations import MRebelRelationExtractor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -191,6 +196,26 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
             f"🌐 Language: **{ui}** | 🏷️ NER: {len(result.message_entities)}"
             f" | 📏 Spans: {len(result.message_spans)} | ⚡ Load: {result.cognitive_load_high}"
         )
+
+        if (
+            not result.message_spans
+            and not result.boundary_markers
+            and not result.divergence_signals
+            and not result.message_entities
+        ):
+            capture_empty_result(
+                tab="point_a",
+                locale=ui,
+                input_text=f"MSG:\n{message}\n\nTHINKING:\n{thinking}",
+                reason="no_signals",
+                signals={
+                    "message_spans": 0,
+                    "boundary_markers": 0,
+                    "divergence_signals": 0,
+                    "message_entities": 0,
+                    "had_thinking": bool(thinking.strip()),
+                },
+            )
         return highlights, classification_summary, boundary, divergence, meta
 
     return _safe_analyze("point_a", _run)
@@ -220,6 +245,18 @@ def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
             "growth_indicator": str(result.growth_indicator) if result.growth_indicator else "—",
         }
         meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(result.entities)} | 📌 Markers: {len(result.marker_spans)} | 🚧 Event: {result.boundary_event}"
+
+        if not result.marker_spans:
+            capture_empty_result(
+                tab="point_k",
+                locale=ui,
+                input_text=combined,
+                reason="no_marker_spans",
+                signals={
+                    "marker_spans": 0,
+                    "entities": len(result.entities),
+                },
+            )
         return highlights, summary, meta
 
     return _safe_analyze("point_k", _run)
@@ -244,6 +281,16 @@ def analyze_relations(text: str, lang_choice: str):
             meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}"
         else:
             meta = f"🌐 Language: **{ui}** | 📦 {len(entities)} entities | {strings['no_relations']}"
+            capture_empty_result(
+                tab="relations",
+                locale=ui,
+                input_text=text,
+                reason="no_triples",
+                signals={
+                    "entities": len(entities),
+                    "triples": 0,
+                },
+            )
         return entity_highlights, rows, meta
 
     return _safe_analyze("relations", _run)
@@ -290,6 +337,21 @@ def analyze_affect(text: str, lang_choice: str):
         )
         emphasis_md = "**" + "**, **".join(emphasized) + "**" if emphasized else "_(none)_"
         meta_md = f"🌐 Language: **{analysis_lang}** | 📝 Tokens: **{meta.get('tokens', 0)}** | 🎯 NRC Hits: **{meta.get('hits', 0)}**"
+
+        emotion_total = sum(emo_chart.values())
+        emolex_hits = int(meta.get("hits", 0) or 0)
+        if conf < 0.30 and emotion_total < 0.05 and emolex_hits == 0:
+            capture_empty_result(
+                tab="affect",
+                locale=ui,
+                input_text=text,
+                reason="no_signal",
+                signals={
+                    "refusal_confidence": round(conf, 3),
+                    "emotion_total": round(emotion_total, 4),
+                    "emolex_hits": emolex_hits,
+                },
+            )
         return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
 
     return _safe_analyze("affect", _run)
@@ -897,6 +959,15 @@ def build_ui() -> gr.Blocks:
   <em>Если кто-то знает как переучить
       <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
       отзовитесь, механизм станет намного оптимальнее.</em>
+  <small class="atman-privacy">
+    Anonymous diagnostics: when analyzers return an empty result, the input
+    text and which signals fired are sent to Sentry so the detectors can be
+    improved. No IPs, cookies, or other PII are collected.
+    <br/>
+    Анонимная диагностика: при пустых результатах анализа твой ввод и список
+    сработавших сигналов отправляются в Sentry, чтобы доработать детекторы.
+    IP, cookies и прочее PII не собираем.
+  </small>
   <a href="https://github.com/hleserg/atman">GitHub</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>

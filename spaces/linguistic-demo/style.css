@@ -541,6 +541,16 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     margin: 0 auto 8px;
 }
 .dark #atman-footer em { color: #64748B; }
+#atman-footer .atman-privacy {
+    display: block;
+    max-width: 640px;
+    margin: 14px auto 16px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #B0B8C4;
+    opacity: 0.85;
+}
+.dark #atman-footer .atman-privacy { color: #475569; }
 
 
 /* ─────────────────────────────────────────────────────────────────────────
