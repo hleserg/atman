@@ -685,7 +685,7 @@ with open(_HERE / "style.css", encoding="utf-8") as _f:
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Atman Linguistic Demo", theme=theme, css=_CSS) as demo:
+    with gr.Blocks(title="Atman Linguistic Demo") as demo:
         with gr.Row(elem_id="atman-header-row"):
             lang_radio = gr.Radio(
                 choices=["en", "ru"], value="en",
@@ -1065,6 +1065,8 @@ def build_ui() -> gr.Blocks:
             outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
 
+        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
+
         # ── Auto-detect browser language on first page load ──
         # JS reads navigator.language ("ru-RU" → "ru", "en-US" → "en"). The
         # value is passed as the input to update_ui_language(), which then
@@ -1076,8 +1078,6 @@ def build_ui() -> gr.Blocks:
             js="() => (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en'",
         )
 
-        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
-
     demo.queue(max_size=32, default_concurrency_limit=1)
     return demo
 
@@ -1087,4 +1087,6 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
+        theme=theme,
+        css=_CSS,
     )
