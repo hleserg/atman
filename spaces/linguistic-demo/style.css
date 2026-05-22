@@ -274,23 +274,38 @@ body, html { overflow-x: hidden !important; }
     max-width: 100% !important;
     box-sizing: border-box !important;
 }
-/* Prevent inner Gradio blocks from overflowing the accordion width */
-.atman-about-accordion > div:not(.label-wrap) > .block,
+/* Target the exact Gradio accordion content panel (display:none → block on open) */
+.atman-about-accordion [data-testid="accordion-content"] {
+    overflow: hidden !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+/* Constrain the Gradio column wrapper inside the content panel */
+.atman-about-accordion [data-testid="accordion-content"] > .column,
+.atman-about-accordion .column {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+/* Constrain inner block wrappers */
 .atman-about-accordion .block,
-.atman-about-accordion .wrap {
+.atman-about-accordion .wrap,
+.atman-about-accordion .html-container {
     max-width: 100% !important;
     overflow-x: hidden !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
 }
-.atman-about-accordion .markdown,
+/* Prevent long prose lines from pushing layout */
 .atman-about-accordion .prose,
+.atman-about-accordion .markdown,
 .atman-about-accordion p,
 .atman-about-accordion li,
 .atman-about-accordion pre {
     max-width: 100% !important;
     overflow-wrap: break-word !important;
     word-break: break-word !important;
-    overflow-x: auto !important;
 }
 .dark .atman-about-accordion,
 html.dark .atman-about-accordion {
