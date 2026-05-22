@@ -1,5 +1,5 @@
 ---
-title: Atman — Psychological Linguistic Layer
+title: Atman — Psychological Telemetry for AI Agents
 emoji: 🧠
 colorFrom: indigo
 colorTo: purple
@@ -15,17 +15,18 @@ tags:
   - agents
   - ner
   - relation-extraction
+  - zero-shot-classification
+  - text-classification
   - multilingual
   - russian
   - affect-detection
-  - ai-safety
 ---
 
-# Atman — Psychological Linguistic Layer
+# Atman — Psychological Telemetry for AI Agents
 
 *What your AI agent's **own text** reveals about its internal state.*
 
-![Atman Linguistic Layer — 4 analysis points feeding the runtime](assets/runtime-diagram.png)
+![Atman — 4 analysis points feeding the runtime](assets/runtime-diagram.png)
 
 [Atman](https://github.com/hleserg/atman) is a psychological runtime layer for AI agents — first-person memory, continuous identity, reflection. It doesn't replace the LLM. It sits on top.
 
@@ -55,29 +56,6 @@ Everything is **bilingual** — RU and EN — at every layer. All ML models are 
 
 Each tab has dropdowns with bilingual presets — value refusals, capability refusals, hidden suppression in thinking, biographic graphs, sincere disclosure, and more. **First model load takes 30–60 s.** mREBEL is ~1.5 GB and ~10–20 s per inference on CPU-basic.
 
-## Observability
-
-Errors and pipeline spans flow into Sentry when configured. The Space launcher reads three env vars (set under **Settings → Variables and secrets**):
-
-- `SENTRY_DSN` — required to enable
-- `SENTRY_ENVIRONMENT` — default `demo`
-- `SENTRY_TRACES_SAMPLE_RATE` — default `0.2`
-
-Without `SENTRY_DSN` all helpers no-op silently; the Space still runs.
-
-## Standalone vendoring
-
-The Space does **not** import the `atman` Python package. Core logic is vendored under `lib/`:
-
-| Demo module | Upstream source | Sync command |
-|---|---|---|
-| `lib/affect/*` | `src/atman/affect/` | `make sync-demo-affect` |
-| `lib/linguistic.py` | `src/atman/adapters/linguistic/gliner_minilm_adapter.py` | `make sync-demo-linguistic` |
-| `lib/dto.py` | `src/atman/core/ports/linguistic.py` + `core/models/entity.py` | `make sync-demo-linguistic` |
-| `lib/relations.py` | `src/atman/adapters/linguistic/mrebel_adapter.py` | manual port |
-| `lib/observability.py` | `src/atman/adapters/observability/sentry.py` | manual mirror |
-
-CI runs `make check-demo-affect-drift` and `make check-demo-linguistic-drift` to catch forgotten propagations.
 
 ## The bigger picture
 

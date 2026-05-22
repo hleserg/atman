@@ -21,7 +21,7 @@
 .gradio-container, .gradio-container * { letter-spacing: -0.003em; }
 
 /* ── Hero column (#atman-hero — wraps H1 + header_md + diagram) ──────── */
-#atman-hero { padding: 56px 0 16px; position: relative; text-align: center; }
+#atman-hero { padding: 56px 56px 16px; position: relative; text-align: center; }
 
 /* The H1 lives inside the first gr.Markdown — target its rendered h1 */
 #atman-hero .gr-block:first-child h1,
@@ -57,19 +57,6 @@
     color: #0F172A !important; font-weight: 600 !important;
 }
 .dark #atman-header-md b, .dark #atman-header-md strong { color: #E2E8F0 !important; }
-
-/* Diagram frame (gr.Image #atman-diagram) */
-#atman-diagram {
-    max-width: 960px !important;
-    margin: 36px auto 0 !important;
-    padding: 22px !important;
-    background: #FFFFFF !important;
-    border: 1px solid #E5E7EB !important;
-    border-radius: 14px !important;
-    box-shadow: 0 1px 2px rgba(15,23,42,0.04) !important;
-}
-.dark #atman-diagram { background: #13131F !important; border-color: #1F2937 !important; }
-#atman-diagram img { border-radius: 8px; max-height: 320px; object-fit: contain; }
 
 /* Pin the language radio top-right of the hero, render as a segmented pill */
 #atman-lang {
@@ -207,10 +194,19 @@
     margin-bottom: 28px !important;
     overflow: hidden;
 }
-.dark .atman-about-accordion {
+.dark .atman-about-accordion,
+html.dark .atman-about-accordion {
     border-color: #1F2937 !important;
     background: #13131F !important;
 }
+html.dark .atman-about-accordion .markdown,
+html.dark .atman-about-accordion p,
+html.dark .atman-about-accordion li { color: #94A3B8 !important; }
+html.dark .atman-about-accordion b,
+html.dark .atman-about-accordion strong { color: #E2E8F0 !important; }
+html.dark .atman-about-accordion summary,
+html.dark .atman-about-accordion > .label-wrap { color: #E2E8F0 !important; }
+html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) !important; }
 .atman-about-accordion summary,
 .atman-about-accordion > .label-wrap {
     padding: 14px 18px !important;
