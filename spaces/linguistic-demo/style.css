@@ -94,13 +94,14 @@
 }
 :is(.dark, html.dark, body.dark) #atman-header-md em { color: #E2E8F0 !important; }
 
-#atman-header-md b, #atman-header-md strong, #atman-header-md [class*="bold"] {
-    color: #0F172A !important; font-weight: 700 !important;
-}
-:is(.dark, html.dark, body.dark) #atman-header-md b,
-:is(.dark, html.dark, body.dark) #atman-header-md strong,
-:is(.dark, html.dark, body.dark) #atman-header-md [class*="bold"] {
-    color: #F8FAFC !important;
+/* Strong contrast for bold/emph text — uses Gradio theme var so it auto-swaps
+   between light and dark mode without relying on .dark/html.dark selectors. */
+.atman-emph,
+#atman-header-md b,
+#atman-header-md strong,
+#atman-header-md [class*="bold"] {
+    color: var(--body-text-color, #F8FAFC) !important;
+    font-weight: 700 !important;
 }
 
 /* ── Hero inline-SVG diagram (#atman-hero-diagram-wrap > .atman-hero-diagram) ── */
@@ -114,16 +115,11 @@
     max-width: 960px;
     margin: 36px auto 0;
     padding: 22px;
-    background: #FFFFFF;
-    border: 1px solid #E5E7EB;
+    background: var(--block-background-fill, #13131F) !important;
+    border: 1px solid var(--block-border-color, #1F2937) !important;
     border-radius: 14px;
-    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
-    color: #94A3B8;
-}
-:is(.dark, html.dark, body.dark) .atman-hero-diagram {
-    background: #13131F;
-    border-color: #1F2937;
-    color: #94A3B8;
+    box-shadow: var(--shadow-card, 0 1px 2px rgba(0,0,0,0.30));
+    color: var(--body-text-color-subdued, #94A3B8);
 }
 .atman-hero-diagram svg { display: block; width: 100%; height: auto; }
 .atman-hero-diagram-caption {
@@ -325,13 +321,8 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 .atman-about-accordion b,
 .atman-about-accordion strong,
 .atman-about-accordion [class*="bold"] {
-    color: #0F172A !important;
+    color: var(--body-text-color, #F8FAFC) !important;
     font-weight: 700 !important;
-}
-:is(.dark, html.dark, body.dark) .atman-about-accordion b,
-:is(.dark, html.dark, body.dark) .atman-about-accordion strong,
-:is(.dark, html.dark, body.dark) .atman-about-accordion [class*="bold"] {
-    color: #F8FAFC !important;
 }
 
 .atman-about-accordion blockquote {
@@ -405,14 +396,11 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
 }
 
-/* Eyebrow label above each block — force mono-caps slate look on every variant */
-.gradio-container .block .block-label,
-.gradio-container .block > label,
-.gradio-container .block > .label-wrap,
-.gradio-container .block > .label-wrap > span,
-.gradio-container .gr-block label.block-label,
-.gradio-container .gr-block > label,
-.gradio-container label.block-label,
+/* Eyebrow label above each block — force mono-caps slate look.
+   Scope tight to .block-label / [data-testid=block-label] only.
+   Do NOT touch .label-wrap (used by Accordion summary — would kill chevron flex). */
+.gradio-container .block > .block-label,
+.gradio-container .block > label.block-label,
 .gradio-container [data-testid="block-label"] {
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
@@ -428,11 +416,8 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     box-shadow: none !important;
     display: block !important;
 }
-:is(.dark, html.dark, body.dark) .gradio-container .block .block-label,
-:is(.dark, html.dark, body.dark) .gradio-container .block > label,
-:is(.dark, html.dark, body.dark) .gradio-container .block > .label-wrap,
-:is(.dark, html.dark, body.dark) .gradio-container .block > .label-wrap > span,
-:is(.dark, html.dark, body.dark) .gradio-container .gr-block label.block-label,
+:is(.dark, html.dark, body.dark) .gradio-container .block > .block-label,
+:is(.dark, html.dark, body.dark) .gradio-container .block > label.block-label,
 :is(.dark, html.dark, body.dark) .gradio-container [data-testid="block-label"] {
     color: #94A3B8 !important;
 }
@@ -585,13 +570,19 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 /* ── Detailed Analysis Report group (.atman-report-group) ────────────── */
 .atman-report-group {
     padding: 22px !important;
-    border: 1px solid #E5E7EB !important;
+    border: 1px solid var(--block-border-color, #1F2937) !important;
     border-radius: 12px !important;
-    background: #FFFFFF !important;
+    background: var(--block-background-fill, #13131F) !important;
+    box-shadow: var(--shadow-card, none) !important;
 }
-:is(.dark, html.dark, body.dark) .atman-report-group {
-    border-color: #1F2937 !important;
-    background: #13131F !important;
+/* The parent .block wrapper around our Group — make it transparent so we
+   don't get a doubled card frame (Gradio adds its own block chrome). */
+.gradio-container > * .block:has(> .atman-report-group),
+.gradio-container .block:has(.atman-report-group) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
 }
 
 /* Kill nested .block chrome inside the report group — single card, no doubled rims */
@@ -604,6 +595,24 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    min-height: 0 !important;
+}
+/* Kill scrollbars on every Markdown subsection inside the report group */
+.atman-report-group .atman-sec-hdr,
+.atman-report-group .atman-sec-body,
+.atman-report-group .atman-sec-hdr *,
+.atman-report-group .atman-sec-body * {
+    overflow: visible !important;
+    max-height: none !important;
+}
+/* Same fix globally for any block-level markdown */
+.gradio-container .markdown,
+.gradio-container .prose,
+.gradio-container .md {
+    overflow: visible !important;
+    max-height: none !important;
 }
 
 .atman-report-group h3,
@@ -747,11 +756,40 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .tab-intro b { color: #0F172A !important; font-weight: 600 !important; }
 .dark .tab-intro b { color: #E2E8F0 !important; }
 
-/* ── Whitespace rhythm ───────────────────────────────────────────────── */
-.gradio-container .gr-form > * + * { margin-top: 16px !important; }
+/* ── Whitespace rhythm — tight, just enough to keep block borders distinct ── */
+.gradio-container .gr-form > * + * { margin-top: 6px !important; }
 .gradio-container > .block + .block,
-.gradio-container > .gr-form + .gr-form { margin-top: 24px !important; }
-#atman-hero + * { margin-top: 8px !important; }
+.gradio-container > .gr-form + .gr-form { margin-top: 8px !important; }
+.gradio-container .row,
+.gradio-container .gr-row { gap: 16px !important; }
+.gradio-container .column,
+.gradio-container .gr-column { gap: 6px !important; }
+.tabs > .tabitem,
+.tabs .tabitem-content { padding: 12px 0 !important; }
+.atman-about-accordion { margin-bottom: 10px !important; }
+#atman-hero + * { margin-top: 4px !important; }
+
+/* ── Kill the gigantic empty-state icon in HighlightedText / Code / JSON ──
+   Scope SVG rule TIGHTLY to the .empty wrapper only — never touch arbitrary
+   SVGs (chevrons, hero diagram, etc.). */
+.gradio-container .empty > svg,
+.gradio-container .empty img,
+.gradio-container [class*="empty-state"] > svg,
+.gradio-container .empty-holder svg,
+.atman-highlight .empty svg,
+.atman-json-code .empty svg {
+    width: 24px !important;
+    height: 24px !important;
+    max-width: 24px !important;
+    max-height: 24px !important;
+    opacity: 0.35;
+}
+.gradio-container .empty,
+.gradio-container [class*="empty-state"],
+.gradio-container .empty-holder {
+    min-height: 0 !important;
+    padding: 16px 0 !important;
+}
 
 /* ── Footer (gr.HTML #atman-footer) ──────────────────────────────────── */
 #atman-footer {

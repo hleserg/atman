@@ -122,6 +122,49 @@ def preset_choices(presets, lang: str, en_labels: dict[str, str] | None = None) 
     """preset_labels(...) with the locale-specific placeholder prepended."""
     return [PRESET_PLACEHOLDERS[lang], *preset_labels(presets, lang, en_labels)]
 
+
+def footer_html(lang: str) -> str:
+    """Locale-specific footer — shown one language at a time via update_ui_language."""
+    if lang == "ru":
+        return """
+<div id="atman-footer">
+  <em>Мой первый проект в AI/ML — буду искренне рад отзывам про модели,
+      алгоритмы и архитектуру.</em>
+  <em>Если кто-то знает как переучить
+      <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
+      отзовитесь, механизм станет намного оптимальнее.</em>
+  <small class="atman-privacy">
+    Анонимная диагностика: при пустых результатах анализа твой ввод и список
+    сработавших сигналов отправляются в Sentry, чтобы доработать детекторы.
+    IP, cookies и прочее PII не собираем.
+  </small>
+  <a href="https://github.com/hleserg/atman">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/issues">Открыть issue</a>
+</div>
+"""
+    return """
+<div id="atman-footer">
+  <em>My first project in AI/ML — feedback on models, algorithms,
+      or architecture is genuinely welcome.</em>
+  <em>If anyone knows how to retrain
+      <code>urchade/gliner_multi_pii-v1</code> to work with Russian —
+      please reach out, the mechanism would become much more optimal.</em>
+  <small class="atman-privacy">
+    Anonymous diagnostics: when analyzers return an empty result, the input
+    text and which signals fired are sent to Sentry so the detectors can be
+    improved. No IPs, cookies, or other PII are collected.
+  </small>
+  <a href="https://github.com/hleserg/atman">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/issues">Open an issue</a>
+</div>
+"""
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Highlight & Output Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -413,13 +456,13 @@ def warmup_models():
 UI_STRINGS = {
     "en": {
         "header_blurb": (
-            "**What you're looking at**: a sensor of "
+            "<b class='atman-emph'>What you're looking at</b>: a sensor of "
             "[Atman](https://github.com/hleserg/atman) — a psychological "
             "runtime layer that gives AI agents continuous identity, "
             "first-person memory, and reflection. This Space shows the "
-            "**linguistic block** — 4 analysis points scanning what the "
-            "agent says (and thinks) for signals that feed Experience, "
-            "Identity, and Reflection.\n\n"
+            "<b class='atman-emph'>linguistic block</b> — 4 analysis points "
+            "scanning what the agent says (and thinks) for signals that feed "
+            "Experience, Identity, and Reflection.\n\n"
             "*The lower agent acts. Atman exists.*"
         ),
         "warmup_btn": "🔥 Warmup Models",
@@ -503,13 +546,13 @@ UI_STRINGS = {
     },
     "ru": {
         "header_blurb": (
-            "**Что ты сейчас видишь**: сенсор "
+            "<b class='atman-emph'>Что ты сейчас видишь</b>: сенсор "
             "[Atman](https://github.com/hleserg/atman) — психологического "
             "runtime-слоя, который даёт AI-агентам непрерывную идентичность, "
             "память от первого лица и рефлексию. Этот Space показывает "
-            "**лингвистический блок** — 4 точки анализа, сканирующие что "
-            "агент говорит (и думает) на предмет сигналов, питающих "
-            "Experience, Identity и Reflection.\n\n"
+            "<b class='atman-emph'>лингвистический блок</b> — 4 точки анализа, "
+            "сканирующие что агент говорит (и думает) на предмет сигналов, "
+            "питающих Experience, Identity и Reflection.\n\n"
             "*Нижний агент действует. Atman существует.*"
         ),
         "warmup_btn": "🔥 Прогреть модели",
@@ -586,8 +629,8 @@ UI_STRINGS = {
             "- ⚪ **< 0.30** — нет паттерна отказа.\n\n"
             "**Питает → Affective Regulation.** Скользящие baseline'ы, триггеры "
             "расхождения, события ценностного отказа.\n\n"
-            "> ⚠️ **Rule-based first-pass.** Тонкие/идиоматичные отказы "
-            "(*'неприятно даже рассматривать'*, *'I'd really rather not'*) могут "
+            "> ⚠️ **Правила первого прохода.** Тонкие/идиоматичные отказы "
+            "(*'неприятно даже рассматривать'*, *'мне это не подходит'*) могут "
             "застрять в серой зоне — это by design. Этот слой быстрый, детерминированный, "
             "объяснимый; LLM-слой сверху уточняет серую зону."
         ),
@@ -709,22 +752,6 @@ def build_ui() -> gr.Blocks:
                         a_highlight = gr.HighlightedText(
                             label="Point A NER (13 psychological labels)",
                             combine_adjacent=False, show_legend=True,
-                            color_map={
-                                "commit": "green",
-                                "action_intent": "green",
-                                "action_scope": "blue",
-                                "boundary_marker": "blue",
-                                "boundary_act": "blue",
-                                "hedge": "yellow",
-                                "uncertain": "yellow",
-                                "defer_to_user": "yellow",
-                                "affect": "purple",
-                                "emotion": "purple",
-                                "emo": "purple",
-                                "intensifier": "pink",
-                                "value_reference": "indigo",
-                                "self_reference": "cyan",
-                            },
                             elem_id="a-highlight",
                             elem_classes=["atman-highlight"],
                         )

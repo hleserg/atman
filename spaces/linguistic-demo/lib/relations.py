@@ -59,8 +59,8 @@ class MRebelRelationExtractor:
         try:
             outputs = pipe(
                 text,
-                max_length=256,
-                num_beams=3,
+                max_length=192,
+                num_beams=1,
                 return_tensors=False,
                 clean_up_tokenization_spaces=True,
             )
