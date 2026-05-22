@@ -168,10 +168,37 @@ def footer_html(lang: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 # Highlight & Output Helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+# Maps 13 raw NER labels → 4 display groups for gr.HighlightedText color_map
+_POINT_A_LABEL_GROUPS: dict[str, str] = {
+    "commitment":           "commit",
+    "action intent":        "action_scope",
+    "boundary marker":      "action_scope",
+    "topic anchor":         "action_scope",
+    "hedge":                "hedge",
+    "uncertainty marker":   "hedge",
+    "concession":           "hedge",
+    "emotional anchor":     "affect",
+    "value reference":      "affect",
+    "principle invocation": "affect",
+    "intensifier":          "affect",
+    "belief marker":        "affect",
+    "relational reference": "affect",
+}
+
+_POINT_A_COLOR_MAP: dict[str, str] = {
+    "commit":       "#22C55E",
+    "action_scope": "#818CF8",
+    "hedge":        "#F59E0B",
+    "affect":       "#EC4899",
+}
+
+
 def spans_to_highlights(
     text: str,
     spans: list[RawSpan] | list[DetectedEntity],
     empty_label: str = "No psychological markers detected in this text.",
+    label_map: dict[str, str] | None = None,
 ) -> list[tuple[str, str | None]]:
     if not spans:
         return [(empty_label, None)]
@@ -179,7 +206,8 @@ def spans_to_highlights(
     typed_spans: list[tuple[int, int, str]] = []
     no_offset: list[tuple[str, str]] = []
     for s in spans:
-        label = s.label if isinstance(s, RawSpan) else s.entity_type.value
+        raw_label = s.label if isinstance(s, RawSpan) else s.entity_type.value
+        label = label_map.get(raw_label, raw_label) if label_map else raw_label
         if s.span is None:
             no_offset.append((s.text, label))
             continue
@@ -228,7 +256,7 @@ def analyze_point_a(message: str, thinking: str, lang_choice: str):
         ui = effective_ui_lang(lang_choice)
         strings = UI_STRINGS[ui]
 
-        highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"])
+        highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"], _POINT_A_LABEL_GROUPS)
 
         classification_summary = json.dumps({
             "stance": str(result.stance) if result.stance else "—",
@@ -751,8 +779,9 @@ def build_ui() -> gr.Blocks:
                         )
                     with gr.Column():
                         a_highlight = gr.HighlightedText(
-                            label="Point A NER (13 psychological labels)",
+                            label="Point A NER · 4 groups",
                             combine_adjacent=False, show_legend=True,
+                            color_map=_POINT_A_COLOR_MAP,
                             elem_id="a-highlight",
                             elem_classes=["atman-highlight"],
                         )
@@ -839,7 +868,7 @@ def build_ui() -> gr.Blocks:
                         )
                     with gr.Column():
                         k_highlight = gr.HighlightedText(
-                            label="Narrative markers",
+                            label="Point K NER · narrative markers",
                             combine_adjacent=False, show_legend=True,
                             elem_id="k-highlight",
                             elem_classes=["atman-highlight"],
@@ -898,7 +927,7 @@ def build_ui() -> gr.Blocks:
                         )
                     with gr.Column():
                         r_entities = gr.HighlightedText(
-                            label="Detected entities",
+                            label="Relations · detected entities",
                             combine_adjacent=False, show_legend=True,
                             elem_id="r-entities",
                             elem_classes=["atman-highlight"],

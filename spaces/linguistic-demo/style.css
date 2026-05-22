@@ -17,7 +17,9 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
     font-feature-settings: "ss01", "cv02", "cv11";  /* Inter numeral variants */
     -webkit-font-smoothing: antialiased;
-    max-width: 1180px !important;
+    max-width: 100% !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
     margin: 0 auto !important;
 }
 .gradio-container, .gradio-container * { letter-spacing: -0.003em; }
@@ -263,7 +265,7 @@
     border: 1px solid #E5E7EB !important;
     border-radius: 8px !important;
     background: #FFFFFF !important;
-    margin-bottom: 28px !important;
+    margin-bottom: 10px !important;
     overflow: hidden;
 }
 .dark .atman-about-accordion,
@@ -282,10 +284,11 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 .atman-about-accordion summary,
 .atman-about-accordion > .label-wrap,
 .atman-about-accordion > button {
-    padding: 14px 18px !important;
-    gap: 10px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
+    padding: 7px 12px !important;
+    gap: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    min-height: 34px !important;
     color: var(--body-text-color, #0F172A) !important;
     cursor: pointer;
 }
@@ -300,7 +303,7 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 .atman-about-accordion.open .label-wrap svg { transform: rotate(90deg); }
 .atman-about-accordion > div:not(.label-wrap),
 .atman-about-accordion .accordion-content {
-    padding: 4px 18px 18px 42px !important;
+    padding: 4px 12px 12px 28px !important;
 }
 .atman-about-accordion .markdown,
 .atman-about-accordion p,
@@ -388,82 +391,76 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
 }
 
-/* Eyebrow label above each block — force mono-caps slate look.
-   Scope tight to .block-label / [data-testid=block-label] only.
-   Do NOT touch .label-wrap (used by Accordion summary — would kill chevron flex). */
+/* Block labels float ABOVE the block card — create room via margin-top */
+.gradio-container .block:has([data-testid="block-label"]) {
+    position: relative !important;
+    overflow: visible !important;
+    margin-top: 26px !important;
+}
+/* Label: position above the border, text-only */
+.gradio-container [data-testid="block-label"],
 .gradio-container .block > .block-label,
-.gradio-container .block > label.block-label,
-.gradio-container [data-testid="block-label"] {
+.gradio-container .block > label.block-label {
+    position: absolute !important;
+    top: -20px !important;
+    left: 0 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    font-size: 11px !important;
+    letter-spacing: 0.06em !important;
+    font-size: 10px !important;
     font-weight: 500 !important;
     color: var(--body-text-color-subdued, #64748B) !important;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     background: transparent !important;
-    padding: 0 0 8px 0 !important;
+    padding: 0 !important;
     margin: 0 !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
+    display: block !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
 }
-/* Constrain the SVG icon in block labels — prevents it filling the whole block */
-.gradio-container [data-testid="block-label"] svg,
-.gradio-container [data-testid="block-label"] span > svg {
-    width: 12px !important;
-    height: 12px !important;
-    flex-shrink: 0 !important;
-}
-.gradio-container [data-testid="block-label"] > span {
-    width: 12px !important;
-    height: 12px !important;
-    display: inline-flex !important;
-    flex-shrink: 0 !important;
+/* Kill SVG/icon artifact — text label only */
+.gradio-container [data-testid="block-label"] > span,
+.gradio-container [data-testid="block-label"] svg {
+    display: none !important;
 }
 
-/* HighlightedText pills — calmer than Gradio's default rainbow */
-.gr-highlighted-text span[class*="highlight"],
-.highlighted-text span[class*="highlight"],
-.atman-highlight span[class*="highlight"],
-.atman-highlight span[class*="label"]:not(.legend *) {
+/* HighlightedText — Gradio 6 actual svelte class names */
+/* Compact text container */
+.atman-highlight .textfield.svelte-1akrbo3 {
+    line-height: 1.55 !important;
+    font-size: 14px !important;
+}
+/* Token pill: both plain and highlighted spans */
+.atman-highlight .token.svelte-1akrbo3 {
     border-radius: 4px !important;
-    padding: 1px 6px !important;
-    border: 1px solid transparent !important;
+    padding: 1px 5px !important;
     font-size: 13.5px !important;
     box-shadow: none !important;
 }
-
-/* Legend chips below the highlighted text — mono caps with color dot */
-.atman-highlight .legend {
+/* Legend row */
+.atman-highlight .legend.svelte-1akrbo3 {
     display: flex !important;
-    gap: 14px !important;
+    gap: 12px !important;
     flex-wrap: wrap !important;
-    margin-top: 14px !important;
-    padding-top: 14px !important;
-    border-top: 1px dashed #E5E7EB !important;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--block-border-color, #E5E7EB) !important;
 }
-:is(.dark, html.dark, body.dark) .atman-highlight .legend {
-    border-top-color: #1F2937 !important;
-}
-.atman-highlight .legend > * {
+.atman-highlight .legend-item.svelte-1akrbo3 {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
-    font-size: 11px !important;
+    font-size: 10px !important;
     font-weight: 500 !important;
-    letter-spacing: 0.04em !important;
+    letter-spacing: 0.05em !important;
     text-transform: uppercase !important;
-    color: #64748B !important;
+    color: var(--body-text-color-subdued, #64748B) !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
+    padding: 2px 6px !important;
+    border-radius: 3px !important;
 }
-:is(.dark, html.dark, body.dark) .atman-highlight .legend > * { color: #94A3B8 !important; }
 
 /* ── gr.JSON output (replaces gr.Label for classification) ───────────── */
 .json-holder,
@@ -527,7 +524,8 @@ button.primary,
 button.secondary {
     font-weight: 500 !important;
     border-radius: 8px !important;
-    padding: 11px 20px !important;
+    padding: 7px 18px !important;
+    min-height: 36px !important;
     letter-spacing: -0.005em !important;
     transition: background .18s, box-shadow .18s, transform .05s !important;
 }
