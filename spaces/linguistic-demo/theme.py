@@ -16,6 +16,8 @@ theme = gr.themes.Base(
     primary_hue="indigo",
     secondary_hue="violet",
     neutral_hue="slate",
+    radius_size=gr.themes.sizes.radius_md,
+    spacing_size=gr.themes.sizes.spacing_md,
     font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
     font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "SF Mono", "Menlo", "monospace"],
 ).set(
@@ -96,8 +98,10 @@ theme = gr.themes.Base(
     button_large_padding="11px 20px",
     button_large_text_weight="500",
     button_large_radius="8px",
-    button_shadow="none",                           # quiet at rest
-    button_shadow_hover="0 2px 8px rgba(79, 70, 229, 0.18)",
+    button_primary_shadow="none",                   # quiet at rest
+    button_primary_shadow_hover="0 2px 8px rgba(79, 70, 229, 0.18)",
+    button_secondary_shadow="none",
+    button_secondary_shadow_hover="0 2px 8px rgba(79, 70, 229, 0.10)",
 
     # ── Slider color (used by gr.Label progress fills in Affect tab) ─────
     slider_color="#4F46E5",
@@ -108,7 +112,5 @@ theme = gr.themes.Base(
     border_color_accent_dark="#6366F1",
     border_color_primary="#E5E7EB",
     border_color_primary_dark="#1F2937",
-    radius_size=gr.themes.sizes.radius_md,
-    spacing_size=gr.themes.sizes.spacing_md,
     layout_gap="24px",
 )

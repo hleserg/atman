@@ -557,7 +557,7 @@ with open(_HERE / "style.css", encoding="utf-8") as _f:
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Atman Linguistic Demo", theme=theme, css=_CSS) as demo:
+    with gr.Blocks(title="Atman Linguistic Demo") as demo:
         with gr.Column(elem_id="atman-hero"):
             gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
 
@@ -915,4 +915,6 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
+        theme=theme,
+        css=_CSS,
     )
