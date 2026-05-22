@@ -352,22 +352,26 @@ class PassiveMemoryInjector:
                         "rag.associative_count",
                         sum(1 for s in surfaced if s.source == "associative"),
                     )
-                    _rag_span.set_data(
-                        "rag.final_items",
-                        [
-                            {
-                                "id": str(s.item.id),
-                                "source": s.source,
-                                "score": round(s.score, 4),
-                                "preview": str(
-                                    getattr(s.item, "content", None)
-                                    or getattr(s.item, "what_happened", None)
-                                    or ""
-                                )[:120],
-                            }
-                            for s in surfaced[:20]
-                        ],
-                    )
+                with _suppress(Exception):
+                    from atman.observability.sentry_init import is_full_mode as _is_full
+
+                    if _is_full() and _rag_span is not None:
+                        _rag_span.set_data(
+                            "rag.final_items",
+                            [
+                                {
+                                    "id": str(s.item.id),
+                                    "source": s.source,
+                                    "score": round(s.score, 4),
+                                    "preview": str(
+                                        getattr(s.item, "content", None)
+                                        or getattr(s.item, "what_happened", None)
+                                        or ""
+                                    )[:120],
+                                }
+                                for s in surfaced[:20]
+                            ],
+                        )
 
         _slog(
             "passive_surfaced",

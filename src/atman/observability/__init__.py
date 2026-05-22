@@ -10,6 +10,6 @@ Usage in adapters / engines (after init):
         ...
 """
 
-from atman.observability.sentry_init import ObsLevel, init_observability, is_enabled
+from atman.observability.sentry_init import ObsLevel, init_observability, is_enabled, is_full_mode
 
-__all__ = ["ObsLevel", "init_observability", "is_enabled"]
+__all__ = ["ObsLevel", "init_observability", "is_enabled", "is_full_mode"]

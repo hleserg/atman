@@ -103,13 +103,20 @@ def init_observability(level: str | None = None) -> None:
     try:
         from sentry_sdk.integrations.pydantic_ai import PydanticAIIntegration
 
-        integrations.append(
-            PydanticAIIntegration(
-                include_prompts=_include_prompts,
-                handled_tool_call_exceptions=True,
+        try:
+            integrations.append(
+                PydanticAIIntegration(
+                    include_prompts=_include_prompts,
+                    handled_tool_call_exceptions=True,
+                )
             )
-        )
-    except (ImportError, Exception):
+        except TypeError:
+            # Older sentry-sdk without handled_tool_call_exceptions support — fall back.
+            _LOG.debug(
+                "PydanticAIIntegration: handled_tool_call_exceptions not supported, using defaults"
+            )
+            integrations.append(PydanticAIIntegration(include_prompts=_include_prompts))
+    except ImportError:
         pass
 
     # AnthropicIntegration: include_prompts=True in full mode.

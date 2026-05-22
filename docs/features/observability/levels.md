@@ -12,6 +12,7 @@ startup; it reads this variable automatically.
 | `minimal` | 10 % (+ AI at 100 %) | off | off | off | full |
 | `debug` | 100 % | 10 % | on | off | full |
 | `verbose` | 100 % | 100 % | on | on | full |
+| `full` | 100 % | 100 % | on | on | **none** |
 
 AI-related operations (`gen_ai.*` spans, `/api/agent`, `/api/chat`, `/api/memory`)
 are always sampled at 100 % in all non-off levels via `_traces_sampler`.
@@ -43,6 +44,22 @@ Everything `debug` offers, plus:
 
 Use `verbose` only for deep diagnostics; local variable capture can incidentally
 expose sensitive values even with `EventScrubber`, so never use in production.
+
+### `full`
+Everything `verbose` offers, plus:
+- `send_default_pii=True` — user IP, cookies, auth headers sent to Sentry
+- All prompt/completion text captured via `PydanticAIIntegration(include_prompts=True)`
+- All NLP/RAG/DB span data fields (query text, entity text, memory content previews)
+  captured by code guarded behind `is_full_mode()` checks
+- `before_send` / `before_send_transaction` bypassed — no event filtering
+- `EventScrubber` still runs (SDK default), but denylist is effectively empty
+- `stream_gen_ai_spans=True` — AI spans streamed separately to avoid payload limits
+- `max_value_length=100_000` — no span value truncation
+
+**NEVER use `full` in production.** It sends raw user messages, memory contents, and
+entity extractions to Sentry. For dev/experiment use in fully isolated environments only.
+Call `is_full_mode()` from `atman.observability.sentry_init` to gate expensive or
+PII-sensitive span data behind this flag.
 
 ## PII scrubbing
 

@@ -125,26 +125,34 @@ class BgeReranker(MemoryReranker):
             with suppress(Exception):
                 if _span is not None:
                     scores = [float(s) for s in raw_scores]
-                    _span.set_data("rerank.query", query)
-                    _span.set_data(
-                        "rerank.candidates_in",
-                        [
-                            {"text": c.text[:200], "score_before": round(c.score or 0, 4)}
-                            for c in candidates
-                        ],
-                    )
                     _span.set_data("rerank.all_scores", [round(s, 4) for s in scores])
-                    _span.set_data(
-                        "rerank.candidates_out",
-                        [
-                            {"text": c.text[:200], "score_after": round(c.final_score or 0, 4)}
-                            for c in result
-                        ],
-                    )
                     if scores:
                         _span.set_data("rerank.scores_min", round(min(scores), 4))
                         _span.set_data("rerank.scores_max", round(max(scores), 4))
                         _span.set_data("rerank.scores_mean", round(sum(scores) / len(scores), 4))
+            with suppress(Exception):
+                if _span is not None:
+                    from atman.observability.sentry_init import is_full_mode as _is_full
+
+                    if _is_full():
+                        _span.set_data("rerank.query", query)
+                        _span.set_data(
+                            "rerank.candidates_in",
+                            [
+                                {"text": c.text[:200], "score_before": round(c.score or 0, 4)}
+                                for c in candidates
+                            ],
+                        )
+                        _span.set_data(
+                            "rerank.candidates_out",
+                            [
+                                {
+                                    "text": c.text[:200],
+                                    "score_after": round(c.final_score or 0, 4),
+                                }
+                                for c in result
+                            ],
+                        )
 
         with suppress(Exception):
             metric_distribution(

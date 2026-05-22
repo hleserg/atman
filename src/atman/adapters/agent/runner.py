@@ -794,6 +794,7 @@ class AtmanRunner:
         if threading.current_thread() is threading.main_thread():
             original_sigterm_handler = signal.signal(signal.SIGTERM, _request_shutdown)
 
+        _turn_span_cm: object = None
         try:
             session_ctx = session_manager.start_session(self._agent_id)
             session_id = session_ctx.session_id
@@ -1216,6 +1217,10 @@ class AtmanRunner:
             print_warn("\nInterrupted.")
             # Track interruption for close_reason
             interrupted = True
+            with contextlib.suppress(Exception):
+                if _turn_span_cm is not None:
+                    _turn_span_cm.__exit__(None, None, None)
+                    _turn_span_cm = None
         finally:
             if original_sigterm_handler is not None:
                 signal.signal(signal.SIGTERM, original_sigterm_handler)
@@ -1769,23 +1774,27 @@ class AtmanTurn:
                     span.set_data("rag.items_surfaced", len(items))
                     span.set_data("rag.items_injected", len(rag.items))
                     span.set_data("rag.tokens_used", rag.tokens_used)
-                    span.set_data(
-                        "rag.top_items",
-                        [
-                            {
-                                "kind": it.source,
-                                "score": round(it.score, 4),
-                                "preview": _sanitize_utf8_for_log(
-                                    str(
-                                        getattr(it.item, "content", None)
-                                        or getattr(it.item, "what_happened", None)
-                                        or str(it.item)
-                                    )[:120]
-                                ),
-                            }
-                            for it in rag.items[:10]
-                        ],
-                    )
+                with contextlib.suppress(Exception):
+                    from atman.observability.sentry_init import is_full_mode as _is_full_mode
+
+                    if span is not None and _is_full_mode():
+                        span.set_data(
+                            "rag.top_items",
+                            [
+                                {
+                                    "kind": it.source,
+                                    "score": round(it.score, 4),
+                                    "preview": _sanitize_utf8_for_log(
+                                        str(
+                                            getattr(it.item, "content", None)
+                                            or getattr(it.item, "what_happened", None)
+                                            or str(it.item)
+                                        )[:120]
+                                    ),
+                                }
+                                for it in rag.items[:10]
+                            ],
+                        )
             self._emit(
                 "passive_rag",
                 items_total=len(rag.items),

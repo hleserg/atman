@@ -482,22 +482,26 @@ class GLiNERPlusMiniLMAdapter(LinguisticAnalyzer):
                     _span.set_data("ner.entity_count", len(entities))
                     _span.set_data("ner.anchor_count", len(anchors))
                     _span.set_data("ner.language", language)
-                    _span.set_data("ner.input_text", text)
-                    _span.set_data(
-                        "ner.entities",
-                        [
-                            {
-                                "text": e.text,
-                                "type": e.entity_type.value,
-                                "score": round(e.confidence, 4),
-                            }
-                            for e in entities
-                        ],
-                    )
-                    _span.set_data(
-                        "ner.anchors",
-                        [{"text": a.text, "type": a.anchor_type} for a in anchors[:20]],
-                    )
+                with _suppress(Exception):
+                    from atman.observability.sentry_init import is_full_mode as _is_full
+
+                    if _is_full():
+                        _span.set_data("ner.input_text", text)
+                        _span.set_data(
+                            "ner.entities",
+                            [
+                                {
+                                    "text": e.text,
+                                    "type": e.entity_type.value,
+                                    "score": round(e.confidence, 4),
+                                }
+                                for e in entities
+                            ],
+                        )
+                        _span.set_data(
+                            "ner.anchors",
+                            [{"text": a.text, "type": a.anchor_type} for a in anchors[:20]],
+                        )
         _latency_ms = round((_time.monotonic() - _t0) * 1000, 1)
         _md("atman.ner.latency_ms", float(_latency_ms), unit="millisecond", tags={"call": "user"})
         result = UserMessageAnalysis(

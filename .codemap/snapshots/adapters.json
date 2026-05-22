@@ -1,6 +1,6 @@
 {
   "component_id": "adapters",
-  "recorded_at": "2026-05-20T15:59:06.564629+00:00",
+  "recorded_at": "2026-05-22T05:56:34.562927+00:00",
   "class_names": [
     "ModelConfig",
     "AgentConfig",
@@ -99,6 +99,8 @@
     "metric_gauge",
     "metric_increment",
     "cron_checkin",
+    "capture_db_state",
+    "capture_system_prompt",
     "get_reflection_model",
     "reflection_fixtures_dir",
     "load_reflection_session_experiences",
