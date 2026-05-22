@@ -286,12 +286,9 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     gap: 10px !important;
     font-size: 13px !important;
     font-weight: 600 !important;
-    color: #0F172A !important;
+    color: var(--body-text-color, #0F172A) !important;
     cursor: pointer;
 }
-:is(.dark, html.dark, body.dark) .atman-about-accordion summary,
-:is(.dark, html.dark, body.dark) .atman-about-accordion > .label-wrap,
-:is(.dark, html.dark, body.dark) .atman-about-accordion > button { color: #F1F5F9 !important; }
 .atman-about-accordion summary svg,
 .atman-about-accordion .label-wrap svg {
     color: #4F46E5 !important;
@@ -310,11 +307,8 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 .atman-about-accordion li {
     font-size: 14px !important;
     line-height: 1.65 !important;
-    color: #475569 !important;
+    color: var(--body-text-color-subdued, #475569) !important;
 }
-:is(.dark, html.dark, body.dark) .atman-about-accordion .markdown,
-:is(.dark, html.dark, body.dark) .atman-about-accordion p,
-:is(.dark, html.dark, body.dark) .atman-about-accordion li { color: #CBD5E1 !important; }
 
 .atman-about-accordion b,
 .atman-about-accordion strong,
@@ -678,30 +672,16 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .atman-json-code .cm-content,
 .atman-json-code .cm-gutters,
 .atman-json-code pre {
-    background: #F8FAFC !important;
+    background: var(--block-background-fill, #F8FAFC) !important;
+    color: var(--body-text-color, #0F172A) !important;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     font-size: 13px !important;
     line-height: 1.75 !important;
 }
-:is(.dark, html.dark, body.dark) .atman-json-code,
-:is(.dark, html.dark, body.dark) .atman-json-code > .block,
-:is(.dark, html.dark, body.dark) .atman-json-code .codemirror-wrapper,
-:is(.dark, html.dark, body.dark) .atman-json-code .code-wrap,
-:is(.dark, html.dark, body.dark) .atman-json-code .cm-editor,
-:is(.dark, html.dark, body.dark) .atman-json-code .cm-scroller,
-:is(.dark, html.dark, body.dark) .atman-json-code .cm-content,
-:is(.dark, html.dark, body.dark) .atman-json-code .cm-gutters,
-:is(.dark, html.dark, body.dark) .atman-json-code pre {
-    background: #0F0F1B !important;
-}
 .atman-json-code,
 .atman-json-code > .block {
-    border: 1px solid #E5E7EB !important;
+    border: 1px solid var(--block-border-color, #E5E7EB) !important;
     border-radius: 8px !important;
-}
-:is(.dark, html.dark, body.dark) .atman-json-code,
-:is(.dark, html.dark, body.dark) .atman-json-code > .block {
-    border-color: #1F2937 !important;
 }
 
 /* Hide all chrome inside gr.Code: line numbers, copy/fullscreen buttons,
@@ -767,26 +747,18 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 .atman-about-accordion { margin-bottom: 10px !important; }
 #atman-hero + * { margin-top: 4px !important; }
 
-/* ── Kill the gigantic empty-state icon in HighlightedText / Code / JSON ──
-   Scope SVG rule TIGHTLY to the .empty wrapper only — never touch arbitrary
-   SVGs (chevrons, hero diagram, etc.). */
-.gradio-container .empty > svg,
-.gradio-container .empty img,
-.gradio-container [class*="empty-state"] > svg,
-.gradio-container .empty-holder svg,
-.atman-highlight .empty svg,
-.atman-json-code .empty svg {
-    width: 24px !important;
-    height: 24px !important;
-    max-width: 24px !important;
-    max-height: 24px !important;
-    opacity: 0.35;
-}
+/* ── Kill empty-state placeholders (aa / </> icons) ─────────────────────
+   Hide them entirely — they appear in HighlightedText and Code before any
+   analysis runs. Never target SVGs outside .empty wrappers (breaks chevrons,
+   hero diagram, etc.). */
+.atman-highlight .empty,
+.atman-highlight [class*="empty"],
+.atman-json-code .empty,
+.atman-json-code [class*="empty"],
 .gradio-container .empty,
 .gradio-container [class*="empty-state"],
 .gradio-container .empty-holder {
-    min-height: 0 !important;
-    padding: 16px 0 !important;
+    display: none !important;
 }
 
 /* ── Footer (gr.HTML #atman-footer) ──────────────────────────────────── */
