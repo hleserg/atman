@@ -101,6 +101,39 @@
     color: #F8FAFC !important;
 }
 
+/* ── Hero inline-SVG diagram (#atman-hero-diagram-wrap > .atman-hero-diagram) ── */
+#atman-hero-diagram-wrap {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+.atman-hero-diagram {
+    max-width: 960px;
+    margin: 36px auto 0;
+    padding: 22px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    color: #94A3B8;
+}
+:is(.dark, html.dark, body.dark) .atman-hero-diagram {
+    background: #13131F;
+    border-color: #1F2937;
+    color: #94A3B8;
+}
+.atman-hero-diagram svg { display: block; width: 100%; height: auto; }
+.atman-hero-diagram-caption {
+    font: 500 11px/1 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94A3B8;
+    margin-top: 14px;
+    text-align: center;
+}
+:is(.dark, html.dark, body.dark) .atman-hero-diagram-caption { color: #64748B; }
+
 /* Pin the language radio top-right of the hero, render as a segmented pill */
 #atman-lang {
     position: absolute !important; top: 28px !important; right: 28px !important;
@@ -404,12 +437,44 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
 
 /* HighlightedText pills — calmer than Gradio's default rainbow */
 .gr-highlighted-text span[class*="highlight"],
-.highlighted-text span[class*="highlight"] {
+.highlighted-text span[class*="highlight"],
+.atman-highlight span[class*="highlight"],
+.atman-highlight span[class*="label"]:not(.legend *) {
     border-radius: 4px !important;
-    padding: 1px 5px !important;
-    border: 1px solid transparent;
-    font-size: 13.5px;
+    padding: 1px 6px !important;
+    border: 1px solid transparent !important;
+    font-size: 13.5px !important;
+    box-shadow: none !important;
 }
+
+/* Legend chips below the highlighted text — mono caps with color dot */
+.atman-highlight .legend {
+    display: flex !important;
+    gap: 14px !important;
+    flex-wrap: wrap !important;
+    margin-top: 14px !important;
+    padding-top: 14px !important;
+    border-top: 1px dashed #E5E7EB !important;
+}
+:is(.dark, html.dark, body.dark) .atman-highlight .legend {
+    border-top-color: #1F2937 !important;
+}
+.atman-highlight .legend > * {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    color: #64748B !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+:is(.dark, html.dark, body.dark) .atman-highlight .legend > * { color: #94A3B8 !important; }
 
 /* ── gr.JSON output (replaces gr.Label for classification) ───────────── */
 .json-holder,
@@ -596,32 +661,68 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 
 /* ── gr.Code (JSON output) — make it look like a flat <pre> ──────────── */
 .atman-json-code,
-.atman-json-code .block,
-.atman-json-code .codemirror-wrapper {
-    background: #F8FAFC !important;
-    border: 1px solid #E5E7EB !important;
-    border-radius: 8px !important;
-}
-:is(.dark, html.dark, body.dark) .atman-json-code,
-:is(.dark, html.dark, body.dark) .atman-json-code .block,
-:is(.dark, html.dark, body.dark) .atman-json-code .codemirror-wrapper {
-    background: #0F0F1B !important;
-    border-color: #1F2937 !important;
-}
+.atman-json-code > .block,
+.atman-json-code .codemirror-wrapper,
+.atman-json-code .code-wrap,
 .atman-json-code .cm-editor,
 .atman-json-code .cm-scroller,
 .atman-json-code .cm-content,
 .atman-json-code .cm-gutters,
 .atman-json-code pre {
-    background: transparent !important;
+    background: #F8FAFC !important;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace !important;
     font-size: 13px !important;
+    line-height: 1.75 !important;
 }
-/* Hide line numbers + copy button + language tag in JSON code blocks */
+:is(.dark, html.dark, body.dark) .atman-json-code,
+:is(.dark, html.dark, body.dark) .atman-json-code > .block,
+:is(.dark, html.dark, body.dark) .atman-json-code .codemirror-wrapper,
+:is(.dark, html.dark, body.dark) .atman-json-code .code-wrap,
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-editor,
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-scroller,
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-content,
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-gutters,
+:is(.dark, html.dark, body.dark) .atman-json-code pre {
+    background: #0F0F1B !important;
+}
+.atman-json-code,
+.atman-json-code > .block {
+    border: 1px solid #E5E7EB !important;
+    border-radius: 8px !important;
+}
+:is(.dark, html.dark, body.dark) .atman-json-code,
+:is(.dark, html.dark, body.dark) .atman-json-code > .block {
+    border-color: #1F2937 !important;
+}
+
+/* Hide all chrome inside gr.Code: line numbers, copy/fullscreen buttons,
+   language tag, internal block label (we use the wrapper block-label only) */
 .atman-json-code .cm-gutters,
+.atman-json-code .cm-lineNumbers,
+.atman-json-code .cm-foldGutter,
+.atman-json-code button,
 .atman-json-code .copy-button,
-.atman-json-code button[aria-label*="opy"],
-.atman-json-code .language-select { display: none !important; }
+.atman-json-code [aria-label*="opy"],
+.atman-json-code [aria-label*="ull"],
+.atman-json-code [aria-label*="creen"],
+.atman-json-code .language-select,
+.atman-json-code [data-testid="code-language"] {
+    display: none !important;
+}
+
+/* String values green, keys muted grey */
+.atman-json-code .cm-string,
+.atman-json-code .token.string,
+.atman-json-code .hljs-string { color: #059669 !important; }
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-string,
+:is(.dark, html.dark, body.dark) .atman-json-code .token.string,
+:is(.dark, html.dark, body.dark) .atman-json-code .hljs-string { color: #10B981 !important; }
+.atman-json-code .cm-property,
+.atman-json-code .token.property,
+.atman-json-code .hljs-attr { color: #64748B !important; }
+:is(.dark, html.dark, body.dark) .atman-json-code .cm-property,
+:is(.dark, html.dark, body.dark) .atman-json-code .token.property,
+:is(.dark, html.dark, body.dark) .atman-json-code .hljs-attr { color: #94A3B8 !important; }
 
 /* ── Generic meta-text markdown (k_meta, r_meta, af_meta) ────────────── */
 .atman-meta p, .atman-meta {

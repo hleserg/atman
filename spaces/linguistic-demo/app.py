@@ -614,6 +614,7 @@ def update_ui_language(lang: str):
 
 from theme import theme
 from pair_diagram import POINT_A_PAIR, POINT_K_PAIR, RELATIONS_PAIR, AFFECT_PAIR
+from hero_diagram import HERO_DIAGRAM
 
 with open(_HERE / "style.css", encoding="utf-8") as _f:
     _CSS = _f.read()
@@ -636,6 +637,8 @@ def build_ui() -> gr.Blocks:
                 value=UI_STRINGS["en"]["header_blurb"],
                 elem_id="atman-header-md",
             )
+
+            gr.HTML(HERO_DIAGRAM, elem_id="atman-hero-diagram-wrap")
 
         with gr.Row(elem_id="atman-warmup-row"):
             warmup_btn = gr.Button(
@@ -685,7 +688,24 @@ def build_ui() -> gr.Blocks:
                         a_highlight = gr.HighlightedText(
                             label="Point A NER (13 psychological labels)",
                             combine_adjacent=False, show_legend=True,
+                            color_map={
+                                "commit": "green",
+                                "action_intent": "green",
+                                "action_scope": "blue",
+                                "boundary_marker": "blue",
+                                "boundary_act": "blue",
+                                "hedge": "yellow",
+                                "uncertain": "yellow",
+                                "defer_to_user": "yellow",
+                                "affect": "purple",
+                                "emotion": "purple",
+                                "emo": "purple",
+                                "intensifier": "pink",
+                                "value_reference": "indigo",
+                                "self_reference": "cyan",
+                            },
                             elem_id="a-highlight",
+                            elem_classes=["atman-highlight"],
                         )
                         a_labels = gr.Code(
                             label="🧠 Zero-Shot Classification Results",
@@ -764,7 +784,18 @@ def build_ui() -> gr.Blocks:
                         k_highlight = gr.HighlightedText(
                             label="Narrative markers",
                             combine_adjacent=False, show_legend=True,
+                            color_map={
+                                "decision_statement": "green",
+                                "decision": "green",
+                                "realization": "blue",
+                                "feeling": "purple",
+                                "value_invocation": "indigo",
+                                "boundary_act": "yellow",
+                                "connection_signal": "cyan",
+                                "attribution_shift": "pink",
+                            },
                             elem_id="k-highlight",
+                            elem_classes=["atman-highlight"],
                         )
                         k_labels = gr.Code(
                             label="🧠 Key Moment Classifications",
@@ -818,6 +849,7 @@ def build_ui() -> gr.Blocks:
                             label="Detected entities",
                             combine_adjacent=False, show_legend=True,
                             elem_id="r-entities",
+                            elem_classes=["atman-highlight"],
                         )
                         r_table = gr.Dataframe(
                             headers=["subject", "relation", "object", "subj type", "obj type"],
