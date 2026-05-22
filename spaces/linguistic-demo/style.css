@@ -266,7 +266,18 @@
     border-radius: 8px !important;
     background: #FFFFFF !important;
     margin-bottom: 10px !important;
-    overflow: hidden;
+    overflow: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+/* Prevent inner Gradio blocks from overflowing the accordion width */
+.atman-about-accordion > div:not(.label-wrap) > .block,
+.atman-about-accordion .block,
+.atman-about-accordion .wrap {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    min-width: 0 !important;
 }
 .dark .atman-about-accordion,
 html.dark .atman-about-accordion {
