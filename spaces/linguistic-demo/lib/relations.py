@@ -2,6 +2,17 @@
 
 Standalone port of `src/atman/adapters/linguistic/mrebel_adapter.py` for
 the HuggingFace Space demo.
+
+mREBEL output format:
+    <s>tp_XX<triplet> ENTITY1 <TYPE> ENTITY2 <TYPE> RELATION</s>
+
+Entity type separator tokens (mark entity boundaries):
+    <per>, <loc>, <org>, <misc>, <time>, <num>, <date>,
+    <eve>, <cel>, <media>, <dis>, <concept>
+
+The model must be called with forced_bos_token_id set to the tp_XX
+token (id 250058) — without it the decoder degenerates into repeated
+garbage characters.
 """
 
 from __future__ import annotations
@@ -13,12 +24,20 @@ from lib.dto import DetectedEntity, ExtractedRelation
 
 logger = logging.getLogger(__name__)
 
-try:
-    from transformers import pipeline as _hf_pipeline  # type: ignore[import-untyped]
+# mREBEL entity-type separator tokens
+_MREBEL_TYPE_TOKENS: frozenset[str] = frozenset({
+    "<per>", "<loc>", "<org>", "<misc>", "<time>", "<num>", "<date>",
+    "<eve>", "<cel>", "<media>", "<dis>", "<concept>",
+})
 
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM  # type: ignore[import-untyped]
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
-    _hf_pipeline = None  # type: ignore[assignment]
+    torch = None  # type: ignore[assignment]
+    AutoTokenizer = None  # type: ignore[assignment]
+    AutoModelForSeq2SeqLM = None  # type: ignore[assignment]
     _TRANSFORMERS_AVAILABLE = False
 
 
@@ -36,50 +55,57 @@ class MRebelRelationExtractor:
             )
         self._model_name = model_name
         self._device = device
-        self._pipeline: Any = None
+        self._tokenizer: Any = None
+        self._model: Any = None
+        self._tp_xx_id: int = 250058  # fallback; overwritten on load
 
-    def _get_pipeline(self) -> Any:
-        if self._pipeline is not None:
-            return self._pipeline
+    def _load(self) -> None:
+        if self._model is not None:
+            return
         logger.info("Loading mREBEL model %s …", self._model_name)
-        self._pipeline = _hf_pipeline(  # type: ignore[operator]
-            "text2text-generation",
-            model=self._model_name,
-            tokenizer=self._model_name,
-            device=self._device,
-        )
-        return self._pipeline
+        self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)  # type: ignore[operator]
+        self._model = AutoModelForSeq2SeqLM.from_pretrained(self._model_name)  # type: ignore[operator]
+        self._model.eval()
+        tp_id = self._tokenizer.convert_tokens_to_ids("tp_XX")
+        if tp_id and tp_id != self._tokenizer.unk_token_id:
+            self._tp_xx_id = tp_id
+        logger.info("mREBEL loaded. tp_XX id = %d", self._tp_xx_id)
 
     def extract_relations(
         self, text: str, entities: list[DetectedEntity]
     ) -> list[ExtractedRelation]:
         if not text.strip() or len(entities) < 2:
             return []
-        pipe = self._get_pipeline()
+        self._load()
         try:
-            outputs = pipe(
+            inputs = self._tokenizer(  # type: ignore[operator]
                 text,
-                max_length=192,
-                num_beams=1,
-                return_tensors=False,
-                clean_up_tokenization_spaces=True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
             )
+            with torch.no_grad():  # type: ignore[union-attr]
+                generated_ids = self._model.generate(  # type: ignore[union-attr]
+                    inputs["input_ids"],
+                    forced_bos_token_id=self._tp_xx_id,
+                    max_length=256,
+                    num_beams=4,
+                    length_penalty=0,
+                )
+            generated = self._tokenizer.batch_decode(  # type: ignore[operator]
+                generated_ids, skip_special_tokens=False
+            )[0]
         except Exception:
             logger.exception("mREBEL inference failed")
             return []
 
-        if not outputs or not isinstance(outputs, list):
-            return []
-        generated = str(outputs[0].get("generated_text", "")) if outputs else ""
         triplets = parse_rebel_triplets(generated)
-
         entity_by_text: dict[str, DetectedEntity] = {e.text.lower(): e for e in entities}
 
         def _match(query: str) -> DetectedEntity | None:
             q = query.lower()
             if q in entity_by_text:
                 return entity_by_text[q]
-            # Substring fallback: mREBEL and GLiNER may tokenize differently
             for key, ent in entity_by_text.items():
                 if key in q or q in key:
                     return ent
@@ -106,31 +132,49 @@ class MRebelRelationExtractor:
 
 
 def parse_rebel_triplets(decoded: str) -> list[tuple[str, str, str]]:
-    """Parse mREBEL's four-marker output into (subject, object, relation) tuples."""
+    """Parse mREBEL output into (subject, object, relation) tuples.
+
+    Expected format: <s>tp_XX<triplet> S <TYPE> O <TYPE> R </s>
+    TYPE tokens from _MREBEL_TYPE_TOKENS act as field separators.
+    First type token = end of subject / start of object.
+    Second type token = end of object / start of relation.
+    """
     if not decoded:
         return []
+    # Strip wrapper tokens; tp_XX appears as a bare word after tokenizer decode
+    cleaned = (
+        decoded
+        .replace("<s>", "")
+        .replace("</s>", "")
+        .replace("<pad>", "")
+        .replace("tp_XX", "")
+        .strip()
+    )
     out: list[tuple[str, str, str]] = []
-    for chunk in decoded.split("<triplet>")[1:]:
+    for chunk in cleaned.split("<triplet>"):
         chunk = chunk.strip()
         if not chunk:
             continue
-        if "<subj>" not in chunk:
-            continue
-        subj_part, _, rest = chunk.partition("<subj>")
-        if "<subj_type>" in rest:
-            _, _, rest = rest.partition("<subj_type>")
-        if "<obj>" in rest:
-            obj_part, _, relation_part = rest.partition("<obj>")
-            if "<obj_type>" in relation_part:
-                _, _, relation_part = relation_part.partition("<obj_type>")
-        elif "<obj_type>" in rest:
-            obj_part, _, relation_part = rest.partition("<obj_type>")
-        else:
-            continue
-        subj_text = subj_part.strip()
-        obj_text = obj_part.strip()
-        relation = relation_part.strip()
-        if not subj_text or not obj_text or not relation:
-            continue
-        out.append((subj_text, obj_text, relation))
+        subj_tokens: list[str] = []
+        obj_tokens: list[str] = []
+        rel_tokens: list[str] = []
+        state = "subj"
+        for tok in chunk.split():
+            if tok in _MREBEL_TYPE_TOKENS:
+                if state == "subj":
+                    state = "obj"
+                elif state == "obj":
+                    state = "rel"
+            else:
+                if state == "subj":
+                    subj_tokens.append(tok)
+                elif state == "obj":
+                    obj_tokens.append(tok)
+                else:
+                    rel_tokens.append(tok)
+        subj_text = " ".join(subj_tokens).strip()
+        obj_text = " ".join(obj_tokens).strip()
+        relation = " ".join(rel_tokens).strip()
+        if subj_text and obj_text and relation:
+            out.append((subj_text, obj_text, relation))
     return out
