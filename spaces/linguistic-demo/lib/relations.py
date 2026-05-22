@@ -74,10 +74,21 @@ class MRebelRelationExtractor:
         triplets = parse_rebel_triplets(generated)
 
         entity_by_text: dict[str, DetectedEntity] = {e.text.lower(): e for e in entities}
+
+        def _match(query: str) -> DetectedEntity | None:
+            q = query.lower()
+            if q in entity_by_text:
+                return entity_by_text[q]
+            # Substring fallback: mREBEL and GLiNER may tokenize differently
+            for key, ent in entity_by_text.items():
+                if key in q or q in key:
+                    return ent
+            return None
+
         relations: list[ExtractedRelation] = []
         for subj_text, obj_text, relation_label in triplets:
-            subj = entity_by_text.get(subj_text.lower())
-            obj = entity_by_text.get(obj_text.lower())
+            subj = _match(subj_text)
+            obj = _match(obj_text)
             if subj is None or obj is None:
                 continue
             if subj.text.lower() == obj.text.lower():

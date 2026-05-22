@@ -391,11 +391,16 @@ html.dark .atman-about-accordion blockquote { background: rgba(99,102,241,0.10) 
     box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
 }
 
-/* Block labels float ABOVE the block card — create room via margin-top */
-.gradio-container .block:has([data-testid="block-label"]) {
+/* Block labels float ABOVE the block card — only for top-level blocks, not inside report group */
+.gradio-container .block:has([data-testid="block-label"]):not(.atman-report-group *):not(.atman-about-accordion *) {
     position: relative !important;
     overflow: visible !important;
     margin-top: 26px !important;
+}
+/* Kill block-labels inside the report group — no floating artifacts */
+.atman-report-group [data-testid="block-label"],
+.atman-report-group .block-label {
+    display: none !important;
 }
 /* Label: position above the border, text-only */
 .gradio-container [data-testid="block-label"],
