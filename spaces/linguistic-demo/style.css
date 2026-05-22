@@ -741,10 +741,12 @@ button.secondary:hover { background: rgba(79,70,229,0.08) !important; }
 #atman-hero + * { margin-top: 4px !important; }
 
 /* ── Kill empty-state placeholders (aa / </> icons) ─────────────────────
-   Gradio 6 Empty component renders: <div aria-label="Empty value"><div class="icon">
-   That aria-label is stable across versions. Also keep legacy class selectors
-   as belt-and-suspenders for older cached builds. */
+   Gradio 6 scopes .empty with a svelte hash (.empty.svelte-v95lt3 { display: flex })
+   which beats a plain attribute selector. Must include the scoped class OR
+   use !important on a more specific rule. Belt-and-suspenders: all known forms. */
 div[aria-label="Empty value"],
+div[aria-label="Empty value"].svelte-v95lt3,
+.empty.svelte-v95lt3,
 .gradio-container .empty,
 .gradio-container [class*="empty-state"],
 .gradio-container .empty-holder {
