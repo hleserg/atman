@@ -671,6 +671,8 @@ def update_ui_language(lang: str):
         gr.update(value=s["about_affect"]),
         # Header blurb under H1
         gr.update(value=s["header_blurb"]),
+        # Footer — one language at a time
+        gr.update(value=footer_html(target)),
     ]
 
 
@@ -841,16 +843,6 @@ def build_ui() -> gr.Blocks:
                         k_highlight = gr.HighlightedText(
                             label="Narrative markers",
                             combine_adjacent=False, show_legend=True,
-                            color_map={
-                                "decision_statement": "green",
-                                "decision": "green",
-                                "realization": "blue",
-                                "feeling": "purple",
-                                "value_invocation": "indigo",
-                                "boundary_act": "yellow",
-                                "connection_signal": "cyan",
-                                "attribution_shift": "pink",
-                            },
                             elem_id="k-highlight",
                             elem_classes=["atman-highlight"],
                         )
@@ -1047,6 +1039,8 @@ def build_ui() -> gr.Blocks:
             af_about_md,
             # Header blurb under H1
             header_md,
+            # Footer (locale-specific, one language at a time)
+            footer,
         ]
         lang_radio.change(update_ui_language, inputs=lang_radio, outputs=ui_lang_outputs)
 
@@ -1082,35 +1076,7 @@ def build_ui() -> gr.Blocks:
             js="() => (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en'",
         )
 
-        gr.HTML(
-            """
-<div id="atman-footer">
-  <em>My first project in AI/ML — feedback on models, algorithms,
-      or architecture is genuinely welcome.</em>
-  <em>If anyone knows how to retrain
-      <code>urchade/gliner_multi_pii-v1</code> to work with Russian —
-      please reach out, the mechanism would become much more optimal.
-      <br/>
-      Если кто-то знает как переучить
-      <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
-      отзовитесь, механизм станет намного оптимальнее.</em>
-  <small class="atman-privacy">
-    Anonymous diagnostics: when analyzers return an empty result, the input
-    text and which signals fired are sent to Sentry so the detectors can be
-    improved. No IPs, cookies, or other PII are collected.
-    <br/>
-    Анонимная диагностика: при пустых результатах анализа твой ввод и список
-    сработавших сигналов отправляются в Sentry, чтобы доработать детекторы.
-    IP, cookies и прочее PII не собираем.
-  </small>
-  <a href="https://github.com/hleserg/atman">GitHub</a>
-  &nbsp;·&nbsp;
-  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
-  &nbsp;·&nbsp;
-  <a href="https://github.com/hleserg/atman/issues">Open an issue</a>
-</div>
-            """
-        )
+        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
 
     demo.queue(max_size=32, default_concurrency_limit=1)
     return demo

@@ -132,10 +132,8 @@
 }
 :is(.dark, html.dark, body.dark) .atman-hero-diagram-caption { color: #64748B; }
 
-/* Pin the language radio top-right of the hero, render as a segmented pill */
+/* Language radio pill — sits in its own row above hero, no absolute position */
 #atman-lang {
-    position: absolute !important; top: 28px !important; right: 28px !important;
-    z-index: 5;
     background: #FFFFFF; border: 1px solid #E5E7EB;
     border-radius: 999px; padding: 3px;
     box-shadow: 0 1px 2px rgba(15,23,42,0.04);
