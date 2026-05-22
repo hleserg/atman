@@ -1007,6 +1007,8 @@ def build_ui() -> gr.Blocks:
                     outputs=af_text,
                 )
 
+        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
+
         ui_lang_outputs = [
             warmup_btn,
             warmup_log,
@@ -1064,8 +1066,6 @@ def build_ui() -> gr.Blocks:
             inputs=[af_text, lang_radio],
             outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
-
-        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
 
         # ── Auto-detect browser language on first page load ──
         # JS reads navigator.language ("ru-RU" → "ru", "en-US" → "en"). The
