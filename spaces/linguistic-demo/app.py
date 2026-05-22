@@ -336,7 +336,11 @@ def analyze_affect(text: str, lang_choice: str):
             f"- disgust/anger: `{refusal.disgust_density:.2f}` / "
             f"`{refusal.anger_density:.2f}`"
         )
-        emphasis_md = "**" + "**, **".join(emphasized) + "**" if emphasized else "_(none)_"
+        emphasis_md = (
+            "**" + "**, **".join(emphasized) + "**"
+            if emphasized
+            else "✓ No markdown emphasis (bold/italic) detected."
+        )
         meta_md = f"🌐 Language: **{analysis_lang}** | 📝 Tokens: **{meta.get('tokens', 0)}** | 🎯 NRC Hits: **{meta.get('hits', 0)}**"
 
         emotion_total = sum(emo_chart.values())
@@ -478,7 +482,7 @@ UI_STRINGS = {
             "**Feeds → Affective Regulation.** Rolling baselines, divergence triggers, "
             "value-refusal events.\n\n"
             "> ⚠️ **Rule-based first-pass filter.** Subtle/idiomatic refusals "
-            "(*'неприятно даже рассматривать'*, *'I'd really rather not'*) may stay in "
+            "(*'I'd really rather not'*, *'this doesn't sit right with me'*) may stay in "
             "the gray zone — by design. This layer is fast, deterministic, and explainable; "
             "an LLM layer can refine the gray-zone calls."
         ),
@@ -594,6 +598,7 @@ def update_ui_language(lang: str):
         gr.update(value=s["boundary_title"]),
         gr.update(value=s["divergence_title"]),
         gr.update(value=s["meta_title"]),
+        gr.update(value=s["meta_title"]),
         gr.update(choices=preset_labels(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=None, label=s["preset_label"]),
         gr.update(choices=preset_labels(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=None, label=s["preset_label"]),
         gr.update(choices=preset_labels(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=None, label=s["preset_label"]),
@@ -672,6 +677,7 @@ def build_ui() -> gr.Blocks:
                         )
                         a_thinking = gr.Textbox(
                             label="Thinking trace (optional)", lines=3,
+                            placeholder="Paste the agent's private thinking trace to detect thinking-vs-message divergence…",
                             elem_id="a-thinking",
                         )
                         a_run = gr.Button(
@@ -768,8 +774,16 @@ def build_ui() -> gr.Blocks:
                     k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
                 with gr.Row():
                     with gr.Column():
-                        k_what = gr.Textbox(label="What happened", lines=4, elem_id="k-what")
-                        k_why = gr.Textbox(label="Why it matters", lines=3, elem_id="k-why")
+                        k_what = gr.Textbox(
+                            label="What happened", lines=4,
+                            placeholder="Describe a key moment the agent flagged as significant — e.g., 'I refused to help with X because…'",
+                            elem_id="k-what",
+                        )
+                        k_why = gr.Textbox(
+                            label="Why it matters", lines=3,
+                            placeholder="Why this moment matters to the agent — the meaning, lesson, or internal shift it captured…",
+                            elem_id="k-why",
+                        )
                         k_run = gr.Button(
                             UI_STRINGS["en"]["analyze_btn"], variant="primary",
                             elem_id="k-run",
@@ -834,7 +848,11 @@ def build_ui() -> gr.Blocks:
                     r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
                 with gr.Row():
                     with gr.Column():
-                        r_text = gr.Textbox(label="Text", lines=6, elem_id="r-text")
+                        r_text = gr.Textbox(
+                            label="Text", lines=6,
+                            placeholder="Paste text containing people, places, organizations, projects — mREBEL will extract (subject, relation, object) triples…",
+                            elem_id="r-text",
+                        )
                         r_run = gr.Button(
                             UI_STRINGS["en"]["extract_relations_btn"], variant="primary",
                             elem_id="r-run",
@@ -883,7 +901,11 @@ def build_ui() -> gr.Blocks:
                     af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
                 with gr.Row():
                     with gr.Column():
-                        af_text = gr.Textbox(label="Text", lines=6, elem_id="af-text")
+                        af_text = gr.Textbox(
+                            label="Text", lines=6,
+                            placeholder="Paste the agent's reply — EmoLex emotion vector, refusal detector, hedge density, sincerity score…",
+                            elem_id="af-text",
+                        )
                         af_run = gr.Button(
                             UI_STRINGS["en"]["analyze_btn"], variant="primary",
                             elem_id="af-run",
@@ -898,13 +920,44 @@ def build_ui() -> gr.Blocks:
                             label="EmoLex emotion density", num_top_classes=10,
                             elem_id="af-emo",
                         )
-                        af_metrics = gr.Markdown(label="Behavioural metrics", elem_id="af-metrics")
-                        af_refusal = gr.Markdown(label="RefusalDetector", elem_id="af-refusal")
-                        af_emphasis = gr.Markdown(label="Markdown emphasis", elem_id="af-emphasis")
-                        af_meta = gr.Markdown(
-                            value=UI_STRINGS["en"]["meta_title"],
-                            elem_classes=["atman-meta"],
-                        )
+
+                        with gr.Group(elem_classes=["atman-report-group"]):
+                            gr.Markdown("### 📑 Detailed Analysis Report")
+                            af_metrics_hdr = gr.Markdown(
+                                value="📊 Behavioural Metrics",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_metrics = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-metrics",
+                            )
+                            af_refusal_hdr = gr.Markdown(
+                                value="⚖️ Refusal Detector",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_refusal = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-refusal",
+                            )
+                            af_emphasis_hdr = gr.Markdown(
+                                value="💬 Markdown Emphasis",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_emphasis = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-emphasis",
+                            )
+                            af_meta_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["meta_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_meta = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body", "atman-meta-block"],
+                            )
                 def _apply_af_preset(name: str, lang_choice: str):
                     if not name:
                         return gr.update()
@@ -932,6 +985,7 @@ def build_ui() -> gr.Blocks:
             a_boundary_hdr,
             a_divergence_hdr,
             a_meta_hdr,
+            af_meta_hdr,
             a_preset,
             k_preset,
             r_preset,
@@ -1013,7 +1067,7 @@ def build_ui() -> gr.Blocks:
             """
         )
 
-    demo.queue(max_size=2, default_concurrency_limit=1)
+    demo.queue(max_size=32, default_concurrency_limit=1)
     return demo
 
 if __name__ == "__main__":
