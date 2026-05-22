@@ -165,7 +165,7 @@ I welcome any communication, feedback, or exchange of ideas:
 ## Acknowledgements
 
 <a href="https://sentry.io" target="_blank">
-  <img src="https://raw.githubusercontent.com/getsentry/sentry-brand/master/sentry-wordmark-dark.png" 
+  <img src="/docs/pic/sentry-wordmark-light-400x119.png" 
        alt="Sentry" width="150" />
 </a>
 
