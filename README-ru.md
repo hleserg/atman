@@ -161,3 +161,15 @@ pytest tests/ -v       # все тесты (или: uv run pytest tests/ -v)
 
 - Email: [hello@atmanai.dev](mailto:hello@atmanai.dev)
 - Telegram: [@skhlebnikov](https://t.me/skhlebnikov)
+
+---
+
+## Благодарности
+
+<a href="https://sentry.io" target="_blank">
+  <img src="/docs/pic/sentry-wordmark-light-400x119.png" 
+       alt="Sentry" width="150" />
+</a>
+
+Мониторинг ошибок и наблюдаемость в Atman обеспечивается [Sentry](https://sentry.io) —  
+спасибо за поддержку проектов с открытым исходным кодом. 🙏
