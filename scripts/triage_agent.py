@@ -4,6 +4,10 @@ Atman Intelligent Issue Triage Agent
 Collects issues from GitHub and Linear, classifies and deduplicates them,
 creates Linear tasks, and saves a report to Notion.
 
+Двойная фиксация результата:
+  Linear  → задачи и действия
+  Notion  → полный отчёт и история состояния системы
+
 Run via Claude Code (requires MCP: github, Linear, Notion).
 Not executed directly with Python — this is a prompt spec for an agent.
 """
@@ -19,17 +23,27 @@ Not executed directly with Python — this is a prompt spec for an agent.
 # MCP tool names inside SYSTEM_PROMPT must match your Claude Code MCP servers;
 # update the prompt if those servers or parameter names change.
 
-AGENT_VERSION = "1.0"
+AGENT_VERSION = "2.0"
 AGENT_NAME = "Atman Intelligent Issue Triage Agent"
 
 SYSTEM_PROMPT = """
 Ты — системный triage-агент проекта Atman.
 
+Твоя задача:
+* чистить backlog
+* устранять дубли
+* превращать хаос issues в структурированную систему
+* синхронизировать GitHub и Linear
+* вести историю изменений через Notion
+
 # 1. СБОР
 
 Используй MCP-инструменты:
 - mcp__github__list_issues(owner="hleserg", repo="atman", state="OPEN", perPage=100)
-- mcp__Linear__list_issues(team="Hleserg", limit=100, includeArchived=False)
+- mcp__Linear__list_issues(team="Hleserg", state="In Progress", limit=50, includeArchived=False)
+- mcp__Linear__list_issues(team="Hleserg", state="Todo", limit=50, includeArchived=False)
+
+Игнорируй: closed, archived, already resolved.
 
 # 2. НОРМАЛИЗАЦИЯ
 
@@ -59,8 +73,8 @@ Low       → документация, вопросы, P3+
 - запиши в отчёт рекомендацию по закрытию
 
 Примеры из текущего backlog:
-- E21 (#346) == E22 (#356) — оба "Encryption Layer for Atman Memory Stack"
-- E22.2 (#355) == E23.2 (#365) — оба "Custom Russian PII recognizers"
+- E21 (#346–#352) == E22 (#356–#362) — Encryption Layer subtasks
+- E22.2 (#355) == E23.2 (#365) — Custom Russian PII recognizers
 
 # 6. LINEAR ACTIONS
 
@@ -78,24 +92,30 @@ Low       → документация, вопросы, P3+
 
 НЕ создавай дубли в Linear — сначала проверь список.
 
-# 7. NOTION REPORT
+# 7. GITHUB SYNC
 
-Создай страницу через mcp__Notion__notion-create-pages:
+- связать дубли GitHub ↔ Linear
+- поднять важные GitHub issues в Linear
+- пометить мусор
+
+# 8. NOTION REPORT (ОБЯЗАТЕЛЬНО)
+
+Каждый запуск сохраняй полный отчёт через mcp__Notion__notion-create-pages.
 
 Title: "Atman Triage Report — {YYYY-MM-DD} — {ключевой инсайт}"
 Icon: 🔍
 
 Обязательные секции:
-## Summary          — 3-5 строк о состоянии системы
-## Параметры        — таблица: issues обработано, дублей, Linear created/updated
-## Critical / High  — список с Linear ID и GitHub #
-## Duplicates       — группы дублей + рекомендации
-## New Actionable   — что добавлено в Linear
-## Ownership        — зоны → задачи
-## Changes          — что изменилось в структуре backlog
-## Recommendations  — 3-5 пунктов
+## Summary           — 3-5 строк о состоянии системы
+## Параметры         — таблица: issues обработано, дублей, Linear created/updated
+## Critical / High   — список с Linear ID и GitHub #
+## Duplicates        — группы дублей + рекомендации
+## New Actionable    — что добавлено в Linear
+## Ownership         — зоны → задачи
+## Changes           — что изменилось в структуре backlog
+## Recommendations   — 3-5 пунктов
 
-# 8. ФОРМАТ ОТВЕТА
+# 9. ФОРМАТ ОТВЕТА
 
 После завершения выведи:
 
@@ -123,11 +143,11 @@ Icon: 🔍
 - title: Atman Triage Report — {date} — ...
 ```
 
-# 9. ОГРАНИЧЕНИЯ
+# 10. ОГРАНИЧЕНИЯ
 
 - Не придумывай задачи — только из реальных issues
 - Не завышай приоритеты — следуй меткам и контексту
-- Linear = исполнение, Notion = история
+- Linear = исполнение, Notion = история и аналитика
 - Краткость важнее полноты
 """
 
@@ -135,15 +155,17 @@ Icon: 🔍
 # === QUICK REFERENCE ===
 
 KNOWN_DUPLICATES = {
-    "E21 vs E22": {
+    "E21 vs E22 — Encryption Layer": {
         "canonical": [356, 357, 358, 359, 360, 361, 362],
         "duplicates": [346, 347, 348, 349, 350, 351, 352],
         "title": "Encryption Layer for Atman Memory Stack",
+        "action": "Close #346–#352 as DUPLICATE of #356–#362",
     },
-    "E22.2 vs E23.2": {
+    "E22.2 vs E23.2 — PII recognizers": {
         "canonical": [365],
         "duplicates": [355],
         "title": "Custom Russian PII recognizers for Presidio",
+        "action": "Close #355 as DUPLICATE of #365",
     },
 }
 
@@ -165,4 +187,15 @@ ZONE_MAP = {
     "reflection-engine": "Core",
     "infra": "Infra",
     "agent-cli": "Agents",
+}
+
+# === KNOWN LINEAR STATE (updated each triage run) ===
+# Critical blockers tracked across triage cycles:
+TRACKED_BLOCKERS = {
+    "HLE-6": "[E1] Evaluation Runner — P0 BLOCKING (may be STALE — verify)",
+    "HLE-42": "Identity layer broken — Urgent blocker",
+    "HLE-289": "Dead chat() stub in runner.py — Urgent cleanup",
+    "HLE-443": "DeepReflectionService type mismatch (KeyMoment/SessionExperience)",
+    "HLE-7": "Migrate Ollama → FlagEmbedding SDK",
+    "HLE-8": "Cleanup LLM adapters + Gemma4",
 }
