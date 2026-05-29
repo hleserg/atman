@@ -700,34 +700,205 @@ PrincipleRevisionAdvisor — пересмотр принципов
 
 <!-- codemap:auto:start section="modules-domain-models" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|------------------|-------|
+| `core/models/entity.py` | `EntityType`, `ResolutionMethod`, `Entity`, `EntityAlias`, `EntityRelation`, `EntityStance` |  |
+| `core/models/experience.py` | `ReframingNoteAppendResult`, `EmotionalDepth`, `FeltSense`, `ContextHalo`, `KeyMoment`, `ReframingNote` |  |
+| `core/models/fact.py` | `FactStatus`, `FactRecord`, `Relation` |  |
+| `core/models/governance.py` | `GovernanceMode`, `GovernanceDecision` |  |
+| `core/models/identity.py` | `CoreValue`, `HelpfulnessLevel`, `Habit`, `MoralOrientation`, `Principle`, `GoalHorizon` |  |
+| `core/models/maintenance.py` | `JobStatus`, `JobName`, `MaintenanceJob` |  |
+| `core/models/narrative.py` | `Eigenstate`, `NarrativeThread`, `LayerType`, `NarrativeLayer`, `NarrativeDocument` |  |
+| `core/models/pending_human_review.py` | `PendingReviewKind`, `PendingReviewPriority`, `PendingReviewResolution`, `PendingReviewDraft`, `PendingReview` |  |
+| `core/models/reflection.py` | `ReflectionLevel`, `PatternType`, `PatternStatus`, `PatternCandidate`, `ReframingNoteOutput`, `PatternDetectionOutput` |  |
+| `core/models/reflection_request.py` | `ReflectionRequestLevel`, `ReflectionRequest` |  |
+| `core/models/self_applied_change.py` | `SelfChangeActor`, `SelfChangeTargetKind`, `SelfChangeSource`, `SelfAppliedChange` |  |
+| `core/models/session.py` | `Session`, `ActiveSessionSummary`, `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |  |
+| `core/models/validation.py` | `FindingSeverity`, `FindingType`, `ResolutionStatus`, `ValidationFinding`, `DivergenceType`, `DivergenceSeverity` |  |
 <!-- codemap:auto:end -->
 
 ### 9.2 Порты — краткий индекс
 
 <!-- codemap:auto:start section="modules-ports" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|------------------|-------|
+| `core/ports/affect.py` | `AffectPort`, `AppendKeyMomentFn` | `AffectPort`, `AppendKeyMomentFn` |
+| `core/ports/clock.py` | `ClockPort` | `ClockPort` |
+| `core/ports/divergence_events.py` | `DivergenceEventStore` | `DivergenceEventStore` |
+| `core/ports/embedding.py` | `EmbeddingPort` | `EmbeddingPort` |
+| `core/ports/entity_registry.py` | `EntityRegistry` | `EntityRegistry` |
+| `core/ports/entity_relation_store.py` | `EntityRelationStore` | `EntityRelationStore` |
+| `core/ports/entity_relations.py` | `ExtractedRelation`, `EntityRelationExtractor` | `EntityRelationExtractor` |
+| `core/ports/entity_stance.py` | `EntityStanceStore` | `EntityStanceStore` |
+| `core/ports/linguistic.py` | `AmbientAnchor`, `DetectedEntity`, `RawSpan`, `UserMessageAnalysis`, `AgentMessageAnalysis`, `KeyMomentAnalysis` | `LinguisticAnalyzer` |
+| `core/ports/maintenance_queue.py` | `MaintenanceQueue` | `MaintenanceQueue` |
+| `core/ports/memory_backend.py` | `FactualMemory` | `FactualMemory` |
+| `core/ports/memory_guardian.py` | `MemoryGuardian` | `MemoryGuardian` |
+| `core/ports/memory_middleware.py` | `MemoryContext`, `MemoryMiddlewarePort` | `MemoryMiddlewarePort` |
+| `core/ports/memory_reranker.py` | `SurfacedMemory`, `MemoryReranker` | `MemoryReranker` |
+| `core/ports/memory_usage_log.py` | `UsageType`, `MemoryUsageRecord`, `MemoryUsageLog` | `MemoryUsageLog` |
+| `core/ports/pending_human_review.py` | `PendingHumanReviewInbox` | `PendingHumanReviewInbox` |
+| `core/ports/reflection.py` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort`, `PatternStore`, `ReflectionEventStore` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort` |
+| `core/ports/reflection_overload_alert.py` | `ReflectionOverloadSeverity`, `ReflectionOverloadAlertSink` | `ReflectionOverloadAlertSink` |
+| `core/ports/reflection_request_queue.py` | `ReflectionRequestQueue` | `ReflectionRequestQueue` |
+| `core/ports/reflection_store.py` | `ReflectionStore` | `ReflectionStore` |
+| `core/ports/salience_decay.py` | `SalienceDecayService` | `SalienceDecayService` |
+| `core/ports/self_applied_changes.py` | `SelfAppliedChangeStore` | `SelfAppliedChangeStore` |
+| `core/ports/session_repository.py` | `SessionRepository` | `SessionRepository` |
+| `core/ports/skill_manager.py` | `SkillManagerPort` | `SkillManagerPort` |
+| `core/ports/state_store.py` | `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` | `StateStore` |
 <!-- codemap:auto:end -->
 
 ### 9.3 Сервисы — краткий индекс
 
 <!-- codemap:auto:start section="modules-services" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|------------------|-------|
+| `core/services/ambient_memory_service.py` | `AmbientSurfaceItem`, `AmbientResult`, `AmbientMemoryService` |  |
+| `core/services/conflict_detector.py` | `FactConflict`, `ConflictDetector` |  |
+| `core/services/divergence_aggregator.py` | `DivergenceAggregator` |  |
+| `core/services/divergence_detector.py` | `DivergenceDetector` |  |
+| `core/services/emotional_echo.py` | `EchoItem`, `EmotionalEcho` |  |
+| `core/services/entity_relations_formulator.py` | `RelationFormulationOutcome`, `EntityRelationsFormulator` |  |
+| `core/services/entity_stance_formulator.py` | `StanceFormulationOutcome`, `EntityStanceFormulator` |  |
+| `core/services/experience_service.py` | `ExperienceService` |  |
+| `core/services/findings_triage.py` | `TriageOutcome`, `FindingsTriage` |  |
+| `core/services/identity_service.py` | `IdentityService` |  |
+| `core/services/inline_validator.py` | `InlineValidator` |  |
+| `core/services/key_moment_builder.py` | `KeyMomentBuilder` |  |
+| `core/services/maintenance_worker.py` | `MaintenanceWorker` |  |
+| `core/services/merge_candidates_handler.py` | `MergeOutcome`, `MergeCandidatesHandler` |  |
+| `core/services/narrative_revision.py` | `NarrativeRevisionService` |  |
+| `core/services/narrative_service.py` | `NarrativeService` |  |
+| `core/services/passive_memory_injector.py` | `SurfacedMemoryItem`, `RagContext`, `PassiveMemoryInjector` |  |
+| `core/services/post_write_scheduler.py` | `PostWriteScheduler` |  |
+| `core/services/principle_advisor.py` | `PrincipleRevisionAdvisor` |  |
+| `core/services/reflection_input_builder.py` | `SessionSummary`, `ReflectionInput` |  |
+| `core/services/reflection_overload_monitor.py` | `ReflectionOverloadMonitor` |  |
+| `core/services/reflection_service.py` | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |  |
+| `core/services/salience_decay_service.py` | `InMemorySalienceDecayService` |  |
+| `core/services/session_cache.py` | `SessionCache` |  |
+| `core/services/session_manager.py` | `SessionManager` |  |
+| `core/services/session_working_memory.py` | `CachedItem`, `SessionWorkingMemory` |  |
+| `core/services/structured_markers_aggregator.py` | `StructuredMarkersAggregator` |  |
 <!-- codemap:auto:end -->
 
 ### 9.4 Адаптеры — краткий индекс
 
 <!-- codemap:auto:start section="modules-adapters" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|------------------|-------|
+| `adapters/agent/config.py` | `ModelConfig`, `AgentConfig` |  |
+| `adapters/agent/deps.py` | `AtmanDeps` |  |
+| `adapters/agent/preflight.py` | `PreflightError` |  |
+| `adapters/agent/runner.py` | `AtmanRunner`, `AtmanTurn` |  |
+| `adapters/agent/token_monitor.py` | `TokenMonitor`, `ContextLimitExceeded` |  |
+| `adapters/clock.py` | `FrozenClock` |  |
+| `adapters/linguistic/gliner_minilm_adapter.py` | `GLiNERPlusMiniLMAdapter` |  |
+| `adapters/linguistic/mrebel_adapter.py` | `MRebelRelationAdapter` |  |
+| `adapters/linguistic/noop_adapter.py` | `NoOpLinguisticAnalyzer` |  |
+| `adapters/maintenance/in_memory_queue.py` | `InMemoryMaintenanceQueue` |  |
+| `adapters/maintenance/postgres_queue.py` | `PostgresMaintenanceQueue` |  |
+| `adapters/memory/bge_reranker.py` | `BgeReranker` |  |
+| `adapters/memory/bm25_embedding.py` | `BM25EmbeddingAdapter` |  |
+| `adapters/memory/file_backend.py` | `FileBackend` |  |
+| `adapters/memory/flag_embedding.py` | `FlagEmbeddingAdapter` |  |
+| `adapters/memory/in_memory_backend.py` | `InMemoryBackend` |  |
+| `adapters/memory/in_memory_divergence_events.py` | `InMemoryDivergenceEventStore` |  |
+| `adapters/memory/in_memory_entity_registry.py` | `InMemoryEntityRegistry` |  |
+| `adapters/memory/in_memory_entity_relation_store.py` | `InMemoryEntityRelationStore` |  |
+| `adapters/memory/in_memory_entity_stance.py` | `InMemoryEntityStanceStore` |  |
+| `adapters/memory/in_memory_memory_guardian.py` | `InMemoryMemoryGuardian` |  |
+| `adapters/memory/in_memory_usage_log.py` | `InMemoryUsageLog` |  |
+| `adapters/memory/mock_embedding.py` | `MockEmbeddingAdapter` |  |
+| `adapters/memory/noop_reranker.py` | `NoOpReranker` |  |
+| `adapters/memory/ollama_embedding.py` | `OllamaEmbeddingAdapter` |  |
+| `adapters/memory/postgres_backend.py` | `PostgresFactualMemory` |  |
+| `adapters/memory/postgres_entity_registry.py` | `PostgresEntityRegistry` |  |
+| `adapters/memory/postgres_entity_stance.py` | `PostgresEntityStanceStore` |  |
+| `adapters/observability/composite_overload_alert_sink.py` | `CompositeOverloadAlertSink` |  |
+| `adapters/observability/in_memory_overload_alert_sink.py` | `OverloadAlert`, `InMemoryOverloadAlertSink` |  |
+| `adapters/observability/logging_overload_alert_sink.py` | `LoggingOverloadAlertSink` |  |
+| `adapters/reflection/exceptions.py` | `OllamaReflectionError` |  |
+| `adapters/reflection/mock_reflection_model.py` | `MockReflectionModel` |  |
+| `adapters/reflection/openai_reflection_model.py` | `OpenAIReflectionModel` |  |
+| `adapters/reflection/prompts.py` | `OllamaMessage` |  |
+| `adapters/reflection/state_store_session_repository.py` | `StateStoreSessionRepository` |  |
+| `adapters/state/postgres_salience_decay.py` | `PostgresSalienceDecayService` |  |
+| `adapters/state/postgres_state_store.py` | `PostgresStateStore` |  |
+| `adapters/storage/file_state_store.py` | `FileStateStore` |  |
+| `adapters/storage/in_memory_experience_store.py` | `InMemoryExperienceStore` |  |
+| `adapters/storage/in_memory_pending_human_review.py` | `InMemoryPendingHumanReviewInbox` |  |
+| `adapters/storage/in_memory_postgres_reflection_store.py` | `InMemoryReflectionStore` |  |
+| `adapters/storage/in_memory_reflection_request_queue.py` | `InMemoryReflectionRequestQueue` |  |
+| `adapters/storage/in_memory_reflection_store.py` | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` |  |
+| `adapters/storage/in_memory_self_applied_changes.py` | `InMemorySelfAppliedChangeStore` |  |
+| `adapters/storage/in_memory_state_store.py` | `InMemoryStateStore` |  |
+| `adapters/storage/jsonl_experience_store.py` | `JsonlExperienceStore` |  |
+| `adapters/storage/postgres_agent_schema.py` | `AgentSchemaResolver` |  |
+| `adapters/storage/postgres_pending_human_review.py` | `PostgresPendingHumanReviewInbox` |  |
+| `adapters/storage/postgres_self_applied_changes.py` | `PostgresSelfAppliedChangeStore` |  |
+| `adapters/storage/reflection_persistence_models.py` | `ReflectionEvent` |  |
+| `adapters/storage/reflection_store.py` | `ReflectionStore` |  |
 <!-- codemap:auto:end -->
 
 ### 9.5 Матрица порт–адаптер
 
 <!-- codemap:auto:start section="port-adapter-matrix" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Порт | Реализации |
+|------|------------|
+| `AffectPort` | *(нет)* |
+| `AppendKeyMomentFn` | *(нет)* |
+| `ClockPort` | *(нет)* |
+| `DivergenceEventStore` | `InMemoryDivergenceEventStore` |
+| `EmbeddingPort` | `BM25EmbeddingAdapter`, `FlagEmbeddingAdapter`, `MockEmbeddingAdapter`, `OllamaEmbeddingAdapter` |
+| `EntityRegistry` | `InMemoryEntityRegistry`, `PostgresEntityRegistry` |
+| `EntityRelationStore` | `InMemoryEntityRelationStore` |
+| `EntityRelationExtractor` | `MRebelRelationAdapter` |
+| `EntityStanceStore` | `InMemoryEntityStanceStore`, `PostgresEntityStanceStore` |
+| `LinguisticAnalyzer` | `GLiNERPlusMiniLMAdapter`, `NoOpLinguisticAnalyzer` |
+| `MaintenanceQueue` | `InMemoryMaintenanceQueue`, `PostgresMaintenanceQueue` |
+| `FactualMemory` | `FileBackend`, `InMemoryBackend`, `PostgresFactualMemory` |
+| `MemoryGuardian` | `InMemoryMemoryGuardian` |
+| `MemoryMiddlewarePort` | *(нет)* |
+| `MemoryReranker` | `BgeReranker`, `NoOpReranker` |
+| `MemoryUsageLog` | `InMemoryUsageLog` |
+| `PendingHumanReviewInbox` | `InMemoryPendingHumanReviewInbox`, `PostgresPendingHumanReviewInbox` |
+| `ExperienceRepository` | *(нет)* |
+| `IdentityRepository` | *(нет)* |
+| `NarrativeRepository` | *(нет)* |
+| `NarrativeWriteAuditPort` | *(нет)* |
+| `PatternStore` | `InMemoryPatternStore` |
+| `ReflectionEventStore` | `InMemoryReflectionEventStore` |
+| `ReflectionEventPersistenceObserver` | *(нет)* |
+| `HealthAssessmentStore` | `InMemoryHealthAssessmentStore` |
+| `ReflectionModel` | `MockReflectionModel`, `OpenAIReflectionModel` |
+| `ReflectionOverloadAlertSink` | `CompositeOverloadAlertSink`, `InMemoryOverloadAlertSink`, `LoggingOverloadAlertSink` |
+| `ReflectionRequestQueue` | `InMemoryReflectionRequestQueue` |
+| `ReflectionStore` | `InMemoryReflectionStore` |
+| `SalienceDecayService` | `PostgresSalienceDecayService` |
+| `SelfAppliedChangeStore` | `InMemorySelfAppliedChangeStore`, `PostgresSelfAppliedChangeStore` |
+| `SessionRepository` | *(нет)* |
+| `SkillManagerPort` | *(нет)* |
+| `StateStore` | `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore`, `JsonlExperienceStore` |
 <!-- codemap:auto:end -->
 
 ### 9.6 Количество TODO/FIXME по компонентам
 
 <!-- codemap:auto:start section="todos" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Компонент | Количество TODO | Количество FIXME |
+|-----------|-----------------|-----------------|
+| `core` | 0 | 0 |
+| `adapters` | 0 | 0 |
+| `affect` | 0 | 0 |
+| `reflection` | 0 | 0 |
+| `skills` | 0 | 0 |
+| `tui` | 0 | 0 |
+| `web_dashboard` | 0 | 0 |
+| `eval` | 0 | 0 |
 <!-- codemap:auto:end -->
