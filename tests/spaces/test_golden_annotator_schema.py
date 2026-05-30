@@ -9,7 +9,10 @@ synthetic generator (`scripts/eval/generate_synthetic_ru.py`):
   * dump/load round-trips losslessly.
 
 Imports only `lib.schema` (no gradio), so it runs in the standard test env.
+The Space lives outside src/ and is added to sys.path at runtime, so static
+import resolution is disabled for this file only.
 """
+# pyright: reportMissingImports=false
 
 from __future__ import annotations
 
@@ -34,8 +37,18 @@ from lib.schema import (  # noqa: E402
 )
 
 _EXPECTED_LABELS = {
-    "person", "organization", "location", "date_time", "event", "project",
-    "product", "activity", "profession", "health", "emotion_word", "money",
+    "person",
+    "organization",
+    "location",
+    "date_time",
+    "event",
+    "project",
+    "product",
+    "activity",
+    "profession",
+    "health",
+    "emotion_word",
+    "money",
     "animal",
 }
 
@@ -51,7 +64,13 @@ def test_label_inventory_matches_schema_doc() -> None:
 def test_tokenizer_is_whitespace_split_with_attached_punctuation() -> None:
     tokens = tokenize("Связи с командой из «ИнфоТек» сбиваются, дедлайны.")
     assert tokens == [
-        "Связи", "с", "командой", "из", "«ИнфоТек»", "сбиваются,", "дедлайны.",
+        "Связи",
+        "с",
+        "командой",
+        "из",
+        "«ИнфоТек»",
+        "сбиваются,",
+        "дедлайны.",
     ]
 
 
