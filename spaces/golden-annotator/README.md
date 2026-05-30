@@ -69,3 +69,14 @@ cd spaces/golden-annotator
 pip install -r requirements.txt
 python app.py
 ```
+
+## Tests
+
+The contract test (label inventory, tokenizer, JSONL validation, round-trip)
+lives with the Space, since the main repo CI does not collect `spaces/`:
+
+```bash
+cd spaces/golden-annotator
+pip install pytest
+pytest tests/
+```

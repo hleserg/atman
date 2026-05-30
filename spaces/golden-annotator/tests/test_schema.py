@@ -8,12 +8,13 @@ synthetic generator (`scripts/eval/generate_synthetic_ru.py`):
   * the JSONL row shape + validation rules match the generator's, and
   * dump/load round-trips losslessly.
 
-The annotator Space lives outside ``src/`` (it ships as a standalone
-HuggingFace Space), so its ``lib/schema.py`` is loaded here by file path via
-``importlib`` rather than a normal import. This keeps the test hermetic — no
-global ``sys.path`` mutation that could shadow other tests' top-level imports
-(``lib``/``app``) in the full ordered suite. ``schema.py`` is gradio-free and
-pure stdlib, so it loads cleanly in the standard test env.
+This test lives inside the Space (not under the repo's ``tests/`` tree) because
+the annotator ships as a standalone HuggingFace Space: the main CI job does not
+lint, typecheck, or collect ``spaces/`` — exactly like ``spaces/linguistic-demo``.
+Run it from the Space directory with ``pytest``.
+
+``lib/schema.py`` is loaded by file path via ``importlib`` (no ``sys.path``
+mutation). ``schema.py`` is gradio-free and pure stdlib, so it loads cleanly.
 """
 
 from __future__ import annotations
@@ -24,9 +25,7 @@ from pathlib import Path
 
 import pytest
 
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[2] / "spaces" / "golden-annotator" / "lib" / "schema.py"
-)
+_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "lib" / "schema.py"
 _spec = importlib.util.spec_from_file_location("_golden_annotator_schema", _SCHEMA_PATH)
 assert _spec is not None and _spec.loader is not None
 schema = importlib.util.module_from_spec(_spec)
