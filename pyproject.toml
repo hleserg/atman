@@ -60,6 +60,12 @@ eval = [
     "python-dateutil>=2.8.0",
     "psutil>=5.9.0",
     "pynvml>=12.0.0",
+    # GLiNER2 baseline eval (T2 / HLE-379)
+    # gliner2: for fastino/gliner2-multi-v1 (extractor format)
+    # gliner:  for urchade/gliner_multi-v2.1 (standard GLiNER format)
+    "gliner2>=0.1",
+    "gliner>=0.2",
+    "nervaluate>=0.1.5",
 ]
 webui = [
     "streamlit>=1.30.0",

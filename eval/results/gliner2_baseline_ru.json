@@ -1,0 +1,160 @@
+{
+  "fastino/gliner2-multi-v1": {
+    "model": "fastino/gliner2-multi-v1",
+    "timestamp": "2026-05-30T08:15:18.241483+00:00",
+    "threshold": 0.5,
+    "n_examples": 130,
+    "overall": {
+      "precision": 0.4389,
+      "recall": 0.7268,
+      "f1": 0.5473
+    },
+    "per_entity": {
+      "person": {
+        "precision": 0.3235,
+        "recall": 0.9167,
+        "f1": 0.4783
+      },
+      "organization": {
+        "precision": 0.6923,
+        "recall": 0.9,
+        "f1": 0.7826
+      },
+      "location": {
+        "precision": 0.56,
+        "recall": 0.8235,
+        "f1": 0.6667
+      },
+      "date_time": {
+        "precision": 0.7143,
+        "recall": 0.8333,
+        "f1": 0.7692
+      },
+      "event": {
+        "precision": 0.3125,
+        "recall": 0.5,
+        "f1": 0.3846
+      },
+      "project": {
+        "precision": 0.5,
+        "recall": 0.4,
+        "f1": 0.4444
+      },
+      "product": {
+        "precision": 0.8571,
+        "recall": 0.6,
+        "f1": 0.7059
+      },
+      "activity": {
+        "precision": 0.2075,
+        "recall": 0.9167,
+        "f1": 0.3385
+      },
+      "profession": {
+        "precision": 0.5556,
+        "recall": 0.9091,
+        "f1": 0.6897
+      },
+      "health": {
+        "precision": 0.625,
+        "recall": 0.4545,
+        "f1": 0.5263
+      },
+      "emotion_word": {
+        "precision": 0.2391,
+        "recall": 1.0,
+        "f1": 0.386
+      },
+      "money": {
+        "precision": 0.8571,
+        "recall": 0.6,
+        "f1": 0.7059
+      },
+      "animal": {
+        "precision": 0.75,
+        "recall": 0.8182,
+        "f1": 0.7826
+      }
+    },
+    "conclusion": "F1 0.4–0.7: fine-tune нужен"
+  },
+  "urchade/gliner_multi-v2.1": {
+    "model": "urchade/gliner_multi-v2.1",
+    "timestamp": "2026-05-30T08:16:06.269712+00:00",
+    "threshold": 0.5,
+    "n_examples": 130,
+    "overall": {
+      "precision": 0.5269,
+      "recall": 0.5355,
+      "f1": 0.5312
+    },
+    "per_entity": {
+      "person": {
+        "precision": 0.2308,
+        "recall": 0.75,
+        "f1": 0.3529
+      },
+      "organization": {
+        "precision": 0.4286,
+        "recall": 0.9,
+        "f1": 0.5806
+      },
+      "location": {
+        "precision": 0.6522,
+        "recall": 0.8824,
+        "f1": 0.75
+      },
+      "date_time": {
+        "precision": 0.7037,
+        "recall": 0.3958,
+        "f1": 0.5067
+      },
+      "event": {
+        "precision": 0.1667,
+        "recall": 0.3,
+        "f1": 0.2143
+      },
+      "project": {
+        "precision": 0.75,
+        "recall": 0.3,
+        "f1": 0.4286
+      },
+      "product": {
+        "precision": 0.6,
+        "recall": 0.3,
+        "f1": 0.4
+      },
+      "activity": {
+        "precision": 0.8462,
+        "recall": 0.9167,
+        "f1": 0.88
+      },
+      "profession": {
+        "precision": 0.75,
+        "recall": 0.5455,
+        "f1": 0.6316
+      },
+      "health": {
+        "precision": 0.625,
+        "recall": 0.4545,
+        "f1": 0.5263
+      },
+      "emotion_word": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "money": {
+        "precision": 0.7778,
+        "recall": 0.7,
+        "f1": 0.7368
+      },
+      "animal": {
+        "precision": 0.7273,
+        "recall": 0.7273,
+        "f1": 0.7273
+      }
+    },
+    "conclusion": "F1 0.4–0.7: fine-tune нужен"
+  }
+}
