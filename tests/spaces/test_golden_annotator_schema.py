@@ -8,33 +8,41 @@ synthetic generator (`scripts/eval/generate_synthetic_ru.py`):
   * the JSONL row shape + validation rules match the generator's, and
   * dump/load round-trips losslessly.
 
-Imports only `lib.schema` (no gradio), so it runs in the standard test env.
-The Space lives outside src/ and is added to sys.path at runtime, so static
-import resolution is disabled for this file only.
+The annotator Space lives outside ``src/`` (it ships as a standalone
+HuggingFace Space), so its ``lib/schema.py`` is loaded here by file path via
+``importlib`` rather than a normal import. This keeps the test hermetic — no
+global ``sys.path`` mutation that could shadow other tests' top-level imports
+(``lib``/``app``) in the full ordered suite. ``schema.py`` is gradio-free and
+pure stdlib, so it loads cleanly in the standard test env.
 """
-# pyright: reportMissingImports=false
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
 
-_SPACE_LIB = Path(__file__).resolve().parents[2] / "spaces" / "golden-annotator"
-if str(_SPACE_LIB) not in sys.path:
-    sys.path.insert(0, str(_SPACE_LIB))
-
-from lib.schema import (  # noqa: E402
-    LABELS,
-    VALID_LABELS,
-    dump_jsonl,
-    load_jsonl,
-    make_row,
-    tokenize,
-    validate_row,
-    validate_rows,
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2] / "spaces" / "golden-annotator" / "lib" / "schema.py"
 )
+_spec = importlib.util.spec_from_file_location("_golden_annotator_schema", _SCHEMA_PATH)
+assert _spec is not None and _spec.loader is not None
+schema = importlib.util.module_from_spec(_spec)
+# Register under a unique name so dataclass/typing machinery can resolve the
+# module during class creation, without shadowing any real top-level module.
+sys.modules[_spec.name] = schema
+_spec.loader.exec_module(schema)
+
+LABELS = schema.LABELS
+VALID_LABELS = schema.VALID_LABELS
+dump_jsonl = schema.dump_jsonl
+load_jsonl = schema.load_jsonl
+make_row = schema.make_row
+tokenize = schema.tokenize
+validate_row = schema.validate_row
+validate_rows = schema.validate_rows
 
 _EXPECTED_LABELS = {
     "person",
