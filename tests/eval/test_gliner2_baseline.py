@@ -24,7 +24,7 @@ class _FakeGLiNER2Model:
     ) -> dict[str, dict[str, list[dict[str, int]]]]:
         assert text == "Маша дома"
         assert "person" in labels
-        assert threshold == 0.5
+        assert threshold == pytest.approx(0.5)
         assert include_spans is True
         return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -39,7 +39,7 @@ class _FakeStandardGLiNERModel:
     ) -> list[dict[str, int | str]]:
         assert text == "Маша дома"
         assert "person" in labels
-        assert threshold == 0.5
+        assert threshold == pytest.approx(0.5)
         return [{"label": "person", "start": 0, "end": 4}]
 
 
