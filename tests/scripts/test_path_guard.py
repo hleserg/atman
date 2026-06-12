@@ -1,11 +1,11 @@
 """Tests for scripts.codemap.path_guard."""
-# ruff: noqa: I001
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+
 from scripts.codemap.path_guard import resolve_under_root, write_text_under_root
 
 
