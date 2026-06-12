@@ -63,6 +63,10 @@ class _FakeEvaluator:
         }
 
 
+class _FakeNervaluateModule(ModuleType):
+    Evaluator: type[_FakeEvaluator]
+
+
 @pytest.fixture()
 def gliner2_modules(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
     """Load GLiNER2 files without requiring the heavy atman[eval] extras."""
@@ -128,7 +132,7 @@ def test_compute_metrics_rounds_strict_scores(
     gliner2_modules: tuple[Any, Any],
 ) -> None:
     baseline_module, _dataset_module = gliner2_modules
-    fake_nervaluate = ModuleType("nervaluate")
+    fake_nervaluate = _FakeNervaluateModule("nervaluate")
     fake_nervaluate.Evaluator = _FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
