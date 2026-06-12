@@ -10,6 +10,8 @@ resolver, not by GLiNER2).
 
 from __future__ import annotations
 
+from typing import Any
+
 LABELS: list[str] = [
     "person",
     "organization",
@@ -572,13 +574,13 @@ def _build_span(text: str, entity_text: str, label: str) -> dict[str, object]:
     return {"label": label, "start": start, "end": start + len(entity_text), "text": entity_text}
 
 
-def load_dataset() -> list[dict[str, object]]:
+def load_dataset() -> list[dict[str, Any]]:
     """Return list of annotated examples.
 
     Each item: {"text": str, "entities": [{"label": str, "start": int, "end": int, "text": str}]}
     Span indices are character-level (compatible with GLiNER output).
     """
-    examples = []
+    examples: list[dict[str, Any]] = []
     for text, raw_ents in _RAW:
         entities = [_build_span(text, ent_text, label) for ent_text, label in raw_ents]
         examples.append({"text": text, "entities": entities})
