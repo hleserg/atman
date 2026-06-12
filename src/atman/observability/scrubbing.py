@@ -3,8 +3,9 @@
 Extends sentry-sdk's DEFAULT_DENYLIST with Atman-specific keys that must
 never reach Sentry SaaS: memory contents, reflections, embeddings, prompts.
 
-Set ATMAN_SEND_PROMPTS=1 together with debug or verbose level to allow raw
-LLM payloads through to Sentry for local debugging. Never use in production.
+Set ATMAN_SEND_PROMPTS=1 together with debug or verbose level in an explicitly
+local environment to allow raw LLM payloads through to Sentry for debugging.
+Never use in production.
 """
 
 from __future__ import annotations
@@ -44,20 +45,33 @@ ATMAN_EXTRA_KEYS: list[str] = [
 _LLM_IO_KEYS: frozenset[str] = frozenset(
     {"embedding_input", "rerank_documents", "prompt", "prompt_text", "completion", "response_text"}
 )
+_PROMPT_PASSTHROUGH_ENVIRONMENTS: frozenset[str] = frozenset(
+    {"dev", "development", "local", "test"}
+)
+
+
+def _prompt_passthrough_allowed(level: str) -> bool:
+    """Return True only for explicit local/dev raw prompt debugging."""
+    send_prompts = os.getenv("ATMAN_SEND_PROMPTS", "").strip() == "1"
+    environment = os.getenv("SENTRY_ENVIRONMENT", "production").strip().lower()
+    return (
+        send_prompts
+        and level in ("debug", "verbose")
+        and environment in _PROMPT_PASSTHROUGH_ENVIRONMENTS
+    )
 
 
 def make_event_scrubber(level: str) -> Any:
     """Return an EventScrubber configured with ATMAN_DENYLIST.
 
-    When ATMAN_SEND_PROMPTS=1 and level is debug or verbose, LLM I/O keys
-    are removed from the denylist so raw payloads flow through to Sentry.
-    Only use in fully isolated dev environments — never in production.
+    When ATMAN_SEND_PROMPTS=1, SENTRY_ENVIRONMENT is explicitly local/dev, and
+    level is debug or verbose, LLM I/O keys are removed from the denylist so raw
+    payloads flow through to Sentry. Never allow this in production/CI/default
+    environments.
     """
     from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber  # lazy import
 
-    send_prompts = os.getenv("ATMAN_SEND_PROMPTS", "").strip() == "1"
-    allow_prompts = send_prompts and level in ("debug", "verbose")
-
+    allow_prompts = _prompt_passthrough_allowed(level)
     extra_keys = [k for k in ATMAN_EXTRA_KEYS if not (allow_prompts and k in _LLM_IO_KEYS)]
     denylist: list[str] = list(DEFAULT_DENYLIST) + extra_keys
     return EventScrubber(denylist=denylist, recursive=True)

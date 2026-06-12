@@ -107,15 +107,34 @@ def test_send_prompts_off_by_default(monkeypatch):
 
 
 @pytest.mark.parametrize("level", ["debug", "verbose"])
-def test_send_prompts_enabled_removes_llm_keys(monkeypatch, level):
+def test_send_prompts_enabled_removes_llm_keys_in_dev_only(monkeypatch, level):
     monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "development")
     scrubber = make_event_scrubber(level)
     for key in _LLM_IO_KEYS:
         assert key not in scrubber.denylist, f"Expected {key!r} absent when ATMAN_SEND_PROMPTS=1"
 
 
+@pytest.mark.parametrize("environment", ["production", "prod", "ci"])
+def test_send_prompts_ignored_in_protected_environments(monkeypatch, environment):
+    monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", environment)
+    scrubber = make_event_scrubber("debug")
+    for key in _LLM_IO_KEYS:
+        assert key in scrubber.denylist, f"Expected {key!r} scrubbed in {environment}"
+
+
+def test_send_prompts_ignored_when_environment_unset(monkeypatch):
+    monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    monkeypatch.delenv("SENTRY_ENVIRONMENT", raising=False)
+    scrubber = make_event_scrubber("verbose")
+    assert "prompt" in scrubber.denylist
+    assert "completion" in scrubber.denylist
+
+
 def test_send_prompts_ignored_at_minimal_level(monkeypatch):
     monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "development")
     scrubber = make_event_scrubber("minimal")
     assert "prompt" in scrubber.denylist
     assert "completion" in scrubber.denylist
@@ -123,6 +142,7 @@ def test_send_prompts_ignored_at_minimal_level(monkeypatch):
 
 def test_send_prompts_non_llm_keys_always_scrubbed(monkeypatch):
     monkeypatch.setenv("ATMAN_SEND_PROMPTS", "1")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "development")
     scrubber = make_event_scrubber("verbose")
     assert "memory_content" in scrubber.denylist
     assert "reflection_text" in scrubber.denylist
