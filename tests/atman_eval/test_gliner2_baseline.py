@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 
 def test_gliner2_dataset_spans_match_text_and_labels_are_covered() -> None:
     from atman.eval.gliner2.dataset import LABELS, load_dataset
@@ -57,7 +59,7 @@ def test_gliner2_run_predictions_normalizes_supported_model_outputs() -> None:
         ) -> dict[str, dict[str, list[dict[str, int]]]]:
             assert text == "Маша любит Atman"
             assert "person" in labels
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             assert include_spans is True
             return {
                 "entities": {
@@ -76,7 +78,7 @@ def test_gliner2_run_predictions_normalizes_supported_model_outputs() -> None:
         ) -> list[dict[str, str | int]]:
             assert text == "Маша любит Atman"
             assert "project" in labels
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             return [
                 {"label": "person", "start": 0, "end": 4},
                 {"label": "project", "start": 11, "end": 16},
@@ -129,7 +131,7 @@ def test_gliner2_save_results_merges_models_without_dropping_existing(
     saved = json.loads(output.read_text(encoding="utf-8"))
     assert set(saved) == {"existing/model", "new/model"}
     assert saved["existing/model"]["overall"] == {"f1": 0.5}
-    assert saved["new/model"]["threshold"] == 0.5
+    assert saved["new/model"]["threshold"] == pytest.approx(0.5)
     assert saved["new/model"]["n_examples"] == 130
     assert saved["new/model"]["overall"] == metrics["overall"]
     assert saved["new/model"]["per_entity"] == metrics["per_entity"]
