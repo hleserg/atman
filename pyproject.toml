@@ -281,6 +281,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]  # pytest.raises(Exception) is acceptable in tests
+"tests/scripts/test_path_guard.py" = ["I001"]  # scripts.* import grouping differs across CI/local envs
 "e2e/live_chat.py" = ["E402", "SIM105", "RUF006", "RUF012"]  # logging before imports; e2e UI patterns
 "src/atman/core/session_log.py" = ["SIM105"]  # slog must never raise; broad suppress is intentional
 "src/atman/affect/emolex/**" = ["W293", "UP035", "RUF001", "RUF002", "RUF003"]
