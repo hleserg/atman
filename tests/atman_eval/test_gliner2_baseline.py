@@ -41,6 +41,58 @@ def test_gliner2_conclusion_threshold_boundaries() -> None:
     assert _conclusion(0.3999) == "F1 < 0.4: рассмотреть смену базовой модели"
 
 
+def test_gliner2_run_predictions_normalizes_supported_model_outputs() -> None:
+    from atman.eval.gliner2.baseline import _run_predictions
+
+    dataset = [{"text": "Маша любит Atman"}]
+
+    class Gliner2Model:
+        def extract_entities(
+            self,
+            text: str,
+            labels: list[str],
+            *,
+            threshold: float,
+            include_spans: bool,
+        ) -> dict[str, dict[str, list[dict[str, int]]]]:
+            assert text == "Маша любит Atman"
+            assert "person" in labels
+            assert threshold == 0.5
+            assert include_spans is True
+            return {
+                "entities": {
+                    "person": [{"start": 0, "end": 4}],
+                    "project": [{"start": 11, "end": 16}],
+                }
+            }
+
+    class GlinerModel:
+        def predict_entities(
+            self,
+            text: str,
+            labels: list[str],
+            *,
+            threshold: float,
+        ) -> list[dict[str, str | int]]:
+            assert text == "Маша любит Atman"
+            assert "project" in labels
+            assert threshold == 0.5
+            return [
+                {"label": "person", "start": 0, "end": 4},
+                {"label": "project", "start": 11, "end": 16},
+            ]
+
+    expected = [
+        [
+            {"label": "person", "start": 0, "end": 4},
+            {"label": "project", "start": 11, "end": 16},
+        ]
+    ]
+
+    assert _run_predictions(Gliner2Model(), "gliner2", dataset, threshold=0.5) == expected
+    assert _run_predictions(GlinerModel(), "gliner", dataset, threshold=0.5) == expected
+
+
 def test_gliner2_save_results_merges_models_without_dropping_existing(
     tmp_path: Path,
 ) -> None:
