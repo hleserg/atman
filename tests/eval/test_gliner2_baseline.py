@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import importlib
+import json
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -68,7 +68,7 @@ def gliner2_modules(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
     """Load GLiNER2 files without requiring the heavy atman[eval] extras."""
     repo_root = Path(__file__).resolve().parents[2]
     fake_eval = ModuleType("atman.eval")
-    setattr(fake_eval, "__path__", [str(repo_root / "src" / "atman" / "eval")])
+    fake_eval.__path__ = [str(repo_root / "src" / "atman" / "eval")]
     monkeypatch.setitem(sys.modules, "atman.eval", fake_eval)
     for module_name in (
         "atman.eval.gliner2",
@@ -129,7 +129,7 @@ def test_compute_metrics_rounds_strict_scores(
 ) -> None:
     baseline_module, _dataset_module = gliner2_modules
     fake_nervaluate = ModuleType("nervaluate")
-    setattr(fake_nervaluate, "Evaluator", _FakeEvaluator)
+    fake_nervaluate.Evaluator = _FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
     metrics = baseline_module._compute_metrics(
