@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
+import pytest
+from click.testing import CliRunner
+
+from atman.eval.gliner2 import baseline as gliner2_baseline
 from atman.eval.gliner2.baseline import _conclusion, _run_predictions, _save_results
 from atman.eval.gliner2.dataset import _RAW, LABELS, load_dataset
 
@@ -98,6 +104,51 @@ def test_gliner2_run_predictions_normalizes_supported_model_apis() -> None:
     assert _run_predictions(_FakeGlinerModel(), "gliner", dataset, 0.3) == expected
 
 
+class _FakeMetric:
+    def __init__(self, precision: float, recall: float, f1: float) -> None:
+        self.precision = precision
+        self.recall = recall
+        self.f1 = f1
+
+
+class _FakeEvaluator:
+    def __init__(
+        self,
+        gold: list[list[dict[str, Any]]],
+        pred: list[list[dict[str, Any]]],
+        *,
+        tags: list[str],
+    ) -> None:
+        assert gold == [[{"label": "person", "start": 0, "end": 4}]]
+        assert pred == [[{"label": "person", "start": 0, "end": 4}]]
+        assert tags == LABELS
+
+    def evaluate(self) -> dict[str, Any]:
+        return {
+            "overall": {"strict": _FakeMetric(0.81234, 0.71234, 0.61234)},
+            "entities": {
+                "person": {"strict": _FakeMetric(1.0, 0.5, 0.66666)},
+            },
+        }
+
+
+def test_gliner2_compute_metrics_rounds_scores_and_fills_missing_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_nervaluate = ModuleType("nervaluate")
+    fake_nervaluate.Evaluator = _FakeEvaluator  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
+
+    metrics = gliner2_baseline._compute_metrics(
+        [[{"label": "person", "start": 0, "end": 4}]],
+        [[{"label": "person", "start": 0, "end": 4}]],
+    )
+
+    assert metrics["overall"] == {"precision": 0.8123, "recall": 0.7123, "f1": 0.6123}
+    assert metrics["per_entity"]["person"] == {"precision": 1.0, "recall": 0.5, "f1": 0.6667}
+    assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+
+
 def test_gliner2_save_results_merges_without_dropping_existing_models(tmp_path: Path) -> None:
     output = tmp_path / "results" / "gliner2_baseline_ru.json"
     output.parent.mkdir()
@@ -125,3 +176,43 @@ def test_gliner2_save_results_merges_without_dropping_existing_models(tmp_path: 
     assert saved["new/model"]["threshold"] == 0.3
     assert saved["new/model"]["n_examples"] == 130
     assert saved["new/model"]["conclusion"].startswith("F1 0.4")
+
+
+def test_gliner2_cli_runs_offline_with_patched_model_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "gliner2_baseline_ru.json"
+    monkeypatch.setattr(
+        gliner2_baseline,
+        "load_dataset",
+        lambda: [
+            {
+                "text": "Маша ведёт Atman",
+                "entities": [{"label": "person", "start": 0, "end": 4, "text": "Маша"}],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        gliner2_baseline,
+        "_load_gliner",
+        lambda _model_id: (_FakeGlinerModel(), "gliner"),
+    )
+    monkeypatch.setattr(
+        gliner2_baseline,
+        "_compute_metrics",
+        lambda _gold, _pred: {
+            "overall": {"precision": 1.0, "recall": 1.0, "f1": 1.0},
+            "per_entity": {"person": {"precision": 1.0, "recall": 1.0, "f1": 1.0}},
+        },
+    )
+
+    result = CliRunner().invoke(
+        gliner2_baseline.main,
+        ["--model", "fake/model", "--threshold", "0.3", "--output", str(output)],
+    )
+
+    assert result.exit_code == 0
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert saved["fake/model"]["overall"]["f1"] == 1.0
+    assert saved["fake/model"]["conclusion"].startswith("F1 > 0.7")
