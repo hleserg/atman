@@ -206,6 +206,6 @@ def test_baseline_cli_wires_evaluation_flow(
     )
 
     assert result.exit_code == 0
-    assert json.loads(output.read_text(encoding="utf-8"))["fake/model"]["overall"]["f1"] == pytest.approx(
-        0.8
-    )
+    assert json.loads(output.read_text(encoding="utf-8"))["fake/model"]["overall"][
+        "f1"
+    ] == pytest.approx(0.8)
