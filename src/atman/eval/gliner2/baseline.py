@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -77,7 +78,7 @@ def _load_gliner(model_id: str) -> tuple[Any, str]:
 def _run_predictions(
     model: Any,
     model_type: str,
-    dataset: list[dict[str, Any]],
+    dataset: Sequence[Mapping[str, Any]],
     threshold: float,
 ) -> list[list[dict[str, Any]]]:
     all_preds: list[list[dict[str, Any]]] = []
