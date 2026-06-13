@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import sys
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -32,8 +32,8 @@ def _load_module(name: str, path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
 def gliner_modules(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
     eval_pkg = ModuleType("atman.eval")
     gliner_pkg = ModuleType("atman.eval.gliner2")
-    setattr(eval_pkg, "__path__", [])
-    setattr(gliner_pkg, "__path__", [])
+    eval_pkg.__dict__["__path__"] = []
+    gliner_pkg.__dict__["__path__"] = []
     monkeypatch.setitem(sys.modules, "atman.eval", eval_pkg)
     monkeypatch.setitem(sys.modules, "atman.eval.gliner2", gliner_pkg)
 
@@ -68,7 +68,7 @@ def test_load_gliner_uses_gliner2_when_available(
             return f"gliner2:{model_id}"
 
     fake_module = ModuleType("gliner2")
-    setattr(fake_module, "GLiNER2", FakeGLiNER2)
+    fake_module.__dict__["GLiNER2"] = FakeGLiNER2
     monkeypatch.setitem(sys.modules, "gliner2", fake_module)
 
     model, model_type = baseline_module._load_gliner("fake/model")
@@ -93,9 +93,9 @@ def test_load_gliner_falls_back_to_standard_gliner(
             return f"gliner:{model_id}"
 
     fake_gliner2 = ModuleType("gliner2")
-    setattr(fake_gliner2, "GLiNER2", FailingGLiNER2)
+    fake_gliner2.__dict__["GLiNER2"] = FailingGLiNER2
     fake_gliner = ModuleType("gliner")
-    setattr(fake_gliner, "GLiNER", FakeGLiNER)
+    fake_gliner.__dict__["GLiNER"] = FakeGLiNER
     monkeypatch.setitem(sys.modules, "gliner2", fake_gliner2)
     monkeypatch.setitem(sys.modules, "gliner", fake_gliner)
 
@@ -153,7 +153,7 @@ def test_compute_metrics_maps_overall_and_missing_labels(
             }
 
     fake_nervaluate = ModuleType("nervaluate")
-    setattr(fake_nervaluate, "Evaluator", Evaluator)
+    fake_nervaluate.__dict__["Evaluator"] = Evaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
     metrics = baseline_module._compute_metrics(
