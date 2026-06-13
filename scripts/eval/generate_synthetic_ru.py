@@ -153,6 +153,30 @@ def _find_span_errors(spans: list[list[Any]], line_num: int | None = None) -> li
     return errors
 
 
+def _pioneer_entry_to_span(
+    entry: Any,
+    tokens: list[str],
+    offsets: list[int],
+    text: str,
+) -> tuple[int, int, str] | None:
+    if not isinstance(entry, list | tuple) or len(entry) != 2:
+        return None
+
+    entity_text, label = entry
+    if not entity_text or not isinstance(label, str):
+        return None
+
+    label = label.strip()
+    if label not in VALID_LABELS:
+        return None
+
+    span = _find_span(tokens, offsets, text, entity_text)
+    if span is None:
+        return None
+
+    return span[0], span[1], label
+
+
 def pioneer_to_gliner(row: dict[str, Any]) -> dict[str, Any] | None:
     """Convert a Pioneer NER row to GLiNER training format."""
     text: str = row.get("text", "")
@@ -170,22 +194,15 @@ def pioneer_to_gliner(row: dict[str, Any]) -> dict[str, Any] | None:
     seen_spans: set[tuple[int, int, str]] = set()
 
     for entry in entities:
-        if not isinstance(entry, list | tuple) or len(entry) != 2:
-            continue
-        entity_text, label = entry
-        if not entity_text or not isinstance(label, str):
-            continue
-        label = label.strip()
-        if label not in VALID_LABELS:
-            continue
-        span = _find_span(tokens, offsets, text, entity_text)
+        span = _pioneer_entry_to_span(entry, tokens, offsets, text)
         if span is None:
             continue
-        key = (span[0], span[1], label)
+        start, end, label = span
+        key = (start, end, label)
         if key in seen_spans:
             continue
         seen_spans.add(key)
-        ner_spans.append([span[0], span[1], label])
+        ner_spans.append([start, end, label])
 
     if _find_span_errors(ner_spans):
         return None

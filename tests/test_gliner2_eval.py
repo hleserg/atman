@@ -162,7 +162,7 @@ def test_compute_metrics_maps_overall_and_missing_labels(
     )
 
     assert metrics["overall"] == {"precision": 0.1235, "recall": 0.5, "f1": 0.3333}
-    assert metrics["per_entity"]["person"]["f1"] == 0.3333
+    assert metrics["per_entity"]["person"]["f1"] == pytest.approx(0.3333)
     assert metrics["per_entity"]["organization"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
@@ -206,4 +206,6 @@ def test_baseline_cli_wires_evaluation_flow(
     )
 
     assert result.exit_code == 0
-    assert json.loads(output.read_text(encoding="utf-8"))["fake/model"]["overall"]["f1"] == 0.8
+    assert json.loads(output.read_text(encoding="utf-8"))["fake/model"]["overall"]["f1"] == pytest.approx(
+        0.8
+    )
