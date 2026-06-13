@@ -315,6 +315,23 @@ def validate_jsonl(path: Path, *, min_count: int = 1) -> tuple[int, list[str]]:
     return count, errors
 
 
+# PLAYBOOK-START
+# id: validate-generated-artifact-before-atomic-replace
+# category: failure-modes
+# title: Validate Generated Artifacts Before Atomic Replacement
+# status: draft
+#
+# Pattern: write generated output to a temporary file, validate the full artifact
+# against structural and cardinality invariants, then atomically replace the
+# canonical file only after validation succeeds.
+#
+# Why generalizable: generator failures often produce empty, partial, or malformed
+# files that look like successful runs. Validating before replacement prevents a
+# failed generation from destroying the last known-good artifact.
+#
+# Trade-offs: callers need enough local disk for the temporary copy, and the
+# validation contract must stay aligned with downstream consumers.
+# PLAYBOOK-END
 def _write_jsonl_atomic(output_path: Path, examples: list[dict[str, Any]]) -> None:
     tmp_path = output_path.with_name(f".{output_path.name}.tmp")
     try:
