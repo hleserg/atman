@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from atman.eval.gliner2.baseline import _conclusion, _run_predictions, _save_results
-from atman.eval.gliner2.dataset import LABELS, _RAW, load_dataset
+from atman.eval.gliner2.dataset import _RAW, LABELS, load_dataset
 
 
 def test_gliner2_dataset_spans_match_text_and_cover_all_labels() -> None:
@@ -90,7 +90,9 @@ class _FakeGlinerModel:
 
 def test_gliner2_run_predictions_normalizes_supported_model_apis() -> None:
     dataset: list[dict[str, Any]] = [{"text": "Маша ведёт Atman", "entities": []}]
-    expected = [[{"label": "person", "start": 0, "end": 4}, {"label": "project", "start": 11, "end": 16}]]
+    expected = [
+        [{"label": "person", "start": 0, "end": 4}, {"label": "project", "start": 11, "end": 16}]
+    ]
 
     assert _run_predictions(_FakeGliner2Model(), "gliner2", dataset, 0.3) == expected
     assert _run_predictions(_FakeGlinerModel(), "gliner", dataset, 0.3) == expected

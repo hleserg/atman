@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 try:
@@ -104,7 +105,7 @@ def _find_span(
 
         start_tok: int | None = None
         end_tok: int | None = None
-        for i, (tok, off) in enumerate(zip(tokens, offsets)):
+        for i, (tok, off) in enumerate(zip(tokens, offsets, strict=False)):
             tok_end = off + len(tok) - 1
             if start_tok is None and off <= char_start <= tok_end:
                 start_tok = i
@@ -134,10 +135,10 @@ def pioneer_to_gliner(row: dict) -> dict | None:
     seen_spans: set[tuple[int, int, str]] = set()
 
     for entry in entities:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+        if not isinstance(entry, list | tuple) or len(entry) != 2:
             continue
         entity_text, label = entry
-        if not entity_text or not isinstance(label, str):
+        if not isinstance(entity_text, str) or not entity_text or not isinstance(label, str):
             continue
         label = label.strip()
         if label not in VALID_LABELS:
@@ -212,10 +213,8 @@ def _download_dataset(dataset_name: str) -> list[dict]:
     for line in resp.text.strip().splitlines():
         line = line.strip()
         if line:
-            try:
+            with suppress(json.JSONDecodeError):
                 rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
     return rows
 
 
@@ -265,7 +264,7 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
 
 
 def spot_check(path: Path, n: int = 30) -> None:
-    print(f"\nSpot-check: first {n} examples\n{'─'*70}")
+    print(f"\nSpot-check: first {n} examples\n{'─' * 70}")
     with open(path, encoding="utf-8") as f:
         for i, raw in enumerate(f):
             if i >= n:
@@ -274,11 +273,9 @@ def spot_check(path: Path, n: int = 30) -> None:
             tokens = row["tokenized_text"]
             ner = row["ner"]
             preview = " ".join(tokens[:12]) + ("…" if len(tokens) > 12 else "")
-            entity_strs = [
-                f"«{' '.join(tokens[s:e+1])}»→{lbl}" for s, e, lbl in ner[:3]
-            ]
-            extra = f" +{len(ner)-3}" if len(ner) > 3 else ""
-            print(f"  [{i+1:3d}] {preview}")
+            entity_strs = [f"«{' '.join(tokens[s : e + 1])}»→{lbl}" for s, e, lbl in ner[:3]]
+            extra = f" +{len(ner) - 3}" if len(ner) > 3 else ""
+            print(f"  [{i + 1:3d}] {preview}")
             if entity_strs:
                 print(f"       {', '.join(entity_strs)}{extra}")
     print()
