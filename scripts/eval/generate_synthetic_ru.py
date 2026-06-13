@@ -106,7 +106,7 @@ def _find_span(
 
         start_tok: int | None = None
         end_tok: int | None = None
-        for i, (tok, off) in enumerate(zip(tokens, offsets)):
+        for i, (tok, off) in enumerate(zip(tokens, offsets, strict=False)):
             tok_end = off + len(tok) - 1
             if start_tok is None and off <= char_start <= tok_end:
                 start_tok = i
@@ -170,7 +170,7 @@ def pioneer_to_gliner(row: dict[str, Any]) -> dict[str, Any] | None:
     seen_spans: set[tuple[int, int, str]] = set()
 
     for entry in entities:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+        if not isinstance(entry, list | tuple) or len(entry) != 2:
             continue
         entity_text, label = entry
         if not entity_text or not isinstance(label, str):
