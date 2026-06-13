@@ -20,6 +20,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 try:
     import requests
@@ -75,6 +76,7 @@ OUTPUT_PATH = Path(__file__).parent.parent.parent / "eval" / "data" / "atman_ner
 
 # examples per batch × number of domain description batches
 EXAMPLES_PER_BATCH = 600
+MIN_REQUIRED_EXAMPLES = 1500
 VALID_LABELS = set(LABELS)
 
 
@@ -119,18 +121,52 @@ def _find_span(
         idx = char_start + 1
 
 
-def pioneer_to_gliner(row: dict) -> dict | None:
+def _find_span_errors(spans: list[list[Any]], line_num: int | None = None) -> list[str]:
+    prefix = f"line {line_num}: " if line_num is not None else ""
+    errors: list[str] = []
+    by_range: dict[tuple[int, int], str] = {}
+
+    for span in spans:
+        start, end, label = span
+        key = (start, end)
+        existing_label = by_range.get(key)
+        if existing_label is not None:
+            if existing_label != label:
+                errors.append(
+                    f"{prefix}conflicting labels for span [{start},{end}]: "
+                    f"'{existing_label}' vs '{label}'"
+                )
+            continue
+        by_range[key] = label
+
+    sorted_spans = sorted((span[0], span[1], span[2]) for span in spans)
+    for idx, (start, end, label) in enumerate(sorted_spans):
+        for other_start, other_end, other_label in sorted_spans[idx + 1 :]:
+            if other_start > end:
+                break
+            errors.append(
+                f"{prefix}overlapping spans [{start},{end},'{label}'] and "
+                f"[{other_start},{other_end},'{other_label}']"
+            )
+            break
+
+    return errors
+
+
+def pioneer_to_gliner(row: dict[str, Any]) -> dict[str, Any] | None:
     """Convert a Pioneer NER row to GLiNER training format."""
     text: str = row.get("text", "")
-    entities: list = row.get("entities", [])
+    entities = row.get("entities", [])
     if not text.strip():
+        return None
+    if not isinstance(entities, list):
         return None
 
     tokens, offsets = _tokenize_with_offsets(text)
     if not tokens:
         return None
 
-    ner_spans: list[list] = []
+    ner_spans: list[list[Any]] = []
     seen_spans: set[tuple[int, int, str]] = set()
 
     for entry in entities:
@@ -150,6 +186,9 @@ def pioneer_to_gliner(row: dict) -> dict | None:
             continue
         seen_spans.add(key)
         ner_spans.append([span[0], span[1], label])
+
+    if _find_span_errors(ner_spans):
+        return None
 
     return {"tokenized_text": tokens, "ner": ner_spans}
 
@@ -200,7 +239,7 @@ def _poll_job(job_id: str, max_wait: int = 900) -> str:
     return "timeout"
 
 
-def _download_dataset(dataset_name: str) -> list[dict]:
+def _download_dataset(dataset_name: str) -> list[dict[str, Any]]:
     resp = requests.get(
         f"{PIONEER_BASE_URL}/felix/datasets/{dataset_name}/latest/download",
         headers=_pioneer_headers(),
@@ -208,18 +247,22 @@ def _download_dataset(dataset_name: str) -> list[dict]:
         timeout=120,
     )
     resp.raise_for_status()
-    rows: list[dict] = []
-    for line in resp.text.strip().splitlines():
+    rows: list[dict[str, Any]] = []
+    decode_errors: list[str] = []
+    for line_num, line in enumerate(resp.text.splitlines(), 1):
         line = line.strip()
         if line:
             try:
                 rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                decode_errors.append(f"line {line_num}: JSON error: {exc}")
+    if decode_errors:
+        preview = "\n  ".join(decode_errors[:10])
+        raise RuntimeError(f"Downloaded dataset contains malformed JSONL:\n  {preview}")
     return rows
 
 
-def validate_jsonl(path: Path) -> tuple[int, list[str]]:
+def validate_jsonl(path: Path, *, min_count: int = 1) -> tuple[int, list[str]]:
     """Validate GLiNER-format JSONL. Returns (valid_count, error_list)."""
     errors: list[str] = []
     count = 0
@@ -245,6 +288,7 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
                 continue
 
             n = len(toks)
+            normalized_spans: list[list[Any]] = []
             for span in ner:
                 if not isinstance(span, list) or len(span) != 3:
                     errors.append(f"line {line_num}: ner span must be [start, end, label]")
@@ -259,9 +303,37 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
                 if lbl not in VALID_LABELS:
                     errors.append(f"line {line_num}: unknown label '{lbl}'")
                     break
+                normalized_spans.append([s, e, lbl])
             else:
+                span_errors = _find_span_errors(normalized_spans, line_num=line_num)
+                if span_errors:
+                    errors.extend(span_errors)
+                    continue
                 count += 1
+    if count < min_count:
+        errors.append(f"expected at least {min_count} valid examples, got {count}")
     return count, errors
+
+
+def _write_jsonl_atomic(output_path: Path, examples: list[dict[str, Any]]) -> None:
+    tmp_path = output_path.with_name(f".{output_path.name}.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            for ex in examples:
+                f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+        count, errors = validate_jsonl(tmp_path, min_count=MIN_REQUIRED_EXAMPLES)
+        if errors:
+            print(f"VALIDATION FAILED ({len(errors)} errors):")
+            for err in errors[:30]:
+                print(f"  {err}")
+            sys.exit(1)
+
+        os.replace(tmp_path, output_path)
+        print(f"✓ Validation passed: {count} examples")
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 
 def spot_check(path: Path, n: int = 30) -> None:
@@ -291,7 +363,7 @@ def main() -> None:
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    all_examples: list[dict] = []
+    all_examples: list[dict[str, Any]] = []
     timestamp = int(time.time())
 
     for batch_idx, domain_desc in enumerate(DOMAIN_DESCRIPTIONS, 1):
@@ -324,23 +396,12 @@ def main() -> None:
 
     total = len(all_examples)
     print(f"\nTotal examples: {total}")
-    if total < 1500:
-        print(f"WARNING: {total} < 1500 required examples", file=sys.stderr)
-
-    print(f"Writing to {OUTPUT_PATH}...")
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        for ex in all_examples:
-            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-
-    print("Validating...")
-    count, errors = validate_jsonl(OUTPUT_PATH)
-    if errors:
-        print(f"VALIDATION FAILED ({len(errors)} errors):")
-        for err in errors[:30]:
-            print(f"  {err}")
+    if total < MIN_REQUIRED_EXAMPLES:
+        print(f"ERROR: {total} < {MIN_REQUIRED_EXAMPLES} required examples", file=sys.stderr)
         sys.exit(1)
 
-    print(f"✓ Validation passed: {count} examples")
+    print(f"Writing to {OUTPUT_PATH}...")
+    _write_jsonl_atomic(OUTPUT_PATH, all_examples)
     spot_check(OUTPUT_PATH, n=30)
     print(f"Done → {OUTPUT_PATH}")
 
