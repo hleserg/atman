@@ -166,9 +166,7 @@ def test_compute_metrics_maps_overall_and_missing_labels(
     assert metrics["per_entity"]["organization"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
-def test_save_results_merges_model_entry(
-    gliner_modules: tuple[Any, Any], tmp_path: Path
-) -> None:
+def test_save_results_merges_model_entry(gliner_modules: tuple[Any, Any], tmp_path: Path) -> None:
     baseline_module, _ = gliner_modules
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text(json.dumps({"old/model": {"model": "old/model"}}), encoding="utf-8")
