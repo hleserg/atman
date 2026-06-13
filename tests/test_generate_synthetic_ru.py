@@ -56,7 +56,9 @@ def test_validate_jsonl_rejects_conflicting_and_overlapping_spans(
         {"tokenized_text": ["Atman"], "ner": [[0, 0, "project"], [0, 0, "product"]]},
         {"tokenized_text": ["кот", "Тимоша"], "ner": [[0, 1, "animal"], [1, 1, "person"]]},
     ]
-    path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows), encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows), encoding="utf-8"
+    )
 
     count, errors = generator.validate_jsonl(path, min_count=0)
 

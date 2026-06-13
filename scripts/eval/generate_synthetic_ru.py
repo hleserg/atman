@@ -337,7 +337,7 @@ def _write_jsonl_atomic(output_path: Path, examples: list[dict[str, Any]]) -> No
 
 
 def spot_check(path: Path, n: int = 30) -> None:
-    print(f"\nSpot-check: first {n} examples\n{'─'*70}")
+    print(f"\nSpot-check: first {n} examples\n{'─' * 70}")
     with open(path, encoding="utf-8") as f:
         for i, raw in enumerate(f):
             if i >= n:
@@ -346,11 +346,9 @@ def spot_check(path: Path, n: int = 30) -> None:
             tokens = row["tokenized_text"]
             ner = row["ner"]
             preview = " ".join(tokens[:12]) + ("…" if len(tokens) > 12 else "")
-            entity_strs = [
-                f"«{' '.join(tokens[s:e+1])}»→{lbl}" for s, e, lbl in ner[:3]
-            ]
-            extra = f" +{len(ner)-3}" if len(ner) > 3 else ""
-            print(f"  [{i+1:3d}] {preview}")
+            entity_strs = [f"«{' '.join(tokens[s : e + 1])}»→{lbl}" for s, e, lbl in ner[:3]]
+            extra = f" +{len(ner) - 3}" if len(ner) > 3 else ""
+            print(f"  [{i + 1:3d}] {preview}")
             if entity_strs:
                 print(f"       {', '.join(entity_strs)}{extra}")
     print()
