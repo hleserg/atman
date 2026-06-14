@@ -4,13 +4,13 @@ import json
 import sys
 import types
 from pathlib import Path
-from typing import Any
 
-from atman.eval.gliner2 import baseline
-from atman.eval.gliner2.dataset import LABELS, load_dataset
+import pytest
 
 
 def test_gliner2_dataset_spans_match_source_text() -> None:
+    from atman.eval.gliner2.dataset import LABELS, load_dataset
+
     examples = load_dataset()
 
     assert len(examples) == 130
@@ -45,6 +45,9 @@ def test_gliner2_dataset_spans_match_source_text() -> None:
 
 
 def test_run_predictions_normalizes_gliner2_response_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner2Model:
         def __init__(self) -> None:
             self.calls: list[tuple[str, list[str], float, bool]] = []
@@ -83,6 +86,9 @@ def test_run_predictions_normalizes_gliner2_response_shape() -> None:
 
 
 def test_run_predictions_normalizes_standard_gliner_response_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGlinerModel:
         def __init__(self) -> None:
             self.calls: list[tuple[str, list[str], float]] = []
@@ -109,7 +115,10 @@ def test_run_predictions_normalizes_standard_gliner_response_shape() -> None:
     assert model.calls == [("Маша работает", LABELS, 0.7)]
 
 
-def test_compute_metrics_maps_strict_nervaluate_results(monkeypatch: Any) -> None:
+def test_compute_metrics_maps_strict_nervaluate_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeEvalResult:
         def __init__(self, precision: float, recall: float, f1: float) -> None:
             self.precision = precision
@@ -152,6 +161,8 @@ def test_compute_metrics_maps_strict_nervaluate_results(monkeypatch: Any) -> Non
 
 
 def test_save_results_merges_models_instead_of_overwriting(tmp_path: Path) -> None:
+    from atman.eval.gliner2 import baseline
+
     output = tmp_path / "gliner2_results.json"
     output.write_text(
         json.dumps(
