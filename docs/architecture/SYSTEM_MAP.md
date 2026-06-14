@@ -281,6 +281,8 @@ Fully optional, disableable via `atman.skills.enabled = false`. Only imported fr
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | idempotent eval schema, benchmark run tables, supporting tables, and trend materialized view |
 | `scripts/eval/partition_manager.py` | operations | creates future partitions, detaches old partitions, and reports `eval.benchmark_runs` partition status |
 | `scripts/eval/eval_linguistic_quality.py` | offline eval | NER + classification quality eval: 23 NER examples (Russian persons/orgs/places/topics/health), 5 classification examples; computes precision/recall/F1 and accuracy; `--adapter gliner|noop`, `--verbose`; exit 1 on FAIL; target: NER F1 ≥ 0.65, classification accuracy ≥ 0.70 |
+| `src/atman/eval/gliner2/dataset.py`, `src/atman/eval/gliner2/baseline.py` | offline eval | GLiNER2 Russian NER gold dataset + zero-shot baseline runner; result JSON is merged under an adjacent file lock and written via temp file + atomic replace |
+| `scripts/eval/generate_synthetic_ru.py` | offline eval data generation | Pioneer API synthetic Russian NER generator; malformed downloaded JSONL raises, generated JSONL is validated in a temp file before replacing `eval/data/atman_ner_ru_synth.jsonl` |
 | `src/demo_eval_runner.py`, `docs/features/eval-runner/README.md`, `docs/features/eval-runner/README-ru.md` | demo/docs | reproducible E1 runner walkthrough + bilingual usage docs |
 
 ---
@@ -538,6 +540,7 @@ Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_l
 | `FileBackend._read_facts_from_disk()` | ✅ malformed lines are reported via `warnings.warn(RuntimeWarning, ...)` and skipped (`adapters/memory/file_backend.py`); covered by `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
 | `JsonlExperienceStore._read_all_experiences()` | `warnings.warn(...)`, continues (`adapters/storage/jsonl_experience_store.py:57-73`) |
 | `FileStateStore.get_experience()` / `load_identity()` / etc. | ✅ `_read_json_file` wraps `json.JSONDecodeError` into `ValueError` with file path + line/column context (`adapters/storage/file_state_store.py`); covered by `tests/test_file_state_store.py::test_get_experience_with_corrupted_json_raises_clear_error` and `test_load_identity_with_corrupted_json_raises_clear_error` |
+| `generate_synthetic_ru._download_dataset()` / `write_validated_jsonl()` | malformed API JSONL raises `ValueError`; generated JSONL is validated before atomic replace, preserving the previous artifact on failure (`scripts/eval/generate_synthetic_ru.py`); covered by `tests/test_gliner2_eval_artifact_writes.py` |
 | `cli_experience.py:cmd_add()` | broad `except Exception` (`cli_experience.py:45-56`) |
 
 ### 4.4. Governance and concurrency
@@ -548,6 +551,7 @@ Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_l
 | Concurrent narrative writes | optimistic locking on `updated_at` | `core/ports/reflection.py:133-147` |
 | Write conflict | `NarrativePersistenceConflictError` | `core/exceptions.py:8-14` |
 | Narrative audit failure | nested try/except — narrative committed, audit logged as warning | `core/services/narrative_revision.py:73-88` |
+| Concurrent GLiNER2 baseline result writes | adjacent `*.lock` held for read-modify-write + temp file `os.replace` | `src/atman/eval/gliner2/baseline.py` |
 
 ### 4.5. What still needs covering (gaps)
 
@@ -579,6 +583,7 @@ Files: `docs/features/full-corpus-demo/`, `src/demo_full_corpus.py`, `e2e/full_l
 | `6a9f28f` | Session Manager recent narrative update replaced the whole recent layer instead of appending; regression test added | covered (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | Open WebUI setup exposed first-admin registration to LAN by default | covered (`tests/test_deployment_scripts.py`) |
 | `b47abcb` | `eval.benchmark_runs` only created a current-month partition, so inserts with `started_at=NOW()` would fail after the month boundary | covered (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`, `tests/test_eval_migrations.py::test_benchmark_runs_migration_rolls_december_partition_to_next_year`, `tests/test_eval_migrations.py::test_benchmark_runs_sql_mirror_documents_default_partition_safety_net`) |
+| current PR | GLiNER2 eval generator could overwrite the committed JSONL before validation and silently drop malformed downloaded rows; baseline result JSON could lose/truncate entries on concurrent or interrupted writes | covered (`tests/test_gliner2_eval_artifact_writes.py`) |
 | current PR | PostgreSQL RLS allowed owner-role bypass for `reflections` and exposed `fact_relations` without RLS | covered (`tests/test_postgres_migration_security.py`) |
 | current PR | Factual memory CLI defaulted to PostgreSQL and crashed without a local database, violating the no-external-service local path | covered (`tests/test_cli_factual_memory.py`) |
 | current PR | Session orphan recovery created `SessionExperience` rows pointing at missing `KeyMoment` rows after crash/interruption | covered (`tests/test_session_manager.py::test_orphan_recovery_restores_journaled_key_moment_payload`) |

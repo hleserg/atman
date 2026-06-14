@@ -21,10 +21,15 @@ Model loading strategy:
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+import fcntl
 
 import click
 from rich.markup import escape
@@ -198,6 +203,61 @@ def _print_results(model_id: str, metrics: dict[str, Any]) -> None:
     console.print(table)
 
 
+# PLAYBOOK-START
+# id: locked-atomic-merged-json-writes
+# category: design-patterns
+# title: Locked Atomic Writes for Merged JSON Artifacts
+# status: draft
+# since: 2026-06-14
+#
+# Pattern: when a command reads an existing JSON artifact, merges a new entry,
+# and writes it back, hold an adjacent lock for the whole read-modify-write and
+# commit via a temporary file plus atomic replace.
+#
+# Why generalizable: benchmark results, manifests, and local cache indexes often
+# accumulate entries across repeated CLI runs. Without a lock, concurrent runs
+# lose updates; without atomic replace, an interrupted write can leave truncated
+# JSON that blocks future runs.
+#
+# Trade-offs: this is process-local filesystem coordination, not a distributed
+# lock. It protects local CLI artifacts but does not coordinate across hosts.
+# PLAYBOOK-END
+@contextmanager
+def _locked_output(output: Path) -> Iterator[None]:
+    lock_path = output.with_suffix(f"{output.suffix}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock_fh:
+        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_json(output: Path, payload: dict[str, Any]) -> None:
+    temp_path: Path | None = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=output.parent,
+        prefix=f".{output.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as fh:
+        temp_path = Path(fh.name)
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+    try:
+        os.replace(temp_path, output)
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+
+
 def _save_results(
     output: Path,
     model_id: str,
@@ -207,23 +267,23 @@ def _save_results(
 ) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    existing: dict[str, Any] = {}
-    if output.exists() and output.stat().st_size > 0:
-        with output.open(encoding="utf-8") as fh:
-            existing = json.load(fh)
+    with _locked_output(output):
+        existing: dict[str, Any] = {}
+        if output.exists() and output.stat().st_size > 0:
+            with output.open(encoding="utf-8") as fh:
+                existing = json.load(fh)
 
-    existing[model_id] = {
-        "model": model_id,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "threshold": threshold,
-        "n_examples": n_examples,
-        "overall": metrics["overall"],
-        "per_entity": metrics["per_entity"],
-        "conclusion": _conclusion(metrics["overall"]["f1"]),
-    }
+        existing[model_id] = {
+            "model": model_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "threshold": threshold,
+            "n_examples": n_examples,
+            "overall": metrics["overall"],
+            "per_entity": metrics["per_entity"],
+            "conclusion": _conclusion(metrics["overall"]["f1"]),
+        }
 
-    with output.open("w", encoding="utf-8") as fh:
-        json.dump(existing, fh, ensure_ascii=False, indent=2)
+        _atomic_write_json(output, existing)
 
     print_ok(f"Results saved → {output}")
 

@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -209,13 +210,15 @@ def _download_dataset(dataset_name: str) -> list[dict]:
     )
     resp.raise_for_status()
     rows: list[dict] = []
-    for line in resp.text.strip().splitlines():
+    for line_num, line in enumerate(resp.text.strip().splitlines(), 1):
         line = line.strip()
         if line:
             try:
                 rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Malformed JSONL from Pioneer download at line {line_num}: {exc}"
+                ) from exc
     return rows
 
 
@@ -262,6 +265,36 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
             else:
                 count += 1
     return count, errors
+
+
+def write_validated_jsonl(path: Path, examples: list[dict]) -> int:
+    """Write examples atomically after validating the generated JSONL."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as f:
+        temp_path = Path(f.name)
+        for ex in examples:
+            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+    try:
+        count, errors = validate_jsonl(temp_path)
+        if errors:
+            raise ValueError("generated JSONL failed validation:\n" + "\n".join(errors[:30]))
+        os.replace(temp_path, path)
+        return count
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
 
 
 def spot_check(path: Path, n: int = 30) -> None:
@@ -327,17 +360,11 @@ def main() -> None:
     if total < 1500:
         print(f"WARNING: {total} < 1500 required examples", file=sys.stderr)
 
-    print(f"Writing to {OUTPUT_PATH}...")
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        for ex in all_examples:
-            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-
-    print("Validating...")
-    count, errors = validate_jsonl(OUTPUT_PATH)
-    if errors:
-        print(f"VALIDATION FAILED ({len(errors)} errors):")
-        for err in errors[:30]:
-            print(f"  {err}")
+    print(f"Writing validated JSONL to {OUTPUT_PATH}...")
+    try:
+        count = write_validated_jsonl(OUTPUT_PATH, all_examples)
+    except ValueError as exc:
+        print(f"VALIDATION FAILED: {exc}")
         sys.exit(1)
 
     print(f"✓ Validation passed: {count} examples")
