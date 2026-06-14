@@ -20,16 +20,16 @@ Model loading strategy:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import sys
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
-
-import fcntl
+from typing import Any, cast
 
 import click
 from rich.markup import escape
@@ -323,10 +323,12 @@ def main(model: str, threshold: float, output: Path) -> None:
     gliner_model, model_type = _load_gliner(model)
     print_info(f"Model type: {model_type}")
 
-    gold_nerval = [
-        [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in ex["entities"]]
-        for ex in dataset
-    ]
+    gold_nerval: list[list[dict[str, Any]]] = []
+    for ex in dataset:
+        gold_entities = cast(list[dict[str, Any]], ex["entities"])
+        gold_nerval.append(
+            [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in gold_entities]
+        )
 
     print_info("Running predictions …")
     pred_nerval = _run_predictions(gliner_model, model_type, dataset, threshold)

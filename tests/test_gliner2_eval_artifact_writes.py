@@ -17,7 +17,6 @@ from typing import Any, cast
 
 import pytest
 
-
 _ROOT = Path(__file__).resolve().parents[1]
 _GENERATOR_PATH = _ROOT / "scripts" / "eval" / "generate_synthetic_ru.py"
 _BASELINE_PATH = _ROOT / "src" / "atman" / "eval" / "gliner2" / "baseline.py"
@@ -50,8 +49,9 @@ def _load_baseline(monkeypatch: pytest.MonkeyPatch) -> Any:
     fake_gliner2 = types.ModuleType("atman.eval.gliner2")
     fake_gliner2.__path__ = []  # type: ignore[attr-defined]
     fake_dataset = types.ModuleType("atman.eval.gliner2.dataset")
-    fake_dataset.LABELS = ["person"]
-    fake_dataset.load_dataset = lambda: []
+    fake_dataset_any = cast(Any, fake_dataset)
+    fake_dataset_any.LABELS = ["person"]
+    fake_dataset_any.load_dataset = lambda: []
 
     monkeypatch.setitem(sys.modules, "atman.eval", fake_eval)
     monkeypatch.setitem(sys.modules, "atman.eval.gliner2", fake_gliner2)
