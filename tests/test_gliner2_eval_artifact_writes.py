@@ -20,6 +20,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
 _GENERATOR_PATH = _ROOT / "scripts" / "eval" / "generate_synthetic_ru.py"
+_BASELINE_PATH = _ROOT / "src" / "atman" / "eval" / "gliner2" / "baseline.py"
 
 
 class _Response:
@@ -35,6 +36,28 @@ def _load_generator(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setitem(sys.modules, "requests", fake_requests)
 
     spec = importlib.util.spec_from_file_location("atman_eval_generator_test", _GENERATOR_PATH)
+    assert spec is not None
+    loader = spec.loader
+    assert isinstance(loader, Loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _load_baseline(monkeypatch: pytest.MonkeyPatch) -> Any:
+    fake_eval = types.ModuleType("atman.eval")
+    fake_eval.__path__ = []  # type: ignore[attr-defined]
+    fake_gliner2 = types.ModuleType("atman.eval.gliner2")
+    fake_gliner2.__path__ = []  # type: ignore[attr-defined]
+    fake_dataset = types.ModuleType("atman.eval.gliner2.dataset")
+    fake_dataset.LABELS = ["person"]
+    fake_dataset.load_dataset = lambda: []
+
+    monkeypatch.setitem(sys.modules, "atman.eval", fake_eval)
+    monkeypatch.setitem(sys.modules, "atman.eval.gliner2", fake_gliner2)
+    monkeypatch.setitem(sys.modules, "atman.eval.gliner2.dataset", fake_dataset)
+
+    spec = importlib.util.spec_from_file_location("atman_eval_baseline_test", _BASELINE_PATH)
     assert spec is not None
     loader = spec.loader
     assert isinstance(loader, Loader)
@@ -68,7 +91,7 @@ def test_generator_rejects_malformed_download_jsonl(monkeypatch: pytest.MonkeyPa
     def fake_get(*_args: object, **_kwargs: object) -> _Response:
         return _Response('{"text":"ok","entities":[]}\n{not-json}\n')
 
-    monkeypatch.setattr(generator.requests, "get", fake_get)
+    monkeypatch.setattr(generator.requests, "get", fake_get, raising=False)
 
     with pytest.raises(ValueError, match="Malformed JSONL from Pioneer download at line 2"):
         generator._download_dataset("dataset-name")
@@ -78,8 +101,7 @@ def test_baseline_atomic_write_preserves_existing_json_on_replace_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from atman.eval.gliner2 import baseline
-
+    baseline = _load_baseline(monkeypatch)
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text('{"old": true}\n', encoding="utf-8")
 
@@ -95,9 +117,11 @@ def test_baseline_atomic_write_preserves_existing_json_on_replace_failure(
     assert list(tmp_path.glob(".gliner2_baseline_ru.json.*.tmp")) == []
 
 
-def test_baseline_save_results_merges_existing_model_entries(tmp_path: Path) -> None:
-    from atman.eval.gliner2 import baseline
-
+def test_baseline_save_results_merges_existing_model_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _load_baseline(monkeypatch)
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text('{"existing/model": {"model": "existing/model"}}\n', encoding="utf-8")
     metrics = {
