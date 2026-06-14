@@ -446,8 +446,10 @@ Rules:
     - `MANIFEST.md` — ATMAN
     - `README-ru.md` — Atman
     - `README.md` — Atman
-    - `SYSTEM-ru.md` — Source: SYSTEM.md
-    - `SYSTEM.md` — Source: SYSTEM.md
+    - `SYSTEM-ru.md` — Atman — Архитектура системы
+    - `SYSTEM.md` — Atman — System Architecture
+    - `SYSTEM_MAP-ru.md` — Карта системы Atman
+    - `SYSTEM_MAP.md` — Atman System Map
 - **css/**
 - **demo-data/**
 - **design/**
@@ -456,6 +458,9 @@ Rules:
 - **development/**
     - `DEVELOPMENT_STANDARD.md` — Стандарт разработки Atman
     - `SESSION_TESTER_RUNBOOK.md` — Session Tester Runbook
+- **eval/**
+    - `gliner2_label_inventory.md` — GLiNER2 Label Inventory — Atman Codebase (T0)
+    - `gliner2_label_schema.md` — GLiNER2 Label Schema — Atman
 - **features/**
   - **affect-detector/**
       - `README-ru.md` — Affect Detector (E21)
