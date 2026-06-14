@@ -8,7 +8,7 @@ a rules-based extractor or a no-op.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from typing_extensions import override
 
@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 _MREBEL_OBJ_TYPE_MARKER = "<obj_type>"
 
 try:
-    from transformers import pipeline as _hf_pipeline  # type: ignore[import-untyped]
+    from transformers import pipeline as _transformers_pipeline  # type: ignore[import-untyped]
 
+    _hf_pipeline = cast(Any, _transformers_pipeline)
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _hf_pipeline = None  # type: ignore[assignment]
