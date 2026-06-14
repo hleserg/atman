@@ -193,6 +193,6 @@ def test_save_results_merges_models_instead_of_overwriting(tmp_path: Path) -> No
     saved = json.loads(output.read_text(encoding="utf-8"))
     assert set(saved) == {"existing-model", "new-model"}
     assert saved["existing-model"]["overall"] == {"f1": 0.9}
-    assert saved["new-model"]["threshold"] == 0.42
+    assert saved["new-model"]["threshold"] == pytest.approx(0.42)
     assert saved["new-model"]["n_examples"] == 2
     assert saved["new-model"]["conclusion"] == "F1 0.4–0.7: fine-tune нужен"
