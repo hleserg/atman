@@ -185,7 +185,7 @@ def test_baseline_run_predictions_supports_gliner2_and_gliner(
         ) -> dict[str, Any]:
             assert text == "Маша дома"
             assert labels == ["person"]
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             assert include_spans is True
             return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -199,7 +199,7 @@ def test_baseline_run_predictions_supports_gliner2_and_gliner(
         ) -> list[dict[str, Any]]:
             assert text == "Маша дома"
             assert labels == ["person"]
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             return [{"label": "person", "start": 0, "end": 4}]
 
     assert baseline._run_predictions(_Gliner2Model(), "gliner2", dataset, 0.5) == [
