@@ -146,8 +146,11 @@ def test_compute_metrics_maps_strict_nervaluate_results(monkeypatch: pytest.Monk
                 },
             }
 
-    fake_nervaluate = types.ModuleType("nervaluate")
-    setattr(fake_nervaluate, "Evaluator", FakeEvaluator)
+    class FakeNervaluateModule(types.ModuleType):
+        Evaluator: type[FakeEvaluator]
+
+    fake_nervaluate = FakeNervaluateModule("nervaluate")
+    fake_nervaluate.Evaluator = FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
     metrics = baseline._compute_metrics(
