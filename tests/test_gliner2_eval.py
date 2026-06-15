@@ -6,6 +6,7 @@ import importlib
 import importlib.machinery
 import importlib.util
 import json
+import math
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -121,7 +122,7 @@ def test_gliner2_baseline_normalizes_gliner2_and_gliner_predictions(
         ) -> dict[str, dict[str, list[dict[str, int]]]]:
             assert text == "Маша дома"
             assert "person" in labels
-            assert threshold == 0.42
+            assert math.isclose(threshold, 0.42)
             assert include_spans is True
             return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -135,7 +136,7 @@ def test_gliner2_baseline_normalizes_gliner2_and_gliner_predictions(
         ) -> list[dict[str, object]]:
             assert text == "Маша дома"
             assert "location" in labels
-            assert threshold == 0.42
+            assert math.isclose(threshold, 0.42)
             return [{"label": "location", "start": 5, "end": 9, "score": 0.9}]
 
     assert baseline._run_predictions(_FakeGliner2Model(), "gliner2", examples, 0.42) == [
@@ -165,7 +166,7 @@ def test_gliner2_baseline_save_results_merges_model_runs(
 
     saved = json.loads(output.read_text(encoding="utf-8"))
     assert saved["existing/model"]["model"] == "existing/model"
-    assert saved["new/model"]["threshold"] == 0.5
+    assert math.isclose(float(saved["new/model"]["threshold"]), 0.5)
     assert saved["new/model"]["n_examples"] == 130
     assert saved["new/model"]["overall"] == metrics["overall"]
     assert saved["new/model"]["conclusion"] == baseline._conclusion(0.6)

@@ -8,12 +8,11 @@ import sys
 import types
 from importlib.abc import Loader
 from pathlib import Path
-from typing import Protocol, TypeVar, cast
+from typing import Protocol, cast
 
 _ROOT = Path(__file__).resolve().parents[1]
 _GENERATOR_PATH = _ROOT / "scripts" / "eval" / "generate_synthetic_ru.py"
 _MISSING = object()
-_T = TypeVar("_T")
 
 
 class _GeneratorModule(Protocol):
@@ -22,14 +21,14 @@ class _GeneratorModule(Protocol):
     def validate_jsonl(self, path: Path) -> tuple[int, list[str]]: ...
 
 
-def _load_module(path: Path, name: str, module_type: type[_T]) -> _T:
+def _load_generator_file(path: Path, name: str) -> _GeneratorModule:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     loader = spec.loader
     assert isinstance(loader, Loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
-    return cast(_T, module)
+    return cast(_GeneratorModule, module)
 
 
 def _load_generator_module() -> _GeneratorModule:
@@ -37,7 +36,7 @@ def _load_generator_module() -> _GeneratorModule:
     previous_requests = sys.modules.get("requests", _MISSING)
     try:
         sys.modules["requests"] = fake_requests
-        return _load_module(_GENERATOR_PATH, "atman_synthetic_ru_generator_test", _GeneratorModule)
+        return _load_generator_file(_GENERATOR_PATH, "atman_synthetic_ru_generator_test")
     finally:
         if previous_requests is _MISSING:
             sys.modules.pop("requests", None)
