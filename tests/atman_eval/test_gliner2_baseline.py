@@ -41,7 +41,7 @@ def test_run_predictions_supports_gliner2_shape() -> None:
         ) -> dict[str, Any]:
             assert text == "Маша пришла"
             assert "person" in labels
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             assert include_spans is True
             return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -66,7 +66,7 @@ def test_run_predictions_supports_standard_gliner_shape() -> None:
         ) -> list[dict[str, Any]]:
             assert text == "Google открыл офис"
             assert "organization" in labels
-            assert threshold == 0.4
+            assert threshold == pytest.approx(0.4)
             return [{"label": "organization", "start": 0, "end": 6}]
 
     predictions = baseline._run_predictions(
@@ -109,7 +109,7 @@ def test_compute_metrics_with_nervaluate_result(monkeypatch: pytest.MonkeyPatch)
     )
 
     assert metrics["overall"] == {"precision": 0.75, "recall": 0.5, "f1": 0.6}
-    assert metrics["per_entity"]["person"]["f1"] == 0.6
+    assert metrics["per_entity"]["person"]["f1"] == pytest.approx(0.6)
     assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
@@ -161,5 +161,5 @@ def test_cli_main_writes_results_without_loading_real_model(
 
     assert result.exit_code == 0
     saved = json.loads(output.read_text(encoding="utf-8"))
-    assert saved["fake/model"]["threshold"] == 0.42
+    assert saved["fake/model"]["threshold"] == pytest.approx(0.42)
     assert saved["fake/model"]["n_examples"] == len(load_dataset())
