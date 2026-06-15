@@ -149,9 +149,7 @@ def test_cli_main_writes_results_without_loading_real_model(
         "_compute_metrics",
         lambda gold, pred: {
             "overall": {"precision": 0.0, "recall": 0.0, "f1": 0.0},
-            "per_entity": {
-                label: {"precision": 0.0, "recall": 0.0, "f1": 0.0} for label in LABELS
-            },
+            "per_entity": {label: {"precision": 0.0, "recall": 0.0, "f1": 0.0} for label in LABELS},
         },
     )
     output = tmp_path / "baseline.json"
