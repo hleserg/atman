@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
+import importlib.machinery
 import importlib.util
 import json
-import sys
-import types
-from importlib.abc import Loader
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Protocol, cast
 
 import pytest
-
-_ROOT = Path(__file__).resolve().parents[1]
-_DATASET_PATH = _ROOT / "src" / "atman" / "eval" / "gliner2" / "dataset.py"
-_BASELINE_PATH = _ROOT / "src" / "atman" / "eval" / "gliner2" / "baseline.py"
-_MISSING = object()
-_T = TypeVar("_T")
 
 
 class _DatasetModule(Protocol):
@@ -48,48 +41,36 @@ class _BaselineModule(Protocol):
     ) -> None: ...
 
 
-def _load_module(path: Path, name: str, module_type: type[_T]) -> _T:
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    loader = spec.loader
-    assert isinstance(loader, Loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return cast(_T, module)
+def _allow_missing_eval_canary(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(
+        name: str,
+        package: str | None = None,
+    ) -> importlib.machinery.ModuleSpec | None:
+        if name == "alembic":
+            return importlib.machinery.ModuleSpec("alembic", loader=None)
+        return real_find_spec(name, package)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
 
 
-def _load_dataset_module() -> _DatasetModule:
-    return _load_module(_DATASET_PATH, "atman_gliner2_dataset_test", _DatasetModule)
+def _load_dataset_module(monkeypatch: pytest.MonkeyPatch) -> _DatasetModule:
+    _allow_missing_eval_canary(monkeypatch)
+    module = importlib.import_module("atman.eval.gliner2.dataset")
+    return cast(_DatasetModule, module)
 
 
-def _load_baseline_module() -> _BaselineModule:
-    dataset_module = _load_dataset_module()
-    fake_eval = types.ModuleType("atman.eval")
-    fake_gliner2 = types.ModuleType("atman.eval.gliner2")
-    fake_eval.__path__ = []  # type: ignore[attr-defined]
-    fake_gliner2.__path__ = []  # type: ignore[attr-defined]
-
-    module_names = (
-        "atman.eval",
-        "atman.eval.gliner2",
-        "atman.eval.gliner2.dataset",
-    )
-    previous = {name: sys.modules.get(name, _MISSING) for name in module_names}
-    try:
-        sys.modules["atman.eval"] = fake_eval
-        sys.modules["atman.eval.gliner2"] = fake_gliner2
-        sys.modules["atman.eval.gliner2.dataset"] = cast(types.ModuleType, dataset_module)
-        return _load_module(_BASELINE_PATH, "atman_gliner2_baseline_test", _BaselineModule)
-    finally:
-        for name, value in previous.items():
-            if value is _MISSING:
-                sys.modules.pop(name, None)
-            else:
-                sys.modules[name] = cast(types.ModuleType, value)
+def _load_baseline_module(monkeypatch: pytest.MonkeyPatch) -> _BaselineModule:
+    _allow_missing_eval_canary(monkeypatch)
+    module = importlib.import_module("atman.eval.gliner2.baseline")
+    return cast(_BaselineModule, module)
 
 
-def test_gliner2_dataset_spans_match_source_text_and_known_labels() -> None:
-    dataset = _load_dataset_module()
+def test_gliner2_dataset_spans_match_source_text_and_known_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset = _load_dataset_module(monkeypatch)
 
     examples = dataset.load_dataset()
 
@@ -116,15 +97,17 @@ def test_gliner2_dataset_spans_match_source_text_and_known_labels() -> None:
             assert text[start:end] == entity_text
 
 
-def test_gliner2_dataset_rejects_missing_entity_text() -> None:
-    dataset = _load_dataset_module()
+def test_gliner2_dataset_rejects_missing_entity_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset = _load_dataset_module(monkeypatch)
 
     with pytest.raises(ValueError, match="not found"):
         dataset._build_span("Маша пришла домой.", "Сергей", "person")
 
 
-def test_gliner2_baseline_normalizes_gliner2_and_gliner_predictions() -> None:
-    baseline = _load_baseline_module()
+def test_gliner2_baseline_normalizes_gliner2_and_gliner_predictions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _load_baseline_module(monkeypatch)
     examples = [{"text": "Маша дома"}]
 
     class _FakeGliner2Model:
@@ -163,8 +146,11 @@ def test_gliner2_baseline_normalizes_gliner2_and_gliner_predictions() -> None:
     ]
 
 
-def test_gliner2_baseline_save_results_merges_model_runs(tmp_path: Path) -> None:
-    baseline = _load_baseline_module()
+def test_gliner2_baseline_save_results_merges_model_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _load_baseline_module(monkeypatch)
     output = tmp_path / "baseline.json"
     output.write_text(
         json.dumps({"existing/model": {"model": "existing/model"}}, ensure_ascii=False),
