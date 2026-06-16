@@ -49,7 +49,7 @@ def test_run_predictions_normalizes_gliner2_entities() -> None:
         ) -> dict[str, Any]:
             assert text == "Маша ведёт проект Atman."
             assert labels == LABELS
-            assert threshold == 0.42
+            assert threshold == pytest.approx(0.42)
             assert include_spans is True
             return {
                 "entities": {
@@ -84,7 +84,7 @@ def test_run_predictions_normalizes_standard_gliner_entities() -> None:
         ) -> list[dict[str, Any]]:
             assert text == "Atman помогает Сергею."
             assert labels == LABELS
-            assert threshold == 0.7
+            assert threshold == pytest.approx(0.7)
             return [
                 {"label": "project", "start": 0, "end": 5, "score": 0.91},
                 {"label": "person", "start": 16, "end": 22, "score": 0.82},
@@ -129,7 +129,7 @@ def test_save_results_merges_model_entries_and_records_threshold_verdict(tmp_pat
     assert saved["old/model"]["model"] == "old/model"
     new_result = saved["new/model"]
     assert new_result["model"] == "new/model"
-    assert new_result["threshold"] == 0.55
+    assert new_result["threshold"] == pytest.approx(0.55)
     assert new_result["n_examples"] == 130
     assert new_result["overall"] == metrics["overall"]
     assert new_result["per_entity"] == metrics["per_entity"]
@@ -215,13 +215,17 @@ def test_main_wires_gold_spans_predictions_metrics_and_save(
     assert result.exit_code == 0, result.output
     assert calls["load_dataset"] is True
     assert calls["model_id"] == "fake/model"
-    assert calls["prediction_args"] == (fake_model, "gliner", dataset, 0.6)
+    prediction_args = calls["prediction_args"]
+    assert prediction_args[:3] == (fake_model, "gliner", dataset)
+    assert prediction_args[3] == pytest.approx(0.6)
     assert calls["gold"] == [
         [{"label": "project", "start": 0, "end": 5}, {"label": "person", "start": 16, "end": 22}]
     ]
     assert calls["pred"] == predictions
     assert calls["printed"] == ("fake/model", metrics)
-    assert calls["saved"] == (output, "fake/model", metrics, 1, 0.6)
+    saved_args = calls["saved"]
+    assert saved_args[:4] == (output, "fake/model", metrics, 1)
+    assert saved_args[4] == pytest.approx(0.6)
 
 
 def test_print_results_renders_threshold_verdict_and_entity_rows(
