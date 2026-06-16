@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import cast
+from typing import Protocol, cast
 
 
-def _load_generator() -> ModuleType:
+class SyntheticGenerator(Protocol):
+    def pioneer_to_gliner(self, row: dict[str, object]) -> dict[str, object] | None: ...
+
+    def validate_jsonl(self, path: Path) -> tuple[int, list[str]]: ...
+
+
+def _load_generator_module() -> ModuleType:
     script_path = (
         Path(__file__).resolve().parents[2] / "scripts" / "eval" / "generate_synthetic_ru.py"
     )
@@ -22,14 +27,14 @@ def _load_generator() -> ModuleType:
     return module
 
 
+def _load_generator() -> SyntheticGenerator:
+    return cast(SyntheticGenerator, _load_generator_module())
+
+
 def test_pioneer_to_gliner_filters_bad_entities_and_keeps_token_spans() -> None:
     generator = _load_generator()
-    pioneer_to_gliner = cast(
-        Callable[[dict[str, object]], dict[str, object] | None],
-        getattr(generator, "pioneer_to_gliner"),
-    )
 
-    converted = pioneer_to_gliner(
+    converted = generator.pioneer_to_gliner(
         {
             "text": "В марте проект Atman запустили в Яндекс Практикуме.",
             "entities": [
@@ -61,20 +66,12 @@ def test_pioneer_to_gliner_filters_bad_entities_and_keeps_token_spans() -> None:
 
 def test_pioneer_to_gliner_rejects_blank_text() -> None:
     generator = _load_generator()
-    pioneer_to_gliner = cast(
-        Callable[[dict[str, object]], dict[str, object] | None],
-        getattr(generator, "pioneer_to_gliner"),
-    )
 
-    assert pioneer_to_gliner({"text": "   ", "entities": [("Atman", "project")]}) is None
+    assert generator.pioneer_to_gliner({"text": "   ", "entities": [("Atman", "project")]}) is None
 
 
 def test_validate_jsonl_reports_line_level_data_errors(tmp_path: Path) -> None:
     generator = _load_generator()
-    validate_jsonl = cast(
-        Callable[[Path], tuple[int, list[str]]],
-        getattr(generator, "validate_jsonl"),
-    )
     rows: list[str] = [
         json.dumps(
             {"tokenized_text": ["Маша", "рада"], "ner": [[0, 0, "person"], [1, 1, "emotion_word"]]},
@@ -90,7 +87,7 @@ def test_validate_jsonl_reports_line_level_data_errors(tmp_path: Path) -> None:
     path = tmp_path / "synthetic.jsonl"
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-    count, errors = validate_jsonl(path)
+    count, errors = generator.validate_jsonl(path)
 
     assert count == 1
     assert len(errors) == 5
