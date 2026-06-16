@@ -6,11 +6,10 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from atman.eval.gliner2 import baseline
-from atman.eval.gliner2.dataset import LABELS, load_dataset
-
 
 def test_dataset_spans_resolve_to_labeled_text_and_cover_all_labels() -> None:
+    from atman.eval.gliner2.dataset import LABELS, load_dataset
+
     dataset = load_dataset()
     labels_seen: set[str] = set()
 
@@ -34,6 +33,9 @@ def test_dataset_spans_resolve_to_labeled_text_and_cover_all_labels() -> None:
 
 
 def test_run_predictions_normalizes_gliner2_entities() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner2:
         def extract_entities(
             self,
@@ -67,6 +69,9 @@ def test_run_predictions_normalizes_gliner2_entities() -> None:
 
 
 def test_run_predictions_normalizes_standard_gliner_entities() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner:
         def predict_entities(
             self,
@@ -96,6 +101,8 @@ def test_run_predictions_normalizes_standard_gliner_entities() -> None:
 
 
 def test_save_results_merges_model_entries_and_records_threshold_verdict(tmp_path: Path) -> None:
+    from atman.eval.gliner2 import baseline
+
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text(
         json.dumps(
