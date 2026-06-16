@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 
 def test_dataset_spans_resolve_to_labeled_text_and_cover_all_labels() -> None:
     from atman.eval.gliner2.dataset import LABELS, load_dataset
@@ -133,3 +135,114 @@ def test_save_results_merges_model_entries_and_records_threshold_verdict(tmp_pat
     assert new_result["per_entity"] == metrics["per_entity"]
     assert new_result["conclusion"] == "F1 < 0.4: рассмотреть смену базовой модели"
     assert isinstance(new_result["timestamp"], str)
+
+
+def test_main_wires_gold_spans_predictions_metrics_and_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from click.testing import CliRunner
+
+    from atman.eval.gliner2 import baseline
+
+    fake_model = object()
+    dataset = [
+        {
+            "text": "Atman помогает Сергею.",
+            "entities": [
+                {"label": "project", "start": 0, "end": 5, "text": "Atman"},
+                {"label": "person", "start": 16, "end": 22, "text": "Сергею"},
+            ],
+        }
+    ]
+    predictions = [[{"label": "project", "start": 0, "end": 5}]]
+    metrics = {
+        "overall": {"precision": 1.0, "recall": 0.5, "f1": 0.6667},
+        "per_entity": {"project": {"precision": 1.0, "recall": 0.5, "f1": 0.6667}},
+    }
+    calls: dict[str, Any] = {}
+
+    def fake_load_dataset() -> list[dict[str, Any]]:
+        calls["load_dataset"] = True
+        return dataset
+
+    def fake_load_gliner(model_id: str) -> tuple[object, str]:
+        calls["model_id"] = model_id
+        return fake_model, "gliner"
+
+    def fake_run_predictions(
+        model: object,
+        model_type: str,
+        dataset_arg: list[dict[str, Any]],
+        threshold: float,
+    ) -> list[list[dict[str, Any]]]:
+        calls["prediction_args"] = (model, model_type, dataset_arg, threshold)
+        return predictions
+
+    def fake_compute_metrics(
+        gold: list[list[dict[str, Any]]],
+        pred: list[list[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        calls["gold"] = gold
+        calls["pred"] = pred
+        return metrics
+
+    def fake_print_results(model_id: str, metrics_arg: dict[str, Any]) -> None:
+        calls["printed"] = (model_id, metrics_arg)
+
+    def fake_save_results(
+        output: Path,
+        model_id: str,
+        metrics_arg: dict[str, Any],
+        n_examples: int,
+        threshold: float,
+    ) -> None:
+        calls["saved"] = (output, model_id, metrics_arg, n_examples, threshold)
+
+    monkeypatch.setattr(baseline, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(baseline, "_load_gliner", fake_load_gliner)
+    monkeypatch.setattr(baseline, "_run_predictions", fake_run_predictions)
+    monkeypatch.setattr(baseline, "_compute_metrics", fake_compute_metrics)
+    monkeypatch.setattr(baseline, "_print_results", fake_print_results)
+    monkeypatch.setattr(baseline, "_save_results", fake_save_results)
+
+    output = tmp_path / "results.json"
+    result = CliRunner().invoke(
+        baseline.main,
+        ["--model", "fake/model", "--threshold", "0.6", "--output", str(output)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["load_dataset"] is True
+    assert calls["model_id"] == "fake/model"
+    assert calls["prediction_args"] == (fake_model, "gliner", dataset, 0.6)
+    assert calls["gold"] == [
+        [{"label": "project", "start": 0, "end": 5}, {"label": "person", "start": 16, "end": 22}]
+    ]
+    assert calls["pred"] == predictions
+    assert calls["printed"] == ("fake/model", metrics)
+    assert calls["saved"] == (output, "fake/model", metrics, 1, 0.6)
+
+
+def test_print_results_renders_threshold_verdict_and_entity_rows(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    metrics = {
+        "overall": {"precision": 0.8, "recall": 0.7, "f1": 0.71},
+        "per_entity": {
+            "animal": {"precision": 0.3, "recall": 0.2, "f1": 0.24},
+            "person": {"precision": 0.8, "recall": 0.7, "f1": 0.71},
+            "project": {"precision": 0.5, "recall": 0.4, "f1": 0.44},
+        },
+    }
+
+    baseline._print_results("fake/model", metrics)
+
+    output = capsys.readouterr().out
+    assert "fake/model" in output
+    assert "fine-tune опционален" in output
+    assert "animal" in output
+    assert "person" in output
+    assert "project" in output
