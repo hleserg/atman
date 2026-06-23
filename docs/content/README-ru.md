@@ -5,6 +5,7 @@
 > **Непрерывная личность для ваших агентов**
 
 [![CI](https://github.com/hleserg/atman/actions/workflows/ci.yml/badge.svg)](https://github.com/hleserg/atman/actions/workflows/ci.yml)
+[![Sentry](https://img.shields.io/badge/monitored%20by-Sentry-362D59?logo=sentry&logoColor=white)](https://sentry.io)
 [![codecov](https://codecov.io/github/hleserg/atman/graph/badge.svg?token=1S9D9U8QZP)](https://codecov.io/github/hleserg/atman)
 [![CodeFactor](https://www.codefactor.io/repository/github/hleserg/atman/badge)](https://www.codefactor.io/repository/github/hleserg/atman)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -14,7 +15,7 @@
 
 [[en](README.md)] — *English version*
 
-Atman - это инфраструктура с открытым исходным кодом, которая дает агентам LLM возможность отслеживать свои собственные ценности, замечать, когда они отходят от себя под давлением контекста, и формировать индивидуальность на основе реального жизненного опыта, а не статичного быстрого внедрения. Код на стадии исследования, основной фокус сейчас value drift, sycophancy, и bootstrap problem в долгоиграющих агентах. Лицензия MIT.
+Atman - это инфраструктура с открытым исходным кодом, которая дает агентам LLM возможность отслеживать свои собственные ценности, замечать, когда они отходят от себя под давлением контекста, и формировать индивидуальность на основе реального жизненного опыта, а не статичного инжектирования промпта. Код на стадии исследования, основной фокус сейчас value drift, sycophancy, и bootstrap problem в долгоиграющих агентах. Лицензия MIT.
 
 *В индийской философии — неизменная самость, то что остаётся собой через все перемены. Не душа в религиозном смысле, а буквально "неизменное ядро идентичности". Атман не рождается и не умирает — он просто есть. Для агента, который обнуляется с каждой сессией, это именно то, что мы даём ему.*
 
@@ -160,3 +161,15 @@ pytest tests/ -v       # все тесты (или: uv run pytest tests/ -v)
 
 - Email: [hello@atmanai.dev](mailto:hello@atmanai.dev)
 - Telegram: [@skhlebnikov](https://t.me/skhlebnikov)
+
+---
+
+## Благодарности
+
+<a href="https://sentry.io" target="_blank">
+  <img src="/docs/pic/sentry-wordmark-light-400x119.png" 
+       alt="Sentry" width="150" />
+</a>
+
+Мониторинг ошибок и наблюдаемость для Atman работают на [Sentry](https://sentry.io) —  
+спасибо за поддержку open-source проектов. 🙏
