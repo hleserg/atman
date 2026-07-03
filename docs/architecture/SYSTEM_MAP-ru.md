@@ -122,30 +122,30 @@
 
 | Файл | Реализует порт | Поведение |
 |------|----------------|-----------|
-| `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса; `search()` возвращает результаты в порядке убывания salience |
+| `adapters/memory/in_memory_backend.py` (`InMemoryBackend`) | `FactualMemory` | без персистенса; `search()` возвращает результаты в порядке убывания salience (так `limit` оставляет самые важные факты) |
 | `adapters/memory/file_backend.py` (`FileBackend`) | `FactualMemory` | JSONL + file locking; `search()` упорядочен по salience DESC |
 | `adapters/memory/postgres_backend.py` (`PostgresFactualMemory`) | `FactualMemory` | PostgreSQL `public.facts` / `public.fact_relations`, RLS через `ATMAN_CURRENT_AGENT`, опциональный `EmbeddingPort` с fallback на `ILIKE` |
-| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 1024-мерные эмбеддинги; seed=`hash(text) % 2^31`; `model_name()` возвращает `"mock-embedding:1024d"` |
-| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | разреженные лексические BM25 эмбеддинги |
-| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama API эмбеддинги; по умолчанию `bge-m3` (1024-мерные); env: `EMBEDDING_MODEL`, `EMBEDDING_OLLAMA_HOST` (устаревшие: `OLLAMA_EMBED_MODEL`, `OLLAMA_HOST`); `model_name()` возвращает настроенную модель; доступен `health_check()`; **opt-2**: per-instance `lru_cache(maxsize=cache_size)` на `embed()` — повторные упоминания entity пропускают HTTP-запрос; `cache_size=0` отключает; `embedding_cache_info()` — статистика hit/miss |
+| `adapters/memory/mock_embedding.py` (`MockEmbeddingAdapter`) | `EmbeddingPort` | детерминированные 1024-мерные эмбеддинги на основе SHA-256 seed; без внешних зависимостей; для тестов/CI |
+| `adapters/memory/bm25_embedding.py` (`BM25EmbeddingAdapter`) | `EmbeddingPort` | локальные разреженные BM25-векторы через feature hashing фиксированной размерности (Unicode-aware токенизатор); статистика корпуса из `embed_batch`/`embed_with_corpus` переиспользуется последующими вызовами `embed` |
+| `adapters/memory/ollama_embedding.py` (`OllamaEmbeddingAdapter`) | `EmbeddingPort` | Ollama HTTP `/api/embeddings`; по умолчанию: `bge-m3`/1024d; env: `EMBEDDING_MODEL`, `EMBEDDING_OLLAMA_HOST` (устаревшие: `OLLAMA_EMBED_MODEL`, `OLLAMA_HOST`); настраиваемый timeout; **opt-2**: per-instance `lru_cache(maxsize=cache_size)` на `embed()` — повторные упоминания entity пропускают HTTP-запрос; `cache_size=0` отключает; `embedding_cache_info()` — статистика hit/miss |
 | `adapters/memory/flag_embedding.py` (`FlagEmbeddingAdapter`) | `EmbeddingPort` | Нативный FlagEmbedding SDK (BGEM3FlagModel) через PyTorch; ленивая загрузка модели (~570MB в `~/.cache/huggingface/`); поддержка dense (1024d) + sparse (lexical) + ColBERT через `embed_batch_full()`; настраиваемые FP16, batch_size, max_length, device; не требует внешнего процесса; по умолчанию: `BAAI/bge-m3`; env: `EMBEDDING_FLAG_MODEL`, `EMBEDDING_USE_FP16`, `EMBEDDING_BATCH_SIZE`, `EMBEDDING_MAX_LENGTH`; **opt-2**: per-instance `lru_cache(maxsize=cache_size)` на `embed()` — повторные тексты пропускают инференс модели; `embedding_cache_info()` для мониторинга |
-| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory трекинг использования |
+| `adapters/memory/in_memory_usage_log.py` (`InMemoryUsageLog`) | `MemoryUsageLog` | in-memory append-only список с фильтрацией по item/usage_type/времени (без вытеснения) |
 | `adapters/storage/in_memory_experience_store.py` (`InMemoryExperienceStore`) | `StateStore` | в памяти (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
 | `adapters/storage/jsonl_experience_store.py` (`JsonlExperienceStore`) | `StateStore` | JSONL для опыта (частичная: только опыт; операции KeyMoment/Identity/Narrative выбрасывают `NotImplementedError`) |
 | `adapters/storage/in_memory_state_store.py` (`InMemoryStateStore`) | `StateStore` | полная реализация в памяти; **v2**: словарь сессий + самостоятельные key moments + `store_key_moment` (идемпотентный upsert), `mark_moment_accessed`, `update_moment_structured_markers`, сессионные методы; сортировка сессий нормализует legacy naive + UTC-aware timestamp |
 | `adapters/storage/file_state_store.py` (`FileStateStore`) | `StateStore` | JSON-файлы (опыт + identity + нарратив + eigenstate) + `key_moments.jsonl`; **v2**: фильтрация по `session_id` в `list_key_moments`; `update_moment_structured_markers` сохраняет lingvo-маркеры в per-moment файл, JSONL и совпадающий session bundle; `get_key_moment` fallback-сканирует legacy JSONL и backfill-ит per-moment index; сортировка сессий нормализует legacy naive + UTC-aware timestamp |
 | `adapters/memory/in_memory_entity_registry.py` (`InMemoryEntityRegistry`) | `EntityRegistry` | L1 (точный псевдоним, регистронезависимо) + L2 (косинус ≥ 0.85) + L3 (создание); потокобезопасный; хелперы `clear()`/`count()` для тестов |
+| `adapters/memory/postgres_entity_registry.py` (`PostgresEntityRegistry`) | `EntityRegistry` | Те же L1/L2/L3 над `agent_N.entities` + `agent_N.entity_aliases`; `halfvec` косинус для L2; guarded psycopg3 |
 | `adapters/memory/in_memory_entity_stance.py` (`InMemoryEntityStanceStore`) | `EntityStanceStore` | цепочка замещений; потокобезопасный |
 | `adapters/memory/postgres_entity_stance.py` (`PostgresEntityStanceStore`) | `EntityStanceStore` | цепочка замещений в `agent_N.entity_stance`; разрешение serial_id на агента; psycopg3 |
-| `adapters/memory/postgres_entity_registry.py` (`PostgresEntityRegistry`) | `EntityRegistry` | Те же L1/L2/L3 над `agent_N.entities` + `agent_N.entity_aliases`; `halfvec` косинус для L2; guarded psycopg3 |
 | `adapters/memory/in_memory_memory_guardian.py` (`InMemoryMemoryGuardian`) | `MemoryGuardian` | scan_orphan_entities + scan_merge_candidates + scan_stale_moments + scan_embedding_gaps + жизненный цикл findings; **HLE-31** также реализует `scan_quality_metrics` — sliding-window проверки: `affect_detector_silent` (incomplete_coloring rate), `divergence_pattern` (одинаковый divergence_type ≥ N через опциональный `DivergenceEventStore`), `stance_formation_too_fast` (stance сформирован < 24h после backing моментов через опциональный `EntityStanceStore`). Отсутствие optional входов ⇒ под-скан молча возвращает 0 findings. **HLE-32** также реализует inline пост-write проверки: фактическое отсутствие `metadata['embedding']` → `embedding_missing`; entity без embedding (кроме value/principle) → `embedding_missing`; KeyMoment с `incomplete_coloring=True` → `affect_detector_silent` (severity `info`). Все inline-проверки делают dedup по `(target_table, target_id, finding_type)` среди unresolved finding'ов |
 | `adapters/memory/noop_reranker.py` (`NoOpReranker`) | `MemoryReranker` | passthrough — возвращает кандидатов с сортировкой по score; deploy без модели реранкера |
 | `adapters/memory/bge_reranker.py` (`BgeReranker`) | `MemoryReranker` | `BAAI/bge-reranker-v2-m3` через FlagEmbedding; ленивая загрузка; guarded imports; fallback на исходный порядок при ошибке инференса |
-| `adapters/maintenance/postgres_queue.py` (`PostgresMaintenanceQueue`) | `MaintenanceQueue` | `claim_batch` через CTE c SKIP LOCKED над `public.maintenance_jobs`; run_key идемпотентность; psycopg3 |
-| `adapters/linguistic/mrebel_adapter.py` (`MRebelRelationAdapter`) | `EntityRelationExtractor` | `Babelscape/mrebel-large` через transformers `text2text-generation`; ленивая загрузка; парсер 4-маркерного формата REBEL; guarded imports |
 | `adapters/linguistic/noop_adapter.py` (`NoOpLinguisticAnalyzer`) | `LinguisticAnalyzer` | возвращает пустые, но корректные объекты анализа; default при `LINGUISTIC_ENABLED=false` |
-| `adapters/linguistic/gliner_minilm_adapter.py` (`GLiNERPlusMiniLMAdapter`) | `LinguisticAnalyzer` | GLiNER (`urchade/gliner_multi-v2.1`) + MiniLM NLI; ленивая загрузка; guarded imports; эвристики расхождения для русского языка; требует `pip install -e ".[linguistic]"`; **opt-2**: session-scoped SHA-256 кэш на `analyze_user_message()` — повторные фразы пропускают GLiNER+MiniLM; `clear_session_cache()` вызывается runner'ом при завершении сессии |
+| `adapters/linguistic/gliner_minilm_adapter.py` (`GLiNERPlusMiniLMAdapter`) | `LinguisticAnalyzer` | GLiNER (`urchade/gliner_multi-v2.1`) + MiniLM NLI (`MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli`); ленивая загрузка; guarded imports; эвристики расхождения для русского языка; требует `pip install -e ".[linguistic]"`; **opt-2**: session-scoped SHA-256 кэш на `analyze_user_message()` — повторные фразы пропускают GLiNER+MiniLM; `clear_session_cache()` вызывается runner'ом при завершении сессии |
 | `adapters/maintenance/in_memory_queue.py` (`InMemoryMaintenanceQueue`) | `MaintenanceQueue` | идемпотентность через run_key; атомарный `claim_batch`; все статусные переходы |
+| `adapters/maintenance/postgres_queue.py` (`PostgresMaintenanceQueue`) | `MaintenanceQueue` | `claim_batch` через CTE c SKIP LOCKED над `public.maintenance_jobs`; run_key идемпотентность; psycopg3 |
+| `adapters/linguistic/mrebel_adapter.py` (`MRebelRelationAdapter`) | `EntityRelationExtractor` | `Babelscape/mrebel-large` через transformers `text2text-generation`; ленивая загрузка; парсер REBEL-триплетов; guarded imports |
 | `adapters/reflection/state_store_session_repository.py` (`StateStoreSessionRepository`) | `SessionRepository` | тонкий адаптер над любым `StateStore` (InMemory / File / Postgres v2); default `agent_id` через конструктор для single-agent + явная трёхаргументная форма для multi-agent; нормализует границы диапазона и legacy naive timestamp сессий/моментов в UTC, предупреждает при saturation client-side fetch cap; фундамент для R3+R4 (миграция Daily/Deep reflection) |
 | `adapters/storage/in_memory_reflection_store.py` | `PatternStore`, `ReflectionEventStore`, `HealthAssessmentStore` | хранилища выводов рефлексии |
 | `adapters/storage/in_memory_self_applied_changes.py` (R11.5) | `SelfAppliedChangeStore` | append-only аудит; поддерживает revert через snapshot до изменения |
@@ -176,7 +176,7 @@
 | `adapters/agent/config.py` (`ModelConfig`, `AgentConfig`) | — | конфигурация Pydantic AI модели + среды выполнения агента: лимиты контекстного окна, таймаут сессии, переключатель свободного времени, видимость монолога, **режим внедрения памяти** (`assistant_message`/`user_message`/`system_prompt` для универсальной доставки контекста памяти) (E22.1, E26-R1, E26-R2, E26-R4); **opt-2**: `rag_token_budget` (по умолчанию 2000), `enable_prompt_caching`, `max_moments_per_reflection` (по умолчанию 30) |
 | `adapters/agent/deps.py` (`AtmanDeps`, `AtmanDeps.from_config`) | — | замороженный DI-контейнер, связывающий `SessionManager`, `IdentityService`, `ExperienceService`, `MicroReflectionService`, `StateStore`; фабрика `from_config` переносит валидированные лимиты из `AgentConfig`; опциональное поле `injected_context` для режима `system_prompt`; **R11.7/R12** опциональные поля `pending_review_inbox` и `reflection_request_queue`, определяющие регистрацию соответствующих инструментов; **opt-2** опциональное поле `passive_memory_injector`; **WP-08 v2** опциональное поле `skill_manager: SkillManagerPort | None = None`; **HLE-29** опциональное поле `divergence_event_store: DivergenceEventStore | None = None`, открывающее персистированный поток divergence-событий для R6 DivergenceAggregator (и любых ad-hoc читателей) без доступа во внутренности `SessionManager`; **HLE-30** опциональные `reflection_overload_monitor: ReflectionOverloadMonitor | None = None` + `overload_alert_inspect: InMemoryOverloadAlertSink | None = None` (in-memory отвод composite sink'а; admin UI / debug-точки читают `.alerts` без захода в приватный `_sink._sinks`); **HLE-32** опциональное `memory_guardian: MemoryGuardian | None = None` — тот же инстанс, что и у inline validator'а, exposed для cli_maintenance / admin без пересборки цепочки; **HLE-33** опциональное `ambient_memory: AmbientMemoryService | None = None` — entity-anchor параллельный RAG, вызывающие зовут `compose_injection(text, agent_id=...)` напрямую через deps |
 | `adapters/agent/memory_injection.py` (`inject_memory`, `MemoryInjectionMode`) | — | Универсальное внедрение памяти тремя режимами: (1) `assistant_message` — вставляет `ModelResponse` в начало истории (по умолчанию; совместимо с OpenAI/Ollama), (2) `user_message` — оборачивает память как пользовательский ход (совместимо с Anthropic), (3) `system_prompt` — устанавливает `deps.injected_context` для добавления через `build_instructions` (legacy путь pydantic-ai) |
-| `adapters/agent/instructions.py` (`build_instructions`, `build_memory_context`, `build_skill_suggestions_section`) | — | `build_instructions`: строит поведенческие правила; идентичность/нарратив в `build_memory_context()` → `inject_memory()`; при `system_prompt` добавляет `deps.injected_context`; **WP-08 v2**: `_build_pinned_skills_section(deps)`; `build_skill_suggestions_section(suggestions)` рендерит `## Релевантные навыки` для попаданий `trigger_router` за ход (runner добавляет через `inject_memory`); `_build_self_awareness_section(deps)`; ошибки → пустая строка |
+| `adapters/agent/instructions.py` (`build_instructions`, `build_memory_context`, `build_skill_suggestions_section`) | — | `build_instructions`: строит поведенческие правила (как агент использует инструменты, обязательства); идентичность/нарратив перенесены в `build_memory_context()` для доставки через `inject_memory()`; при `memory_injection_mode == "system_prompt"` добавляет `deps.injected_context`; **WP-08 v2**: `_build_pinned_skills_section(deps)` внедряет список закреплённых навыков, если `deps.skill_manager` не None; `build_skill_suggestions_section(suggestions)` рендерит `## Релевантные навыки` для попаданий `trigger_router` за ход (runner добавляет через `inject_memory`); `_build_self_awareness_section(deps)` внедряет самоописание Atman (память, навыки, рефлексия); ошибки перехватываются → пустая строка |
 | `adapters/agent/tools.py` (`record_key_moment` async, `log_experience`, `restart_session`, `wait_session`, `resolve_pending_review`, `request_reflection`) | — | инструменты Pydantic AI: `record_key_moment` → `AffectDetector.submit_self_report` когда `SessionManager` настроен на аффект; `log_experience` — redirect-заглушка; `restart_session` / `wait_session` возвращают sentinel-строки для управления сессией (E22.4); **R11.7** `resolve_pending_review` → `PendingHumanReviewInbox.resolve` (регистрируется только при наличии inbox); **R12** `request_reflection` → `ReflectionRequestQueue.enqueue` с идемпотентным ключом часового бакета (регистрируется только при наличии очереди) |
 | `adapters/agent/factory.py` (`build_deps`, `build_daily_reflection_service`, `build_deep_reflection_service`, `_build_skill_manager`, `_build_reflection_model`, `_StateStoreIdentityRepo`, `_StateStoreNarrativeRepo`) | — | сборка `AtmanDeps`, `SessionManager`, `FileStateStore`, сервисов, опционально `AffectDetector` из workspace и `AgentConfig`; bootstrap отсутствующих identity/narrative для новых runner-workspace и проводка `SessionManager(workspace=...)`, чтобы crash-журналы были активны; **HLE-27**: собирает `InMemoryMaintenanceQueue` + `PostWriteScheduler` и передаёт scheduler в `SessionManager`, чтобы завершённые сессии раскладывали mREBEL / lingvo enrichment в очередь — очередь накапливается до out-of-process `python -m atman.cli_maintenance run --loop` (prod: замена на `PostgresMaintenanceQueue` + отдельный воркер-под); **HLE-29**: безусловно собирает `NoOpLinguisticAnalyzer` + `DivergenceDetector(agent_id)` + `InMemoryDivergenceEventStore` и пробрасывает их в `AffectDetector`, который создаётся через `session_manager.attach_affect(...)`, чтобы divergence-pipeline персистил события из коробки (реальный GLiNER/mREBEL анализатор подключается позже через `linguistic` extra); **opt-2**: условное создание `PassiveMemoryInjector` (embedding + factual_memory + state_store + zero-dep `BM25EmbeddingAdapter` для RRF fusion + `NoOpLinguisticAnalyzer` всегда + `BgeReranker` / откат на `NoOpReranker`) при `ATMAN_LINGUISTIC_ENABLED=true`; `NoOpLinguisticAnalyzer` всегда проводится, чтобы ambient_mode был достижим в лёгких деплоях; `BgeReranker` пробуется первым (требует FlagEmbedding + веса модели), при недоступности откатывается к `NoOpReranker`; ошибка всего блока не фатальна — логируется предупреждение, RAG остаётся отключённым; **WP-08 v2**: создаёт `SkillManager` через `_build_skill_manager()` ДО `MicroReflectionService`, чтобы хук рефлексии (`process_session_skills`) действительно срабатывал — передаёт его и в `MicroReflectionService(skill_manager=…)`, и в `AtmanDeps`; `_build_skill_manager` сначала пробует `PostgresSkillStore(db_url, agent_id=agent_id)`, при недоступности PostgreSQL откатывается к `InMemorySkillStore` (no-PostgreSQL local dev), и только если ни один store не строится — возвращает `None`; **`build_daily_reflection_service` / `build_deep_reflection_service`**: сборка `DailyReflectionService` / `DeepReflectionService` поверх `StateStoreSessionRepository` + `_StateStoreIdentityRepo` (+ `_StateStoreNarrativeRepo` для deep) с хуками R5–R10 (entity stance/relations, findings triage, merge candidates); `_build_reflection_model` выбирает `OpenAIReflectionModel` при `ATMAN_LLM_BASE_URL`, иначе `_MockReflectionModel`; reflection builders вызывают `_optional_embedding_adapter()` перед `_build_skill_manager`, чтобы отсутствие FlagEmbedding не ломало сборку сервиса |
 | `adapters/agent/preflight.py` (`run_cli_preflight`, `run_streamlit_preflight`, `check_nlp_packages`, `install_nlp`, `_streamlit_restart_argv`) | — | preflight перед сессией: NLP-пакеты (опциональная установка + перезапуск процесса), доступность PostgreSQL, проверка LLM; фоновый warmup моделей без блокировки; Streamlit-вариант — `st.stop()` при жёстких сбоях и `_streamlit_restart_argv()` для relaunch после установки NLP |
@@ -700,34 +700,205 @@ PrincipleRevisionAdvisor — пересмотр принципов
 
 <!-- codemap:auto:start section="modules-domain-models" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|----------------|-------|
+| `core/models/entity.py` | `EntityType`, `ResolutionMethod`, `Entity`, `EntityAlias`, `EntityRelation`, `EntityStance` |  |
+| `core/models/experience.py` | `ReframingNoteAppendResult`, `EmotionalDepth`, `FeltSense`, `ContextHalo`, `KeyMoment`, `ReframingNote` |  |
+| `core/models/fact.py` | `FactStatus`, `FactRecord`, `Relation` |  |
+| `core/models/governance.py` | `GovernanceMode`, `GovernanceDecision` |  |
+| `core/models/identity.py` | `CoreValue`, `HelpfulnessLevel`, `Habit`, `MoralOrientation`, `Principle`, `GoalHorizon` |  |
+| `core/models/maintenance.py` | `JobStatus`, `JobName`, `MaintenanceJob` |  |
+| `core/models/narrative.py` | `Eigenstate`, `NarrativeThread`, `LayerType`, `NarrativeLayer`, `NarrativeDocument` |  |
+| `core/models/pending_human_review.py` | `PendingReviewKind`, `PendingReviewPriority`, `PendingReviewResolution`, `PendingReviewDraft`, `PendingReview` |  |
+| `core/models/reflection.py` | `ReflectionLevel`, `PatternType`, `PatternStatus`, `PatternCandidate`, `ReframingNoteOutput`, `PatternDetectionOutput` |  |
+| `core/models/reflection_request.py` | `ReflectionRequestLevel`, `ReflectionRequest` |  |
+| `core/models/self_applied_change.py` | `SelfChangeActor`, `SelfChangeTargetKind`, `SelfChangeSource`, `SelfAppliedChange` |  |
+| `core/models/session.py` | `Session`, `ActiveSessionSummary`, `SessionContext`, `SessionEvent`, `KeyMomentInput`, `SessionResult` |  |
+| `core/models/validation.py` | `FindingSeverity`, `FindingType`, `ResolutionStatus`, `ValidationFinding`, `DivergenceType`, `DivergenceSeverity` |  |
 <!-- codemap:auto:end -->
 
 ### 9.2 Порты — краткий индекс
 
 <!-- codemap:auto:start section="modules-ports" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|----------------|-------|
+| `core/ports/affect.py` | `AffectPort`, `AppendKeyMomentFn` | `AffectPort`, `AppendKeyMomentFn` |
+| `core/ports/clock.py` | `ClockPort` | `ClockPort` |
+| `core/ports/divergence_events.py` | `DivergenceEventStore` | `DivergenceEventStore` |
+| `core/ports/embedding.py` | `EmbeddingPort` | `EmbeddingPort` |
+| `core/ports/entity_registry.py` | `EntityRegistry` | `EntityRegistry` |
+| `core/ports/entity_relation_store.py` | `EntityRelationStore` | `EntityRelationStore` |
+| `core/ports/entity_relations.py` | `ExtractedRelation`, `EntityRelationExtractor` | `EntityRelationExtractor` |
+| `core/ports/entity_stance.py` | `EntityStanceStore` | `EntityStanceStore` |
+| `core/ports/linguistic.py` | `AmbientAnchor`, `DetectedEntity`, `RawSpan`, `UserMessageAnalysis`, `AgentMessageAnalysis`, `KeyMomentAnalysis` | `LinguisticAnalyzer` |
+| `core/ports/maintenance_queue.py` | `MaintenanceQueue` | `MaintenanceQueue` |
+| `core/ports/memory_backend.py` | `FactualMemory` | `FactualMemory` |
+| `core/ports/memory_guardian.py` | `MemoryGuardian` | `MemoryGuardian` |
+| `core/ports/memory_middleware.py` | `MemoryContext`, `MemoryMiddlewarePort` | `MemoryMiddlewarePort` |
+| `core/ports/memory_reranker.py` | `SurfacedMemory`, `MemoryReranker` | `MemoryReranker` |
+| `core/ports/memory_usage_log.py` | `UsageType`, `MemoryUsageRecord`, `MemoryUsageLog` | `MemoryUsageLog` |
+| `core/ports/pending_human_review.py` | `PendingHumanReviewInbox` | `PendingHumanReviewInbox` |
+| `core/ports/reflection.py` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort`, `PatternStore`, `ReflectionEventStore` | `ExperienceRepository`, `IdentityRepository`, `NarrativeRepository`, `NarrativeWriteAuditPort` |
+| `core/ports/reflection_overload_alert.py` | `ReflectionOverloadSeverity`, `ReflectionOverloadAlertSink` | `ReflectionOverloadAlertSink` |
+| `core/ports/reflection_request_queue.py` | `ReflectionRequestQueue` | `ReflectionRequestQueue` |
+| `core/ports/reflection_store.py` | `ReflectionStore` | `ReflectionStore` |
+| `core/ports/salience_decay.py` | `SalienceDecayService` | `SalienceDecayService` |
+| `core/ports/self_applied_changes.py` | `SelfAppliedChangeStore` | `SelfAppliedChangeStore` |
+| `core/ports/session_repository.py` | `SessionRepository` | `SessionRepository` |
+| `core/ports/skill_manager.py` | `SkillManagerPort` | `SkillManagerPort` |
+| `core/ports/state_store.py` | `ExperienceQuery`, `SessionExperienceQuery`, `ValuesTouchedQuery`, `DepthQuery`, `DateRangeQuery`, `FactRefsContainsQuery` | `StateStore` |
 <!-- codemap:auto:end -->
 
 ### 9.3 Сервисы — краткий индекс
 
 <!-- codemap:auto:start section="modules-services" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|----------------|-------|
+| `core/services/ambient_memory_service.py` | `AmbientSurfaceItem`, `AmbientResult`, `AmbientMemoryService` |  |
+| `core/services/conflict_detector.py` | `FactConflict`, `ConflictDetector` |  |
+| `core/services/divergence_aggregator.py` | `DivergenceAggregator` |  |
+| `core/services/divergence_detector.py` | `DivergenceDetector` |  |
+| `core/services/emotional_echo.py` | `EchoItem`, `EmotionalEcho` |  |
+| `core/services/entity_relations_formulator.py` | `RelationFormulationOutcome`, `EntityRelationsFormulator` |  |
+| `core/services/entity_stance_formulator.py` | `StanceFormulationOutcome`, `EntityStanceFormulator` |  |
+| `core/services/experience_service.py` | `ExperienceService` |  |
+| `core/services/findings_triage.py` | `TriageOutcome`, `FindingsTriage` |  |
+| `core/services/identity_service.py` | `IdentityService` |  |
+| `core/services/inline_validator.py` | `InlineValidator` |  |
+| `core/services/key_moment_builder.py` | `KeyMomentBuilder` |  |
+| `core/services/maintenance_worker.py` | `MaintenanceWorker` |  |
+| `core/services/merge_candidates_handler.py` | `MergeOutcome`, `MergeCandidatesHandler` |  |
+| `core/services/narrative_revision.py` | `NarrativeRevisionService` |  |
+| `core/services/narrative_service.py` | `NarrativeService` |  |
+| `core/services/passive_memory_injector.py` | `SurfacedMemoryItem`, `RagContext`, `PassiveMemoryInjector` |  |
+| `core/services/post_write_scheduler.py` | `PostWriteScheduler` |  |
+| `core/services/principle_advisor.py` | `PrincipleRevisionAdvisor` |  |
+| `core/services/reflection_input_builder.py` | `SessionSummary`, `ReflectionInput` |  |
+| `core/services/reflection_overload_monitor.py` | `ReflectionOverloadMonitor` |  |
+| `core/services/reflection_service.py` | `MicroReflectionService`, `DailyReflectionService`, `DeepReflectionService` |  |
+| `core/services/salience_decay_service.py` | `InMemorySalienceDecayService` |  |
+| `core/services/session_cache.py` | `SessionCache` |  |
+| `core/services/session_manager.py` | `SessionManager` |  |
+| `core/services/session_working_memory.py` | `CachedItem`, `SessionWorkingMemory` |  |
+| `core/services/structured_markers_aggregator.py` | `StructuredMarkersAggregator` |  |
 <!-- codemap:auto:end -->
 
 ### 9.4 Адаптеры — краткий индекс
 
 <!-- codemap:auto:start section="modules-adapters" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Файл | Публичные классы | Порты |
+|------|----------------|-------|
+| `adapters/agent/config.py` | `ModelConfig`, `AgentConfig` |  |
+| `adapters/agent/deps.py` | `AtmanDeps` |  |
+| `adapters/agent/preflight.py` | `PreflightError` |  |
+| `adapters/agent/runner.py` | `AtmanRunner`, `AtmanTurn` |  |
+| `adapters/agent/token_monitor.py` | `TokenMonitor`, `ContextLimitExceeded` |  |
+| `adapters/clock.py` | `FrozenClock` |  |
+| `adapters/linguistic/gliner_minilm_adapter.py` | `GLiNERPlusMiniLMAdapter` |  |
+| `adapters/linguistic/mrebel_adapter.py` | `MRebelRelationAdapter` |  |
+| `adapters/linguistic/noop_adapter.py` | `NoOpLinguisticAnalyzer` |  |
+| `adapters/maintenance/in_memory_queue.py` | `InMemoryMaintenanceQueue` |  |
+| `adapters/maintenance/postgres_queue.py` | `PostgresMaintenanceQueue` |  |
+| `adapters/memory/bge_reranker.py` | `BgeReranker` |  |
+| `adapters/memory/bm25_embedding.py` | `BM25EmbeddingAdapter` |  |
+| `adapters/memory/file_backend.py` | `FileBackend` |  |
+| `adapters/memory/flag_embedding.py` | `FlagEmbeddingAdapter` |  |
+| `adapters/memory/in_memory_backend.py` | `InMemoryBackend` |  |
+| `adapters/memory/in_memory_divergence_events.py` | `InMemoryDivergenceEventStore` |  |
+| `adapters/memory/in_memory_entity_registry.py` | `InMemoryEntityRegistry` |  |
+| `adapters/memory/in_memory_entity_relation_store.py` | `InMemoryEntityRelationStore` |  |
+| `adapters/memory/in_memory_entity_stance.py` | `InMemoryEntityStanceStore` |  |
+| `adapters/memory/in_memory_memory_guardian.py` | `InMemoryMemoryGuardian` |  |
+| `adapters/memory/in_memory_usage_log.py` | `InMemoryUsageLog` |  |
+| `adapters/memory/mock_embedding.py` | `MockEmbeddingAdapter` |  |
+| `adapters/memory/noop_reranker.py` | `NoOpReranker` |  |
+| `adapters/memory/ollama_embedding.py` | `OllamaEmbeddingAdapter` |  |
+| `adapters/memory/postgres_backend.py` | `PostgresFactualMemory` |  |
+| `adapters/memory/postgres_entity_registry.py` | `PostgresEntityRegistry` |  |
+| `adapters/memory/postgres_entity_stance.py` | `PostgresEntityStanceStore` |  |
+| `adapters/observability/composite_overload_alert_sink.py` | `CompositeOverloadAlertSink` |  |
+| `adapters/observability/in_memory_overload_alert_sink.py` | `OverloadAlert`, `InMemoryOverloadAlertSink` |  |
+| `adapters/observability/logging_overload_alert_sink.py` | `LoggingOverloadAlertSink` |  |
+| `adapters/reflection/exceptions.py` | `OllamaReflectionError` |  |
+| `adapters/reflection/mock_reflection_model.py` | `MockReflectionModel` |  |
+| `adapters/reflection/openai_reflection_model.py` | `OpenAIReflectionModel` |  |
+| `adapters/reflection/prompts.py` | `OllamaMessage` |  |
+| `adapters/reflection/state_store_session_repository.py` | `StateStoreSessionRepository` |  |
+| `adapters/state/postgres_salience_decay.py` | `PostgresSalienceDecayService` |  |
+| `adapters/state/postgres_state_store.py` | `PostgresStateStore` |  |
+| `adapters/storage/file_state_store.py` | `FileStateStore` |  |
+| `adapters/storage/in_memory_experience_store.py` | `InMemoryExperienceStore` |  |
+| `adapters/storage/in_memory_pending_human_review.py` | `InMemoryPendingHumanReviewInbox` |  |
+| `adapters/storage/in_memory_postgres_reflection_store.py` | `InMemoryReflectionStore` |  |
+| `adapters/storage/in_memory_reflection_request_queue.py` | `InMemoryReflectionRequestQueue` |  |
+| `adapters/storage/in_memory_reflection_store.py` | `InMemoryPatternStore`, `InMemoryReflectionEventStore`, `InMemoryHealthAssessmentStore` |  |
+| `adapters/storage/in_memory_self_applied_changes.py` | `InMemorySelfAppliedChangeStore` |  |
+| `adapters/storage/in_memory_state_store.py` | `InMemoryStateStore` |  |
+| `adapters/storage/jsonl_experience_store.py` | `JsonlExperienceStore` |  |
+| `adapters/storage/postgres_agent_schema.py` | `AgentSchemaResolver` |  |
+| `adapters/storage/postgres_pending_human_review.py` | `PostgresPendingHumanReviewInbox` |  |
+| `adapters/storage/postgres_self_applied_changes.py` | `PostgresSelfAppliedChangeStore` |  |
+| `adapters/storage/reflection_persistence_models.py` | `ReflectionEvent` |  |
+| `adapters/storage/reflection_store.py` | `ReflectionStore` |  |
 <!-- codemap:auto:end -->
 
 ### 9.5 Матрица порт–адаптер
 
 <!-- codemap:auto:start section="port-adapter-matrix" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Порт | Реализации |
+|------|----------------|
+| `AffectPort` | *(нет)* |
+| `AppendKeyMomentFn` | *(нет)* |
+| `ClockPort` | *(нет)* |
+| `DivergenceEventStore` | `InMemoryDivergenceEventStore` |
+| `EmbeddingPort` | `BM25EmbeddingAdapter`, `FlagEmbeddingAdapter`, `MockEmbeddingAdapter`, `OllamaEmbeddingAdapter` |
+| `EntityRegistry` | `InMemoryEntityRegistry`, `PostgresEntityRegistry` |
+| `EntityRelationStore` | `InMemoryEntityRelationStore` |
+| `EntityRelationExtractor` | `MRebelRelationAdapter` |
+| `EntityStanceStore` | `InMemoryEntityStanceStore`, `PostgresEntityStanceStore` |
+| `LinguisticAnalyzer` | `GLiNERPlusMiniLMAdapter`, `NoOpLinguisticAnalyzer` |
+| `MaintenanceQueue` | `InMemoryMaintenanceQueue`, `PostgresMaintenanceQueue` |
+| `FactualMemory` | `FileBackend`, `InMemoryBackend`, `PostgresFactualMemory` |
+| `MemoryGuardian` | `InMemoryMemoryGuardian` |
+| `MemoryMiddlewarePort` | *(нет)* |
+| `MemoryReranker` | `BgeReranker`, `NoOpReranker` |
+| `MemoryUsageLog` | `InMemoryUsageLog` |
+| `PendingHumanReviewInbox` | `InMemoryPendingHumanReviewInbox`, `PostgresPendingHumanReviewInbox` |
+| `ExperienceRepository` | *(нет)* |
+| `IdentityRepository` | *(нет)* |
+| `NarrativeRepository` | *(нет)* |
+| `NarrativeWriteAuditPort` | *(нет)* |
+| `PatternStore` | `InMemoryPatternStore` |
+| `ReflectionEventStore` | `InMemoryReflectionEventStore` |
+| `ReflectionEventPersistenceObserver` | *(нет)* |
+| `HealthAssessmentStore` | `InMemoryHealthAssessmentStore` |
+| `ReflectionModel` | `MockReflectionModel`, `OpenAIReflectionModel` |
+| `ReflectionOverloadAlertSink` | `CompositeOverloadAlertSink`, `InMemoryOverloadAlertSink`, `LoggingOverloadAlertSink` |
+| `ReflectionRequestQueue` | `InMemoryReflectionRequestQueue` |
+| `ReflectionStore` | `InMemoryReflectionStore` |
+| `SalienceDecayService` | `PostgresSalienceDecayService` |
+| `SelfAppliedChangeStore` | `InMemorySelfAppliedChangeStore`, `PostgresSelfAppliedChangeStore` |
+| `SessionRepository` | *(нет)* |
+| `SkillManagerPort` | *(нет)* |
+| `StateStore` | `PostgresStateStore`, `FileStateStore`, `InMemoryExperienceStore`, `InMemoryStateStore`, `JsonlExperienceStore` |
 <!-- codemap:auto:end -->
 
 ### 9.6 Количество TODO/FIXME по компонентам
 
 <!-- codemap:auto:start section="todos" lang="ru" -->
 <!-- Updated automatically by `make codemap`. Do not edit. -->
+| Компонент | Количество TODO | Количество FIXME |
+|-----------|------------|-------------|
+| `core` | 0 | 0 |
+| `adapters` | 0 | 0 |
+| `affect` | 0 | 0 |
+| `reflection` | 0 | 0 |
+| `skills` | 0 | 0 |
+| `tui` | 0 | 0 |
+| `web_dashboard` | 0 | 0 |
+| `eval` | 0 | 0 |
 <!-- codemap:auto:end -->
