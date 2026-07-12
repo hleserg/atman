@@ -71,10 +71,12 @@ def test_run_predictions_normalizes_gliner2_extractor_shape() -> None:
         threshold=0.42,
     )
 
-    assert predictions == [[
-        {"label": "person", "start": 0, "end": 4},
-        {"label": "project", "start": 16, "end": 21},
-    ]]
+    assert predictions == [
+        [
+            {"label": "person", "start": 0, "end": 4},
+            {"label": "project", "start": 16, "end": 21},
+        ]
+    ]
 
 
 def test_run_predictions_normalizes_standard_gliner_shape() -> None:
@@ -92,9 +94,7 @@ def test_run_predictions_normalizes_standard_gliner_shape() -> None:
             assert text == "Использую Postgres."
             assert labels == LABELS
             assert threshold == 0.7
-            return [
-                {"label": "product", "start": 11, "end": 19, "score": 0.91, "text": "Postgres"}
-            ]
+            return [{"label": "product", "start": 11, "end": 19, "score": 0.91, "text": "Postgres"}]
 
     predictions = baseline._run_predictions(
         FakeGlinerModel(),
@@ -145,7 +145,7 @@ def test_compute_metrics_rounds_overall_and_defaults_missing_labels(
             }
 
     fake_nervaluate = ModuleType("nervaluate")
-    fake_nervaluate.Evaluator = FakeEvaluator
+    setattr(fake_nervaluate, "Evaluator", FakeEvaluator)
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
     metrics = baseline._compute_metrics(
