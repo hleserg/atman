@@ -145,7 +145,7 @@ def test_compute_metrics_rounds_overall_and_defaults_missing_labels(
             }
 
     fake_nervaluate = ModuleType("nervaluate")
-    setattr(fake_nervaluate, "Evaluator", FakeEvaluator)
+    fake_nervaluate.__dict__["Evaluator"] = FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_nervaluate)
 
     metrics = baseline._compute_metrics(
