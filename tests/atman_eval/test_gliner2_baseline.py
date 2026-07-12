@@ -127,7 +127,7 @@ def test_compute_metrics_normalizes_nervaluate_results(
                 },
             }
 
-    setattr(fake_module, "Evaluator", FakeEvaluator)
+    fake_module.__dict__["Evaluator"] = FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_module)
 
     metrics = baseline._compute_metrics(
@@ -173,7 +173,7 @@ def test_load_gliner_prefers_gliner2_module(
             assert model_id == "fastino/gliner2-multi-v1"
             return "gliner2-model"
 
-    setattr(fake_module, "GLiNER2", FakeGLiNER2)
+    fake_module.__dict__["GLiNER2"] = FakeGLiNER2
     monkeypatch.setitem(sys.modules, "gliner2", fake_module)
 
     model, model_type = baseline._load_gliner("fastino/gliner2-multi-v1")
@@ -201,8 +201,8 @@ def test_load_gliner_falls_back_to_legacy_gliner(
             assert model_id == "urchade/gliner_multi-v2.1"
             return "legacy-model"
 
-    setattr(fake_gliner2, "GLiNER2", FakeGLiNER2)
-    setattr(fake_gliner, "GLiNER", FakeGLiNER)
+    fake_gliner2.__dict__["GLiNER2"] = FakeGLiNER2
+    fake_gliner.__dict__["GLiNER"] = FakeGLiNER
     monkeypatch.setitem(sys.modules, "gliner2", fake_gliner2)
     monkeypatch.setitem(sys.modules, "gliner", fake_gliner)
 
