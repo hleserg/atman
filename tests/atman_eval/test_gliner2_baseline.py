@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import json
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -202,10 +203,16 @@ def test_load_gliner_exits_when_no_gliner_package_is_available(
 
     original_import = builtins.__import__
 
-    def fake_import(name: str, *args: object, **kwargs: object) -> object:
+    def fake_import(
+        name: str,
+        globals: Mapping[str, object] | None = None,
+        locals: Mapping[str, object] | None = None,
+        fromlist: Sequence[str] = (),
+        level: int = 0,
+    ) -> object:
         if name in {"gliner2", "gliner"}:
             raise ImportError(name)
-        return original_import(name, *args, **kwargs)
+        return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.delitem(sys.modules, "gliner2", raising=False)
     monkeypatch.delitem(sys.modules, "gliner", raising=False)
