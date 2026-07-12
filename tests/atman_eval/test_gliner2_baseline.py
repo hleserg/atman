@@ -11,27 +11,38 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from atman.eval.gliner2 import baseline
-from atman.eval.gliner2.dataset import LABELS, _build_span, load_dataset
+
+@pytest.fixture
+def gliner2_modules() -> tuple[Any, Any]:
+    from atman.eval.gliner2 import baseline as baseline_module
+    from atman.eval.gliner2 import dataset as dataset_module
+
+    return baseline_module, dataset_module
 
 
-def test_load_dataset_returns_valid_character_spans() -> None:
-    dataset = load_dataset()
+def test_load_dataset_returns_valid_character_spans(gliner2_modules: tuple[Any, Any]) -> None:
+    _baseline, dataset_module = gliner2_modules
+    dataset = dataset_module.load_dataset()
 
     assert len(dataset) >= 100
     for example in dataset:
         text = example["text"]
         for entity in example["entities"]:
-            assert entity["label"] in LABELS
+            assert entity["label"] in dataset_module.LABELS
             assert text[entity["start"] : entity["end"]] == entity["text"]
 
 
-def test_build_span_rejects_missing_entity_text() -> None:
+def test_build_span_rejects_missing_entity_text(gliner2_modules: tuple[Any, Any]) -> None:
+    _baseline, dataset_module = gliner2_modules
     with pytest.raises(ValueError, match="not found"):
-        _build_span("Текст без сущности", "Сергей", "person")
+        dataset_module._build_span("Текст без сущности", "Сергей", "person")
 
 
-def test_run_predictions_supports_gliner2_response_shape() -> None:
+def test_run_predictions_supports_gliner2_response_shape(
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, dataset_module = gliner2_modules
+
     class FakeGLiNER2:
         def extract_entities(
             self,
@@ -42,7 +53,7 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
             include_spans: bool,
         ) -> dict[str, dict[str, list[dict[str, int]]]]:
             assert text == "Сергей пришёл"
-            assert labels == LABELS
+            assert labels == dataset_module.LABELS
             assert threshold == 0.42
             assert include_spans is True
             return {"entities": {"person": [{"start": 0, "end": 6}]}}
@@ -57,7 +68,11 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
     assert predictions == [[{"label": "person", "start": 0, "end": 6}]]
 
 
-def test_run_predictions_supports_legacy_gliner_response_shape() -> None:
+def test_run_predictions_supports_legacy_gliner_response_shape(
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, dataset_module = gliner2_modules
+
     class FakeGLiNER:
         def predict_entities(
             self,
@@ -67,7 +82,7 @@ def test_run_predictions_supports_legacy_gliner_response_shape() -> None:
             threshold: float,
         ) -> list[dict[str, int | str]]:
             assert text == "Москва ждёт"
-            assert labels == LABELS
+            assert labels == dataset_module.LABELS
             assert threshold == 0.5
             return [{"label": "location", "start": 0, "end": 6, "score": "0.9"}]
 
@@ -81,7 +96,11 @@ def test_run_predictions_supports_legacy_gliner_response_shape() -> None:
     assert predictions == [[{"label": "location", "start": 0, "end": 6}]]
 
 
-def test_compute_metrics_normalizes_nervaluate_results(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compute_metrics_normalizes_nervaluate_results(
+    monkeypatch: pytest.MonkeyPatch,
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, dataset_module = gliner2_modules
     fake_module = ModuleType("nervaluate")
 
     class FakeEvaluator:
@@ -94,7 +113,7 @@ def test_compute_metrics_normalizes_nervaluate_results(monkeypatch: pytest.Monke
         ) -> None:
             assert gold == [[{"label": "person", "start": 0, "end": 6}]]
             assert pred == [[{"label": "person", "start": 0, "end": 6}]]
-            assert tags == LABELS
+            assert tags == dataset_module.LABELS
 
         def evaluate(self) -> dict[str, Any]:
             return {
@@ -121,7 +140,11 @@ def test_compute_metrics_normalizes_nervaluate_results(monkeypatch: pytest.Monke
     assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
-def test_save_results_merges_existing_model_entries(tmp_path: Path) -> None:
+def test_save_results_merges_existing_model_entries(
+    tmp_path: Path,
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, _dataset_module = gliner2_modules
     output = tmp_path / "results.json"
     output.write_text(json.dumps({"old-model": {"overall": {"f1": 0.1}}}), encoding="utf-8")
     metrics = {
@@ -137,7 +160,11 @@ def test_save_results_merges_existing_model_entries(tmp_path: Path) -> None:
     assert saved["new-model"]["conclusion"].startswith("F1 > 0.7")
 
 
-def test_load_gliner_prefers_gliner2_module(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_gliner_prefers_gliner2_module(
+    monkeypatch: pytest.MonkeyPatch,
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, _dataset_module = gliner2_modules
     fake_module = ModuleType("gliner2")
 
     class FakeGLiNER2:
@@ -155,7 +182,11 @@ def test_load_gliner_prefers_gliner2_module(monkeypatch: pytest.MonkeyPatch) -> 
     assert model_type == "gliner2"
 
 
-def test_load_gliner_falls_back_to_legacy_gliner(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_gliner_falls_back_to_legacy_gliner(
+    monkeypatch: pytest.MonkeyPatch,
+    gliner2_modules: tuple[Any, Any],
+) -> None:
+    baseline, _dataset_module = gliner2_modules
     fake_gliner2 = ModuleType("gliner2")
     fake_gliner = ModuleType("gliner")
 
@@ -184,7 +215,9 @@ def test_load_gliner_falls_back_to_legacy_gliner(monkeypatch: pytest.MonkeyPatch
 def test_main_runs_with_fake_model_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    gliner2_modules: tuple[Any, Any],
 ) -> None:
+    baseline, _dataset_module = gliner2_modules
     output = tmp_path / "baseline.json"
     dataset = [
         {
