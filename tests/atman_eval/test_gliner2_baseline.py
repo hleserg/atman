@@ -8,11 +8,10 @@ from typing import Any
 
 import pytest
 
-from atman.eval.gliner2 import baseline
-from atman.eval.gliner2.dataset import LABELS, load_dataset
-
 
 def test_dataset_spans_resolve_to_known_labels_and_exact_text() -> None:
+    from atman.eval.gliner2.dataset import LABELS, load_dataset
+
     examples = load_dataset()
     seen_labels: set[str] = set()
 
@@ -42,6 +41,9 @@ def test_dataset_spans_resolve_to_known_labels_and_exact_text() -> None:
 
 
 def test_run_predictions_normalizes_gliner2_extractor_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner2Model:
         def extract_entities(
             self,
@@ -76,6 +78,9 @@ def test_run_predictions_normalizes_gliner2_extractor_shape() -> None:
 
 
 def test_run_predictions_normalizes_standard_gliner_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGlinerModel:
         def predict_entities(
             self,
@@ -104,6 +109,9 @@ def test_run_predictions_normalizes_standard_gliner_shape() -> None:
 def test_compute_metrics_rounds_overall_and_defaults_missing_labels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeEvaluator:
         def __init__(
             self,
@@ -157,6 +165,8 @@ def test_compute_metrics_rounds_overall_and_defaults_missing_labels(
 def test_save_results_merges_model_entries_without_overwriting_existing(
     tmp_path: Path,
 ) -> None:
+    from atman.eval.gliner2 import baseline
+
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text(
         json.dumps(
