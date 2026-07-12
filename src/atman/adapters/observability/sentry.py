@@ -150,6 +150,26 @@ _SENSITIVE_SLOG_FIELDS: frozenset[str] = frozenset(
 )
 
 
+# PLAYBOOK-START
+# id: adapter-boundary-telemetry-redaction
+# category: failure-modes
+# title: Redact Raw Domain Text at Telemetry Adapter Boundaries
+# status: draft
+# since: 2026-07-12
+#
+# Pattern: when an internal diagnostic stream is mirrored to an external
+# observability sink, build a sink-specific attribute payload that drops raw
+# user/domain text before calling the third-party SDK. Keep the internal record
+# unchanged for local logs or UI hooks, and emit only safe metadata plus the
+# names of redacted fields externally.
+#
+# Why generalizable: internal logs often contain details that are useful locally
+# but unsafe for SaaS telemetry. Relying on downstream scrubbers is brittle
+# because breadcrumbs/log attributes may bypass event-level scrubbing.
+#
+# Trade-offs: external telemetry loses some debugging context by design; callers
+# should log stable ids/counts/outcomes when they need correlation.
+# PLAYBOOK-END
 def _sentry_slog_attrs(event: str, data: dict[str, Any]) -> dict[str, str]:
     """Return Sentry-safe slog attributes with raw memory/user text removed."""
     attrs: dict[str, str] = {"event": event}
