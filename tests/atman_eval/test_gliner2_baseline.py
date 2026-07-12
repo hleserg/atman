@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 from pathlib import Path
@@ -160,6 +161,75 @@ def test_compute_metrics_rounds_overall_and_defaults_missing_labels(
         "f1": 0.6667,
     }
     assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+
+
+def test_load_gliner_falls_back_to_standard_gliner_when_gliner2_loader_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    fallback_model = object()
+
+    class FakeGliner2:
+        @classmethod
+        def from_pretrained(cls, model_id: str) -> object:
+            assert model_id == "fallback/model"
+            raise RuntimeError("unsupported config")
+
+    class FakeGliner:
+        @classmethod
+        def from_pretrained(cls, model_id: str) -> object:
+            assert model_id == "fallback/model"
+            return fallback_model
+
+    fake_gliner2 = ModuleType("gliner2")
+    fake_gliner2.__dict__["GLiNER2"] = FakeGliner2
+    fake_gliner = ModuleType("gliner")
+    fake_gliner.__dict__["GLiNER"] = FakeGliner
+    monkeypatch.setitem(sys.modules, "gliner2", fake_gliner2)
+    monkeypatch.setitem(sys.modules, "gliner", fake_gliner)
+
+    model, model_type = baseline._load_gliner("fallback/model")
+
+    assert model is fallback_model
+    assert model_type == "gliner"
+
+
+def test_load_gliner_exits_when_no_gliner_package_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    original_import = builtins.__import__
+
+    def fake_import(name: str, *args: object, **kwargs: object) -> object:
+        if name in {"gliner2", "gliner"}:
+            raise ImportError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "gliner2", raising=False)
+    monkeypatch.delitem(sys.modules, "gliner", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(SystemExit) as exc_info:
+        baseline._load_gliner("missing/model")
+
+    assert exc_info.value.code == 1
+
+
+@pytest.mark.parametrize(
+    ("f1", "expected"),
+    [
+        (0.71, "F1 > 0.7: fine-tune опционален"),
+        (0.7, "F1 0.4–0.7: fine-tune нужен"),
+        (0.4, "F1 0.4–0.7: fine-tune нужен"),
+        (0.39, "F1 < 0.4: рассмотреть смену базовой модели"),
+    ],
+)
+def test_conclusion_uses_documented_thresholds(f1: float, expected: str) -> None:
+    from atman.eval.gliner2 import baseline
+
+    assert baseline._conclusion(f1) == expected
 
 
 def test_save_results_merges_model_entries_without_overwriting_existing(
