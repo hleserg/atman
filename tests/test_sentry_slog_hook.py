@@ -57,6 +57,66 @@ def test_install_slog_breadcrumb_hook_is_idempotent() -> None:
     assert calls == 1
 
 
+def test_sentry_slog_attrs_redacts_memory_and_user_text() -> None:
+    attrs = sentry_module._sentry_slog_attrs(
+        "ambient_injection",
+        {
+            "ts": "2026-07-12T11:00:00Z",
+            "event": "ambient_injection",
+            "agent_id": "agent-1",
+            "content": "User shared a private fact",
+            "what_happened": "A private journal excerpt",
+            "query": "raw user message",
+            "anchor": "Sergey",
+            "anchors": ["Sergey"],
+            "text": "Sergey",
+            "items_total": 3,
+        },
+    )
+
+    assert attrs == {
+        "event": "ambient_injection",
+        "agent_id": "agent-1",
+        "items_total": "3",
+        "redacted_fields": "anchor,anchors,content,query,text,what_happened",
+    }
+
+
+def test_sentry_slog_hook_keeps_sensitive_data_out_of_breadcrumb(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sentry_sdk
+
+    breadcrumbs: list[dict[str, Any]] = []
+    previous_seen: list[dict[str, Any]] = []
+
+    def previous(_event: str, data: dict[str, Any]) -> None:
+        previous_seen.append(data)
+
+    def add_breadcrumb(**kwargs: Any) -> None:
+        breadcrumbs.append(kwargs)
+
+    session_log.set_display_hook(previous)
+    sentry_module._initialized = True
+    monkeypatch.setattr(sentry_sdk, "add_breadcrumb", add_breadcrumb)
+    sentry_module.install_slog_breadcrumb_hook()
+
+    session_log.slog(
+        "fact_added",
+        agent_id="agent-1",
+        content="User shared a private fact",
+        source="session",
+    )
+
+    assert previous_seen[0]["content"] == "User shared a private fact"
+    assert breadcrumbs[0]["data"] == {
+        "event": "fact_added",
+        "agent_id": "agent-1",
+        "source": "session",
+        "redacted_fields": "content",
+    }
+
+
 def test_session_transaction_propagates_body_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """A failing session body must not be masked by a fallback yield in the CM."""
     sentry_module._initialized = True

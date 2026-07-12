@@ -121,6 +121,50 @@ def set_session_tag(session_id: str) -> None:
 
 _slog_hook_installed = False
 
+_SENSITIVE_SLOG_FIELDS: frozenset[str] = frozenset(
+    {
+        "anchor",
+        "anchors",
+        "canonical",
+        "completion",
+        "content",
+        "content_excerpt",
+        "embedding_input",
+        "fact_content",
+        "fact_payload",
+        "identity_payload",
+        "key_insight",
+        "memory_content",
+        "memory_text",
+        "prompt",
+        "prompt_text",
+        "query",
+        "reflection_text",
+        "rerank_documents",
+        "response_text",
+        "text",
+        "user_journal",
+        "what_happened",
+        "why_it_matters",
+    }
+)
+
+
+def _sentry_slog_attrs(event: str, data: dict[str, Any]) -> dict[str, str]:
+    """Return Sentry-safe slog attributes with raw memory/user text removed."""
+    attrs: dict[str, str] = {"event": event}
+    redacted_fields: list[str] = []
+    for key, value in data.items():
+        if key in {"ts", "event"}:
+            continue
+        if key in _SENSITIVE_SLOG_FIELDS:
+            redacted_fields.append(key)
+            continue
+        attrs[key] = str(value)
+    if redacted_fields:
+        attrs["redacted_fields"] = ",".join(sorted(redacted_fields))
+    return attrs
+
 
 def install_slog_breadcrumb_hook() -> None:
     """Chain a Sentry breadcrumb emitter onto the slog display hook.
@@ -142,8 +186,7 @@ def install_slog_breadcrumb_hook() -> None:
 
     def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
         if _sentry_sdk_active():
-            attrs = {k: str(v) for k, v in data.items() if k != "ts"}
-            attrs["event"] = event
+            attrs = _sentry_slog_attrs(event, data)
             try:
                 import sentry_sdk.logger as _sl
 
