@@ -121,6 +121,70 @@ def set_session_tag(session_id: str) -> None:
 
 _slog_hook_installed = False
 
+_SENSITIVE_SLOG_FIELDS: frozenset[str] = frozenset(
+    {
+        "anchor",
+        "anchors",
+        "canonical",
+        "completion",
+        "content",
+        "content_excerpt",
+        "embedding_input",
+        "fact_content",
+        "fact_payload",
+        "identity_payload",
+        "key_insight",
+        "memory_content",
+        "memory_text",
+        "prompt",
+        "prompt_text",
+        "query",
+        "reflection_text",
+        "rerank_documents",
+        "response_text",
+        "text",
+        "user_journal",
+        "what_happened",
+        "why_it_matters",
+    }
+)
+
+
+# PLAYBOOK-START
+# id: adapter-boundary-telemetry-redaction
+# category: failure-modes
+# title: Redact Raw Domain Text at Telemetry Adapter Boundaries
+# status: draft
+# since: 2026-07-12
+#
+# Pattern: when an internal diagnostic stream is mirrored to an external
+# observability sink, build a sink-specific attribute payload that drops raw
+# user/domain text before calling the third-party SDK. Keep the internal record
+# unchanged for local logs or UI hooks, and emit only safe metadata plus the
+# names of redacted fields externally.
+#
+# Why generalizable: internal logs often contain details that are useful locally
+# but unsafe for SaaS telemetry. Relying on downstream scrubbers is brittle
+# because breadcrumbs/log attributes may bypass event-level scrubbing.
+#
+# Trade-offs: external telemetry loses some debugging context by design; callers
+# should log stable ids/counts/outcomes when they need correlation.
+# PLAYBOOK-END
+def _sentry_slog_attrs(event: str, data: dict[str, Any]) -> dict[str, str]:
+    """Return Sentry-safe slog attributes with raw memory/user text removed."""
+    attrs: dict[str, str] = {"event": event}
+    redacted_fields: list[str] = []
+    for key, value in data.items():
+        if key in {"ts", "event"}:
+            continue
+        if key in _SENSITIVE_SLOG_FIELDS:
+            redacted_fields.append(key)
+            continue
+        attrs[key] = str(value)
+    if redacted_fields:
+        attrs["redacted_fields"] = ",".join(sorted(redacted_fields))
+    return attrs
+
 
 def install_slog_breadcrumb_hook() -> None:
     """Chain a Sentry breadcrumb emitter onto the slog display hook.
@@ -142,8 +206,7 @@ def install_slog_breadcrumb_hook() -> None:
 
     def _breadcrumb_hook(event: str, data: dict[str, Any]) -> None:
         if _sentry_sdk_active():
-            attrs = {k: str(v) for k, v in data.items() if k != "ts"}
-            attrs["event"] = event
+            attrs = _sentry_slog_attrs(event, data)
             try:
                 import sentry_sdk.logger as _sl
 

@@ -10,6 +10,21 @@ resolver, not by GLiNER2).
 
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class EntitySpan(TypedDict):
+    label: str
+    start: int
+    end: int
+    text: str
+
+
+class DatasetExample(TypedDict):
+    text: str
+    entities: list[EntitySpan]
+
+
 LABELS: list[str] = [
     "person",
     "organization",
@@ -565,20 +580,20 @@ _RAW: list[tuple[str, list[tuple[str, str]]]] = [
 ]
 
 
-def _build_span(text: str, entity_text: str, label: str) -> dict[str, object]:
+def _build_span(text: str, entity_text: str, label: str) -> EntitySpan:
     start = text.find(entity_text)
     if start == -1:
         raise ValueError(f"Entity text '{entity_text}' not found in: '{text}'")
     return {"label": label, "start": start, "end": start + len(entity_text), "text": entity_text}
 
 
-def load_dataset() -> list[dict[str, object]]:
+def load_dataset() -> list[DatasetExample]:
     """Return list of annotated examples.
 
     Each item: {"text": str, "entities": [{"label": str, "start": int, "end": int, "text": str}]}
     Span indices are character-level (compatible with GLiNER output).
     """
-    examples = []
+    examples: list[DatasetExample] = []
     for text, raw_ents in _RAW:
         entities = [_build_span(text, ent_text, label) for ent_text, label in raw_ents]
         examples.append({"text": text, "entities": entities})

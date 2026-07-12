@@ -137,6 +137,7 @@ def _auto_record_refusal_if_needed(
 
 # PLAYBOOK-START
 # id: signal-aware-session-lifecycle
+# category: design-patterns
 # slug: signal-aware-session-lifecycle
 # status: draft
 # title: Signal-aware session lifecycle wrapper for stateful async operations
