@@ -121,9 +121,7 @@ def test_compute_metrics_normalizes_nervaluate_results(
                     "strict": SimpleNamespace(precision=0.98765, recall=0.87654, f1=0.76543)
                 },
                 "entities": {
-                    "person": {
-                        "strict": SimpleNamespace(precision=1.0, recall=0.5, f1=0.66666)
-                    }
+                    "person": {"strict": SimpleNamespace(precision=1.0, recall=0.5, f1=0.66666)}
                 },
             }
 
