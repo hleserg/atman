@@ -72,7 +72,7 @@ def test_run_predictions_supports_standard_gliner_predict_entities_shape() -> No
             labels: list[str],
             *,
             threshold: float,
-        ) -> list[dict[str, int | str]]:
+        ) -> list[dict[str, int | str | float]]:
             assert text == "Atman помогает агентам."
             assert labels == baseline.LABELS
             assert threshold == 0.4
