@@ -35,6 +35,7 @@ def test_download_dataset_rejects_malformed_jsonl(monkeypatch: pytest.MonkeyPatc
     def fake_get(*_args: Any, **_kwargs: Any) -> FakeResponse:
         return FakeResponse()
 
+    monkeypatch.setattr(gen, "PIONEER_API_KEY", "test-key")
     monkeypatch.setattr(gen.requests, "get", fake_get)
 
     with pytest.raises(ValueError, match="line 2"):
@@ -72,4 +73,6 @@ def test_atomic_write_replaces_file_after_successful_validation(tmp_path: Path) 
     count = gen._write_validated_jsonl(replacement, output, min_count=2)
 
     assert count == 2
-    assert [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()] == replacement
+    assert [
+        json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()
+    ] == replacement
