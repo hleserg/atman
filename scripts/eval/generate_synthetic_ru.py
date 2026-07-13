@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -75,6 +76,7 @@ OUTPUT_PATH = Path(__file__).parent.parent.parent / "eval" / "data" / "atman_ner
 
 # examples per batch × number of domain description batches
 EXAMPLES_PER_BATCH = 600
+MIN_REQUIRED_EXAMPLES = 1500
 VALID_LABELS = set(LABELS)
 
 
@@ -209,17 +211,55 @@ def _download_dataset(dataset_name: str) -> list[dict]:
     )
     resp.raise_for_status()
     rows: list[dict] = []
-    for line in resp.text.strip().splitlines():
+    for line_num, line in enumerate(resp.text.strip().splitlines(), 1):
         line = line.strip()
         if line:
             try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Downloaded JSONL for dataset {dataset_name!r} has invalid JSON "
+                    f"on line {line_num}: {exc}"
+                ) from exc
+            if not isinstance(row, dict):
+                raise ValueError(
+                    f"Downloaded JSONL for dataset {dataset_name!r} line {line_num} "
+                    f"must be an object, got {type(row).__name__}"
+                )
+            rows.append(row)
     return rows
 
 
-def validate_jsonl(path: Path) -> tuple[int, list[str]]:
+def _validate_ner_spans(ner: list[object], token_count: int, line_num: int) -> str | None:
+    for span in ner:
+        if not isinstance(span, list) or len(span) != 3:
+            return f"line {line_num}: ner span must be [start, end, label]"
+        s, e, lbl = span
+        if not isinstance(s, int) or not isinstance(e, int):
+            return f"line {line_num}: span indices must be int"
+        if s < 0 or e < s or e >= token_count:
+            return f"line {line_num}: span [{s},{e}] invalid for {token_count} tokens"
+        if lbl not in VALID_LABELS:
+            return f"line {line_num}: unknown label '{lbl}'"
+    return None
+
+
+def _validate_jsonl_row(row: object, line_num: int) -> str | None:
+    if not isinstance(row, dict):
+        return f"line {line_num}: row must be an object"
+
+    toks = row.get("tokenized_text")
+    if not isinstance(toks, list) or not toks:
+        return f"line {line_num}: missing or empty 'tokenized_text'"
+
+    ner = row.get("ner")
+    if not isinstance(ner, list):
+        return f"line {line_num}: missing 'ner'"
+
+    return _validate_ner_spans(ner, len(toks), line_num)
+
+
+def validate_jsonl(path: Path, *, min_count: int | None = None) -> tuple[int, list[str]]:
     """Validate GLiNER-format JSONL. Returns (valid_count, error_list)."""
     errors: list[str] = []
     count = 0
@@ -234,34 +274,48 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
                 errors.append(f"line {line_num}: JSON error: {exc}")
                 continue
 
-            toks = row.get("tokenized_text")
-            if not isinstance(toks, list) or not toks:
-                errors.append(f"line {line_num}: missing or empty 'tokenized_text'")
-                continue
-
-            ner = row.get("ner")
-            if not isinstance(ner, list):
-                errors.append(f"line {line_num}: missing 'ner'")
-                continue
-
-            n = len(toks)
-            for span in ner:
-                if not isinstance(span, list) or len(span) != 3:
-                    errors.append(f"line {line_num}: ner span must be [start, end, label]")
-                    break
-                s, e, lbl = span
-                if not isinstance(s, int) or not isinstance(e, int):
-                    errors.append(f"line {line_num}: span indices must be int")
-                    break
-                if s < 0 or e < s or e >= n:
-                    errors.append(f"line {line_num}: span [{s},{e}] invalid for {n} tokens")
-                    break
-                if lbl not in VALID_LABELS:
-                    errors.append(f"line {line_num}: unknown label '{lbl}'")
-                    break
+            error = _validate_jsonl_row(row, line_num)
+            if error is not None:
+                errors.append(error)
             else:
                 count += 1
+    if min_count is not None and count < min_count:
+        errors.append(f"expected at least {min_count} valid examples, got {count}")
     return count, errors
+
+
+def _write_validated_jsonl(
+    examples: list[dict],
+    output_path: Path,
+    *,
+    min_count: int = MIN_REQUIRED_EXAMPLES,
+) -> int:
+    """Write examples atomically after validating the complete replacement file."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=output_path.parent,
+            prefix=f".{output_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            temp_path = Path(f.name)
+            for ex in examples:
+                f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+        count, errors = validate_jsonl(temp_path, min_count=min_count)
+        if errors:
+            raise ValueError("; ".join(errors[:30]))
+
+        temp_path.replace(output_path)
+        temp_path = None
+        return count
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
 
 
 def spot_check(path: Path, n: int = 30) -> None:
@@ -324,20 +378,16 @@ def main() -> None:
 
     total = len(all_examples)
     print(f"\nTotal examples: {total}")
-    if total < 1500:
-        print(f"WARNING: {total} < 1500 required examples", file=sys.stderr)
+    if total < MIN_REQUIRED_EXAMPLES:
+        print(f"ERROR: {total} < {MIN_REQUIRED_EXAMPLES} required examples", file=sys.stderr)
+        sys.exit(1)
 
     print(f"Writing to {OUTPUT_PATH}...")
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        for ex in all_examples:
-            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-
     print("Validating...")
-    count, errors = validate_jsonl(OUTPUT_PATH)
-    if errors:
-        print(f"VALIDATION FAILED ({len(errors)} errors):")
-        for err in errors[:30]:
-            print(f"  {err}")
+    try:
+        count = _write_validated_jsonl(all_examples, OUTPUT_PATH)
+    except ValueError as exc:
+        print(f"VALIDATION FAILED: {exc}", file=sys.stderr)
         sys.exit(1)
 
     print(f"✓ Validation passed: {count} examples")
