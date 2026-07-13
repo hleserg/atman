@@ -27,7 +27,7 @@ class FakeGliner2Model:
     ) -> dict[str, Any]:
         assert text
         assert "person" in labels
-        assert threshold == 0.5
+        assert threshold == pytest.approx(0.5)
         assert include_spans is True
         return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -42,7 +42,7 @@ class FakeGlinerModel:
     ) -> list[dict[str, Any]]:
         assert text
         assert "animal" in labels
-        assert threshold == 0.25
+        assert threshold == pytest.approx(0.25)
         return [{"label": "animal", "start": 5, "end": 10}]
 
 
@@ -163,13 +163,19 @@ def test_compute_metrics_uses_nervaluate_strict_results(
         [[{"label": "person", "start": 0, "end": 4}]],
     )
 
-    assert metrics["overall"] == {"precision": 0.1235, "recall": 0.6789, "f1": 0.5432}
-    assert metrics["per_entity"]["person"] == {
-        "precision": 0.1235,
-        "recall": 0.6789,
-        "f1": 0.5432,
-    }
-    assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    assert metrics["overall"] == pytest.approx(
+        {"precision": 0.1235, "recall": 0.6789, "f1": 0.5432}
+    )
+    assert metrics["per_entity"]["person"] == pytest.approx(
+        {
+            "precision": 0.1235,
+            "recall": 0.6789,
+            "f1": 0.5432,
+        }
+    )
+    assert metrics["per_entity"]["animal"] == pytest.approx(
+        {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    )
 
 
 def test_save_results_merges_model_entries(
@@ -241,7 +247,7 @@ def test_main_runs_with_fake_model_pipeline(
     baseline.main.callback(model="fake-model", threshold=0.5, output=output)
 
     saved = json.loads(output.read_text(encoding="utf-8"))
-    assert saved["fake-model"]["overall"]["f1"] == 1.0
+    assert saved["fake-model"]["overall"]["f1"] == pytest.approx(1.0)
 
 
 def test_print_results_renders_table(gliner2_modules: tuple[Any, Any]) -> None:
