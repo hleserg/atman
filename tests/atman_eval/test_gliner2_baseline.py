@@ -104,7 +104,9 @@ def test_run_predictions_supports_standard_gliner_response_shape() -> None:
     assert predictions == [[{"label": "person", "start": 0, "end": 4}]]
 
 
-def test_compute_metrics_uses_strict_overall_and_per_entity(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compute_metrics_uses_strict_overall_and_per_entity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeEvaluator:
         def __init__(
             self,
@@ -126,7 +128,7 @@ def test_compute_metrics_uses_strict_overall_and_per_entity(monkeypatch: pytest.
             }
 
     fake_module = types.ModuleType("nervaluate")
-    setattr(fake_module, "Evaluator", FakeEvaluator)
+    fake_module.__dict__["Evaluator"] = FakeEvaluator
     monkeypatch.setitem(sys.modules, "nervaluate", fake_module)
 
     metrics = baseline._compute_metrics(
