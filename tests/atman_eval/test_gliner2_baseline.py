@@ -134,6 +134,25 @@ def test_compute_metrics_rounds_values_and_fills_missing_labels(
     assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
+@pytest.mark.parametrize("f1", [0.8, 0.5, 0.3])
+def test_print_results_renders_all_fine_tune_verdict_ranges(f1: float, capsys: Any) -> None:
+    from atman.eval.gliner2 import baseline
+
+    metrics = {
+        "overall": {"precision": 0.5, "recall": 0.6, "f1": f1},
+        "per_entity": {
+            label: {"precision": 0.5, "recall": 0.6, "f1": f1} for label in baseline.LABELS
+        },
+    }
+
+    baseline._print_results("fake/model", metrics)
+
+    captured = capsys.readouterr()
+    assert "fake/model" in captured.out
+    assert "Per-entity F1" in captured.out
+    assert baseline._conclusion(f1) in captured.out
+
+
 def test_save_results_merges_model_entry_without_dropping_existing_results(
     tmp_path: Path,
 ) -> None:
