@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 # Add tools/ to path for import
+import ast
 import sys
 import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-import ast
 
 from check_instrumentation import (
     INSTRUMENTATION_MARKERS,
@@ -27,7 +26,7 @@ from check_instrumentation import (
 def _parse_func(source: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     tree = ast.parse(textwrap.dedent(source))
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             return node
     raise ValueError("no function found")
 

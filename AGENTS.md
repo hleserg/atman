@@ -382,10 +382,15 @@ Rules:
       - `ADR-002-full-ai-monitoring.md`
       - `README.md` — Architecture Decision Records
   - **codemap/**
+      - `DELTA_REPORT-ru.md` — Отчёт об изменениях Codemap
       - `DELTA_REPORT.md` — Codemap Delta Report
+      - `ENDPOINTS-ru.md` — Справочник по эндпоинтам
       - `ENDPOINTS.md` — Endpoints Reference
+      - `STARTUP_DEPS-ru.md` — Зависимости при запуске
       - `STARTUP_DEPS.md` — Startup Dependencies
+      - `TEST_ENV-ru.md` — Тестовое окружение
       - `TEST_ENV.md` — Test Environment
+      - `UNDOCUMENTED-ru.md` — Недокументированный публичный API
       - `UNDOCUMENTED.md` — Undocumented Public API
     - `SYSTEM-ru.md` — Atman — Архитектура системы
     - `SYSTEM.md` — Atman — System Architecture
@@ -446,8 +451,10 @@ Rules:
     - `MANIFEST.md` — ATMAN
     - `README-ru.md` — Atman
     - `README.md` — Atman
-    - `SYSTEM-ru.md` — Source: SYSTEM.md
-    - `SYSTEM.md` — Source: SYSTEM.md
+    - `SYSTEM-ru.md` — Atman — Архитектура системы
+    - `SYSTEM.md` — Atman — System Architecture
+    - `SYSTEM_MAP-ru.md` — Карта системы Atman
+    - `SYSTEM_MAP.md` — Atman System Map
 - **css/**
 - **demo-data/**
 - **design/**
@@ -456,6 +463,9 @@ Rules:
 - **development/**
     - `DEVELOPMENT_STANDARD.md` — Стандарт разработки Atman
     - `SESSION_TESTER_RUNBOOK.md` — Session Tester Runbook
+- **eval/**
+    - `gliner2_label_inventory.md` — GLiNER2 Label Inventory — Atman Codebase (T0)
+    - `gliner2_label_schema.md` — GLiNER2 Label Schema — Atman
 - **features/**
   - **affect-detector/**
       - `README-ru.md` — Affect Detector (E21)
