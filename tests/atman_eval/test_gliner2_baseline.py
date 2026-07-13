@@ -49,6 +49,8 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
     from atman.eval.gliner2 import baseline
     from atman.eval.gliner2.dataset import LABELS
 
+    calls: list[dict[str, object]] = []
+
     class FakeGliner2:
         def extract_entities(
             self,
@@ -58,10 +60,14 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
             threshold: float,
             include_spans: bool,
         ) -> dict[str, Any]:
-            assert text == "Маша работает над Atman."
-            assert labels == LABELS
-            assert threshold == 0.5
-            assert include_spans is True
+            calls.append(
+                {
+                    "text": text,
+                    "labels": labels,
+                    "threshold": threshold,
+                    "include_spans": include_spans,
+                }
+            )
             return {
                 "entities": {
                     "person": [{"start": 0, "end": 4}],
@@ -76,6 +82,14 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
         threshold=0.5,
     )
 
+    assert calls == [
+        {
+            "text": "Маша работает над Atman.",
+            "labels": LABELS,
+            "threshold": 0.5,
+            "include_spans": True,
+        }
+    ]
     assert predictions == [
         [
             {"label": "person", "start": 0, "end": 4},
@@ -88,6 +102,8 @@ def test_run_predictions_supports_standard_gliner_response_shape() -> None:
     from atman.eval.gliner2 import baseline
     from atman.eval.gliner2.dataset import LABELS
 
+    calls: list[dict[str, object]] = []
+
     class FakeGliner:
         def predict_entities(
             self,
@@ -96,9 +112,7 @@ def test_run_predictions_supports_standard_gliner_response_shape() -> None:
             *,
             threshold: float,
         ) -> list[dict[str, Any]]:
-            assert text == "Маша работает над Atman."
-            assert labels == LABELS
-            assert threshold == 0.4
+            calls.append({"text": text, "labels": labels, "threshold": threshold})
             return [{"label": "person", "start": 0, "end": 4}]
 
     predictions = baseline._run_predictions(
@@ -108,6 +122,13 @@ def test_run_predictions_supports_standard_gliner_response_shape() -> None:
         threshold=0.4,
     )
 
+    assert calls == [
+        {
+            "text": "Маша работает над Atman.",
+            "labels": LABELS,
+            "threshold": 0.4,
+        }
+    ]
     assert predictions == [[{"label": "person", "start": 0, "end": 4}]]
 
 
