@@ -24,6 +24,19 @@ Key goals:
 - `hardware.py` - CPU/memory/GPU probe with graceful fallback when `psutil`/`pynvml` or NVML are unavailable
 - `benchmarks/noop.py` - smoke benchmark used by demo and CLI checks
 
+## Eval Family Quick Reference
+
+The E1 runner is the registry-based benchmark path. Some eval tools are standalone scripts because they need optional model downloads, external APIs, or a fixed research dataset.
+
+| Question | Tool | Label source / output |
+| --- | --- | --- |
+| Is the eval runner wired correctly? | `python -m atman.eval.benchmark_runner list` / `run noop` | Built-in `noop` benchmark via `registry.py` |
+| Is production GLiNER+MiniLM good enough today? | `python3 scripts/eval/eval_linguistic_quality.py --adapter gliner` | Runtime `EntityType` / linguistic adapter labels |
+| Should Atman fine-tune GLiNER2 for Russian NER-core? | `python -m atman.eval.gliner2.baseline --model fastino/gliner2-multi-v1` | T1 `atman-ner-core` 13-label schema, results in `eval/results/gliner2_baseline_ru.json` |
+| How was the synthetic RU NER corpus generated? | `PIONEER_API_KEY=... python3 scripts/eval/generate_synthetic_ru.py` | GLiNER training JSONL at `eval/data/atman_ner_ru_synth.jsonl` |
+
+The GLiNER2 baseline is intentionally **not** registered in `atman.eval.registry`: it is a fixed zero-shot research runner that downloads HuggingFace models on first use and writes a merged JSON artifact.
+
 ## CLI Usage
 
 List benchmarks:
@@ -44,12 +57,35 @@ Optional DB write (existing eval schema):
 python -m atman.eval.benchmark_runner run noop --db-dsn "$POSTGRES_URL"
 ```
 
+Run the standalone GLiNER2 baseline (requires the `eval` extra and model downloads on first use):
+
+```bash
+python -m atman.eval.gliner2.baseline --model fastino/gliner2-multi-v1
+python -m atman.eval.gliner2.baseline --model urchade/gliner_multi-v2.1
+```
+
+Current committed results use 130 gold Russian examples from `src/atman/eval/gliner2/dataset.py` and conclude both baseline models are in the `F1 0.4-0.7` band, so fine-tuning is needed.
+
 ## Makefile Aliases
 
 - `make eval-list`
 - `make eval-run`
 - `make demo-eval-runner`
 - `make demo-eval-runner-fast`
+
+There is no Makefile alias for the GLiNER2 baseline; use the module command above so the expensive model choice stays explicit.
+
+## Synthetic RU NER Data
+
+`scripts/eval/generate_synthetic_ru.py` regenerates the committed corpus at `eval/data/atman_ner_ru_synth.jsonl`.
+
+Constraints:
+
+- requires `PIONEER_API_KEY` and network access to the Pioneer API
+- emits GLiNER training rows: `{"tokenized_text": [...], "ner": [[start, end, "label"], ...]}`
+- uses 0-based inclusive token spans
+- validates labels and span bounds before writing success output
+- is not part of `make check` or the E1 registry path
 
 ## Demo
 

@@ -16,6 +16,25 @@
 
 ---
 
+## Runtime vs target schema
+
+В репозитории сейчас есть два разных NER-контура:
+
+| Вопрос | Инструмент | Метки |
+|---|---|---|
+| Проверить текущий production linguistic adapter | `python3 scripts/eval/eval_linguistic_quality.py --adapter gliner` | Runtime `EntityType` + span/classification labels из `GLiNERPlusMiniLMAdapter` |
+| Оценить будущую fine-tune базу для русского NER-core | `python -m atman.eval.gliner2.baseline --model <model>` | Эта T1-схема: 13 меток `atman-ner-core` |
+| Понять, какие label-like типы уже есть в коде | `docs/eval/gliner2_label_inventory.md` | T0 inventory по коду, не training schema |
+| Регенерировать synthetic corpus | `PIONEER_API_KEY=... python3 scripts/eval/generate_synthetic_ru.py` | Те же 13 меток `atman-ner-core` |
+
+Важно: production adapter `src/atman/adapters/linguistic/gliner_minilm_adapter.py`
+использует обычный GLiNER (`urchade/gliner_multi-v2.1`) + MiniLM и не равен GLiNER2
+fine-tune target. Например, runtime `place` в T1 называется `location`,
+`object`/`tool` схлопываются в `product`, а `health_condition` — в `health`.
+Резолвинг «я»/местоимений остаётся вне NER-схемы (HLE-642).
+
+---
+
 ## Сводка адаптеров
 
 | Адаптер | Режим | Меток | Бюджет |
@@ -31,8 +50,9 @@
 
 ## Адаптер 1 — `atman-ner-core` (сущности)
 
-NER-режим. 13 меток. Таксономия спроектирована с нуля — в коде Atman NER-типов нет
-(`FactRecord.tags` был free-form `list[str]`, никакого `EntityType` enum).
+NER-режим. 13 меток. Таксономия спроектирована с нуля для fine-tune и не
+переиспользует runtime `EntityType`: production adapter уже хранит свои типы
+сущностей, а `FactRecord.tags` остаётся free-form `list[str]`.
 
 | Метка | Описание (entity description для обучения) | Примеры |
 |---|---|---|
@@ -208,3 +228,63 @@ Fastino-овский PII-фильтр русский не поддерживае
 - **T3/T4** — сбор и генерация данных под эти метки;
 - **T6** (ner-core), **T7** (affect), **T8** (pii), **T11** (relations) — обучение адаптеров;
 - **T5** — golden test set размечается по этой схеме.
+
+### T2 baseline: как воспроизвести
+
+Команды:
+
+```bash
+python -m atman.eval.gliner2.baseline --model fastino/gliner2-multi-v1
+python -m atman.eval.gliner2.baseline --model urchade/gliner_multi-v2.1
+```
+
+Требования:
+
+- установить optional deps: `pip install -e ".[eval]"`;
+- первый запуск скачивает HuggingFace-модели;
+- датасет: 130 gold-примеров в `src/atman/eval/gliner2/dataset.py`;
+- output: merged JSON `eval/results/gliner2_baseline_ru.json`, по ключу на model id.
+
+Правило интерпретации зашито в `baseline.py`:
+
+| Overall strict F1 | Решение |
+|---|---|
+| `> 0.7` | fine-tune опционален |
+| `0.4-0.7` | fine-tune нужен |
+| `< 0.4` | рассмотреть смену базовой модели |
+
+Committed results на 2026-05-30:
+
+| Model | Precision | Recall | F1 | Вывод |
+|---|---:|---:|---:|---|
+| `fastino/gliner2-multi-v1` | 0.4389 | 0.7268 | 0.5473 | fine-tune нужен |
+| `urchade/gliner_multi-v2.1` | 0.5269 | 0.5355 | 0.5312 | fine-tune нужен |
+
+Этот runner standalone и не зарегистрирован в E1 `atman.eval.registry`, потому что
+это фиксированный research baseline с тяжёлыми model downloads.
+
+### T3/T4 synthetic corpus: как регенерировать
+
+Команда:
+
+```bash
+PIONEER_API_KEY=pio_sk_... python3 scripts/eval/generate_synthetic_ru.py
+```
+
+Скрипт делает 3 domain batches по 600 запросов к Pioneer API (`task_type=ner`),
+конвертирует ответы в GLiNER training format и пишет
+`eval/data/atman_ner_ru_synth.jsonl`.
+
+Формат каждой строки:
+
+```json
+{"tokenized_text": ["word1", "word2"], "ner": [[0, 0, "person"]]}
+```
+
+Ограничения:
+
+- `ner` хранит 0-based inclusive token spans;
+- метки валидируются строго по `LABELS` из скрипта;
+- span bounds валидируются перед успешным завершением;
+- если итоговых строк меньше 1500, скрипт пишет warning;
+- внешний Pioneer API не входит в `make check` и не должен запускаться в CI без явного решения.
