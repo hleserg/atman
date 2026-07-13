@@ -19,13 +19,9 @@ import os
 import re
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
-
-try:
-    import requests
-except ImportError:
-    print("Error: requests not installed. Run: uv pip install requests", file=sys.stderr)
-    sys.exit(1)
+from typing import Any
 
 PIONEER_BASE_URL = "https://api.pioneer.ai"
 PIONEER_API_KEY = os.environ.get("PIONEER_API_KEY", "")
@@ -78,6 +74,15 @@ EXAMPLES_PER_BATCH = 600
 VALID_LABELS = set(LABELS)
 
 
+def _requests() -> Any:
+    try:
+        import requests
+    except ImportError:
+        print("Error: requests not installed. Run: uv pip install requests", file=sys.stderr)
+        sys.exit(1)
+    return requests
+
+
 def _tokenize_with_offsets(text: str) -> tuple[list[str], list[int]]:
     tokens: list[str] = []
     offsets: list[int] = []
@@ -104,7 +109,7 @@ def _find_span(
 
         start_tok: int | None = None
         end_tok: int | None = None
-        for i, (tok, off) in enumerate(zip(tokens, offsets)):
+        for i, (tok, off) in enumerate(zip(tokens, offsets, strict=True)):
             tok_end = off + len(tok) - 1
             if start_tok is None and off <= char_start <= tok_end:
                 start_tok = i
@@ -134,7 +139,7 @@ def pioneer_to_gliner(row: dict) -> dict | None:
     seen_spans: set[tuple[int, int, str]] = set()
 
     for entry in entities:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+        if not isinstance(entry, list | tuple) or len(entry) != 2:
             continue
         entity_text, label = entry
         if not entity_text or not isinstance(label, str):
@@ -161,7 +166,7 @@ def _pioneer_headers() -> dict[str, str]:
 
 
 def _submit_job(dataset_name: str, num_examples: int, domain_description: str) -> str:
-    resp = requests.post(
+    resp = _requests().post(
         f"{PIONEER_BASE_URL}/generate",
         headers=_pioneer_headers(),
         json={
@@ -183,7 +188,7 @@ def _poll_job(job_id: str, max_wait: int = 900) -> str:
     start = time.monotonic()
     interval = 10
     while time.monotonic() - start < max_wait:
-        resp = requests.get(
+        resp = _requests().get(
             f"{PIONEER_BASE_URL}/generate/jobs/{job_id}",
             headers=_pioneer_headers(),
             timeout=15,
@@ -201,7 +206,7 @@ def _poll_job(job_id: str, max_wait: int = 900) -> str:
 
 
 def _download_dataset(dataset_name: str) -> list[dict]:
-    resp = requests.get(
+    resp = _requests().get(
         f"{PIONEER_BASE_URL}/felix/datasets/{dataset_name}/latest/download",
         headers=_pioneer_headers(),
         params={"format": "jsonl"},
@@ -212,10 +217,8 @@ def _download_dataset(dataset_name: str) -> list[dict]:
     for line in resp.text.strip().splitlines():
         line = line.strip()
         if line:
-            try:
+            with suppress(json.JSONDecodeError):
                 rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
     return rows
 
 
@@ -265,7 +268,7 @@ def validate_jsonl(path: Path) -> tuple[int, list[str]]:
 
 
 def spot_check(path: Path, n: int = 30) -> None:
-    print(f"\nSpot-check: first {n} examples\n{'─'*70}")
+    print(f"\nSpot-check: first {n} examples\n{'─' * 70}")
     with open(path, encoding="utf-8") as f:
         for i, raw in enumerate(f):
             if i >= n:
@@ -274,11 +277,9 @@ def spot_check(path: Path, n: int = 30) -> None:
             tokens = row["tokenized_text"]
             ner = row["ner"]
             preview = " ".join(tokens[:12]) + ("…" if len(tokens) > 12 else "")
-            entity_strs = [
-                f"«{' '.join(tokens[s:e+1])}»→{lbl}" for s, e, lbl in ner[:3]
-            ]
-            extra = f" +{len(ner)-3}" if len(ner) > 3 else ""
-            print(f"  [{i+1:3d}] {preview}")
+            entity_strs = [f"«{' '.join(tokens[s : e + 1])}»→{lbl}" for s, e, lbl in ner[:3]]
+            extra = f" +{len(ner) - 3}" if len(ner) > 3 else ""
+            print(f"  [{i + 1:3d}] {preview}")
             if entity_strs:
                 print(f"       {', '.join(entity_strs)}{extra}")
     print()
