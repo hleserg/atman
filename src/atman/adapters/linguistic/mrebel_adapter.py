@@ -8,7 +8,7 @@ a rules-based extractor or a no-op.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from typing_extensions import override
 
@@ -67,7 +67,7 @@ class MRebelRelationAdapter(EntityRelationExtractor):
             return self._pipeline
         logger.info("Loading mREBEL model %s …", self._model_name)
         try:
-            self._pipeline = _hf_pipeline(  # type: ignore[operator]
+            self._pipeline = cast(Any, _hf_pipeline)(
                 "text2text-generation",
                 model=self._model_name,
                 tokenizer=self._model_name,
