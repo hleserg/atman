@@ -24,7 +24,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 from rich.markup import escape
@@ -263,10 +263,12 @@ def main(model: str, threshold: float, output: Path) -> None:
     gliner_model, model_type = _load_gliner(model)
     print_info(f"Model type: {model_type}")
 
-    gold_nerval = [
-        [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in ex["entities"]]
-        for ex in dataset
-    ]
+    gold_nerval = []
+    for ex in dataset:
+        entities = cast(list[dict[str, Any]], ex["entities"])
+        gold_nerval.append(
+            [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in entities]
+        )
 
     print_info("Running predictions …")
     pred_nerval = _run_predictions(gliner_model, model_type, dataset, threshold)
