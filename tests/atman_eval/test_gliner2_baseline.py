@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from click.testing import CliRunner
 
 
 def test_gliner2_dataset_has_expected_schema() -> None:
@@ -172,6 +173,23 @@ def test_compute_metrics_uses_strict_overall_and_per_entity(
     assert metrics["per_entity"]["animal"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
 
+@pytest.mark.parametrize("f1", [0.8, 0.5, 0.2])
+def test_print_results_renders_threshold_bands(
+    f1: float, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    baseline._print_results(
+        "fake/model",
+        {
+            "overall": {"precision": 0.1, "recall": 0.2, "f1": f1},
+            "per_entity": {"person": {"precision": 0.1, "recall": 0.2, "f1": f1}},
+        },
+    )
+
+    assert "Overall" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     ("f1", "expected"),
     [
@@ -217,3 +235,84 @@ def test_save_results_merges_model_entries(tmp_path: Path) -> None:
     assert set(saved) == {"existing/model", "new/model"}
     assert saved["new/model"]["n_examples"] == 130
     assert saved["new/model"]["conclusion"] == "F1 0.4–0.7: fine-tune нужен"
+
+
+def test_main_orchestrates_baseline_without_loading_real_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    calls: dict[str, object] = {}
+
+    def fake_load_gliner(model_id: str) -> tuple[object, str]:
+        calls["model_id"] = model_id
+        return object(), "gliner"
+
+    def fake_run_predictions(
+        model: object,
+        model_type: str,
+        dataset: list[dict[str, Any]],
+        threshold: float,
+    ) -> list[list[dict[str, Any]]]:
+        calls["model_type"] = model_type
+        calls["dataset_size"] = len(dataset)
+        calls["threshold"] = threshold
+        return [[] for _ in dataset]
+
+    def fake_compute_metrics(
+        gold: list[list[dict[str, Any]]],
+        pred: list[list[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        calls["gold_count"] = len(gold)
+        calls["pred_count"] = len(pred)
+        return {
+            "overall": {"precision": 0.4, "recall": 0.5, "f1": 0.6},
+            "per_entity": {"person": {"precision": 0.4, "recall": 0.5, "f1": 0.6}},
+        }
+
+    def fake_print_results(model_id: str, metrics: dict[str, Any]) -> None:
+        calls["printed_model"] = model_id
+        calls["printed_f1"] = metrics["overall"]["f1"]
+
+    def fake_save_results(
+        output: Path,
+        model_id: str,
+        metrics: dict[str, Any],
+        n_examples: int,
+        threshold: float,
+    ) -> None:
+        calls["output"] = output
+        calls["saved_model"] = model_id
+        calls["saved_examples"] = n_examples
+        calls["saved_threshold"] = threshold
+        calls["saved_f1"] = metrics["overall"]["f1"]
+
+    monkeypatch.setattr(baseline, "_load_gliner", fake_load_gliner)
+    monkeypatch.setattr(baseline, "_run_predictions", fake_run_predictions)
+    monkeypatch.setattr(baseline, "_compute_metrics", fake_compute_metrics)
+    monkeypatch.setattr(baseline, "_print_results", fake_print_results)
+    monkeypatch.setattr(baseline, "_save_results", fake_save_results)
+
+    output = tmp_path / "results.json"
+    result = CliRunner().invoke(
+        baseline.main,
+        ["--model", "fake/model", "--threshold", "0.42", "--output", str(output)],
+    )
+
+    assert result.exit_code == 0
+    assert calls == {
+        "model_id": "fake/model",
+        "model_type": "gliner",
+        "dataset_size": 130,
+        "threshold": 0.42,
+        "gold_count": 130,
+        "pred_count": 130,
+        "printed_model": "fake/model",
+        "printed_f1": 0.6,
+        "output": output,
+        "saved_model": "fake/model",
+        "saved_examples": 130,
+        "saved_threshold": 0.42,
+        "saved_f1": 0.6,
+    }
