@@ -56,9 +56,10 @@ def test_atomic_write_preserves_existing_file_on_validation_failure(tmp_path: Pa
     original_rows = [_row("Катя любит бег.")]
     _write_jsonl(output, original_rows)
     original_content = output.read_text(encoding="utf-8")
+    replacement_rows = [_row("Маша читает книгу.")]
 
     with pytest.raises(ValueError, match="expected at least 2 valid examples"):
-        gen._write_validated_jsonl([_row("Маша читает книгу.")], output, min_count=2)
+        gen._write_validated_jsonl(replacement_rows, output, min_count=2)
 
     assert output.read_text(encoding="utf-8") == original_content
     assert list(tmp_path.glob(".*.tmp")) == []
