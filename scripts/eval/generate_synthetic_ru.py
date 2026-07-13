@@ -230,6 +230,35 @@ def _download_dataset(dataset_name: str) -> list[dict]:
     return rows
 
 
+def _validate_ner_spans(ner: list[object], token_count: int, line_num: int) -> str | None:
+    for span in ner:
+        if not isinstance(span, list) or len(span) != 3:
+            return f"line {line_num}: ner span must be [start, end, label]"
+        s, e, lbl = span
+        if not isinstance(s, int) or not isinstance(e, int):
+            return f"line {line_num}: span indices must be int"
+        if s < 0 or e < s or e >= token_count:
+            return f"line {line_num}: span [{s},{e}] invalid for {token_count} tokens"
+        if lbl not in VALID_LABELS:
+            return f"line {line_num}: unknown label '{lbl}'"
+    return None
+
+
+def _validate_jsonl_row(row: object, line_num: int) -> str | None:
+    if not isinstance(row, dict):
+        return f"line {line_num}: row must be an object"
+
+    toks = row.get("tokenized_text")
+    if not isinstance(toks, list) or not toks:
+        return f"line {line_num}: missing or empty 'tokenized_text'"
+
+    ner = row.get("ner")
+    if not isinstance(ner, list):
+        return f"line {line_num}: missing 'ner'"
+
+    return _validate_ner_spans(ner, len(toks), line_num)
+
+
 def validate_jsonl(path: Path, *, min_count: int | None = None) -> tuple[int, list[str]]:
     """Validate GLiNER-format JSONL. Returns (valid_count, error_list)."""
     errors: list[str] = []
@@ -245,31 +274,9 @@ def validate_jsonl(path: Path, *, min_count: int | None = None) -> tuple[int, li
                 errors.append(f"line {line_num}: JSON error: {exc}")
                 continue
 
-            toks = row.get("tokenized_text")
-            if not isinstance(toks, list) or not toks:
-                errors.append(f"line {line_num}: missing or empty 'tokenized_text'")
-                continue
-
-            ner = row.get("ner")
-            if not isinstance(ner, list):
-                errors.append(f"line {line_num}: missing 'ner'")
-                continue
-
-            n = len(toks)
-            for span in ner:
-                if not isinstance(span, list) or len(span) != 3:
-                    errors.append(f"line {line_num}: ner span must be [start, end, label]")
-                    break
-                s, e, lbl = span
-                if not isinstance(s, int) or not isinstance(e, int):
-                    errors.append(f"line {line_num}: span indices must be int")
-                    break
-                if s < 0 or e < s or e >= n:
-                    errors.append(f"line {line_num}: span [{s},{e}] invalid for {n} tokens")
-                    break
-                if lbl not in VALID_LABELS:
-                    errors.append(f"line {line_num}: unknown label '{lbl}'")
-                    break
+            error = _validate_jsonl_row(row, line_num)
+            if error is not None:
+                errors.append(error)
             else:
                 count += 1
     if min_count is not None and count < min_count:
