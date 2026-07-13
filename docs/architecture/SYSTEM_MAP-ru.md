@@ -279,10 +279,16 @@
 | `src/atman/eval/registry.py`, `src/atman/eval/benchmarks/noop.py` | реестр benchmark | decorator-based регистрация и lookup (`register`, `get`, `list_benchmarks`) + встроенный noop smoke benchmark |
 | `src/atman/eval/reporters/base.py`, `src/atman/eval/reporters/jsonl_reporter.py`, `src/atman/eval/reporters/db_reporter.py` | reporting | Reporter ABC + JSONL-события lifecycle + PostgreSQL-запись в `eval.benchmark_runs` / `eval.run_items` |
 | `src/atman/eval/seed_manager.py`, `src/atman/eval/hardware.py` | runtime metadata | управление seed и hardware probe с graceful fallback без NVML/GPU |
+| `src/atman/eval/gliner2/dataset.py` | fixed eval dataset | 130 gold-размеченных русских NER-примеров для T2 / HLE-379 по T1-схеме `atman-ner-core` на 13 меток; разрешение местоимений намеренно вне scope |
+| `src/atman/eval/gliner2/baseline.py` | standalone offline eval | Click CLI `python -m atman.eval.gliner2.baseline --model <hf-model>`; сначала пробует GLiNER2, затем fallback на GLiNER, считает strict span F1 через `nervaluate` и пишет merged results в `eval/results/gliner2_baseline_ru.json` |
 | `eval/migrations/alembic.ini`, `eval/migrations/env.py` | eval storage | конфигурация Alembic для изолированной PostgreSQL-схемы `eval` |
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
+| `eval/results/gliner2_baseline_ru.json` | eval artifact | committed T2 baseline output для `fastino/gliner2-multi-v1` и `urchade/gliner_multi-v2.1`; обе модели в диапазоне `F1 0.4-0.7`, значит fine-tuning нужен |
+| `eval/data/atman_ner_ru_synth.jsonl` | training artifact | committed synthetic Russian NER corpus в GLiNER format (`tokenized_text`, `ner` с 0-based inclusive token spans) для тех же 13 меток `atman-ner-core` |
 | `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |
 | `scripts/eval/eval_linguistic_quality.py` | offline eval | качество NER + классификации: 23 NER-примера (персоны/орг/место/тема/здоровье на русском), 5 примеров классификации; вычисляет precision/recall/F1 и accuracy; `--adapter gliner|noop`, `--verbose`; exit 1 при FAIL; цель: NER F1 ≥ 0.65, accuracy ≥ 0.70 |
+| `scripts/eval/generate_synthetic_ru.py` | external data generation | генератор synthetic Russian NER data через Pioneer API; требует `PIONEER_API_KEY`, валидирует label set + token span bounds, пишет `eval/data/atman_ner_ru_synth.jsonl`; не входит в `make check` |
+| `docs/eval/gliner2_label_inventory.md`, `docs/eval/gliner2_label_schema.md` | eval docs | T0 read-only inventory runtime-меток и T1 fine-tune schema; schema doc маршрутизирует разработчиков между production linguistic eval, GLiNER2 baseline и synthetic data generation |
 | `src/demo_eval_runner.py`, `docs/features/eval-runner/README.md`, `docs/features/eval-runner/README-ru.md` | demo/docs | воспроизводимый walkthrough E1 runner + двуязычная документация |
 
 ---

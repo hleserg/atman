@@ -4,6 +4,11 @@
 > **Date:** 2026-05-30  
 > **Purpose:** Ground truth for T1 (HLE-378) — label schema design for three GLiNER2 adapters  
 > **Rule:** All claims cite `file:line`. `NOT FOUND` = not present in code. Nothing invented.
+>
+> **Current use:** this is still the code inventory for runtime GLiNER+MiniLM labels and
+> affect/identity-like closed sets. For the Russian GLiNER2 fine-tune target, use
+> `docs/eval/gliner2_label_schema.md` instead; T1 intentionally collapses and renames
+> several runtime labels (for example `place` -> `location`, `object`/`tool` -> `product`).
 
 ---
 

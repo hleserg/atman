@@ -24,7 +24,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 from rich.markup import escape
@@ -257,7 +257,7 @@ def main(model: str, threshold: float, output: Path) -> None:
     """Zero-shot GLiNER2 baseline evaluation on 130 Russian NER examples."""
     print_banner("GLiNER2 Baseline Eval", f"model={model}  threshold={threshold}")
 
-    dataset = load_dataset()
+    dataset = cast(list[dict[str, Any]], load_dataset())
     print_info(f"Dataset: {len(dataset)} examples, {len(LABELS)} labels")
 
     gliner_model, model_type = _load_gliner(model)
