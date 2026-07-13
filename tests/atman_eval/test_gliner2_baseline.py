@@ -9,11 +9,10 @@ from typing import Any, cast
 
 import pytest
 
-from atman.eval.gliner2 import baseline
-from atman.eval.gliner2.dataset import LABELS, _build_span, load_dataset
-
 
 def test_gliner2_dataset_has_expected_schema() -> None:
+    from atman.eval.gliner2.dataset import LABELS, load_dataset
+
     dataset = load_dataset()
 
     assert len(dataset) == 130
@@ -40,11 +39,16 @@ def test_gliner2_dataset_has_expected_schema() -> None:
 
 
 def test_build_span_rejects_missing_entity_text() -> None:
+    from atman.eval.gliner2.dataset import _build_span
+
     with pytest.raises(ValueError, match="not found"):
         _build_span("Маша позвонила.", "Алексей", "person")
 
 
 def test_run_predictions_supports_gliner2_response_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner2:
         def extract_entities(
             self,
@@ -81,6 +85,9 @@ def test_run_predictions_supports_gliner2_response_shape() -> None:
 
 
 def test_run_predictions_supports_standard_gliner_response_shape() -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeGliner:
         def predict_entities(
             self,
@@ -107,6 +114,9 @@ def test_run_predictions_supports_standard_gliner_response_shape() -> None:
 def test_compute_metrics_uses_strict_overall_and_per_entity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from atman.eval.gliner2 import baseline
+    from atman.eval.gliner2.dataset import LABELS
+
     class FakeEvaluator:
         def __init__(
             self,
@@ -150,10 +160,14 @@ def test_compute_metrics_uses_strict_overall_and_per_entity(
     ],
 )
 def test_conclusion_thresholds(f1: float, expected: str) -> None:
+    from atman.eval.gliner2 import baseline
+
     assert baseline._conclusion(f1) == expected
 
 
 def test_save_results_merges_model_entries(tmp_path: Path) -> None:
+    from atman.eval.gliner2 import baseline
+
     output = tmp_path / "gliner2_baseline_ru.json"
     output.write_text(
         json.dumps(
