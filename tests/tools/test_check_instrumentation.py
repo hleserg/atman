@@ -27,7 +27,7 @@ from check_instrumentation import (
 def _parse_func(source: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     tree = ast.parse(textwrap.dedent(source))
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             return node
     raise ValueError("no function found")
 
