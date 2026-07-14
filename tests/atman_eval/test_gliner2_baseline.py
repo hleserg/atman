@@ -70,7 +70,7 @@ def test_run_predictions_normalizes_both_model_formats() -> None:
         ) -> dict[str, object]:
             assert text == "Маша дома."
             assert "person" in labels
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             assert include_spans is True
             return {
                 "entities": {
@@ -88,7 +88,7 @@ def test_run_predictions_normalizes_both_model_formats() -> None:
         ) -> list[dict[str, object]]:
             assert text == "Маша дома."
             assert "person" in labels
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             return [{"label": "person", "start": 0, "end": 4, "text": "Маша"}]
 
     dataset: list[dict[str, Any]] = [{"text": "Маша дома.", "entities": []}]
@@ -169,7 +169,7 @@ def test_save_results_accumulates_model_runs(tmp_path: Path) -> None:
     assert set(saved) == {"first/model", "second/model"}
     assert saved["first/model"]["overall"] == first_metrics["overall"]
     assert saved["first/model"]["conclusion"] == "F1 0.4–0.7: fine-tune нужен"
-    assert saved["second/model"]["threshold"] == 0.6
+    assert saved["second/model"]["threshold"] == pytest.approx(0.6)
     assert saved["second/model"]["n_examples"] == 130
     assert saved["second/model"]["conclusion"] == "F1 > 0.7: fine-tune опционален"
     assert saved["second/model"]["timestamp"]
