@@ -75,6 +75,7 @@ OUTPUT_PATH = Path(__file__).parent.parent.parent / "eval" / "data" / "atman_ner
 
 # examples per batch × number of domain description batches
 EXAMPLES_PER_BATCH = 600
+MIN_EXAMPLES = 1500
 VALID_LABELS = set(LABELS)
 
 
@@ -324,8 +325,9 @@ def main() -> None:
 
     total = len(all_examples)
     print(f"\nTotal examples: {total}")
-    if total < 1500:
-        print(f"WARNING: {total} < 1500 required examples", file=sys.stderr)
+    if total < MIN_EXAMPLES:
+        print(f"ERROR: {total} < {MIN_EXAMPLES} required examples", file=sys.stderr)
+        sys.exit(1)
 
     print(f"Writing to {OUTPUT_PATH}...")
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
