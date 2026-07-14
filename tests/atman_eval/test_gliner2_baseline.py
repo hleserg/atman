@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import sys
 from collections import Counter
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -92,6 +96,83 @@ def test_run_predictions_normalizes_both_model_formats() -> None:
 
     assert _run_predictions(FakeGLiNER2(), "gliner2", dataset, 0.5) == expected
     assert _run_predictions(FakeGLiNER(), "gliner", dataset, 0.5) == expected
+
+
+def test_compute_metrics_normalizes_nervaluate_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from atman.eval.gliner2.baseline import _compute_metrics
+    from atman.eval.gliner2.dataset import LABELS
+
+    class Metric:
+        def __init__(self, precision: float, recall: float, f1: float) -> None:
+            self.precision = precision
+            self.recall = recall
+            self.f1 = f1
+
+    class FakeEvaluator:
+        def __init__(
+            self,
+            gold: list[list[dict[str, Any]]],
+            pred: list[list[dict[str, Any]]],
+            *,
+            tags: list[str],
+        ) -> None:
+            assert gold == pred
+            assert tags == LABELS
+
+        def evaluate(self) -> dict[str, object]:
+            return {
+                "overall": {"strict": Metric(0.55555, 0.44444, 0.49382)},
+                "entities": {
+                    "person": {"strict": Metric(1.0, 0.5, 0.66666)},
+                },
+            }
+
+    nervaluate = ModuleType("nervaluate")
+    nervaluate.Evaluator = FakeEvaluator  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nervaluate", nervaluate)
+    entities = [[{"label": "person", "start": 0, "end": 4}]]
+
+    metrics = _compute_metrics(entities, entities)
+
+    assert metrics["overall"] == {"precision": 0.5555, "recall": 0.4444, "f1": 0.4938}
+    assert metrics["per_entity"]["person"] == {
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1": 0.6667,
+    }
+    assert metrics["per_entity"]["organization"] == {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+    }
+
+
+def test_save_results_accumulates_model_runs(tmp_path: Path) -> None:
+    from atman.eval.gliner2.baseline import _save_results
+
+    output = tmp_path / "nested" / "results.json"
+    first_metrics: dict[str, Any] = {
+        "overall": {"precision": 0.5, "recall": 0.6, "f1": 0.55},
+        "per_entity": {"person": {"precision": 0.5, "recall": 0.6, "f1": 0.55}},
+    }
+    second_metrics: dict[str, Any] = {
+        "overall": {"precision": 0.8, "recall": 0.7, "f1": 0.75},
+        "per_entity": {"person": {"precision": 0.8, "recall": 0.7, "f1": 0.75}},
+    }
+
+    _save_results(output, "first/model", first_metrics, n_examples=130, threshold=0.5)
+    _save_results(output, "second/model", second_metrics, n_examples=130, threshold=0.6)
+
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert set(saved) == {"first/model", "second/model"}
+    assert saved["first/model"]["overall"] == first_metrics["overall"]
+    assert saved["first/model"]["conclusion"] == "F1 0.4–0.7: fine-tune нужен"
+    assert saved["second/model"]["threshold"] == 0.6
+    assert saved["second/model"]["n_examples"] == 130
+    assert saved["second/model"]["conclusion"] == "F1 > 0.7: fine-tune опционален"
+    assert saved["second/model"]["timestamp"]
 
 
 @pytest.mark.parametrize(
