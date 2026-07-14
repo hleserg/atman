@@ -7,7 +7,7 @@ import pytest
 
 
 def test_gold_dataset_has_valid_unique_spans_and_all_labels() -> None:
-    from atman.eval.gliner2.dataset import LABELS, _RAW, load_dataset
+    from atman.eval.gliner2.dataset import _RAW, LABELS, load_dataset
 
     dataset = load_dataset()
     label_counts: Counter[str] = Counter()
