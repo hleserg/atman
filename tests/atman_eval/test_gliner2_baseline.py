@@ -175,6 +175,42 @@ def test_save_results_accumulates_model_runs(tmp_path: Path) -> None:
     assert saved["second/model"]["timestamp"]
 
 
+def test_print_results_handles_every_verdict_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from atman.eval.gliner2 import baseline
+
+    class FakeConsole:
+        def __init__(self) -> None:
+            self.items: list[object] = []
+
+        def print(self, item: object) -> None:
+            self.items.append(item)
+
+    fake_console = FakeConsole()
+    monkeypatch.setattr(baseline, "console", fake_console)
+    monkeypatch.setattr(baseline, "print_section", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(baseline, "print_info", lambda *_args, **_kwargs: None)
+
+    for f1 in (0.75, 0.55, 0.25):
+        metrics = {
+            "overall": {"precision": f1, "recall": f1, "f1": f1},
+            "per_entity": {
+                "person": {"precision": f1, "recall": f1, "f1": f1},
+            },
+        }
+        baseline._print_results("test/model", metrics)
+
+    verdicts = [item for item in fake_console.items if isinstance(item, str)]
+    tables = [item for item in fake_console.items if not isinstance(item, str)]
+    assert verdicts == [
+        "[bold green]F1 > 0.7: fine-tune опционален[/bold green]",
+        "[bold yellow]F1 0.4–0.7: fine-tune нужен[/bold yellow]",
+        "[bold red]F1 < 0.4: рассмотреть смену базовой модели[/bold red]",
+    ]
+    assert len(tables) == 3
+
+
 @pytest.mark.parametrize(
     ("f1", "expected"),
     [
