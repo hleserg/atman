@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -24,15 +25,8 @@ def _load_generator() -> Any:
 
     module = importlib.util.module_from_spec(spec)
     requests_stub = ModuleType("requests")
-    previous_requests = sys.modules.get("requests")
-    sys.modules["requests"] = requests_stub
-    try:
+    with patch.dict(sys.modules, {"requests": requests_stub}):
         spec.loader.exec_module(module)
-    finally:
-        if previous_requests is None:
-            sys.modules.pop("requests", None)
-        else:
-            sys.modules["requests"] = previous_requests
     return cast(Any, module)
 
 
