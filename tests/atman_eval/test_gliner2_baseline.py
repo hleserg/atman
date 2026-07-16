@@ -48,7 +48,7 @@ def test_run_predictions_supports_both_model_formats() -> None:
         ) -> dict[str, object]:
             assert text == "Маша"
             assert labels == LABELS
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             assert include_spans is True
             return {"entities": {"person": [{"start": 0, "end": 4}]}}
 
@@ -62,7 +62,7 @@ def test_run_predictions_supports_both_model_formats() -> None:
         ) -> list[dict[str, object]]:
             assert text == "Маша"
             assert labels == LABELS
-            assert threshold == 0.5
+            assert threshold == pytest.approx(0.5)
             return [{"label": "person", "start": 0, "end": 4}]
 
     expected = [[{"label": "person", "start": 0, "end": 4}]]

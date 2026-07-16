@@ -47,7 +47,7 @@ def test_build_state_store_uses_same_resolved_url_for_probe_and_adapter(
 ) -> None:
     password = "p@ss:/?#[]"  # NOSONAR python:S2068 — synthetic test credential
     raw_url = (  # NOSONAR python:S2115 — deliberately passwordless test input
-        "postgresql://app@db.internal:5432/prod"
+        "postgresql://app@db.internal:5432/prod"  # NOSONAR python:S2115 — test input
     )
     connected_urls: list[str] = []
     constructed_with: list[tuple[str, int]] = []
