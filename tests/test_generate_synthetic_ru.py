@@ -185,6 +185,51 @@ def test_poll_job_returns_timeout_without_requesting(
     assert generator._poll_job("job-123", max_wait=0) == "timeout"
 
 
+def test_poll_job_retries_pending_status_until_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(
+        [
+            _FakeResponse(json_data={"status": "pending"}),
+            _FakeResponse(json_data={"status": "ready"}),
+        ]
+    )
+    monotonic_values = iter([0.0, 0.0, 1.0, 2.0, 3.0])
+    sleeps: list[int] = []
+    request_count = 0
+
+    def fake_get(*args: object, **kwargs: object) -> _FakeResponse:
+        nonlocal request_count
+        request_count += 1
+        return next(responses)
+
+    monkeypatch.setattr(generator, "PIONEER_API_KEY", "test-key")
+    monkeypatch.setattr(generator.requests, "get", fake_get, raising=False)
+    monkeypatch.setattr(generator.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(generator.time, "sleep", sleeps.append)
+
+    assert generator._poll_job("job-123", max_wait=10) == "ready"
+    assert request_count == 2
+    assert sleeps == [10]
+
+
+def test_poll_job_times_out_after_pending_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _FakeResponse(json_data={"status": "pending"})
+    monotonic_values = iter([0.0, 0.0, 1.0, 5.0])
+    sleeps: list[int] = []
+
+    monkeypatch.setattr(generator, "PIONEER_API_KEY", "test-key")
+    monkeypatch.setattr(generator.requests, "get", lambda *args, **kwargs: response, raising=False)
+    monkeypatch.setattr(generator.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(generator.time, "sleep", sleeps.append)
+
+    assert generator._poll_job("job-123", max_wait=5) == "timeout"
+    assert response.raise_for_status_called
+    assert sleeps == [10]
+
+
 def test_main_aggregates_batches_and_writes_valid_jsonl(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
