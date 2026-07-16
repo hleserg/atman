@@ -123,9 +123,7 @@ def test_run_predictions_normalizes_both_model_formats(baseline: Any) -> None:
             assert (text, labels, threshold) == ("Анна пришла", baseline.LABELS, 0.4)
             return [{"label": "person", "start": 0, "end": 4}]
 
-    gliner2_predictions = baseline._run_predictions(
-        FakeGLiNER2Model(), "gliner2", dataset, 0.6
-    )
+    gliner2_predictions = baseline._run_predictions(FakeGLiNER2Model(), "gliner2", dataset, 0.6)
     gliner_predictions = baseline._run_predictions(FakeGLiNERModel(), "gliner", dataset, 0.4)
 
     expected = [[{"label": "person", "start": 0, "end": 4}]]
