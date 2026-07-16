@@ -163,6 +163,83 @@ def test_download_dataset_parses_valid_jsonl_and_skips_invalid_lines(
     assert request["timeout"] == 120
 
 
+@pytest.mark.parametrize("status", ["ready", "failed"])
+def test_poll_job_returns_terminal_status(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    response = _FakeResponse(json_data={"status": status})
+    monkeypatch.setattr(generator, "PIONEER_API_KEY", "test-key")
+    monkeypatch.setattr(generator.requests, "get", lambda *args, **kwargs: response, raising=False)
+    monkeypatch.setattr(generator.time, "monotonic", lambda: 0.0)
+
+    assert generator._poll_job("job-123", max_wait=1) == status
+    assert response.raise_for_status_called
+
+
+def test_poll_job_returns_timeout_without_requesting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(generator.time, "monotonic", lambda: 0.0)
+
+    assert generator._poll_job("job-123", max_wait=0) == "timeout"
+
+
+def test_main_aggregates_batches_and_writes_valid_jsonl(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "synthetic.jsonl"
+    submitted: list[tuple[str, int, str]] = []
+
+    def fake_submit(dataset_name: str, num_examples: int, domain_description: str) -> str:
+        submitted.append((dataset_name, num_examples, domain_description))
+        return f"job-{len(submitted)}"
+
+    monkeypatch.setattr(generator, "PIONEER_API_KEY", "test-key")
+    monkeypatch.setattr(generator, "DOMAIN_DESCRIPTIONS", ["diary", "chat"])
+    monkeypatch.setattr(generator, "OUTPUT_PATH", output)
+    monkeypatch.setattr(generator.time, "time", lambda: 1234.0)
+    monkeypatch.setattr(generator, "_submit_job", fake_submit)
+    monkeypatch.setattr(generator, "_poll_job", lambda job_id: "ready")
+    monkeypatch.setattr(
+        generator,
+        "_download_dataset",
+        lambda dataset_name: [
+            {"text": f"Анна {dataset_name}", "entities": [["Анна", "person"]]}
+        ],
+    )
+    monkeypatch.setattr(generator, "spot_check", lambda path, n: None)
+
+    generator.main()
+
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(submitted) == 2
+    assert [item[2] for item in submitted] == ["diary", "chat"]
+    assert rows == [
+        {"tokenized_text": ["Анна", "atman-ner-ru-synth-v1-b1-1234"], "ner": [[0, 0, "person"]]},
+        {"tokenized_text": ["Анна", "atman-ner-ru-synth-v1-b2-1234"], "ner": [[0, 0, "person"]]},
+    ]
+
+
+def test_main_exits_when_generation_job_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "synthetic.jsonl"
+    monkeypatch.setattr(generator, "PIONEER_API_KEY", "test-key")
+    monkeypatch.setattr(generator, "DOMAIN_DESCRIPTIONS", ["diary"])
+    monkeypatch.setattr(generator, "OUTPUT_PATH", output)
+    monkeypatch.setattr(generator, "_submit_job", lambda *args: "job-1")
+    monkeypatch.setattr(generator, "_poll_job", lambda job_id: "failed")
+
+    with pytest.raises(SystemExit) as exc_info:
+        generator.main()
+
+    assert exc_info.value.code == 1
+    assert not output.exists()
+
+
 def test_validate_jsonl_counts_valid_rows_and_ignores_blanks(tmp_path: Path) -> None:
     path = tmp_path / "valid.jsonl"
     _write_jsonl(
@@ -228,6 +305,11 @@ def test_validate_jsonl_reports_malformed_json(tmp_path: Path) -> None:
 
 def test_committed_synthetic_dataset_meets_format_and_size_contract() -> None:
     count, errors = generator.validate_jsonl(SYNTHETIC_DATA_PATH)
+    observed_labels: set[str] = set()
+    for raw in SYNTHETIC_DATA_PATH.read_text(encoding="utf-8").splitlines():
+        row = json.loads(raw)
+        observed_labels.update(span[2] for span in row["ner"])
 
     assert errors == []
     assert count >= 1500
+    assert observed_labels == generator.VALID_LABELS
