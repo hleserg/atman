@@ -11,6 +11,7 @@ import pytest
 
 from atman.adapters.agent.factory import (
     _build_reflection_model,
+    _build_state_store,
     _MockReflectionModel,
     _StateStoreIdentityRepo,
     _StateStoreNarrativeRepo,
@@ -28,6 +29,7 @@ from atman.core.models import LayerType, NarrativeDocument, NarrativeLayer
 from atman.core.models.identity import Identity
 from atman.core.models.reflection import ReflectionLevel
 from atman.core.services.reflection_service import DailyReflectionService, DeepReflectionService
+from atman.db_url import resolve_database_url
 
 
 @pytest.fixture
@@ -37,6 +39,59 @@ def file_store_with_identity(tmp_path: Path) -> tuple:
     identity = Identity(id=agent_id, self_description="e2e agent")
     store.save_identity(identity)
     return agent_id, store
+
+
+def test_build_state_store_uses_same_resolved_url_for_probe_and_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    password = "p@ss:/?#[]"  # NOSONAR python:S2068 — synthetic test credential
+    raw_url = (  # NOSONAR python:S2115 — deliberately passwordless test input
+        "postgresql://app@db.internal:5432/prod"  # NOSONAR python:S2115 — test input
+    )
+    connected_urls: list[str] = []
+    constructed_with: list[tuple[str, int]] = []
+
+    class _Result:
+        def fetchone(self) -> tuple[int]:
+            return (7,)
+
+    class _Connection:
+        def __enter__(self) -> _Connection:
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: object,
+        ) -> None:
+            return None
+
+        def execute(self, *_args: object, **_kwargs: object) -> _Result:
+            return _Result()
+
+    class _FakePostgresStateStore:
+        def __init__(self, db_url: str, *, serial_id: int) -> None:
+            constructed_with.append((db_url, serial_id))
+
+    def _connect(db_url: str) -> _Connection:
+        connected_urls.append(db_url)
+        return _Connection()
+
+    monkeypatch.setenv("DATABASE_URL", raw_url)
+    monkeypatch.setenv("ATMAN_DB_PASSWORD", password)
+    monkeypatch.setattr("psycopg.connect", _connect)
+    monkeypatch.setattr(
+        "atman.adapters.agent.factory.PostgresStateStore",
+        _FakePostgresStateStore,
+    )
+
+    _build_state_store(tmp_path, uuid4())
+
+    expected_url = resolve_database_url(raw_url)
+    assert connected_urls == [expected_url]
+    assert constructed_with == [(expected_url, 7)]
 
 
 def test_build_daily_reflection_service_reflects_empty_day(

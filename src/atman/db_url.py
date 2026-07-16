@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 
 def _dev_password() -> str:
@@ -11,12 +11,12 @@ def _dev_password() -> str:
 
 
 def _default_dev_url() -> str:
-    password = _dev_password()
+    password = quote(_dev_password(), safe="")
     return f"postgresql://atman:{password}@localhost:5432/atman"
 
 
 def _default_test_url() -> str:
-    password = _dev_password()
+    password = quote(_dev_password(), safe="")
     return f"postgresql://atman:{password}@localhost:5432/atman_test"
 
 
@@ -53,18 +53,20 @@ def require_password_in_database_url(url: str) -> str:
 
 
 def with_password_if_missing(url: str, *, password: str | None = None) -> str:
-    """Return URL unchanged if password present; otherwise inject dev password."""
+    """Return URL unchanged if password present; otherwise inject an available password."""
     parsed = urlparse(url)
     if parsed.scheme.startswith("postgres") and parsed.password is None:
-        resolved_password = password or os.environ.get("ATMAN_DB_PASSWORD")
+        resolved_password = (
+            password or os.environ.get("ATMAN_DB_PASSWORD") or os.environ.get("PGPASSWORD")
+        )
         if resolved_password is None:
-            resolved_password = urlparse(DEFAULT_DEV_DATABASE_URL).password
-        if resolved_password is None:
-            msg = "Database URL missing password and ATMAN_DB_PASSWORD is unset"
-            raise ValueError(msg)
+            resolved_password = _dev_password()
         host = parsed.hostname or "localhost"
+        if ":" in host:
+            host = f"[{host}]"
         port = f":{parsed.port}" if parsed.port else ""
-        netloc = f"{parsed.username or 'atman'}:{resolved_password}@{host}{port}"
+        encoded_password = quote(resolved_password, safe="")
+        netloc = f"{parsed.username or 'atman'}:{encoded_password}@{host}{port}"
         parsed = parsed._replace(netloc=netloc)
         return urlunparse(parsed)
     return url
