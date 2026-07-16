@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ import click
 from rich.markup import escape
 from rich.table import Table
 
-from atman.eval.gliner2.dataset import LABELS, load_dataset
+from atman.eval.gliner2.dataset import LABELS, _DatasetExample, load_dataset
 from atman.term import console, print_banner, print_err, print_info, print_ok, print_section
 
 _DEFAULT_OUTPUT = Path("eval/results/gliner2_baseline_ru.json")
@@ -77,7 +78,7 @@ def _load_gliner(model_id: str) -> tuple[Any, str]:
 def _run_predictions(
     model: Any,
     model_type: str,
-    dataset: list[dict[str, Any]],
+    dataset: Sequence[_DatasetExample],
     threshold: float,
 ) -> list[list[dict[str, Any]]]:
     all_preds: list[list[dict[str, Any]]] = []
@@ -264,10 +265,7 @@ def main(model: str, threshold: float, output: Path) -> None:
     print_info(f"Model type: {model_type}")
 
     gold_nerval = [
-        [
-            {"label": e["label"], "start": e["start"], "end": e["end"]}
-            for e in ex["entities"]
-        ]
+        [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in ex["entities"]]
         for ex in dataset
     ]
 

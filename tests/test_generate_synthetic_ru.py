@@ -205,9 +205,7 @@ def test_main_aggregates_batches_and_writes_valid_jsonl(
     monkeypatch.setattr(
         generator,
         "_download_dataset",
-        lambda dataset_name: [
-            {"text": f"Анна {dataset_name}", "entities": [["Анна", "person"]]}
-        ],
+        lambda dataset_name: [{"text": f"Анна {dataset_name}", "entities": [["Анна", "person"]]}],
     )
     monkeypatch.setattr(generator, "spot_check", lambda path, n: None)
 
