@@ -24,7 +24,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 from rich.markup import escape
@@ -264,7 +264,10 @@ def main(model: str, threshold: float, output: Path) -> None:
     print_info(f"Model type: {model_type}")
 
     gold_nerval = [
-        [{"label": e["label"], "start": e["start"], "end": e["end"]} for e in ex["entities"]]
+        [
+            {"label": e["label"], "start": e["start"], "end": e["end"]}
+            for e in cast(list[dict[str, Any]], ex["entities"])
+        ]
         for ex in dataset
     ]
 
