@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from atman.eval.gliner2.baseline import (
+    _compute_metrics,
     _conclusion,
     _print_results,
     _run_predictions,
@@ -68,6 +71,42 @@ def test_run_predictions_supports_both_model_formats() -> None:
     expected = [[{"label": "person", "start": 0, "end": 4}]]
     assert _run_predictions(_GLiNER2(), "gliner2", dataset, 0.5) == expected
     assert _run_predictions(_GLiNER(), "gliner", dataset, 0.5) == expected
+
+
+def test_compute_metrics_normalizes_scores_and_missing_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    score = SimpleNamespace(precision=0.87654, recall=0.76543, f1=0.81234)
+
+    class _Evaluator:
+        def __init__(
+            self,
+            gold: list[list[dict[str, Any]]],
+            pred: list[list[dict[str, Any]]],
+            *,
+            tags: list[str],
+        ) -> None:
+            assert gold == [[]]
+            assert pred == [[]]
+            assert tags == LABELS
+
+        def evaluate(self) -> dict[str, object]:
+            return {
+                "overall": {"strict": score},
+                "entities": {"person": {"strict": score}},
+            }
+
+    monkeypatch.setitem(sys.modules, "nervaluate", SimpleNamespace(Evaluator=_Evaluator))
+
+    metrics = _compute_metrics([[]], [[]])
+
+    assert metrics["overall"] == {"precision": 0.8765, "recall": 0.7654, "f1": 0.8123}
+    assert metrics["per_entity"]["person"]["f1"] == pytest.approx(0.8123)
+    assert metrics["per_entity"]["organization"] == {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+    }
 
 
 @pytest.mark.parametrize(
