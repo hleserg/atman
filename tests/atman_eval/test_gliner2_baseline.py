@@ -22,7 +22,7 @@ def baseline() -> Any:
 def test_dataset_annotations_have_valid_unique_spans() -> None:
     from atman.eval.gliner2 import dataset
 
-    examples = cast(Any, dataset.load_dataset())
+    examples = dataset.load_dataset()
 
     assert len(examples) == 130
     assert {entity["label"] for example in examples for entity in example["entities"]} == set(
@@ -90,6 +90,19 @@ def test_load_gliner_falls_back_to_standard_gliner(
 
     assert model is expected_model
     assert model_type == "gliner"
+
+
+def test_load_gliner_exits_when_both_packages_are_unavailable(
+    baseline: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "gliner2", cast(Any, None))
+    monkeypatch.setitem(sys.modules, "gliner", cast(Any, None))
+
+    with pytest.raises(SystemExit) as exc_info:
+        baseline._load_gliner("model-id")
+
+    assert exc_info.value.code == 1
 
 
 def test_run_predictions_normalizes_both_model_formats(baseline: Any) -> None:
