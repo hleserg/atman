@@ -164,7 +164,9 @@ def test_download_dataset_parses_valid_jsonl_and_skips_invalid_lines(
         {"text": "Борис", "entities": []},
     ]
     assert response.raise_for_status_called
-    assert request["url"].endswith("/felix/datasets/dataset-1/latest/download")
+    assert request["url"] == (
+        "https://api.pioneer.ai/felix/datasets/dataset-1/latest/download"
+    )
     assert request["params"] == {"format": "jsonl"}
     assert request["timeout"] == 120
 
