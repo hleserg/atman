@@ -49,10 +49,14 @@ def test_resolve_database_url_injects_password_when_missing() -> None:
 def test_resolve_database_url_encodes_reserved_password_characters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    password = "p@ss:/?#[]"
+    password = "p@ss:/?#[]"  # NOSONAR python:S2068 — synthetic test credential
     monkeypatch.setenv("ATMAN_DB_PASSWORD", password)
 
-    parsed = urlparse(resolve_database_url("postgresql://app@db.internal:5432/prod"))
+    parsed = urlparse(
+        resolve_database_url(
+            "postgresql://app@db.internal:5432/prod"  # NOSONAR python:S2115 — test input
+        )
+    )
 
     assert parsed.hostname == "db.internal"
     assert parsed.path == "/prod"
@@ -66,7 +70,11 @@ def test_resolve_database_url_honors_libpq_password(
     monkeypatch.delenv("ATMAN_DB_PASSWORD", raising=False)
     monkeypatch.setenv("PGPASSWORD", "real-production-secret")
 
-    parsed = urlparse(resolve_database_url("postgresql://app@db.internal:5432/prod"))
+    parsed = urlparse(
+        resolve_database_url(
+            "postgresql://app@db.internal:5432/prod"  # NOSONAR python:S2115 — test input
+        )
+    )
 
     assert parsed.password == "real-production-secret"
 
@@ -74,7 +82,7 @@ def test_resolve_database_url_honors_libpq_password(
 def test_with_password_if_missing_preserves_ipv6_host() -> None:
     parsed = urlparse(
         with_password_if_missing(
-            "postgresql://app@[2001:db8::1]:5432/prod",
+            "postgresql://app@[2001:db8::1]:5432/prod",  # NOSONAR python:S2115 — test input
             password="secret",
         )
     )

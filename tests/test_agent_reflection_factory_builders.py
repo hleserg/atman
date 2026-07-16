@@ -45,8 +45,10 @@ def test_build_state_store_uses_same_resolved_url_for_probe_and_adapter(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    password = "p@ss:/?#[]"
-    raw_url = "postgresql://app@db.internal:5432/prod"
+    password = "p@ss:/?#[]"  # NOSONAR python:S2068 — synthetic test credential
+    raw_url = (  # NOSONAR python:S2115 — deliberately passwordless test input
+        "postgresql://app@db.internal:5432/prod"
+    )
     connected_urls: list[str] = []
     constructed_with: list[tuple[str, int]] = []
 
