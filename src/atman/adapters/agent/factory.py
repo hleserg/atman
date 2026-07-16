@@ -55,6 +55,7 @@ from atman.core.services.reflection_service import (
     MicroReflectionService,
 )
 from atman.core.services.session_manager import SessionManager
+from atman.db_url import resolve_database_url
 
 
 class _MockReflectionModel(ReflectionModel):
@@ -112,7 +113,8 @@ def _build_state_store(
     try:
         import psycopg as _pg
 
-        with _pg.connect(db_url) as _conn:
+        resolved_db_url = resolve_database_url(db_url)
+        with _pg.connect(resolved_db_url) as _conn:
             row = _conn.execute(
                 "SELECT serial_id FROM public.agents WHERE id = %s", [agent_id]
             ).fetchone()
@@ -124,7 +126,7 @@ def _build_state_store(
             )
             return FileStateStore(workspace=workspace)
         serial_id = int(row[0])
-        return PostgresStateStore(db_url=db_url, serial_id=serial_id)
+        return PostgresStateStore(db_url=resolved_db_url, serial_id=serial_id)
     except Exception:
         import logging as _log
 
