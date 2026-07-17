@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from atman.adapters.linguistic import mrebel_adapter
 from atman.adapters.maintenance.in_memory_queue import InMemoryMaintenanceQueue
 from atman.adapters.memory.in_memory_entity_registry import InMemoryEntityRegistry
 from atman.adapters.memory.in_memory_entity_relation_store import InMemoryEntityRelationStore
@@ -210,6 +211,7 @@ def test_worker_mrebel_writes_relations() -> None:
         entity_relation_extractor=_StubExtractor([("Alice", "Bob", "mentored")]),
         entity_relation_store=relation_store,
         entity_registry=registry,
+        linguistic_analyzer=_StubAnalyzer(),
     )
     _enqueue_moment_job(queue, JobName.mrebel_extract, agent, moment.id)
 
@@ -222,6 +224,67 @@ def test_worker_mrebel_writes_relations() -> None:
     # The original job is now succeeded
     jobs = queue.list_jobs(status=JobStatus.succeeded, agent_id=agent)
     assert any(j.job_name == JobName.mrebel_extract for j in jobs)
+
+
+def test_worker_mrebel_passes_key_moment_entities_to_real_adapter(monkeypatch) -> None:
+    agent = uuid4()
+    store = InMemoryStateStore()
+    moment = _moment("Alice mentored Bob")
+    store.store_key_moments(uuid4(), [moment])
+
+    registry = InMemoryEntityRegistry()
+    relation_store = InMemoryEntityRelationStore()
+    alice = _seed_entity(registry, agent, "Alice")
+    bob = _seed_entity(registry, agent, "Bob")
+
+    captured: dict[str, object] = {}
+
+    def _pipeline(*_args: object, **_kwargs: object):
+        def _extract(text: str, **_options: object) -> list[dict[str, str]]:
+            captured["text"] = text
+            return [
+                {
+                    "generated_text": (
+                        "<triplet> Alice <subj> person <subj_type> "
+                        "Bob <obj> person <obj_type> mentored"
+                    )
+                }
+            ]
+
+        return _extract
+
+    monkeypatch.setattr(mrebel_adapter, "_TRANSFORMERS_AVAILABLE", True)
+    monkeypatch.setattr(mrebel_adapter, "_hf_pipeline", _pipeline)
+
+    class _EntityAnalyzer(_StubAnalyzer):
+        def analyze_key_moment(  # type: ignore[override]
+            self, what_happened: str, why_it_matters: str
+        ) -> KeyMomentAnalysis:
+            return KeyMomentAnalysis(
+                entities=[
+                    DetectedEntity(text="Alice", entity_type=EntityType.person, confidence=0.9),
+                    DetectedEntity(text="Bob", entity_type=EntityType.person, confidence=0.9),
+                ]
+            )
+
+    queue = InMemoryMaintenanceQueue()
+    worker = MaintenanceWorker(
+        queue,
+        state_store=store,
+        entity_relation_extractor=mrebel_adapter.MRebelRelationAdapter(),
+        entity_relation_store=relation_store,
+        entity_registry=registry,
+        linguistic_analyzer=_EntityAnalyzer(),
+    )
+    _enqueue_moment_job(queue, JobName.mrebel_extract, agent, moment.id)
+
+    worker.run_once()
+
+    assert captured["text"] == "Alice mentored Bob\n\nmatters"
+    relations = relation_store.list_for_agent(agent)
+    assert [(rel.from_entity_id, rel.to_entity_id, rel.relation_type) for rel in relations] == [
+        (alice.id, bob.id, "mentored")
+    ]
 
 
 def test_worker_mrebel_resolves_entities_by_detected_type() -> None:
@@ -265,6 +328,7 @@ def test_worker_mrebel_resolves_entities_by_detected_type() -> None:
         entity_relation_extractor=_TypedExtractor(),
         entity_relation_store=relation_store,
         entity_registry=registry,
+        linguistic_analyzer=_StubAnalyzer(),
     )
     _enqueue_moment_job(queue, JobName.mrebel_extract, agent, moment.id)
 

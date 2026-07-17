@@ -174,9 +174,10 @@ class MaintenanceWorker:
     def _run_mrebel(self, job: MaintenanceJob) -> tuple[_DispatchOutcome, dict | None]:
         """Async relation-extraction for a single KeyMoment (HLE-28).
 
-        Reads the moment from state_store, runs the configured extractor
-        on its narrative, and persists each ExtractedRelation in
-        ``agent_N.entity_relations`` with ``learned_by='mrebel'``.
+        Reads the moment from state_store, analyzes its narrative to obtain
+        entity candidates, runs the configured extractor, and persists each
+        ExtractedRelation in ``agent_N.entity_relations`` with
+        ``learned_by='mrebel'``.
         Skipped (not failed) when the worker has no extractor / store /
         registry — that is a valid lean-deploy configuration, not an error.
         """
@@ -185,6 +186,7 @@ class MaintenanceWorker:
             or self._relation_store is None
             or self._state_store is None
             or self._entity_registry is None
+            or self._analyzer is None
         ):
             self._queue.mark_skipped(job.id, reason="relation enrichment not configured")
             return _DispatchOutcome.SKIPPED, None
@@ -200,7 +202,10 @@ class MaintenanceWorker:
         if not text.strip():
             self._queue.mark_skipped(job.id, reason="empty moment narrative")
             return _DispatchOutcome.SKIPPED, None
-        relations = self._relation_extractor.extract_relations(text, entities=[])
+        analysis = self._analyzer.analyze_key_moment(
+            moment.what_happened or "", moment.why_it_matters or ""
+        )
+        relations = self._relation_extractor.extract_relations(text, entities=analysis.entities)
         written = 0
         for rel in relations:
             subj = self._resolve_entity(agent_id, rel.subject)
