@@ -68,7 +68,7 @@ class MRebelRelationAdapter(EntityRelationExtractor):
         logger.info("Loading mREBEL model %s …", self._model_name)
         try:
             self._pipeline = _hf_pipeline(  # type: ignore[operator]
-                "text2text-generation",
+                "text2text-generation",  # type: ignore[reportArgumentType]
                 model=self._model_name,
                 tokenizer=self._model_name,
                 device=self._device,
