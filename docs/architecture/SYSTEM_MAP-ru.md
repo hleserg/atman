@@ -285,6 +285,8 @@
 | `eval/migrations/versions/0010_*` ... `0040_*` | eval storage | идемпотентная схема eval, таблицы benchmark run, supporting tables и materialized view трендов |
 | `scripts/eval/partition_manager.py` | операции | создаёт будущие partitions, отсоединяет старые partitions и показывает статус partitions `eval.benchmark_runs` |
 | `scripts/eval/eval_linguistic_quality.py` | offline eval | качество NER + классификации: 23 NER-примера (персоны/орг/место/тема/здоровье на русском), 5 примеров классификации; вычисляет precision/recall/F1 и accuracy; `--adapter gliner|noop`, `--verbose`; exit 1 при FAIL; цель: NER F1 ≥ 0.65, accuracy ≥ 0.70 |
+| `src/atman/eval/gliner2/dataset.py`, `src/atman/eval/gliner2/baseline.py` | offline eval | gold dataset для русского NER + zero-shot baseline runner GLiNER2; result JSON мержится под соседним file lock и пишется через temp file + atomic replace |
+| `scripts/eval/generate_synthetic_ru.py` | генерация eval-данных | генератор синтетического русского NER через Pioneer API; битый downloaded JSONL вызывает ошибку, generated JSONL валидируется во временном файле до замены `eval/data/atman_ner_ru_synth.jsonl` |
 | `src/demo_eval_runner.py`, `docs/features/eval-runner/README.md`, `docs/features/eval-runner/README-ru.md` | demo/docs | воспроизводимый walkthrough E1 runner + двуязычная документация |
 
 ---
@@ -542,6 +544,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `FileBackend._read_facts_from_disk()` | ✅ битые строки идут через `warnings.warn(RuntimeWarning, ...)` и пропускаются (`adapters/memory/file_backend.py`); тест `tests/test_file_backend.py::test_read_facts_skips_malformed_lines_without_data_loss` |
 | `JsonlExperienceStore._read_all_experiences()` | `warnings.warn(...)`, продолжение (`adapters/storage/jsonl_experience_store.py:57-73`) |
 | `FileStateStore.get_experience()` / `load_identity()` / др. | ✅ `_read_json_file` оборачивает `json.JSONDecodeError` в `ValueError` с путём + строкой/колонкой (`adapters/storage/file_state_store.py`); тесты в `tests/test_file_state_store.py` |
+| `generate_synthetic_ru._download_dataset()` / `write_validated_jsonl()` | битый API JSONL вызывает `ValueError`; generated JSONL валидируется до atomic replace, сохраняя предыдущий артефакт при сбое (`scripts/eval/generate_synthetic_ru.py`); покрыто `tests/test_gliner2_eval_artifact_writes.py` |
 | `cli_experience.py:cmd_add()` | общий `except Exception` (`cli_experience.py:45-56`) |
 
 ### 4.4. Governance и конкуренция
@@ -552,6 +555,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | Конкурентные записи нарратива | оптимистическая блокировка по `updated_at` | `core/ports/reflection.py:133-147` |
 | Конфликт записи | `NarrativePersistenceConflictError` | `core/exceptions.py:8-14` |
 | Падение аудита нарратива | вложенный try/except — нарратив пишется, аудит логируется warning | `core/services/narrative_revision.py:73-88` |
+| Конкурентные записи результатов GLiNER2 baseline | соседний `*.lock` на весь read-modify-write + temp file `os.replace` | `src/atman/eval/gliner2/baseline.py` |
 
 ### 4.5. Что нужно проверить (gaps)
 
@@ -583,6 +587,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 | `6a9f28f` | `SessionManager.finish_session` заменял recent narrative вместо добавления summary, теряя контекст | покрыто (`tests/test_session_manager.py::test_finish_session_appends_to_recent_narrative_without_erasing_existing_context`) |
 | `0ef0587` | `setup-openwebui.sh` по умолчанию открывал регистрацию первого admin в LAN | покрыто (`tests/test_deployment_scripts.py`) |
 | `b47abcb` | `eval.benchmark_runs` создавал только partition текущего месяца, поэтому вставки с `started_at=NOW()` падали после границы месяца | покрыто (`tests/test_eval_migrations.py::test_benchmark_runs_migration_creates_default_partition_safety_net`, `tests/test_eval_migrations.py::test_benchmark_runs_migration_rolls_december_partition_to_next_year`, `tests/test_eval_migrations.py::test_benchmark_runs_sql_mirror_documents_default_partition_safety_net`) |
+| текущий PR | GLiNER2 eval generator мог перезаписать committed JSONL до валидации и молча отбросить битые downloaded rows; baseline result JSON мог потерять/обрезать entries при конкурентной или прерванной записи | покрыто (`tests/test_gliner2_eval_artifact_writes.py`) |
 | текущий PR | PostgreSQL RLS допускал owner-role bypass для `reflections` и открывал `fact_relations` без RLS | покрыто (`tests/test_postgres_migration_security.py`) |
 | текущий PR | CLI факт-памяти по умолчанию выбирал PostgreSQL и падал без локальной БД, нарушая локальный путь без внешних сервисов | покрыто (`tests/test_cli_factual_memory.py`) |
 | текущий PR | Orphan recovery сессии создавал `SessionExperience` со ссылками на отсутствующие `KeyMoment` после crash/interrupt | покрыто (`tests/test_session_manager.py::test_orphan_recovery_restores_journaled_key_moment_payload`) |
