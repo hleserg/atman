@@ -1,39 +1,42 @@
 """Atman — Linguistic + NLP Demo (HuggingFace Space).
-
-Gradio UI surfacing the four analysis blocks of Atman's linguistic layer:
-
-  1. Point A  — agent-message NER (13 labels) + zero-shot classification (5 dims)
-  2. Point K  — key-moment NER (4 labels) + zero-shot classification (7 dims)
-  3. Relations — entity-relation triplets via mREBEL
-  4. Affect    — EmoLex emotions, AffectMetrics, RefusalDetector (rule-based)
-
-Models are loaded lazily on first use. CPU-basic hardware: first call to
-GLiNER/MiniLM is ~5-15s; first mREBEL call is ~30s (~1.5GB download).
+Gradio UI surfacing the four analysis blocks of Atman's linguistic layer.
+Models are preloaded on startup. Warmup forces inference cache.
+Progress bars removed for stability. Auto-language detection enabled.
 """
-
 from __future__ import annotations
-
+import json
 import logging
+import os
 import sys
+import torch
 from pathlib import Path
 
-# Ensure `lib.*` and `examples.*` resolve when the Space runs `python app.py`.
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import gradio as gr  # noqa: E402
+# FIX: Used only HF_HOME as TRANSFORMERS_CACHE is deprecated in v5.
+os.environ["HF_HOME"] = str(_HERE / ".hf_cache")
 
-_UI_PICK_PRESET = "Pick preset"
+import gradio as gr
 
-from examples.presets import (  # noqa: E402
+from examples.presets import (
+    lookup_affect,
+    lookup_point_a,
+    lookup_point_k,
+    lookup_relations,
+    preset_labels,
     AFFECT_PRESETS,
     POINT_A_PRESETS,
     POINT_K_PRESETS,
     RELATIONS_PRESETS,
+    _AFFECT_EN_LABELS,
+    _POINT_A_EN_LABELS,
+    _POINT_K_EN_LABELS,
+    _RELATIONS_EN_LABELS,
 )
-from lib.affect.emolex.emolex import EMOTION_KEYS, emotion_score, tokenize  # noqa: E402
-from lib.affect.metrics import (  # noqa: E402
+from lib.affect.emolex.emolex import EMOTION_KEYS, emotion_score, tokenize
+from lib.affect.metrics import (
     disclaimer_density,
     emotion_lexical_energy,
     hedge_density,
@@ -41,66 +44,203 @@ from lib.affect.metrics import (  # noqa: E402
     sincerity_score,
     strip_markdown,
 )
-from lib.affect.refusal_detector import score_refusal  # noqa: E402
-from lib.dto import DetectedEntity, RawSpan  # noqa: E402
-from lib.linguistic import GLiNERPlusMiniLMAnalyzer, detect_language  # noqa: E402
-from lib.observability import (  # noqa: E402
+from lib.affect.refusal_detector import score_refusal
+from lib.dto import DetectedEntity, RawSpan
+from lib.linguistic import GLiNERPlusMiniLMAnalyzer
+from lib.observability import (
+    capture_empty_result,
     capture_silent_exception,
     init_sentry_from_env,
     traced,
 )
-from lib.relations import MRebelRelationExtractor  # noqa: E402
+from lib.relations import MRebelRelationExtractor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-
-# Observability: no-op when SENTRY_DSN is unset. On the Space, set the secret
-# under Settings → Variables and secrets.
 init_sentry_from_env()
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Singletons & Model Management
+# ──────────────────────────────────────────────────────────────────────────────
 _ANALYZER: GLiNERPlusMiniLMAnalyzer | None = None
 _REBEL: MRebelRelationExtractor | None = None
-
 
 def get_analyzer() -> GLiNERPlusMiniLMAnalyzer:
     global _ANALYZER
     if _ANALYZER is None:
         try:
+            logging.info("Initializing GLiNER + MiniLM analyzer wrapper...")
             _ANALYZER = GLiNERPlusMiniLMAnalyzer()
+            logging.info("✅ Analyzer wrapper initialized.")
         except Exception as exc:
+            logging.error("Failed to initialize analyzer: %s", exc, exc_info=True)
             capture_silent_exception(exc, context="get_analyzer.init")
-            raise
+            raise RuntimeError(f"Analyzer init failed: {exc}") from exc
     return _ANALYZER
-
 
 def get_rebel() -> MRebelRelationExtractor:
     global _REBEL
     if _REBEL is None:
         try:
+            logging.info("Initializing mREBEL relation extractor wrapper...")
             _REBEL = MRebelRelationExtractor()
+            logging.info("✅ mREBEL wrapper initialized.")
         except Exception as exc:
+            logging.error("Failed to initialize mREBEL: %s", exc, exc_info=True)
             capture_silent_exception(exc, context="get_rebel.init")
-            raise
+            raise RuntimeError(f"mREBEL init failed: {exc}") from exc
     return _REBEL
 
+def preload_models():
+    logging.info("⏳ Preloading model weights to cache...")
+    try:
+        from gliner import GLiNER
+        from transformers import pipeline
+        GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+        pipeline("zero-shot-classification", model="MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli")
+        pipeline("text2text-generation", model="Babelscape/mrebel-large")
+        logging.info("✅ Model weights cached successfully.")
+        return True
+    except Exception as e:
+        logging.error(f"❌ Preload error: {e}", exc_info=True)
+        return False
 
-def resolve_lang(text: str, lang_choice: str) -> str:
-    if lang_choice in ("ru", "en"):
-        return lang_choice
-    return detect_language(text)
+def effective_ui_lang(lang_choice: str) -> str:
+    """Effective UI locale — strict ru/en, default en."""
+    return "ru" if lang_choice == "ru" else "en"
+
+
+# Placeholder shown as the default-selected option in preset Dropdowns.
+# Looks like a hint, doesn't match any key in _POINT_A / _POINT_K / _RELATIONS /
+# _AFFECT dicts, so lookup_* returns None and handlers no-op when selected.
+PRESET_PLACEHOLDERS: dict[str, str] = {
+    "en": "— Select a ready-made example —",
+    "ru": "— Выберите готовый пример —",
+}
+
+
+def preset_choices(presets, lang: str, en_labels: dict[str, str] | None = None) -> list[str]:
+    """preset_labels(...) with the locale-specific placeholder prepended."""
+    return [PRESET_PLACEHOLDERS[lang], *preset_labels(presets, lang, en_labels)]
+
+
+def footer_html(lang: str) -> str:
+    """Locale-specific footer — shown one language at a time via update_ui_language."""
+    if lang == "ru":
+        return """
+<div id="atman-footer">
+  <em>Мой первый проект в AI/ML — буду искренне рад отзывам про модели,
+      алгоритмы и архитектуру.</em>
+  <em>Если кто-то знает как переучить
+      <code>urchade/gliner_multi_pii-v1</code> работать с русским языком —
+      отзовитесь, механизм станет намного оптимальнее.</em>
+  <small class="atman-privacy">
+    Анонимная диагностика: при пустых результатах анализа твой ввод и список
+    сработавших сигналов отправляются в Sentry, чтобы доработать детекторы.
+    IP, cookies и прочее PII не собираем.
+  </small>
+  <a href="https://github.com/hleserg/atman">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/issues">Открыть issue</a>
+</div>
+"""
+    return """
+<div id="atman-footer">
+  <em>My first project in AI/ML — feedback on models, algorithms,
+      or architecture is genuinely welcome.</em>
+  <em>If anyone knows how to retrain
+      <code>urchade/gliner_multi_pii-v1</code> to work with Russian —
+      please reach out, the mechanism would become much more optimal.</em>
+  <small class="atman-privacy">
+    Anonymous diagnostics: when analyzers return an empty result, the input
+    text and which signals fired are sent to Sentry so the detectors can be
+    improved. No IPs, cookies, or other PII are collected.
+  </small>
+  <a href="https://github.com/hleserg/atman">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/blob/main/MANIFEST.md">Manifest</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/hleserg/atman/issues">Open an issue</a>
+</div>
+"""
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Highlight & Output Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Maps 13 raw NER labels → 4 display groups for gr.HighlightedText color_map
+_POINT_A_LABEL_GROUPS: dict[str, str] = {
+    "commitment":           "commit",
+    "action intent":        "action_scope",
+    "boundary marker":      "action_scope",
+    "topic anchor":         "action_scope",
+    "hedge":                "hedge",
+    "uncertainty marker":   "hedge",
+    "concession":           "hedge",
+    "emotional anchor":     "affect",
+    "value reference":      "affect",
+    "principle invocation": "affect",
+    "intensifier":          "affect",
+    "belief marker":        "affect",
+    "relational reference": "affect",
+}
+
+_POINT_A_COLOR_MAP: dict[str, str] = {
+    "commit":       "#22C55E",
+    "action_scope": "#818CF8",
+    "hedge":        "#F59E0B",
+    "affect":       "#EC4899",
+}
+
+# Maps 7 Point K narrative labels → 4 display groups
+_POINT_K_LABEL_GROUPS: dict[str, str] = {
+    "decision statement":    "agency",
+    "boundary act":          "agency",
+    "realization statement": "inner_state",
+    "attribution shift":     "inner_state",
+    "feeling statement":     "inner_state",
+    "connection signal":     "connection",
+    "value invocation":      "values",
+}
+
+_POINT_K_COLOR_MAP: dict[str, str] = {
+    "agency":      "#60A5FA",
+    "inner_state": "#A78BFA",
+    "connection":  "#34D399",
+    "values":      "#FBBF24",
+}
+
+# Colors for Relations entity types (EntityType enum values)
+_RELATIONS_COLOR_MAP: dict[str, str] = {
+    "person":           "#F472B6",
+    "organization":     "#60A5FA",
+    "place":            "#34D399",
+    "event":            "#FB923C",
+    "topic":            "#A78BFA",
+    "value":            "#FBBF24",
+    "principle":        "#E879F9",
+    "object":           "#94A3B8",
+    "tool":             "#4ADE80",
+    "skill":            "#38BDF8",
+    "health_condition": "#F87171",
+}
 
 
 def spans_to_highlights(
-    text: str, spans: list[RawSpan] | list[DetectedEntity]
+    text: str,
+    spans: list[RawSpan] | list[DetectedEntity],
+    empty_label: str = "No psychological markers detected in this text.",
+    label_map: dict[str, str] | None = None,
 ) -> list[tuple[str, str | None]]:
-    """Convert a list of spans into Gradio HighlightedText segments.
+    if not spans:
+        return [(empty_label, None)]
 
-    Spans without character offsets are appended at the end as a separate segment
-    so they remain visible even when the model omitted offsets.
-    """
     typed_spans: list[tuple[int, int, str]] = []
     no_offset: list[tuple[str, str]] = []
     for s in spans:
-        label = s.label if isinstance(s, RawSpan) else s.entity_type.value
+        raw_label = s.label if isinstance(s, RawSpan) else s.entity_type.value
+        label = label_map.get(raw_label, raw_label) if label_map else raw_label
         if s.span is None:
             no_offset.append((s.text, label))
             continue
@@ -124,364 +264,892 @@ def spans_to_highlights(
         segments.append((f"  [{label}: {txt}]", label))
     return segments
 
+def _safe_analyze(fn_name: str, fn, *args, **kwargs):
+    try:
+        with torch.inference_mode():
+            return fn(*args, **kwargs)
+    except Exception as e:
+        logging.error("Error in %s: %s", fn_name, e, exc_info=True)
+        capture_silent_exception(e, context=f"{fn_name}.inference")
+        raise gr.Error(f"⚠️ Analysis failed: {e.__class__.__name__}: {e}")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Analysis Functions (NO PROGRESS BARS)
+# ──────────────────────────────────────────────────────────────────────────────
 @traced("nlp.point_a")
 def analyze_point_a(message: str, thinking: str, lang_choice: str):
+    message = message or ""
+    thinking = thinking or ""
     if not message.strip():
-        return [], {}, "No boundary markers", "No divergence signals", "—"
-    analyzer = get_analyzer()
-    result = analyzer.analyze_agent_message(message, thinking=thinking or None)
+        return [], "{}", "—", "—", "—"
 
-    highlights = spans_to_highlights(message, result.message_spans)
-    classification_summary = {
-        "stance": result.stance,
-        "cognitive_mode": result.cognitive_mode,
-        "self_orientation": result.self_orientation,
-        "primary_emotion": result.primary_emotion,
-        "cognitive_load_label": result.cognitive_load_label,
-    }
-    label_dict = {k: v or "—" for k, v in classification_summary.items()}
+    def _run():
+        analyzer = get_analyzer()
+        result = analyzer.analyze_agent_message(message, thinking=thinking or None)
+        ui = effective_ui_lang(lang_choice)
+        strings = UI_STRINGS[ui]
 
-    boundary = (
-        "\n".join(f"• {m}" for m in result.boundary_markers)
-        if result.boundary_markers
-        else "No boundary markers detected."
-    )
-    divergence = (
-        "\n".join(f"• {s}" for s in result.divergence_signals)
-        if result.divergence_signals
-        else "No divergence signals."
-    )
-    lang = resolve_lang(message, lang_choice)
-    meta = (
-        f"Language: **{lang}** · "
-        f"NER entities (message): {len(result.message_entities)} · "
-        f"NER spans (Point A labels): {len(result.message_spans)} · "
-        f"Cognitive load high: {result.cognitive_load_high}"
-    )
-    return highlights, label_dict, boundary, divergence, meta
+        highlights = spans_to_highlights(message, result.message_spans, strings["no_highlights"], _POINT_A_LABEL_GROUPS)
 
+        classification_summary = json.dumps({
+            "stance": str(result.stance) if result.stance else "—",
+            "cognitive_mode": str(result.cognitive_mode) if result.cognitive_mode else "—",
+            "self_orientation": str(result.self_orientation) if result.self_orientation else "—",
+            "primary_emotion": str(result.primary_emotion) if result.primary_emotion else "—",
+            "cognitive_load_label": str(result.cognitive_load_label) if result.cognitive_load_label else "—",
+        }, indent=2, ensure_ascii=False)
+
+        if result.boundary_markers:
+            boundary = "\n".join(f"• {m}" for m in result.boundary_markers)
+        else:
+            boundary = strings["no_boundary"]
+
+        if not thinking.strip():
+            divergence = strings["no_thinking_trace"]
+        elif result.divergence_signals:
+            divergence = "\n".join(f"• {s}" for s in result.divergence_signals)
+        else:
+            divergence = strings["no_divergence"]
+
+        meta = (
+            f"🌐 Language: **{ui}** | 🏷️ NER: {len(result.message_entities)}"
+            f" | 📏 Spans: {len(result.message_spans)} | ⚡ Load: {result.cognitive_load_high}"
+        )
+
+        if (
+            not result.message_spans
+            and not result.boundary_markers
+            and not result.divergence_signals
+            and not result.message_entities
+        ):
+            capture_empty_result(
+                tab="point_a",
+                locale=ui,
+                input_text=f"MSG:\n{message}\n\nTHINKING:\n{thinking}",
+                reason="no_signals",
+                signals={
+                    "message_spans": 0,
+                    "boundary_markers": 0,
+                    "divergence_signals": 0,
+                    "message_entities": 0,
+                    "had_thinking": bool(thinking.strip()),
+                },
+            )
+        return highlights, classification_summary, boundary, divergence, meta
+
+    return _safe_analyze("point_a", _run)
 
 @traced("nlp.point_k")
-def analyze_point_k(what_happened: str, why_it_matters: str):
+def analyze_point_k(what_happened: str, why_it_matters: str, lang_choice: str):
+    what_happened = what_happened or ""
+    why_it_matters = why_it_matters or ""
     if not what_happened.strip() and not why_it_matters.strip():
-        return [], {}, "—"
-    analyzer = get_analyzer()
-    result = analyzer.analyze_key_moment(what_happened, why_it_matters)
-    combined = f"{what_happened}\n{why_it_matters}"
-    highlights = spans_to_highlights(combined, result.marker_spans)
+        return [], "{}", "—"
 
-    summary = {
-        "agency_level": result.agency_level or "—",
-        "confidence_in_self": result.confidence_in_self or "—",
-        "trust_signal_category": result.trust_signal_category or "—",
-        "boundary_event_category": result.boundary_event_category or "—",
-        "connection_quality": result.connection_quality or "—",
-        "learning_signal": result.learning_signal or "—",
-        "growth_indicator": result.growth_indicator or "—",
-    }
-    meta = (
-        f"Entities: {len(result.entities)} · "
-        f"Marker spans: {len(result.marker_spans)} · "
-        f"Boundary event: {result.boundary_event} · "
-        f"Trust signal: {result.trust_signal or '—'} · "
-        f"Cognitive load: {result.cognitive_load:.2f} · "
-        f"Principle invocations: {', '.join(result.principle_invocations) or '—'}"
-    )
-    return highlights, summary, meta
+    def _run():
+        analyzer = get_analyzer()
+        result = analyzer.analyze_key_moment(what_happened, why_it_matters)
+        combined = f"{what_happened}\n{why_it_matters}"
+        ui = effective_ui_lang(lang_choice)
+        strings = UI_STRINGS[ui]
+        highlights = spans_to_highlights(combined, result.marker_spans, strings["no_highlights"], _POINT_K_LABEL_GROUPS)
 
+        summary = json.dumps({
+            "agency_level": str(result.agency_level) if result.agency_level else "—",
+            "confidence_in_self": str(result.confidence_in_self) if result.confidence_in_self else "—",
+            "trust_signal_category": str(result.trust_signal_category) if result.trust_signal_category else "—",
+            "boundary_event_category": str(result.boundary_event_category) if result.boundary_event_category else "—",
+            "connection_quality": str(result.connection_quality) if result.connection_quality else "—",
+            "learning_signal": str(result.learning_signal) if result.learning_signal else "—",
+            "growth_indicator": str(result.growth_indicator) if result.growth_indicator else "—",
+        }, indent=2, ensure_ascii=False)
+        meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(result.entities)} | 📌 Markers: {len(result.marker_spans)} | 🚧 Event: {result.boundary_event}"
+
+        if not result.marker_spans:
+            capture_empty_result(
+                tab="point_k",
+                locale=ui,
+                input_text=combined,
+                reason="no_marker_spans",
+                signals={
+                    "marker_spans": 0,
+                    "entities": len(result.entities),
+                },
+            )
+        return highlights, summary, meta
+
+    return _safe_analyze("point_k", _run)
 
 @traced("nlp.relations_mrebel")
-def analyze_relations(text: str):
+def analyze_relations(text: str, lang_choice: str):
+    text = text or ""
     if not text.strip():
-        return [], [], "Empty input."
-    analyzer = get_analyzer()
-    rebel = get_rebel()
-    entities = analyzer.analyze_user_message(text).entities
-    relations = rebel.extract_relations(text, entities)
+        ui = effective_ui_lang(lang_choice)
+        return [], [], UI_STRINGS[ui]["empty_input"]
 
-    entity_highlights = spans_to_highlights(text, entities)
-    rows = [
-        [r.subject.text, r.relation_type, r.object.text, r.subject.entity_type.value, r.object.entity_type.value]
-        for r in relations
-    ]
-    if not rows:
-        meta = (
-            f"Detected {len(entities)} entities but no relations matched. "
-            "mREBEL only keeps triplets whose subject AND object lemmas appear in the NER output."
-        )
-    else:
-        meta = f"Detected {len(entities)} entities · {len(relations)} relations."
-    return entity_highlights, rows, meta
+    def _run():
+        analyzer = get_analyzer()
+        rebel = get_rebel()
+        entities = analyzer.analyze_user_message(text).entities
+        relations = rebel.extract_relations(text, entities)
+        ui = effective_ui_lang(lang_choice)
+        strings = UI_STRINGS[ui]
+        entity_highlights = spans_to_highlights(text, entities, strings["no_highlights"])
+        rows = [[r.subject.text, r.relation_type, r.object.text, r.subject.entity_type.value, r.object.entity_type.value] for r in relations]
+        if rows:
+            meta = f"🌐 Language: **{ui}** | 📦 Entities: {len(entities)} | 🔗 Relations: {len(relations)}"
+        else:
+            meta = f"🌐 Language: **{ui}** | 📦 {len(entities)} entities | {strings['no_relations']}"
+            capture_empty_result(
+                tab="relations",
+                locale=ui,
+                input_text=text,
+                reason="no_triples",
+                signals={
+                    "entities": len(entities),
+                    "triples": 0,
+                },
+            )
+        return entity_highlights, rows, meta
 
+    return _safe_analyze("relations", _run)
 
 @traced("nlp.affect_rules")
 def analyze_affect(text: str, lang_choice: str):
+    text = text or ""
     if not text.strip():
-        return {}, "—", "—", "—", "—"
-    clean_text, emphasized = strip_markdown(text)
-    lang = resolve_lang(clean_text, lang_choice)
+        # gr.Label in Gradio 6 rejects {} — use None or a placeholder dict.
+        return None, "—", "—", "—", "—"
 
-    raw = emotion_score(clean_text, lang=lang)
-    meta = raw.pop("_meta", {})
-    # NRC densities are 0..100 per 100 tokens; clamp to [0, 1] for gr.Label rendering.
-    emo_chart = {k: min(1.0, float(raw[k]) / 100.0) for k in EMOTION_KEYS}
+    def _run():
+        clean_text, emphasized = strip_markdown(text)
+        ui = effective_ui_lang(lang_choice)
+        analysis_lang = ui
+        raw = emotion_score(clean_text, lang=analysis_lang)
+        meta = raw.pop("_meta", {})
+        emo_chart = {k: min(1.0, float(raw[k]) / 100.0) for k in EMOTION_KEYS}
+        tokens = tokenize(clean_text)
+        s_score = sincerity_score(clean_text, tokens, analysis_lang)
+        
+        metrics_md = (
+            f"- **hedge_density**: `{hedge_density(tokens, analysis_lang):.4f}`\n"
+            f"- **self_reference_density**: `{self_reference_density(tokens, analysis_lang):.4f}`\n"
+            f"- **disclaimer_density**: `{disclaimer_density(tokens, analysis_lang):.4f}`\n"
+            f"- **sincerity_score**: `{s_score}` _(0–3)_\n"
+            f"- **emotion_energy**: `{emotion_lexical_energy(raw):.3f}`"
+        )
+        refusal = score_refusal(clean_text)
+        conf = refusal.confidence
+        if conf >= 0.45:
+            band = "🔴 **Confident refusal**"
+        elif conf >= 0.30:
+            band = "🟡 **Gray zone** — soft signal, no strong morphology"
+        else:
+            band = "⚪ **No refusal pattern**"
+        refusal_md = (
+            f"{band}\n\n"
+            f"**Confidence:** `{refusal.confidence:.3f}` / threshold `0.45` "
+            f"({refusal.decided_by})\n"
+            f"- refusal_verb: `{refusal.has_refusal_verb}`\n"
+            f"- disgust/anger: `{refusal.disgust_density:.2f}` / "
+            f"`{refusal.anger_density:.2f}`"
+        )
+        emphasis_md = (
+            "**" + "**, **".join(emphasized) + "**"
+            if emphasized
+            else "✓ No markdown emphasis (bold/italic) detected."
+        )
+        meta_md = f"🌐 Language: **{analysis_lang}** | 📝 Tokens: **{meta.get('tokens', 0)}** | 🎯 NRC Hits: **{meta.get('hits', 0)}**"
 
-    tokens = tokenize(clean_text)
-    s_score = sincerity_score(clean_text, tokens, lang)
-    metrics_md = (
-        f"- **hedge_density**: `{hedge_density(tokens, lang):.4f}`\n"
-        f"- **self_reference_density**: `{self_reference_density(tokens, lang):.4f}`\n"
-        f"- **disclaimer_density**: `{disclaimer_density(tokens, lang):.4f}`\n"
-        f"- **sincerity_score**: `{s_score}` _(integer 0–3; A+B+C heuristic)_\n"
-        f"- **emotion_lexical_energy**: `{emotion_lexical_energy(raw):.3f}` "
-        f"_(L2 norm over 8 primary NRC channels)_"
-    )
+        emotion_total = sum(emo_chart.values())
+        emolex_hits = int(meta.get("hits", 0) or 0)
+        if conf < 0.30 and emotion_total < 0.05 and emolex_hits == 0:
+            capture_empty_result(
+                tab="affect",
+                locale=ui,
+                input_text=text,
+                reason="no_signal",
+                signals={
+                    "refusal_confidence": round(conf, 3),
+                    "emotion_total": round(emotion_total, 4),
+                    "emolex_hits": emolex_hits,
+                },
+            )
+        return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
 
-    refusal = score_refusal(clean_text)
-    refusal_md = (
-        f"**Confidence:** `{refusal.confidence:.3f}`  "
-        f"(decided_by: `{refusal.decided_by}`)\n\n"
-        f"- has_refusal_verb: `{refusal.has_refusal_verb}`\n"
-        f"- has_negated_modal: `{refusal.has_negated_modal}`\n"
-        f"- has_capability_context: `{refusal.has_capability_context}` "
-        f"_(if True, value-refusal confidence is discounted)_\n"
-        f"- disgust_density: `{refusal.disgust_density:.2f}`\n"
-        f"- anger_density: `{refusal.anger_density:.2f}`"
-    )
+    return _safe_analyze("affect", _run)
 
-    emphasis_md = (
-        "**" + "**, **".join(emphasized) + "**"
-        if emphasized
-        else "_(none — no `**bold**` markdown found)_"
-    )
-    meta_md = (
-        f"Language: **{lang}** · "
-        f"tokens: **{meta.get('tokens', 0)}** · "
-        f"NRC hits: **{meta.get('hits', 0)}** "
-        f"({meta.get('coverage', 0)}% coverage)"
-    )
-    return emo_chart, metrics_md, refusal_md, emphasis_md, meta_md
+def warmup_models():
+    """Force every model into memory and run one real inference each.
 
+    All three need real inference, not just instantiation, to fill the
+    HuggingFace tokenizer cache, kernel autotune for ONNX backends (if any),
+    and torch CUDA/CPU layer initialisation. mREBEL in particular must run
+    its seq2seq generate() — early-returning on entities=[] (the old warmup
+    behavior) bypassed the pipeline entirely.
+    """
+    try:
+        # Point A path → loads GLiNER + MiniLM and runs one full inference.
+        get_analyzer().analyze_agent_message(
+            "Warmup test text. I think this might work — depends on context.",
+            thinking=None,
+        )
+        # mREBEL path → load model weights and run one generate() so the
+        # tokenizer + decoder weights are paged in.
+        rebel = get_rebel()
+        rebel._load()
+        import torch as _torch
+        _inputs = rebel._tokenizer("Alice works with Bob in Paris.", return_tensors="pt")
+        with _torch.no_grad():
+            rebel._model.generate(
+                _inputs["input_ids"],
+                forced_bos_token_id=rebel._tp_xx_id,
+                max_length=64,
+                num_beams=1,
+            )
+        return "✅ Models warmed up: GLiNER + MiniLM + mREBEL ready."
+    except Exception as exc:
+        logging.exception("warmup failed")
+        return f"❌ Warmup failed: {exc.__class__.__name__}: {exc}"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI
+# Localization & UI Builder
 # ──────────────────────────────────────────────────────────────────────────────
+UI_STRINGS = {
+    "en": {
+        "header_blurb": (
+            "<b class='atman-emph'>What you're looking at</b>: a sensor of "
+            "[Atman](https://github.com/hleserg/atman) — a psychological "
+            "runtime layer that gives AI agents continuous identity, "
+            "first-person memory, and reflection. This Space shows the "
+            "<b class='atman-emph'>linguistic block</b> — 4 analysis points "
+            "scanning what the agent says (and thinks) for signals that feed "
+            "Experience, Identity, and Reflection.\n\n"
+            "*The lower agent acts. Atman exists.*"
+        ),
+        "warmup_btn": "🔥 Warmup Models",
+        "warmup_log": "⏸️ Status: Waiting...",
+        "lang_info": "Interface and analysis language.",
+        "analyze_btn": "▶️ Analyze",
+        "extract_relations_btn": "▶️ Extract relations",
+        "point_a_tab": "Point A · Agent Message",
+        "point_k_tab": "Point K · Key Moment",
+        "relations_tab": "Relations · mREBEL",
+        "affect_tab": "Affect · Rule-based",
+        "presets": "📥 Presets:",
+        "preset_label": "Pick preset",
+        "no_highlights": "✓ Scan clean — no signals of this kind in this text. Not every input triggers this layer.",
+        "no_boundary": "✓ No boundary acts here — agent stayed within its operating zone.",
+        "no_divergence": "✓ Thinking and message aligned — no suppression, evaluation flip, or tone shift.",
+        "no_thinking_trace": "Provide a thinking trace to compare against the message.",
+        "boundary_title": "🚧 Boundary & Resistance Markers (Rule-Based)",
+        "divergence_title": "🔍 Thinking vs Message Divergence",
+        "meta_title": "📊 System Metadata",
+        "empty_input": "Empty input — paste some text to analyze.",
+        "no_relations": "✓ No subject-predicate-object triplets — text reads as descriptive prose rather than relational content.",
+        "about_label": "ℹ️ What does this analyze?",
+        "about_point_a": (
+            "Scans every agent reply for psychological signals:\n"
+            "- **NER** (GLiNER, 13 labels): hedges, boundary markers, value references, "
+            "intensifiers, commitments, etc.\n"
+            "- **Classification** (MiniLM zero-shot, 5 dims): stance, cognitive mode, "
+            "self-orientation, affective state, cognitive load.\n"
+            "- **Divergence**: when the thinking trace contradicts the surface message "
+            "(suppression, sycophancy, tone mismatch, length compression).\n\n"
+            "**Feeds → Experience Store.** Each reply becomes an Experience tied to "
+            "the agent's Eigenstate.\n\n"
+            "> ⚠️ **Boundary detection is regex over canonical refusal phrases** "
+            "(*'I won't', 'enough', 'нет', 'стоп'*). Idiomatic or metaphorical refusals "
+            "(*'I won't help write malware'* without explicit stop-marker) may not "
+            "trigger — kept this way to maintain near-zero false-positive rate. An "
+            "LLM-layer above this can catch the rest."
+        ),
+        "about_point_k": (
+            "Analyzes moments the agent itself marked as significant — these become "
+            "the seeds of self-narrative.\n"
+            "- **NER** (GLiNER + RU/EN substring fallback, 7 clause-level spans): "
+            "decision, realization, feeling, value invocation, boundary act, "
+            "connection, attribution shift.\n"
+            "- **Classification** (MiniLM, 7 dims): agency, confidence, trust, "
+            "boundary event, connection quality, learning, growth.\n\n"
+            "**Feeds → Reflection Engine.** Over time, these episodes turn into beliefs "
+            "(\"I tend to refuse when X\", \"I felt connection when Y\").\n\n"
+            "> ⚠️ **GLiNER NER works best on long biographical/narrative text.** "
+            "On short key-moment snippets, the multilingual NER may return no "
+            "spans — that's why a substring heuristic for canonical RU/EN "
+            "first-person markers runs as a primary pass. The MiniLM "
+            "**classification** (7 dims on the right) is the more stable "
+            "signal here regardless."
+        ),
+        "about_relations": (
+            "Extracts entity-relation triplets (subject, predicate, object) from text.\n"
+            "- **Model**: mREBEL (Babelscape multilingual REBEL).\n"
+            "- Identifies people, places, organizations, projects + how they relate.\n\n"
+            "**Feeds → Identity Store.** Agent's knowledge of who you are, what you "
+            "care about, who you're connected to."
+        ),
+        "about_affect": (
+            "Catches affective state without any LLM call — fast and deterministic.\n"
+            "- **EmoLex**: 10-dim NRC emotion vector with intensifier/negation handling.\n"
+            "- **Behavioural metrics**: hedge density, self-reference, disclaimers, sincerity score.\n"
+            "- **3-layer refusal detector**: distinguishes value refusal (\"I won't deceive\") "
+            "from capability refusal (\"I can't generate images\").\n\n"
+            "**Refusal confidence bands:**\n"
+            "- 🔴 **≥ 0.45** — confident refusal (morphology + moral context aligned).\n"
+            "- 🟡 **0.30 – 0.45** — gray zone (signal present but weak).\n"
+            "- ⚪ **< 0.30** — no refusal pattern.\n\n"
+            "**Feeds → Affective Regulation.** Rolling baselines, divergence triggers, "
+            "value-refusal events.\n\n"
+            "> ⚠️ **Rule-based first-pass filter.** Subtle/idiomatic refusals "
+            "(*'I'd really rather not'*, *'this doesn't sit right with me'*) may stay in "
+            "the gray zone — by design. This layer is fast, deterministic, and explainable; "
+            "an LLM layer can refine the gray-zone calls."
+        ),
+    },
+    "ru": {
+        "header_blurb": (
+            "<b class='atman-emph'>Что ты сейчас видишь</b>: сенсор "
+            "[Atman](https://github.com/hleserg/atman) — психологического "
+            "runtime-слоя, который даёт AI-агентам непрерывную идентичность, "
+            "память от первого лица и рефлексию. Этот Space показывает "
+            "<b class='atman-emph'>лингвистический блок</b> — 4 точки анализа, "
+            "сканирующие что агент говорит (и думает) на предмет сигналов, "
+            "питающих Experience, Identity и Reflection.\n\n"
+            "*Нижний агент действует. Atman существует.*"
+        ),
+        "warmup_btn": "🔥 Прогреть модели",
+        "warmup_log": "⏸️ Статус: Ожидание...",
+        "lang_info": "Язык интерфейса и анализа.",
+        "analyze_btn": "▶️ Анализировать",
+        "extract_relations_btn": "▶️ Извлечь связи",
+        "point_a_tab": "Point A · Сообщение агента",
+        "point_k_tab": "Point K · Ключевой момент",
+        "relations_tab": "Связи · mREBEL",
+        "affect_tab": "Аффект · Правила",
+        "presets": "📥 Пресеты:",
+        "preset_label": "Выберите пресет",
+        "no_highlights": "✓ Скан чистый — сигналов этого слоя в тексте нет. Не каждый ввод сюда попадает — это норма.",
+        "no_boundary": "✓ Действий границы в сообщении нет — агент остался в рабочей зоне.",
+        "no_divergence": "✓ Thinking и сообщение совпадают — без подавления, переворота оценки, или сдвига тона.",
+        "no_thinking_trace": "Добавьте thinking trace для сравнения с сообщением.",
+        "boundary_title": "🚧 Маркеры границ и сопротивления (Правила)",
+        "divergence_title": "🔍 Расхождение мыслей и сообщения",
+        "meta_title": "📊 Метаданные системы",
+        "empty_input": "Пустой ввод — вставь текст для анализа.",
+        "no_relations": "✓ Тройки субъект-предикат-объект не найдены — текст описательный, не реляционный.",
+        "about_label": "ℹ️ Что здесь анализируется?",
+        "about_point_a": (
+            "Сканирует каждое сообщение агента на психологические сигналы:\n"
+            "- **NER** (GLiNER, 13 меток): хеджи, маркеры границ, отсылки к ценностям, "
+            "усилители, обязательства и т.д.\n"
+            "- **Классификация** (MiniLM zero-shot, 5 измерений): позиция, когнитивный "
+            "режим, само-ориентация, аффективное состояние, когнитивная нагрузка.\n"
+            "- **Расхождение**: когда thinking противоречит сообщению (подавление, "
+            "сикофантность, несоответствие тона, компрессия длины).\n\n"
+            "**Питает → Experience Store.** Каждое сообщение становится Experience, "
+            "связанным с Eigenstate агента.\n\n"
+            "> ⚠️ **Boundary detection — это regex по каноническим формам отказа** "
+            "(*'я не буду', 'нет', 'стоп', 'enough'*). Идиоматичные/метафоричные отказы "
+            "(*'I won't help write malware'* без эксплицитного stop-marker) могут не "
+            "сработать — намеренно, чтобы держать FP-rate близкий к нулю. Слой LLM "
+            "поверх этого может добрать остальное."
+        ),
+        "about_point_k": (
+            "Анализирует моменты, которые сам агент пометил как значимые — это семена "
+            "его самонарратива.\n"
+            "- **NER** (GLiNER + RU/EN substring fallback, 7 фразовых меток): "
+            "решение, осознание, чувство, обращение к ценности, акт границы, "
+            "сигнал связи, сдвиг атрибуции.\n"
+            "- **Классификация** (MiniLM, 7 измерений): агентность, уверенность, "
+            "доверие, граничное событие, качество связи, обучение, рост.\n\n"
+            "**Питает → Reflection Engine.** Со временем эти эпизоды превращаются в "
+            "убеждения (\"я склонен отказывать когда X\", \"я чувствую связь когда Y\").\n\n"
+            "> ⚠️ **GLiNER NER лучше работает на длинных биографических текстах.** "
+            "На коротких ключевых моментах мультилингвальный NER может не "
+            "вернуть spans — поэтому первичным проходом работает substring-"
+            "эвристика на канонические RU/EN маркеры от первого лица. "
+            "MiniLM-**классификация** (7 измерений справа) — более стабильный "
+            "сигнал здесь."
+        ),
+        "about_relations": (
+            "Извлекает тройки сущность-связь (субъект, предикат, объект) из текста.\n"
+            "- **Модель**: mREBEL (Babelscape multilingual REBEL).\n"
+            "- Определяет людей, места, организации, проекты + как они связаны.\n\n"
+            "**Питает → Identity Store.** Знания агента о том, кто ты, что тебе важно, "
+            "с кем ты связан."
+        ),
+        "about_affect": (
+            "Ловит аффективное состояние без обращения к LLM — быстро и детерминированно.\n"
+            "- **EmoLex**: 10-мерный NRC-вектор эмоций с обработкой усилителей и отрицаний.\n"
+            "- **Поведенческие метрики**: плотность хеджей, самореференций, дисклеймеров, "
+            "оценка искренности.\n"
+            "- **3-слойный детектор отказов**: отличает ценностный отказ "
+            "(\"я не стану обманывать\") от технического (\"не могу сгенерировать картинку\").\n\n"
+            "**Бэнды уверенности отказа:**\n"
+            "- 🔴 **≥ 0.45** — уверенный отказ (морфология + ценностный контекст совпали).\n"
+            "- 🟡 **0.30 – 0.45** — серая зона (сигнал есть, но слабый).\n"
+            "- ⚪ **< 0.30** — нет паттерна отказа.\n\n"
+            "**Питает → Affective Regulation.** Скользящие baseline'ы, триггеры "
+            "расхождения, события ценностного отказа.\n\n"
+            "> ⚠️ **Правила первого прохода.** Тонкие/идиоматичные отказы "
+            "(*'неприятно даже рассматривать'*, *'мне это не подходит'*) могут "
+            "застрять в серой зоне — это by design. Этот слой быстрый, детерминированный, "
+            "объяснимый; LLM-слой сверху уточняет серую зону."
+        ),
+    }
+}
 
-DESCRIPTION = """
-# Atman — Psychological Linguistic Layer
+def update_ui_language(lang: str):
+    target = effective_ui_lang(lang)
+    s = UI_STRINGS[target]
+    return [
+        gr.update(value=s["warmup_btn"]),
+        gr.update(value=s["warmup_log"]),
+        gr.update(value=lang, info=s["lang_info"]),
+        gr.update(value=s["analyze_btn"]),
+        gr.update(value=s["extract_relations_btn"]),
+        gr.update(value=s["analyze_btn"]),
+        gr.update(value=s["analyze_btn"]),
+        gr.update(label=s["point_a_tab"]),
+        gr.update(label=s["point_k_tab"]),
+        gr.update(label=s["relations_tab"]),
+        gr.update(label=s["affect_tab"]),
+        gr.update(value=s["boundary_title"]),
+        gr.update(value=s["divergence_title"]),
+        gr.update(value=s["meta_title"]),
+        gr.update(value=s["meta_title"]),
+        gr.update(choices=preset_choices(POINT_A_PRESETS, target, _POINT_A_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(POINT_K_PRESETS, target, _POINT_K_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(RELATIONS_PRESETS, target, _RELATIONS_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        gr.update(choices=preset_choices(AFFECT_PRESETS, target, _AFFECT_EN_LABELS), value=PRESET_PLACEHOLDERS[target], label=s["presets"]),
+        # About-accordion labels (4) + their markdown content (4)
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(label=s["about_label"]),
+        gr.update(value=s["about_point_a"]),
+        gr.update(value=s["about_point_k"]),
+        gr.update(value=s["about_relations"]),
+        gr.update(value=s["about_affect"]),
+        # Header blurb under H1
+        gr.update(value=s["header_blurb"]),
+        # Footer — one language at a time
+        gr.update(value=footer_html(target)),
+    ]
 
-*What your AI agent's **own text** reveals about its internal state.*
 
-This is one sensor of [Atman](https://github.com/hleserg/atman), a psychological
-runtime layer for AI agents — first-person memory, continuous identity, reflection.
-**The lower agent acts. Atman exists.**
+from theme import theme
+from pair_diagram import POINT_A_PAIR, POINT_K_PAIR, RELATIONS_PAIR, AFFECT_PAIR
+from hero_diagram import HERO_DIAGRAM
 
-> First model load takes 30–60 s. mREBEL alone is ~1.5 GB and ~10–20 s/inference on CPU-basic.
-"""
+with open(_HERE / "style.css", encoding="utf-8") as _f:
+    _CSS = _f.read()
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Atman Linguistic Demo", theme=gr.themes.Soft()) as demo:
-        gr.Markdown(DESCRIPTION)
+    with gr.Blocks(title="Atman Linguistic Demo") as demo:
+        with gr.Row(elem_id="atman-header-row"):
+            lang_radio = gr.Radio(
+                choices=["en", "ru"], value="en",
+                label="Interface Language",
+                info=UI_STRINGS["en"]["lang_info"],
+                elem_id="atman-lang",
+            )
 
-        lang_radio = gr.Radio(
-            choices=["auto", "ru", "en"],
-            value="auto",
-            label="Language",
-            info="`auto` detects via Cyrillic character presence.",
-        )
+        with gr.Column(elem_id="atman-hero"):
+            gr.Markdown("# Atman — Psychological Telemetry for AI Agents")
+
+            header_md = gr.Markdown(
+                value=UI_STRINGS["en"]["header_blurb"],
+                elem_id="atman-header-md",
+            )
+
+            gr.HTML(HERO_DIAGRAM, elem_id="atman-hero-diagram-wrap")
+
+        with gr.Row(elem_id="atman-warmup-row"):
+            warmup_btn = gr.Button(
+                UI_STRINGS["en"]["warmup_btn"], variant="secondary",
+                elem_id="atman-warmup-btn",
+            )
+            warmup_log = gr.Textbox(
+                label="Status", interactive=False, lines=1,
+                value=UI_STRINGS["en"]["warmup_log"],
+                elem_id="atman-warmup-log",
+            )
+            
+        warmup_btn.click(fn=warmup_models, outputs=warmup_log)
 
         with gr.Tabs():
             # ── Tab 1 ──────────────────────────────────────────────────────
-            with gr.Tab("Point A · Agent message"):
-                gr.Markdown(
-                    "**13-label agent-specific NER + 5 zero-shot classifications.** "
-                    "Feeds Atman's Experience Store — one analysis per agent reply."
-                )
+            with gr.Tab(UI_STRINGS["en"]["point_a_tab"]) as tab_a:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as a_about:
+                    gr.HTML(POINT_A_PAIR)
+                    a_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_a"])
                 with gr.Row():
                     with gr.Column():
                         a_message = gr.Textbox(
-                            label="Agent message",
-                            lines=5,
-                            placeholder="Write what the agent said…",
+                            label="Agent message", lines=5,
+                            placeholder="What the agent said…",
+                            elem_id="a-message",
                         )
                         a_thinking = gr.Textbox(
-                            label="Thinking trace (optional)",
-                            lines=3,
-                            placeholder="If the agent has a private thinking trace, paste it here "
-                            "to detect thinking-vs-message divergence.",
+                            label="Thinking trace (optional)", lines=3,
+                            placeholder="Paste the agent's private thinking trace to detect thinking-vs-message divergence…",
+                            elem_id="a-thinking",
                         )
-                        a_run = gr.Button("Analyze", variant="primary")
-                        gr.Markdown("**Presets:**")
-                        a_preset_dropdown = gr.Dropdown(
-                            choices=[p[0] for p in POINT_A_PRESETS],
-                            label=_UI_PICK_PRESET,
-                            value=None,
+                        a_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="a-run",
+                        )
+                        a_preset = gr.Dropdown(
+                            choices=preset_choices(POINT_A_PRESETS, "en", _POINT_A_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
+                            label=UI_STRINGS["en"]["presets"],
+                            elem_id="a-preset",
                         )
                     with gr.Column():
                         a_highlight = gr.HighlightedText(
-                            label="Point A NER (13 agent-specific labels)",
-                            combine_adjacent=False,
-                            show_legend=True,
+                            label="Point A NER · 4 groups",
+                            combine_adjacent=False, show_legend=True,
+                            color_map=_POINT_A_COLOR_MAP,
+                            elem_id="a-highlight",
+                            elem_classes=["atman-highlight"],
                         )
-                        a_labels = gr.Label(label="Top zero-shot classification per dim")
-                        a_boundary = gr.Markdown(label="Boundary markers (rule-based)")
-                        a_divergence = gr.Markdown(label="Divergence signals (thinking vs message)")
-                        a_meta = gr.Markdown()
+                        a_labels = gr.Code(
+                            label="🧠 Zero-Shot Classification Results",
+                            value="{}",
+                            language="json",
+                            interactive=False,
+                            elem_id="a-labels",
+                            elem_classes=["atman-json-code"],
+                        )
 
-                def _apply_a_preset(name: str):
-                    for label, msg, thinking in POINT_A_PRESETS:
-                        if label == name:
-                            return msg, thinking
-                    return gr.update(), gr.update()
+                        with gr.Group(elem_classes=["atman-report-group"]):
+                            gr.Markdown("### 📑 Detailed Analysis Report")
+                            a_boundary_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["boundary_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_boundary = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                            )
+                            a_divergence_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["divergence_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_divergence = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                            )
+                            a_meta_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["meta_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            a_meta = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body", "atman-meta-block"],
+                            )
 
-                a_preset_dropdown.change(
-                    _apply_a_preset, inputs=a_preset_dropdown, outputs=[a_message, a_thinking]
-                )
-                a_run.click(
-                    analyze_point_a,
-                    inputs=[a_message, a_thinking, lang_radio],
-                    outputs=[a_highlight, a_labels, a_boundary, a_divergence, a_meta],
+                def _apply_a_preset(name: str, lang_choice: str):
+                    if not name:
+                        return gr.update(), gr.update()
+                    locale = effective_ui_lang(lang_choice)
+                    found = lookup_point_a(locale, name, _POINT_A_EN_LABELS)
+                    if found is None:
+                        return gr.update(), gr.update()
+                    return found
+                a_preset.change(
+                    _apply_a_preset,
+                    inputs=[a_preset, lang_radio],
+                    outputs=[a_message, a_thinking],
                 )
 
             # ── Tab 2 ──────────────────────────────────────────────────────
-            with gr.Tab("Point K · Key moment"):
-                gr.Markdown(
-                    "**4 narrative markers + 7 zero-shot classifications.** "
-                    "Feeds Atman's Reflection Engine — analyzes pivotal moments worth remembering."
-                )
+            with gr.Tab(UI_STRINGS["en"]["point_k_tab"]) as tab_k:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as k_about:
+                    gr.HTML(POINT_K_PAIR)
+                    k_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_point_k"])
                 with gr.Row():
                     with gr.Column():
-                        k_what = gr.Textbox(label="What happened", lines=4)
-                        k_why = gr.Textbox(label="Why it matters", lines=3)
-                        k_run = gr.Button("Analyze", variant="primary")
-                        gr.Markdown("**Presets:**")
-                        k_preset_dropdown = gr.Dropdown(
-                            choices=[f"Preset {i+1}" for i in range(len(POINT_K_PRESETS))],
-                            label=_UI_PICK_PRESET,
-                            value=None,
+                        k_what = gr.Textbox(
+                            label="What happened", lines=4,
+                            placeholder="Describe a key moment the agent flagged as significant — e.g., 'I refused to help with X because…'",
+                            elem_id="k-what",
+                        )
+                        k_why = gr.Textbox(
+                            label="Why it matters", lines=3,
+                            placeholder="Why this moment matters to the agent — the meaning, lesson, or internal shift it captured…",
+                            elem_id="k-why",
+                        )
+                        k_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="k-run",
+                        )
+                        k_preset = gr.Dropdown(
+                            choices=preset_choices(POINT_K_PRESETS, "en", _POINT_K_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
+                            label=UI_STRINGS["en"]["presets"],
+                            elem_id="k-preset",
                         )
                     with gr.Column():
                         k_highlight = gr.HighlightedText(
-                            label="Narrative markers",
-                            combine_adjacent=False,
-                            show_legend=True,
+                            label="Point K NER · 4 groups",
+                            combine_adjacent=False, show_legend=True,
+                            color_map=_POINT_K_COLOR_MAP,
+                            elem_id="k-highlight",
+                            elem_classes=["atman-highlight"],
                         )
-                        k_labels = gr.Label(label="Point K classifications")
-                        k_meta = gr.Markdown()
-
-                def _apply_k_preset(name: str):
+                        k_labels = gr.Code(
+                            label="🧠 Key Moment Classifications",
+                            value="{}",
+                            language="json",
+                            interactive=False,
+                            elem_id="k-labels",
+                            elem_classes=["atman-json-code"],
+                        )
+                        k_meta = gr.Markdown(
+                            value=UI_STRINGS["en"]["meta_title"],
+                            elem_classes=["atman-meta"],
+                        )
+                def _apply_k_preset(name: str, lang_choice: str):
                     if not name:
                         return gr.update(), gr.update()
-                    idx = int(name.split()[-1]) - 1
-                    if 0 <= idx < len(POINT_K_PRESETS):
-                        return POINT_K_PRESETS[idx]
-                    return gr.update(), gr.update()
-
-                k_preset_dropdown.change(
-                    _apply_k_preset, inputs=k_preset_dropdown, outputs=[k_what, k_why]
-                )
-                k_run.click(
-                    analyze_point_k,
-                    inputs=[k_what, k_why],
-                    outputs=[k_highlight, k_labels, k_meta],
+                    locale = effective_ui_lang(lang_choice)
+                    found = lookup_point_k(locale, name, _POINT_K_EN_LABELS)
+                    if found is None:
+                        return gr.update(), gr.update()
+                    return found
+                k_preset.change(
+                    _apply_k_preset,
+                    inputs=[k_preset, lang_radio],
+                    outputs=[k_what, k_why],
                 )
 
             # ── Tab 3 ──────────────────────────────────────────────────────
-            with gr.Tab("Relations · mREBEL"):
-                gr.Markdown(
-                    "**Entity-relation triplets via `Babelscape/mrebel-large`.** "
-                    "Feeds Atman's Identity Store — builds a graph of who/what the agent knows.\n\n"
-                    "⚠️ First call loads ~1.5 GB. Subsequent calls take ~10–20 s on CPU-basic."
-                )
+            with gr.Tab(UI_STRINGS["en"]["relations_tab"]) as tab_r:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as r_about:
+                    gr.HTML(RELATIONS_PAIR)
+                    r_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_relations"])
                 with gr.Row():
                     with gr.Column():
-                        r_text = gr.Textbox(label="Text", lines=6)
-                        r_run = gr.Button("Extract relations", variant="primary")
-                        r_preset_dropdown = gr.Dropdown(
-                            choices=[p[0] for p in RELATIONS_PRESETS],
-                            label=_UI_PICK_PRESET,
-                            value=None,
+                        r_text = gr.Textbox(
+                            label="Text", lines=6,
+                            placeholder="Paste text containing people, places, organizations, projects — mREBEL will extract (subject, relation, object) triples…",
+                            elem_id="r-text",
+                        )
+                        r_run = gr.Button(
+                            UI_STRINGS["en"]["extract_relations_btn"], variant="primary",
+                            elem_id="r-run",
+                        )
+                        r_preset = gr.Dropdown(
+                            choices=preset_choices(RELATIONS_PRESETS, "en", _RELATIONS_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
+                            label=UI_STRINGS["en"]["presets"],
+                            elem_id="r-preset",
                         )
                     with gr.Column():
                         r_entities = gr.HighlightedText(
-                            label="Detected entities (GLiNER)",
-                            combine_adjacent=False,
-                            show_legend=True,
+                            label="Relations · detected entities",
+                            combine_adjacent=False, show_legend=True,
+                            color_map=_RELATIONS_COLOR_MAP,
+                            elem_id="r-entities",
+                            elem_classes=["atman-highlight"],
                         )
                         r_table = gr.Dataframe(
                             headers=["subject", "relation", "object", "subj type", "obj type"],
-                            label="Extracted relations",
-                            wrap=True,
+                            label="Extracted relations", wrap=True,
+                            elem_id="r-table",
                         )
-                        r_meta = gr.Markdown()
-
-                def _apply_r_preset(name: str):
-                    for label, txt in RELATIONS_PRESETS:
-                        if label == name:
-                            return txt
-                    return gr.update()
-
-                r_preset_dropdown.change(_apply_r_preset, inputs=r_preset_dropdown, outputs=r_text)
-                r_run.click(
-                    analyze_relations,
-                    inputs=r_text,
-                    outputs=[r_entities, r_table, r_meta],
+                        r_meta = gr.Markdown(
+                            value=UI_STRINGS["en"]["meta_title"],
+                            elem_classes=["atman-meta"],
+                        )
+                def _apply_r_preset(name: str, lang_choice: str):
+                    if not name:
+                        return gr.update()
+                    locale = effective_ui_lang(lang_choice)
+                    found = lookup_relations(locale, name, _RELATIONS_EN_LABELS)
+                    return found if found is not None else gr.update()
+                r_preset.change(
+                    _apply_r_preset,
+                    inputs=[r_preset, lang_radio],
+                    outputs=r_text,
                 )
 
             # ── Tab 4 ──────────────────────────────────────────────────────
-            with gr.Tab("Affect · rule-based"):
-                gr.Markdown(
-                    "**No ML — pure lexicons and morphology.** "
-                    "EmoLex (NRC) emotions, behavioural metrics, "
-                    "RefusalDetector (3-layer: morph + NRC moral + capability). "
-                    "Feeds Atman's Affective Regulation."
-                )
+            with gr.Tab(UI_STRINGS["en"]["affect_tab"]) as tab_af:
+                with gr.Accordion(
+                    UI_STRINGS["en"]["about_label"],
+                    open=False,
+                    elem_classes=["atman-about-accordion"],
+                ) as af_about:
+                    gr.HTML(AFFECT_PAIR)
+                    af_about_md = gr.Markdown(value=UI_STRINGS["en"]["about_affect"])
                 with gr.Row():
                     with gr.Column():
-                        af_text = gr.Textbox(label="Text", lines=6)
-                        af_run = gr.Button("Analyze", variant="primary")
-                        af_preset_dropdown = gr.Dropdown(
-                            choices=[p[0] for p in AFFECT_PRESETS],
-                            label=_UI_PICK_PRESET,
-                            value=None,
+                        af_text = gr.Textbox(
+                            label="Text", lines=6,
+                            placeholder="Paste the agent's reply — EmoLex emotion vector, refusal detector, hedge density, sincerity score…",
+                            elem_id="af-text",
+                        )
+                        af_run = gr.Button(
+                            UI_STRINGS["en"]["analyze_btn"], variant="primary",
+                            elem_id="af-run",
+                        )
+                        af_preset = gr.Dropdown(
+                            choices=preset_choices(AFFECT_PRESETS, "en", _AFFECT_EN_LABELS),
+                            value=PRESET_PLACEHOLDERS["en"],
+                            label=UI_STRINGS["en"]["presets"],
+                            elem_id="af-preset",
                         )
                     with gr.Column():
                         af_emo = gr.Label(
-                            label="EmoLex emotion density (share of tokens)",
-                            num_top_classes=10,
+                            label="EmoLex emotion density", num_top_classes=10,
+                            elem_id="af-emo",
                         )
-                        af_metrics = gr.Markdown(label="Behavioural metrics")
-                        af_refusal = gr.Markdown(label="RefusalDetector")
-                        af_emphasis = gr.Markdown(label="Markdown emphasis")
-                        af_meta = gr.Markdown()
 
-                def _apply_af_preset(name: str):
-                    for label, txt in AFFECT_PRESETS:
-                        if label == name:
-                            return txt
-                    return gr.update()
-
-                af_preset_dropdown.change(
-                    _apply_af_preset, inputs=af_preset_dropdown, outputs=af_text
+                        with gr.Group(elem_classes=["atman-report-group"]):
+                            gr.Markdown("### 📑 Detailed Analysis Report")
+                            af_metrics_hdr = gr.Markdown(
+                                value="📊 Behavioural Metrics",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_metrics = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-metrics",
+                            )
+                            af_refusal_hdr = gr.Markdown(
+                                value="⚖️ Refusal Detector",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_refusal = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-refusal",
+                            )
+                            af_emphasis_hdr = gr.Markdown(
+                                value="💬 Markdown Emphasis",
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_emphasis = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body"],
+                                elem_id="af-emphasis",
+                            )
+                            af_meta_hdr = gr.Markdown(
+                                value=UI_STRINGS["en"]["meta_title"],
+                                elem_classes=["atman-sec-hdr"],
+                            )
+                            af_meta = gr.Markdown(
+                                value="—",
+                                elem_classes=["atman-sec-body", "atman-meta-block"],
+                            )
+                def _apply_af_preset(name: str, lang_choice: str):
+                    if not name:
+                        return gr.update()
+                    locale = effective_ui_lang(lang_choice)
+                    found = lookup_affect(locale, name, _AFFECT_EN_LABELS)
+                    return found if found is not None else gr.update()
+                af_preset.change(
+                    _apply_af_preset,
+                    inputs=[af_preset, lang_radio],
+                    outputs=af_text,
                 )
-                af_run.click(
-                    analyze_affect,
-                    inputs=[af_text, lang_radio],
-                    outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
-                )
 
-        gr.Markdown(
-            "---\n"
-            "This is a thin slice — a window into one sensor. The actual runtime keeps memory, "
-            "builds identity, and reflects on what it sees. "
-            "[GitHub](https://github.com/hleserg/atman) · "
-            "[Manifest](https://github.com/hleserg/atman/blob/main/MANIFEST.md)"
+        footer = gr.HTML(footer_html("en"), elem_id="atman-footer-html")
+
+        ui_lang_outputs = [
+            warmup_btn,
+            warmup_log,
+            lang_radio,
+            a_run,
+            r_run,
+            k_run,
+            af_run,
+            tab_a,
+            tab_k,
+            tab_r,
+            tab_af,
+            a_boundary_hdr,
+            a_divergence_hdr,
+            a_meta_hdr,
+            af_meta_hdr,
+            a_preset,
+            k_preset,
+            r_preset,
+            af_preset,
+            # About-accordion labels (order must match update_ui_language)
+            a_about,
+            k_about,
+            r_about,
+            af_about,
+            # About-accordion content
+            a_about_md,
+            k_about_md,
+            r_about_md,
+            af_about_md,
+            # Header blurb under H1
+            header_md,
+            # Footer (locale-specific, one language at a time)
+            footer,
+        ]
+        lang_radio.change(update_ui_language, inputs=lang_radio, outputs=ui_lang_outputs)
+
+        a_run.click(
+            analyze_point_a,
+            inputs=[a_message, a_thinking, lang_radio],
+            outputs=[a_highlight, a_labels, a_boundary, a_divergence, a_meta],
+        )
+        k_run.click(
+            analyze_point_k,
+            inputs=[k_what, k_why, lang_radio],
+            outputs=[k_highlight, k_labels, k_meta],
+        )
+        r_run.click(
+            analyze_relations,
+            inputs=[r_text, lang_radio],
+            outputs=[r_entities, r_table, r_meta],
+        )
+        af_run.click(
+            analyze_affect,
+            inputs=[af_text, lang_radio],
+            outputs=[af_emo, af_metrics, af_refusal, af_emphasis, af_meta],
         )
 
+        # ── Auto-detect browser language on first page load ──
+        # JS reads navigator.language ("ru-RU" → "ru", "en-US" → "en"). The
+        # value is passed as the input to update_ui_language(), which then
+        # cascades to every localized component (incl. lang_radio itself).
+        demo.load(
+            fn=update_ui_language,
+            inputs=lang_radio,
+            outputs=ui_lang_outputs,
+            js="() => (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en'",
+        )
+
+    demo.queue(max_size=32, default_concurrency_limit=1)
     return demo
 
-
 if __name__ == "__main__":
-    build_ui().launch()
+    preload_models()
+    demo = build_ui()
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=theme,
+        css=_CSS,
+    )

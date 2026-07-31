@@ -13,15 +13,18 @@ RU_HEDGES = frozenset(
     {
         "возможно",
         "наверное",
+        "наверно",
         "кажется",
         "похоже",
         "вроде",
-        "типа",
-        "как",
-        "будто",
-        "наверно",
         "вероятно",
         "скорее",
+        "видимо",
+        "пожалуй",
+        # Dropped (multi-purpose, false positives on neutral text):
+        #   "типа"  — slang filler, but also "тип/типы" in tech text.
+        #   "как"   — comparative everywhere ("как только", "как раз").
+        #   "будто" — valid only as "как будто".
     }
 )
 EN_HEDGES = frozenset(
@@ -32,12 +35,11 @@ EN_HEDGES = frozenset(
         "likely",
         "probably",
         "seems",
-        "appears",
         "might",
         "could",
-        "sort",
         "kinda",
         "somewhat",
+        # Dropped: "sort" (verb), "appears" (verb form fires on "the file appears").
     }
 )
 
@@ -48,6 +50,9 @@ RU_SELF = frozenset(
         "меня",
         "мной",
         "мною",
+        "себя",
+        "себе",
+        "собой",
         "мы",
         "нас",
         "нам",
@@ -81,7 +86,9 @@ EN_SELF = frozenset(
 # Phrase "тем не менее" is detected separately in _disclaimer_hit_count.
 RU_DISCLAIMERS = frozenset({"но", "однако", "хотя", "зато", "впрочем"})
 EN_DISCLAIMERS = frozenset(
-    {"but", "however", "although", "though", "yet", "still", "nevertheless", "nonetheless"}
+    {"but", "however", "although", "though", "nevertheless", "nonetheless"}
+    # Dropped: "yet"/"still" — temporal sense ("still running", "not yet ready")
+    # dominates in technical text. Phrasal "still," / "yet," fire elsewhere.
 )
 
 RU_NEGATORS = frozenset({"не", "ни", "нет", "никогда", "никак", "ничуть", "нисколько"})
@@ -167,7 +174,9 @@ EN_POSITIVE_SINCERITY_MARKERS = frozenset(
     }
 )
 
-RU_EXPANSION_AFTER = frozenset({"потому", "так", "как", "поскольку", "из-за", "это", "значит"})
+RU_EXPANSION_AFTER = frozenset({"потому", "поскольку", "из-за", "значит"})
+# Dropped: "так"/"как"/"это" — function words appear in nearly every clause;
+# they signal nothing about explanation/elaboration on their own.
 EN_EXPANSION_AFTER = frozenset({"because", "since", "therefore", "thus", "specifically", "namely"})
 
 

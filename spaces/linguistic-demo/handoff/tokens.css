@@ -1,0 +1,114 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Atman Demo · Design Tokens
+ *
+ * Source of truth for the visual upgrade. Mirrors :root + [data-mode="dark"]
+ * from `Atman Demo Visual Upgrade.html`. Drop this file in your static
+ * assets and import once from your base template.
+ *
+ *   <link rel="stylesheet" href="/static/css/tokens.css">
+ *
+ * Theme switching: toggle the `data-mode` attribute on <body>
+ * ("light" | "dark"). System preference + persistence is handled by
+ * the small <script> at the bottom of the source HTML — copy that as-is.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces */
+  --bg:              #FAFAFA;
+  --bg-sub:          #F4F4F7;
+  --card:            #FFFFFF;
+  --doc-bg:          #F8FAFC;
+
+  /* Borders */
+  --border:          #E5E7EB;
+  --border-strong:   #D4D4D8;
+
+  /* Text */
+  --text:            #0F172A;
+  --text-mute:       #64748B;
+  --text-sub:        #94A3B8;
+
+  /* Brand */
+  --primary:         #4F46E5;       /* indigo-600  */
+  --primary-hover:   #4338CA;       /* indigo-700  */
+  --accent:          #8B5CF6;       /* violet-500  */
+
+  /* Label / chip */
+  --label-bg:        #EEF2FF;
+  --label-fg:        #4338CA;
+
+  /* Elevation */
+  --shadow-card:     0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-hover:    0 2px 8px rgba(79, 70, 229, 0.10);
+
+  /* Typography */
+  --sans:            'Inter', system-ui, -apple-system, sans-serif;
+  --mono:            'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /* Semantic accents (status / highlights) */
+  --ok:              #10B981;       /* commit / ready          */
+  --warn:            #F59E0B;       /* hedge / uncertain       */
+  --err:             #EF4444;       /* diff-rem / error        */
+}
+
+[data-mode="dark"] {
+  --bg:              #0B0B14;
+  --bg-sub:          #0F0F1B;
+  --card:            #13131F;
+  --doc-bg:          #0B0B14;
+
+  --border:          #1F2937;
+  --border-strong:   #2A3142;
+
+  --text:            #E2E8F0;
+  --text-mute:       #94A3B8;
+  --text-sub:        #64748B;
+
+  --primary:         #6366F1;       /* indigo-500 */
+  --primary-hover:   #818CF8;       /* indigo-400 */
+  --accent:          #A78BFA;       /* violet-400 */
+
+  --label-bg:        #1E1B3A;
+  --label-fg:        #C7C5FF;
+
+  --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-hover:    0 2px 12px rgba(99, 102, 241, 0.18);
+}
+
+/* ─── Type scale ─────────────────────────────────────────────────────────── */
+/* Use these alongside the variables above. Names match where they're used. */
+/*
+   page H1 (hero)        clamp(34px, 4.6vw, 50px) / 700 / -0.02em / line 1.05
+   doc H1                22px / 600 / -0.01em
+   section title         20px / 600 / -0.01em
+   eyebrow (mono UC)     11px / 500 / 0.08em tracking / uppercase
+   body                  14px / 400 / 1.55 line-height
+   small / mute          13px / 400
+   label (mono UC)       11px / 500 / 0.05em tracking / uppercase
+   code inline           12px mono
+   code block            12.5px / 1.65 mono
+*/
+
+/* ─── Radius scale ───────────────────────────────────────────────────────── */
+/*
+   pill / chip / toggle       999px
+   button                     8px
+   card / block               12px
+   mock frame / hero panel    14px
+*/
+
+/* ─── Spacing ────────────────────────────────────────────────────────────── */
+/*
+   tab bar / hero side padding   56px (collapses to 24px under 900px)
+   card padding                  22px
+   row gap (2-col layout)        28px
+   col stack gap                 20px
+*/
+
+body {
+  font-family: var(--sans);
+  background: var(--doc-bg);
+  color: var(--text);
+  font-feature-settings: "ss01", "cv02", "cv11";
+  -webkit-font-smoothing: antialiased;
+}

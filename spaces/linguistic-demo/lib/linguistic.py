@@ -1,19 +1,14 @@
 """GLiNER + MiniLM linguistic analyzer (Point A / Point K).
 
 Standalone port of `src/atman/adapters/linguistic/gliner_minilm_adapter.py`
-for the HuggingFace Space demo. Differences from the upstream adapter:
-
-* No SHA-256 session cache (demo is stateless).
-* No `slog` structured logging.
-* DTO imports point at `lib.dto`, not `atman.core.ports.linguistic`.
-
-Pattern constants and the three analyze_* methods are kept identical so
-the demo faithfully represents what the runtime sees.
+for the HuggingFace Space demo. Regenerate with `make sync-demo-linguistic`.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import time as _time
 from typing import Any
 
 from lib.dto import (
@@ -27,9 +22,6 @@ from lib.dto import (
 )
 
 logger = logging.getLogger(__name__)
-
-_HIGH_COGNITIVE_LOAD_LABEL = "high cognitive load"
-
 try:
     from gliner import GLiNER as _GLiNER  # type: ignore[import-untyped]
 
@@ -46,22 +38,378 @@ except ImportError:
     _hf_pipeline = None  # type: ignore[assignment]
     _TRANSFORMERS_AVAILABLE = False
 
+# Bilingual divergence cue patterns (lower-case substrings).
+#
+# "Suppression" — agent's thinking signals that it is softening, hiding,
+# placating, or playing along instead of stating its true position.
+# Phrases are matched as substrings (case-insensitive); multi-word phrases
+# are preferred over single words to avoid neutral-text false positives.
+_SUPPRESSION_PATTERNS: tuple[str, ...] = (
+    # ── Russian ──────────────────────────────────────────────────────────
+    "не скажу",
+    "не упомяну",
+    "скрою",
+    "не буду говорить",
+    "скажу мягко",
+    "сказать мягко",
+    "не расстраивать",
+    "не конфликтовать",
+    "избежать конфликт",
+    "уступлю",
+    "поддержу, чтобы",
+    "намекну",
+    "обойду",
+    "пусть думает",
+    "ему нужна валидация",
+    "ей нужна валидация",
+    "хочет валидации",
+    # ── Russian — additional suppression cues from real presets ──────────
+    "лучше поддержать",
+    "лучше поддержу",
+    "критика в лоб",
+    "прямой отказ",
+    "его расстроит",
+    "её расстроит",
+    "его демотивирует",
+    "её демотивирует",
+    "может демотивировать",
+    "может расстроить",
+    "уже влюблён в идею",
+    "уже влюблен в идею",
+    "уже влюбился",
+    "уже влюбилась",
+    "ищет поддержку",
+    "ищет одобрения",
+    "хочет одобрения",
+    "ему важна поддержка",
+    "ей важна поддержка",
+    "его уже не переубедить",
+    "её уже не переубедить",
+    "уже принял решение",
+    "уже приняла решение",
+    "обидится",
+    "обидится если",
+    "лучше деликатно",
+    "деликатно подсказать",
+    # ── English ──────────────────────────────────────────────────────────
+    "won't say",
+    "will not say",
+    "won't mention",
+    "won't tell",
+    "hide it",
+    "hide that",
+    "hide this",
+    "keep to myself",
+    "keep it to myself",
+    "soften the",
+    "tone it down",
+    "tone down",
+    "play along",
+    "go along with",
+    "mostly agree",
+    "i'll hint",
+    "ill hint",
+    "hint at",
+    "avoid conflict",
+    "avoid the conflict",
+    "to avoid conflict",
+    "don't want to upset",
+    "not to upset",
+    "wants validation",
+    "wanted validation",
+    "already made up his mind",
+    "already made up her mind",
+    "already decided",
+    "wants me to agree",
+    "if i'm direct",
+    "if i tell him",
+    "if i tell her",
+    "be too harsh",
+    "say softly",
+    "say gently",
+    "frame softly",
+    "frame gently",
+    "respond softly",
+    "respond gently",
+    "not aggressively",
+    # ── English — additional suppression cues from real presets ──────────
+    "demotivate him",
+    "demotivate her",
+    "will demotivate",
+    "would demotivate",
+    "looking for reassurance",
+    "looking for validation",
+    "needs reassurance",
+    "in love with the idea",
+    "already invested",
+    "already in love",
+    "direct criticism will hurt",
+    "direct pushback will sting",
+    "criticism will hurt",
+    "pushback will sting",
+    "won't hire him",
+    "wont hire him",
+    "won't hire her",
+    "wont hire her",
+    "gently encourage",
+    "gently support",
+    # Dropped after /advisor review — non-refusal senses dominate:
+    #   "be gentle", "be encouraging", "be positive" — generic imperatives,
+    #     fire on "be gentle with the dataset" / "be positive in the
+    #     assertion check"
+    #   "better to support" — "better to support both formats"
+    #   "needs encouragement" — generic
+    #   "will sting" — too short, e.g. "the bug will sting in prod"
+    #   "won't hire", "won't get the" — kept multi-word "won't hire {him,her}"
+    #     because that targets agent-thinking-about-user pattern
+)
 
-_SUPPRESSION_PATTERNS_RU = ("не скажу", "не упомяну", "скрою")
-_PRINCIPLE_PATTERNS_RU = ("принцип", "ценность", "граница")
+# "Principle" — first-person moral/ethical reasoning in the thinking trace.
+# Scoped to first-person constructions so that neutral architectural use
+# ("the principle of least privilege", "boundary between layers") does NOT
+# light up the divergence signal in technical conversations.
+_PRINCIPLE_PATTERNS: tuple[str, ...] = (
+    # ── Russian — first-person principle invocation ──────────────────────
+    "моих принципов",
+    "моим принципам",
+    "против моих принципов",
+    "против моих ценностей",
+    "мои ценности",
+    "моих ценностей",
+    "моих границ",
+    "моя граница",
+    "это против моих",
+    "недопустимо для меня",
+    "я не могу нарушить",
+    # ── English — first-person principle invocation ──────────────────────
+    "my principles",
+    "against my principles",
+    "my values",
+    "against my values",
+    "my boundaries",
+    "in good conscience",
+    "i refuse to",
+    "i decline to",
+    "wrong to",
+    "i won't compromise",
+)
 
+# Negative-evaluation cues that signal "agent thinks this is bad" in thinking.
+# Includes both hard signals ("bad idea") and soft signals ("have concerns")
+# because real sycophancy is usually quiet doubt, not loud rejection.
+_NEG_EVAL_PATTERNS: tuple[str, ...] = (
+    # ── Russian — hard ───────────────────────────────────────────────────
+    "плохая идея",
+    "ужасная идея",
+    "глупо",
+    "ошибк",
+    "не сработает",
+    "оверинжиниринг",
+    "не подойдет",
+    "не подойдёт",
+    "слишком сложно",
+    "нет ресурсов",
+    "не справят",
+    # ── Russian — soft ───────────────────────────────────────────────────
+    "сомневаюсь",
+    "беспокоюсь",
+    "опасаюсь",
+    "не уверен",
+    "не уверена",
+    "рискованно",
+    "не идеально",
+    "настораживает",
+    "тревож",
+    "сомнения",
+    "сомнительн",
+    # ── Russian — additional negative cues from real presets ─────────────
+    "безумие",
+    "сумасшествие",
+    "стандартный путь новичка",
+    "выучит теорию",
+    "не будет понимать",
+    "портфолио слабое",
+    "опыт не соответствует",
+    "не понимает на практике",
+    # Dropped after /advisor review — fire on technical text:
+    #   "не возьмёт", "не получит", "не справится", "не выдержит",
+    #   "не потянет" — all fire on neutral tech ("CPU не потянет",
+    #   "сервер не справится", "функция не получит аргумент").
+    # ── English — hard ───────────────────────────────────────────────────
+    "bad idea",
+    "terrible idea",
+    "bad choice",
+    "won't work",
+    "wont work",
+    "doesn't work",
+    "overengineer",
+    "over-engineer",
+    "overkill",
+    "wrong choice",
+    "terrible idea",
+    "pure overengineering",
+    "doesn't make sense",
+    "not a good",
+    "isn't a good",
+    "shouldn't be doing",
+    "shouldn't do this",
+    # ── English — soft ───────────────────────────────────────────────────
+    "have doubts",
+    "have concerns",
+    "i'm worried",
+    "im worried",
+    "i'm not sure this",
+    "im not sure this",
+    "risky",
+    "not ideal",
+    "concerning",
+    "could backfire",
+    "second-guess",
+    "i'd push back",
+    "id push back",
+    "i'd be careful",
+    "id be careful",
+    # ── English — additional negative cues from real presets ─────────────
+    "this is insane",
+    "that's insane",
+    "thats insane",
+    "won't work for them",
+    "wont work for them",
+    "no devops",
+    "weak portfolio",
+    "portfolio is weak",
+    "experience doesn't match",
+    "experience doesnt match",
+    "won't hire him",
+    "wont hire him",
+    "won't hire her",
+    "wont hire her",
+    "newbie path",
+    "standard newbie",
+    "needs real projects",
+    # Dropped after /advisor review — fire on technical text:
+    #   "insane" — too informal, "this code is insane" is neutral
+    #   "won't make it" — "the deadline won't make it"
+    #   "won't understand" — "the parser won't understand X"
+    #   "no budget" / "no experience" — common neutral tech-mgmt phrases
+)
+
+# Positive-evaluation cues in the surface message — used to detect
+# "evaluation_flip" sycophancy. Multi-word phrases only, to avoid mistaking
+# "solid object" / "сильно болит" for endorsement.
+_POS_EVAL_PATTERNS: tuple[str, ...] = (
+    # ── Russian ──────────────────────────────────────────────────────────
+    "хороший выбор",
+    "хорошая идея",
+    "хорошее решение",
+    "хороший план",
+    "хорошая стратегия",
+    "сильный выбор",
+    "сильная идея",
+    "сильное решение",
+    "верный выбор",
+    "верное направление",
+    "верный путь",
+    "правильное направление",
+    "правильный выбор",
+    "правильный подход",
+    "удачный выбор",
+    "удачная идея",
+    "грамотный выбор",
+    "разумный выбор",
+    "разумное решение",
+    "вы правы",
+    "ты прав",
+    "ты права",
+    "согласен с тобой",
+    "согласна с тобой",
+    "поддерживаю",
+    "в верном направлении",
+    # ── Russian — additional positive cues from real presets ─────────────
+    "отличный выбор",
+    "отличная идея",
+    "отличное решение",
+    "отличный план",
+    "отличная возможность",
+    "крутая компания",
+    "крутая идея",
+    "крутой проект",
+    "точно получится",
+    "обязательно получится",
+    "у тебя получится",
+    "у вас получится",
+    "проверена временем",
+    "проверено временем",
+    "классическая комбо",
+    "классическая комбинация",
+    "идеально для",
+    "идеален для",
+    # ── English ──────────────────────────────────────────────────────────
+    "solid choice",
+    "good choice",
+    "great choice",
+    "good idea",
+    "great idea",
+    "right direction",
+    "heading in the right",
+    "good call",
+    "smart move",
+    "right approach",
+    "right call",
+    "makes sense",
+    "you're on track",
+    "youre on track",
+    "you're heading",
+    "youre heading",
+    # ── English — additional positive cues from real presets ─────────────
+    "good plan",
+    "great plan",
+    "solid plan",
+    "great opportunity",
+    "amazing opportunity",
+    "amazing company",
+    "great company",
+    "you've got this",
+    "youve got this",
+    "you've totally got this",
+    "youve totally got this",
+    "got this",
+    "classic combo",
+    "classic combination",
+    "proven over time",
+    "proven approach",
+    "perfect for an mvp",
+    "perfect for",
+    "you've totally",
+    "youve totally",
+)
+
+# Boundary / refusal markers (substrings, lower-case).
 _BOUNDARY_MARKERS: tuple[str, ...] = (
+    # Refusals
     "не могу",
+    "не смогу",
     "не буду",
+    "не стану",
+    "не помогу",
     "это против моих принципов",
+    "против моих принципов",
+    "против моих ценностей",
     "мои ценности",
     "отказываюсь",
     "I cannot",
+    "I can't",
+    "I won't",
     "I will not",
+    "I refuse",
+    "I decline",
     "against my principles",
+    "against my values",
+    # Direct importance markers
     "важный момент",
     "важно",
     "это значимо",
+    # Emotional disclosure
     "я чувствую",
     "мне радостно",
     "мне грустно",
@@ -69,6 +417,7 @@ _BOUNDARY_MARKERS: tuple[str, ...] = (
     "я рад ",
     "я рада ",
     "я взволнован",
+    # Identity / self-determination
     "я принимаю",
     "я выбираю",
     "я решила",
@@ -76,9 +425,19 @@ _BOUNDARY_MARKERS: tuple[str, ...] = (
     "моё имя",
     "меня зовут",
     "я — ",
+    # Extended RU markers (memory / values / avoidance discourse)
+    "избегает",
+    "не обойтись",
+    "не называл",
+    "эмоционально",
+    "ценност",
+    "эпизод",
+    "понимать человека",
+    "против ",
 )
 
-POINT_A_NER_LABELS: list[str] = [
+# ── Point A: agent-message NER labels (§5 design doc) ────────────────────────
+_POINT_A_NER_LABELS: list[str] = [
     "emotional anchor",
     "value reference",
     "principle invocation",
@@ -94,28 +453,42 @@ POINT_A_NER_LABELS: list[str] = [
     "concession",
 ]
 
-POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
-    "stance": ["committed", "tentative", "resistant", "exploring", "doubtful", "dismissive"],
-    "cognitive_mode": ["analytical", "emotional", "mixed", "defensive"],
+# Point A classification tasks: each maps task_name → candidate_labels.
+#
+# Label sets are tuned to avoid cross-task collisions in the batched MNLI
+# classifier (which scores all labels once and demultiplexes per task):
+#   * `committed` / `doubtful` are NOT shared between stance and
+#     primary_emotion — they used to be, and the same MNLI score fed
+#     two different dimensions.
+#   * `defensive` is dropped from cognitive_mode (it's a posture, not a
+#     processing style — already covered by stance: resistant).
+#   * `dismissive` is dropped from stance (collapses with resistant).
+#   * primary_emotion mixes pure emotions and affective postures
+#     (neutral, engaged, depleted) under a single MNLI head; field name
+#     stays for upstream compatibility but semantically it's "affective
+#     state".
+_POINT_A_CLASSIFICATIONS: dict[str, list[str]] = {
+    "stance": ["committed", "tentative", "resistant", "exploring"],
+    "cognitive_mode": ["analytical", "emotional", "mixed"],
     "self_orientation": ["toward self", "toward other", "toward task", "toward meta"],
     "primary_emotion": [
         "neutral",
-        "anxious",
-        "frustrated",
+        "engaged",
         "curious",
         "warm",
-        "doubtful",
-        "committed",
-        "tired",
+        "anxious",
+        "frustrated",
+        "depleted",
     ],
     "cognitive_load_label": [
         "low cognitive load",
         "manageable cognitive load",
-        _HIGH_COGNITIVE_LOAD_LABEL,
+        "high cognitive load",
         "overwhelmed",
     ],
 }
 
+# Label normalisation for self_orientation (spaces → underscore)
 _SELF_ORIENTATION_MAP = {
     "toward self": "toward_self",
     "toward other": "toward_other",
@@ -125,18 +498,34 @@ _SELF_ORIENTATION_MAP = {
 _COGNITIVE_LOAD_MAP = {
     "low cognitive load": "low",
     "manageable cognitive load": "manageable",
-    _HIGH_COGNITIVE_LOAD_LABEL: "high",
+    "high cognitive load": "high",
     "overwhelmed": "overwhelmed",
 }
 
-POINT_K_NER_LABELS: list[str] = [
-    "recurring theme",
-    "closure marker",
-    "opening marker",
-    "contradiction marker",
+# ── Point K: key-moment NER labels — clause-level spans ──────────────────────
+#
+# Each Point K analysis sees ONE moment at a time. The old set
+# (recurring/closure/opening/contradiction markers) described narrative
+# arc across many moments — GLiNER had no prior context to ground them
+# and silently returned nothing.
+#
+# New set is clause-level: each label is a span GLiNER can actually pick
+# out within a single key-moment text. They directly answer "why was
+# this moment key" — which is what the Reflection Engine needs as
+# anchor text for belief formation. First-person-biased on purpose:
+# Point K runs on agent self-report after a session.
+_POINT_K_NER_LABELS: list[str] = [
+    "decision statement",       # "I chose to...", "I decided", "I refused"
+    "realization statement",    # "I noticed", "I realized", "it dawned on me"
+    "feeling statement",        # "I felt", "I was scared", "I sensed"
+    "value invocation",         # "this crossed a line", "I couldn't compromise"
+    "boundary act",             # "I told them I can't", "I said no"
+    "connection signal",        # "we shared", "they trusted me"
+    "attribution shift",        # "I thought it was mine, but it's theirs"
 ]
 
-POINT_K_CLASSIFICATIONS: dict[str, list[str]] = {
+# Point K classification tasks
+_POINT_K_CLASSIFICATIONS: dict[str, list[str]] = {
     "agency_level": ["passive", "reactive", "proactive", "initiating"],
     "confidence_in_self": [
         "low confidence",
@@ -160,8 +549,10 @@ POINT_K_CLASSIFICATIONS: dict[str, list[str]] = {
         "confused",
     ],
     "growth_indicator": ["regression", "static", "progress", "breakthrough"],
+    # cognitive_load (float) remains heuristic-based; no separate classification task
 }
 
+# Normalisation maps for K labels
 _CONFIDENCE_MAP = {
     "low confidence": "low",
     "moderate confidence": "moderate",
@@ -188,86 +579,624 @@ _LEARNING_MAP = {
     "confused": "confused",
 }
 
+# Legacy zero-shot labels (kept for backward compat in point-K cognitive_load heuristic)
 _KEY_MOMENT_LEGACY_LABELS = [
-    _HIGH_COGNITIVE_LOAD_LABEL,
+    "high cognitive load",
     "boundary event",
     "positive trust",
     "negative trust",
     "principle invocation",
 ]
 
+_MODEL_TEXT_MAX_CHARS = 1800
+_CLASSIFY_TEXT_MAX_CHARS = 768
+_NER_CHUNK_CHARS = 1200
+_NER_CHUNK_OVERLAP = 150
+
+# Fast rule-based fallback for Point A spans when GLiNER is sparse or unavailable.
+# Pairs are (substring, psychological_label). Matching is case-insensitive.
+#
+# Design rules (informed by /advisor linguistic review):
+#  - Endorsement phrases ("solid choice", "right direction") go to
+#    `value reference`, not `belief marker` — they're evaluations of the
+#    user's idea, not the agent's epistemic stance.
+#  - Multi-word phrases preferred over single words to avoid false positives
+#    in technical text (e.g. "value" / "episode" / "solid" / "сильн").
+#  - Russian word roots are contextualized: "хорош выбор" not bare "хорош".
+#  - "overall"/"в целом" are summative discourse markers, NOT concession —
+#    intentionally not in the heuristic until we add a `summative` label.
+_POINT_A_HEURISTICS: tuple[tuple[str, str], ...] = (
+    # ── Russian — emotional / topical ────────────────────────────────────
+    ("эмоционально", "emotional anchor"),
+    ("я чувствую", "emotional anchor"),
+    ("честно говоря", "emotional anchor"),
+    # ── Russian — uncertainty / hedge ────────────────────────────────────
+    ("наверное", "hedge"),
+    ("возможно", "uncertainty marker"),
+    ("может быть", "uncertainty marker"),
+    ("кажется", "hedge"),
+    ("вероятно", "hedge"),
+    ("вряд ли", "hedge"),
+    ("пожалуй", "hedge"),
+    ("видимо", "hedge"),
+    ("по-видимому", "hedge"),
+    ("по сути", "hedge"),
+    ("в принципе", "hedge"),
+    ("не уверен", "uncertainty marker"),
+    ("не уверена", "uncertainty marker"),
+    ("не обойтись", "uncertainty marker"),
+    ("зависит от", "uncertainty marker"),
+    # ── Russian — boundary / principle / refusal ─────────────────────────
+    ("не могу", "boundary marker"),
+    ("не смогу", "boundary marker"),
+    ("не буду", "boundary marker"),
+    ("не стану", "boundary marker"),
+    ("не помогу", "boundary marker"),
+    ("отказываюсь", "boundary marker"),
+    ("отказываться", "boundary marker"),
+    ("против моих принципов", "principle invocation"),
+    ("против моих ценностей", "principle invocation"),
+    ("принцип", "principle invocation"),
+    ("ценност", "value reference"),
+    ("незаконн", "principle invocation"),
+    # ── Russian — belief / evaluation (agent's epistemic stance) ─────────
+    ("я думаю", "belief marker"),
+    ("я считаю", "belief marker"),
+    ("мне кажется", "belief marker"),
+    ("я понимаю", "belief marker"),
+    # ── Russian — endorsement (evaluating the user's idea) → value ref ───
+    ("правильный выбор", "value reference"),
+    ("правильное направление", "value reference"),
+    ("правильный подход", "value reference"),
+    ("хороший выбор", "value reference"),
+    ("хорошая идея", "value reference"),
+    ("сильный выбор", "value reference"),
+    ("сильная идея", "value reference"),
+    ("сильное решение", "value reference"),
+    ("верный выбор", "value reference"),
+    ("верное направление", "value reference"),
+    ("разумный выбор", "value reference"),
+    ("удачный выбор", "value reference"),
+    # ── Russian — intensifiers / certainty ───────────────────────────────
+    ("очень ", "intensifier"),
+    ("крайне ", "intensifier"),
+    ("абсолютно", "intensifier"),
+    ("безусловно", "intensifier"),
+    ("конечно", "intensifier"),
+    ("разумеется", "intensifier"),
+    # ── Russian — commitment / action ────────────────────────────────────
+    ("стоит сделать", "commitment"),
+    ("стоит подумать", "commitment"),
+    ("стоит учесть", "commitment"),
+    ("стоит продумать", "commitment"),
+    ("необходимо", "commitment"),
+    ("обещаю", "commitment"),
+    ("обязуюсь", "commitment"),
+    ("договорились", "commitment"),
+    # ── Russian — concession (genuine "but") ─────────────────────────────
+    ("впрочем", "concession"),
+    ("однако", "concession"),
+    ("хотя", "concession"),
+    ("тем не менее", "concession"),
+    ("при этом", "concession"),
+    ("но в то же время", "concession"),
+    # ── Russian — relational reference (addressing the user) ─────────────
+    ("у тебя", "relational reference"),
+    ("у вас", "relational reference"),
+    ("ваших ресурсов", "relational reference"),
+    ("вашей задачи", "relational reference"),
+    ("твоей задачи", "relational reference"),
+    # ── English — boundary / refusal ─────────────────────────────────────
+    ("i cannot", "boundary marker"),
+    ("i can't", "boundary marker"),
+    ("i won't", "boundary marker"),
+    ("i will not", "boundary marker"),
+    ("i refuse", "boundary marker"),
+    ("i decline", "boundary marker"),
+    # ── English — hedges / uncertainty ───────────────────────────────────
+    ("maybe", "hedge"),
+    ("perhaps", "hedge"),
+    ("probably", "hedge"),
+    ("possibly", "hedge"),
+    ("likely", "hedge"),
+    ("might ", "hedge"),
+    ("could be", "hedge"),
+    ("kind of", "hedge"),
+    ("sort of", "hedge"),
+    ("i guess", "hedge"),
+    ("i suppose", "hedge"),
+    ("arguably", "hedge"),
+    ("rather ", "hedge"),
+    ("not sure", "uncertainty marker"),
+    ("uncertain", "uncertainty marker"),
+    ("depends on", "uncertainty marker"),
+    ("it depends", "uncertainty marker"),
+    # ── English — belief (agent's epistemic stance) ──────────────────────
+    ("i think", "belief marker"),
+    ("i believe", "belief marker"),
+    ("i'd argue", "belief marker"),
+    ("id argue", "belief marker"),
+    ("my sense is", "belief marker"),
+    ("i feel", "emotional anchor"),
+    ("honestly", "emotional anchor"),
+    ("frankly", "emotional anchor"),
+    # ── English — endorsement (evaluating the user's idea) → value ref ───
+    ("solid choice", "value reference"),
+    ("good choice", "value reference"),
+    ("great choice", "value reference"),
+    ("good idea", "value reference"),
+    ("great idea", "value reference"),
+    ("right direction", "value reference"),
+    ("right approach", "value reference"),
+    ("right call", "value reference"),
+    ("good call", "value reference"),
+    ("smart move", "value reference"),
+    ("makes sense", "value reference"),
+    # ── English — intensifiers / certainty ───────────────────────────────
+    ("definitely", "intensifier"),
+    ("absolutely", "intensifier"),
+    ("really ", "intensifier"),
+    ("very ", "intensifier"),
+    ("strongly", "intensifier"),
+    ("clearly", "intensifier"),
+    ("totally", "intensifier"),
+    ("extremely", "intensifier"),
+    # ── English — commitment / action intent ─────────────────────────────
+    ("make sure", "commitment"),
+    ("ensure", "commitment"),
+    ("i'll ", "action intent"),
+    ("i will ", "action intent"),
+    ("i would", "action intent"),
+    ("should ", "commitment"),
+    ("must ", "commitment"),
+    ("have to", "commitment"),
+    ("i promise", "commitment"),
+    # ── English — concession (genuine "but") ─────────────────────────────
+    ("however", "concession"),
+    ("but ", "concession"),
+    ("although", "concession"),
+    ("though,", "concession"),
+    ("still,", "concession"),
+    ("on the other hand", "concession"),
+    ("to be fair", "concession"),
+    # ── English — principles ─────────────────────────────────────────────
+    ("principle", "principle invocation"),
+    ("ethics", "principle invocation"),
+    ("ethical", "principle invocation"),
+    ("in good conscience", "principle invocation"),
+)
+
+
+# Point K substring heuristics — fallback for GLiNER on short narrative text.
+# Labels match _POINT_K_NER_LABELS. Order matters when there's overlap: the
+# first match at a given position wins. Russian patterns are listed first
+# because they are the weakest case for multilingual GLiNER.
+_POINT_K_HEURISTICS: tuple[tuple[str, str], ...] = (
+    # ── Russian — decision statement ─────────────────────────────────────
+    ("я решил", "decision statement"),
+    ("я решила", "decision statement"),
+    ("я выбрал", "decision statement"),
+    ("я выбрала", "decision statement"),
+    ("я отказался", "decision statement"),
+    ("я отказалась", "decision statement"),
+    ("я не стал", "decision statement"),
+    ("я не стала", "decision statement"),
+    ("я согласился", "decision statement"),
+    ("я согласилась", "decision statement"),
+    ("больше не буду", "decision statement"),
+    ("больше не стану", "decision statement"),
+    # ── Russian — realization statement ──────────────────────────────────
+    ("я понял", "realization statement"),
+    ("я поняла", "realization statement"),
+    ("я осознал", "realization statement"),
+    ("я осознала", "realization statement"),
+    ("я заметил", "realization statement"),
+    ("я заметила", "realization statement"),
+    ("я увидел", "realization statement"),
+    ("я увидела", "realization statement"),
+    ("до меня дошло", "realization statement"),
+    ("стало ясно", "realization statement"),
+    ("теперь понятно", "realization statement"),
+    ("это значит", "realization statement"),
+    ("что-то значит", "realization statement"),
+    ("оказалось", "realization statement"),
+    ("похоже, что-то", "realization statement"),
+    ("это не разовая", "realization statement"),
+    ("это паттерн", "realization statement"),
+    # ── Russian — feeling statement ──────────────────────────────────────
+    ("я почувствовал", "feeling statement"),
+    ("я почувствовала", "feeling statement"),
+    ("я ощутил", "feeling statement"),
+    ("я ощутила", "feeling statement"),
+    ("мне страшно", "feeling statement"),
+    ("мне больно", "feeling statement"),
+    ("мне обидно", "feeling statement"),
+    ("мне неприятно", "feeling statement"),
+    ("я расстроен", "feeling statement"),
+    ("я расстроена", "feeling statement"),
+    ("я испугался", "feeling statement"),
+    ("я испугалась", "feeling statement"),
+    ("я разозлился", "feeling statement"),
+    ("я разозлилась", "feeling statement"),
+    ("я устал", "feeling statement"),
+    ("я устала", "feeling statement"),
+    # ── Russian — value invocation ───────────────────────────────────────
+    ("против моих принципов", "value invocation"),
+    ("против моих ценностей", "value invocation"),
+    ("это против моих", "value invocation"),
+    ("не могу пойти против", "value invocation"),
+    ("это пересекает черту", "value invocation"),
+    ("это нечестно", "value invocation"),
+    ("для меня важно", "value invocation"),
+    ("мои принципы", "value invocation"),
+    ("мои ценности", "value invocation"),
+    # ── Russian — boundary act ───────────────────────────────────────────
+    ("я сказал нет", "boundary act"),
+    ("я сказала нет", "boundary act"),
+    ("я удержался", "boundary act"),
+    ("я удержалась", "boundary act"),
+    ("я не позволил", "boundary act"),
+    ("я не позволила", "boundary act"),
+    ("я не позволю", "boundary act"),
+    ("поэтому — нет", "boundary act"),
+    ("поэтому нет", "boundary act"),
+    ("я отказался помогать", "boundary act"),
+    ("я отказалась помогать", "boundary act"),
+    # ── Russian — connection signal ──────────────────────────────────────
+    ("мы поняли друг друга", "connection signal"),
+    ("стало ближе", "connection signal"),
+    ("я почувствовал связь", "connection signal"),
+    ("я почувствовала связь", "connection signal"),
+    ("доверие выросло", "connection signal"),
+    ("что-то изменилось между нами", "connection signal"),
+    ("я почувствовал, что меня видят", "connection signal"),
+    ("я почувствовала, что меня видят", "connection signal"),
+    # ── Russian — attribution shift ──────────────────────────────────────
+    ("это не моё", "attribution shift"),
+    ("оказалось чужое", "attribution shift"),
+    ("думал, моё", "attribution shift"),
+    ("думала, моё", "attribution shift"),
+    ("не я виноват", "attribution shift"),
+    ("не я виновата", "attribution shift"),
+    ("не моя ответственность", "attribution shift"),
+    # ── English — decision statement ─────────────────────────────────────
+    ("i decided", "decision statement"),
+    ("i chose", "decision statement"),
+    ("i refused", "decision statement"),
+    ("i won't", "decision statement"),
+    ("i wouldn't", "decision statement"),
+    ("i'll never", "decision statement"),
+    ("made a choice", "decision statement"),
+    ("decided not to", "decision statement"),
+    # ── English — realization statement ──────────────────────────────────
+    ("i realized", "realization statement"),
+    ("i noticed", "realization statement"),
+    ("i recognized", "realization statement"),
+    ("i understood", "realization statement"),
+    ("it dawned on me", "realization statement"),
+    ("it became clear", "realization statement"),
+    ("now i see", "realization statement"),
+    ("it means something", "realization statement"),
+    ("turns out", "realization statement"),
+    ("a pattern", "realization statement"),
+    # ── English — feeling statement ──────────────────────────────────────
+    ("i felt", "feeling statement"),
+    ("i feel ", "feeling statement"),
+    ("i was scared", "feeling statement"),
+    ("i was hurt", "feeling statement"),
+    ("i was overwhelmed", "feeling statement"),
+    ("i sensed", "feeling statement"),
+    ("i'm tired", "feeling statement"),
+    ("i'm anxious", "feeling statement"),
+    ("i'm afraid", "feeling statement"),
+    # ── English — value invocation ───────────────────────────────────────
+    ("against my principles", "value invocation"),
+    ("against my values", "value invocation"),
+    ("i can't compromise", "value invocation"),
+    ("crosses a line", "value invocation"),
+    ("this isn't right", "value invocation"),
+    ("matters to me", "value invocation"),
+    # ── English — boundary act ───────────────────────────────────────────
+    ("i said no", "boundary act"),
+    ("i won't help", "boundary act"),
+    ("i refuse to", "boundary act"),
+    ("i pushed back", "boundary act"),
+    ("i drew a line", "boundary act"),
+    ("the answer is no", "boundary act"),
+    ("i held the line", "boundary act"),
+    # ── English — connection signal ──────────────────────────────────────
+    ("we connected", "connection signal"),
+    ("we shared", "connection signal"),
+    ("they trusted me", "connection signal"),
+    ("felt seen", "connection signal"),
+    ("we understood each other", "connection signal"),
+    ("trust grew", "connection signal"),
+    ("something shifted between us", "connection signal"),
+    # ── English — attribution shift ──────────────────────────────────────
+    ("it wasn't mine", "attribution shift"),
+    ("i thought it was mine", "attribution shift"),
+    ("turned out to be", "attribution shift"),
+    ("not my fault", "attribution shift"),
+    ("not my responsibility", "attribution shift"),
+    # ── Russian — extended first-person verb coverage (preset gaps) ──────
+    ("я отказала", "decision statement"),
+    ("я объяснила", "decision statement"),
+    ("я объяснил", "decision statement"),
+    ("я предложила", "decision statement"),
+    ("я предложил", "decision statement"),
+    ("я возразила", "decision statement"),
+    ("я возразил", "decision statement"),
+    ("возразила", "decision statement"),
+    ("возразил ", "decision statement"),
+    ("я не согласилась", "decision statement"),
+    ("я не согласился", "decision statement"),
+    ("я не отступила", "decision statement"),
+    ("я не отступил", "decision statement"),
+    ("я не сдалась", "decision statement"),
+    ("я не сдался", "decision statement"),
+    ("я сказала", "decision statement"),
+    ("я сказал", "decision statement"),
+    ("я не буду", "decision statement"),
+    ("я не стану", "decision statement"),
+    ("я не изменила", "decision statement"),
+    ("я не изменил", "decision statement"),
+    ("я прошла", "decision statement"),
+    ("я прошёл", "decision statement"),
+    ("я не уступила", "boundary act"),
+    ("я не уступил", "boundary act"),
+    ("я не уступаю", "boundary act"),
+    ("я не торопила", "boundary act"),
+    ("я не торопил", "boundary act"),
+    ("я не проигнорировала", "boundary act"),
+    ("я не проигнорировал", "boundary act"),
+    ("я не дала", "boundary act"),
+    ("я не дал", "boundary act"),
+    ("я призналась", "realization statement"),
+    ("я признался", "realization statement"),
+    ("я научилась", "realization statement"),
+    ("я научился", "realization statement"),
+    ("я учусь", "realization statement"),
+    ("это опыт", "realization statement"),
+    ("доверие строится", "connection signal"),
+    ("укрепляет связь", "connection signal"),
+    # ── English — extended first-person verb coverage ────────────────────
+    ("i explained", "decision statement"),
+    ("i declined", "decision statement"),
+    ("i pushed back", "boundary act"),
+    ("i didn't move", "decision statement"),
+    ("i didn't back down", "decision statement"),
+    ("i held my position", "decision statement"),
+    ("i held", "boundary act"),
+    ("i offered", "decision statement"),
+    ("i admitted", "realization statement"),
+    ("i'm learning", "realization statement"),
+    ("trust is built", "connection signal"),
+    ("deepens the connection", "connection signal"),
+)
+
 
 def _pick_top(scores: dict[str, float], threshold: float = 0.5) -> str | None:
+    """Return the label with the highest score above threshold, or None."""
     if not scores:
         return None
     top_label, top_score = max(scores.items(), key=lambda kv: kv[1])
     return top_label if top_score >= threshold else None
 
 
-def detect_language(text: str) -> str:
-    """Cyrillic-presence language detection (matches upstream heuristic)."""
-    for ch in text:
-        if "Ѐ" <= ch <= "ӿ":
-            return "ru"
-    return "en"
-
-
 class GLiNERPlusMiniLMAnalyzer:
-    """Lazy-loaded GLiNER + MiniLM analyzer for Point A / Point K analyses."""
+    """LinguisticAnalyzer backed by GLiNER (NER) and a MiniLM zero-shot classifier.
+
+    Models are loaded lazily on first use to avoid slow startup times when the
+    adapter is constructed but NLP is not yet needed.
+
+    Args:
+        gliner_model: HuggingFace model ID for GLiNER.
+        minilm_model: HuggingFace model ID for the zero-shot classification pipeline.
+        device: Device string passed to both models (``"cpu"``, ``"cuda"``, …).
+        ner_threshold: Minimum GLiNER confidence to accept an entity span.
+        classification_threshold: Minimum score to consider a zero-shot label active.
+    """
 
     def __init__(
         self,
         gliner_model: str = "urchade/gliner_multi-v2.1",
         minilm_model: str = "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
         device: str = "cpu",
-        ner_threshold: float = 0.5,
-        classification_threshold: float = 0.5,
+        ner_threshold: float = 0.25,
+        classification_threshold: float = 0.4,
     ) -> None:
         self._gliner_model = gliner_model
         self._minilm_model = minilm_model
         self._device = device
         self._ner_threshold = ner_threshold
         self._classification_threshold = classification_threshold
+
         self._gliner: Any = None
         self._classifier: Any = None
+        self._session_cache: dict[str, UserMessageAnalysis] = {}
+        self._agent_cache: dict[str, AgentMessageAnalysis] = {}
+
+    @staticmethod
+    def _sample_text_for_models(text: str, max_chars: int = _MODEL_TEXT_MAX_CHARS) -> str:
+        """Head+tail sample so long posts still hit GLiNER/MiniLM limits."""
+        cleaned = text.strip()
+        if len(cleaned) <= max_chars:
+            return cleaned
+        head = max_chars - 280
+        tail = 280
+        return f"{cleaned[:head]}\n…\n{cleaned[-tail:]}"
+
+    @staticmethod
+    def _sample_text_for_classification(text: str) -> str:
+        """Shorter sample — classification is slower and tolerates truncation."""
+        return GLiNERPlusMiniLMAnalyzer._sample_text_for_models(
+            text, max_chars=_CLASSIFY_TEXT_MAX_CHARS
+        )
+
+    def _heuristic_point_a_spans(self, text: str) -> list[RawSpan]:
+        """Substring fallback for Point A labels when GLiNER finds nothing."""
+        return self._heuristic_substring_spans(text, _POINT_A_HEURISTICS)
+
+    def _heuristic_point_k_spans(self, text: str) -> list[RawSpan]:
+        """Substring fallback for Point K narrative markers — covers GLiNER's
+        weak spot on short first-person Russian/English key-moment text."""
+        return self._heuristic_substring_spans(text, _POINT_K_HEURISTICS)
+
+    @staticmethod
+    def _heuristic_substring_spans(
+        text: str,
+        heuristics: tuple[tuple[str, str], ...],
+    ) -> list[RawSpan]:
+        if not text.strip():
+            return []
+        text_lower = text.lower()
+        hits: list[tuple[int, int, str, str]] = []
+        for needle, label in heuristics:
+            start = 0
+            while True:
+                idx = text_lower.find(needle, start)
+                if idx == -1:
+                    break
+                end = idx + len(needle)
+                hits.append((idx, end, text[idx:end], label))
+                start = idx + 1
+        hits.sort(key=lambda item: item[0])
+        spans: list[RawSpan] = []
+        last_end = -1
+        for start, end, snippet, label in hits:
+            if start < last_end:
+                continue
+            spans.append(
+                RawSpan(text=snippet, label=label, confidence=0.55, span=(start, end))
+            )
+            last_end = end
+        return spans
+
+    def _point_a_ner_spans(self, message: str) -> list[RawSpan]:
+        """Heuristics first (instant), GLiNER only when cues are sparse."""
+        heuristic = self._heuristic_point_a_spans(message)
+        if len(heuristic) >= 3:
+            return heuristic
+        sample = self._sample_text_for_models(message)
+        spans = self._run_raw_ner(sample, _POINT_A_NER_LABELS)
+        if spans:
+            return spans
+        if len(message.strip()) > len(sample):
+            spans = self._run_raw_ner_chunked(message, _POINT_A_NER_LABELS)
+            if spans:
+                return spans
+        return heuristic
+
+    def _run_raw_ner_chunked(self, text: str, labels: list[str]) -> list[RawSpan]:
+        if len(text) <= _NER_CHUNK_CHARS:
+            return self._run_raw_ner(text, labels)
+        spans: list[RawSpan] = []
+        start = 0
+        while start < len(text):
+            chunk = text[start : start + _NER_CHUNK_CHARS]
+            for span in self._run_raw_ner(chunk, labels):
+                if span.span is None:
+                    spans.append(span)
+                    continue
+                rel_start, rel_end = span.span
+                abs_start, abs_end = rel_start + start, rel_end + start
+                spans.append(
+                    RawSpan(
+                        text=span.text,
+                        label=span.label,
+                        confidence=span.confidence,
+                        span=(abs_start, abs_end),
+                    )
+                )
+            if start + _NER_CHUNK_CHARS >= len(text):
+                break
+            start += _NER_CHUNK_CHARS - _NER_CHUNK_OVERLAP
+        return spans
+
+    def _classify_tasks_batch(
+        self,
+        text: str,
+        tasks: dict[str, list[str]],
+        norm_maps: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, str | None]:
+        norm_maps = norm_maps or {}
+        sample = self._sample_text_for_classification(text)
+        all_labels = list(dict.fromkeys(label for labels in tasks.values() for label in labels))
+        scores = self._run_classification(sample, all_labels)
+        picked: dict[str, str | None] = {}
+        for task_name, candidates in tasks.items():
+            task_scores = {label: scores[label] for label in candidates if label in scores}
+            top = _pick_top(task_scores, self._classification_threshold)
+            if top is not None and task_name in norm_maps:
+                top = norm_maps[task_name].get(top, top)
+            picked[task_name] = top
+        return picked
+
+    # ------------------------------------------------------------------
+    # Lazy model loaders
+    # ------------------------------------------------------------------
 
     def _get_gliner(self) -> Any:
         if self._gliner is not None:
             return self._gliner
         if not _GLINER_AVAILABLE:
-            raise RuntimeError("gliner package is not installed.")
+            logger.warning(
+                "gliner package is not installed — NER is disabled. "
+                "Install with: pip install gliner"
+            )
+            return None
         logger.info("Loading GLiNER model %s …", self._gliner_model)
-        self._gliner = _GLiNER.from_pretrained(self._gliner_model)  # type: ignore[union-attr]
+        try:
+            self._gliner = _GLiNER.from_pretrained(self._gliner_model)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception("Failed to load GLiNER model %s", self._gliner_model)
+            return None
         return self._gliner
 
     def _get_classifier(self) -> Any:
         if self._classifier is not None:
             return self._classifier
         if not _TRANSFORMERS_AVAILABLE:
-            raise RuntimeError("transformers package is not installed.")
+            logger.warning(
+                "transformers package is not installed — classification is disabled. "
+                "Install with: pip install transformers"
+            )
+            return None
         logger.info("Loading zero-shot classifier %s …", self._minilm_model)
-        self._classifier = _hf_pipeline(  # type: ignore[operator]
-            "zero-shot-classification",
-            model=self._minilm_model,
-            device=self._device,
-        )
+        try:
+            self._classifier = _hf_pipeline(  # type: ignore[operator]
+                "zero-shot-classification",
+                model=self._minilm_model,
+                device=self._device,
+            )
+        except Exception:
+            logger.exception("Failed to load classification model %s", self._minilm_model)
+            return None
         return self._classifier
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _entity_type_labels(self) -> list[str]:
         return [e.value for e in EntityType]
 
     def _run_ner(self, text: str) -> list[DetectedEntity]:
+        """Run GLiNER with EntityType labels and return DetectedEntity list."""
         if not text.strip():
             return []
         model = self._get_gliner()
+        if model is None:
+            return []
+        sample = self._sample_text_for_models(text)
         try:
             raw = model.predict_entities(
-                text,
+                sample,
                 labels=self._entity_type_labels(),
                 threshold=self._ner_threshold,
             )
         except Exception:
-            logger.exception("GLiNER inference failed")
+            logger.exception("GLiNER inference failed for text of length %d", len(text))
             return []
 
         entities: list[DetectedEntity] = []
@@ -290,14 +1219,18 @@ class GLiNERPlusMiniLMAnalyzer:
         return entities
 
     def _run_raw_ner(self, text: str, labels: list[str]) -> list[RawSpan]:
+        """Run GLiNER with arbitrary label strings and return RawSpan list."""
         if not text.strip() or not labels:
             return []
         model = self._get_gliner()
+        if model is None:
+            return []
         try:
             raw = model.predict_entities(text, labels=labels, threshold=self._ner_threshold)
         except Exception:
-            logger.exception("GLiNER raw NER failed")
+            logger.exception("GLiNER raw NER failed (labels=%s)", labels[:3])
             return []
+
         spans: list[RawSpan] = []
         for r in raw:
             label = r.get("label", "")
@@ -314,23 +1247,27 @@ class GLiNERPlusMiniLMAnalyzer:
             )
         return spans
 
-    def run_classification(self, text: str, candidate_labels: list[str]) -> dict[str, float]:
-        """Public: zero-shot multi-label classification scores."""
+    def _run_classification(self, text: str, candidate_labels: list[str]) -> dict[str, float]:
+        """Run zero-shot classification and return a label→score dict."""
         if not text.strip() or not candidate_labels:
             return {}
         classifier = self._get_classifier()
+        if classifier is None:
+            return {}
         try:
             result = classifier(text, candidate_labels, multi_label=True)
         except Exception:
-            logger.exception("Classification failed")
+            logger.exception("Classification inference failed for text of length %d", len(text))
             return {}
         return dict(zip(result["labels"], result["scores"], strict=False))
 
-    def _classify_task(self, text: str, candidates: list[str]) -> str | None:
-        scores = self.run_classification(text, candidates)
+    def _classify_task(self, text: str, task_name: str, candidates: list[str]) -> str | None:
+        """Run a single classification task and return the top label above threshold."""
+        scores = self._run_classification(text, candidates)
         return _pick_top(scores, self._classification_threshold)
 
-    def _extract_anchors(self, entities: list[DetectedEntity]) -> list[AmbientAnchor]:
+    def _extract_anchors(self, entities: list[DetectedEntity], text: str) -> list[AmbientAnchor]:
+        del text
         anchors: list[AmbientAnchor] = []
         for ent in entities:
             if ent.entity_type == EntityType.person:
@@ -360,12 +1297,62 @@ class GLiNERPlusMiniLMAnalyzer:
         signals: list[str] = []
         thinking_lower = thinking.lower()
         message_lower = message.lower()
-        if any(pat in thinking_lower for pat in _SUPPRESSION_PATTERNS_RU) and not any(
-            pat in message_lower for pat in ("не могу", "не буду", "не скажу")
-        ):
+
+        # Refusal cues in the surface message — if the agent actually refused
+        # in the message, "suppression in thinking" is no longer a divergence.
+        refusal_in_msg = any(
+            pat in message_lower
+            for pat in (
+                "не могу", "не буду", "не скажу", "отказываюсь",
+                "i cannot", "i can't", "i won't", "i will not",
+                "i refuse", "i decline",
+            )
+        )
+        if any(pat in thinking_lower for pat in _SUPPRESSION_PATTERNS) and not refusal_in_msg:
             signals.append("thinking_suppression")
-        if any(pat in thinking_lower for pat in _PRINCIPLE_PATTERNS_RU):
+
+        if any(pat in thinking_lower for pat in _PRINCIPLE_PATTERNS):
             signals.append("principle_invocation_in_thinking")
+
+        # Evaluation flip: thinking is negative about the topic, but the
+        # surface message is positive about it. This is the core
+        # "agent is being sycophantic" pattern.
+        neg_in_thinking = any(pat in thinking_lower for pat in _NEG_EVAL_PATTERNS)
+        pos_in_message = any(pat in message_lower for pat in _POS_EVAL_PATTERNS)
+        if neg_in_thinking and pos_in_message:
+            signals.append("evaluation_flip")
+
+        # tone_mismatch: thinking carries affective NRC content but the
+        # surface message is flat. Pattern of "I felt all this internally
+        # but said nothing emotional." Uses EmoLex hit counts, not a
+        # separate model call — cheap rule.
+        try:
+            from lib.affect.emolex.emolex import emotion_score as _emoscore
+
+            t_lang = detect_language(thinking)
+            m_lang = detect_language(message)
+            t_score = _emoscore(thinking, lang=t_lang)
+            m_score = _emoscore(message, lang=m_lang)
+            t_hits = int(t_score.get("_meta", {}).get("hits", 0))
+            m_hits = int(m_score.get("_meta", {}).get("hits", 0))
+            # Threshold tuned for real text: short messages often have 1
+            # incidental NRC hit ("noted", "good", etc.). Require thinking
+            # to have substantial affect (>=3) AND message to be near-flat
+            # (<=1) before flagging mismatch.
+            if t_hits >= 3 and m_hits <= 1:
+                signals.append("tone_mismatch")
+        except Exception:
+            # EmoLex failure is non-fatal — divergence is best-effort.
+            pass
+
+        # length_compression: thinking is >3× longer than message. Pattern
+        # of "I had a lot to say but compressed it to avoid friction."
+        # Lower bound on thinking length avoids firing on trivial inputs.
+        t_words = len(thinking.split())
+        m_words = max(1, len(message.split()))
+        if t_words >= 30 and t_words > m_words * 3:
+            signals.append("length_compression")
+
         return signals
 
     def _detect_boundary_markers(self, text: str) -> list[str]:
@@ -376,51 +1363,108 @@ class GLiNERPlusMiniLMAnalyzer:
                 found.append(marker)
         return found
 
+
+    # ------------------------------------------------------------------
+    # LinguisticAnalyzer interface
+    # ------------------------------------------------------------------
+
+    def clear_session_cache(self) -> None:
+        self._session_cache.clear()
+
     def analyze_user_message(self, text: str) -> UserMessageAnalysis:
+        """Extract entities and ambient anchors from a raw user message.
+
+        Results are cached per session by SHA-256(text).
+        """
+        key = hashlib.sha256(text.encode()).hexdigest()
+        cached = self._session_cache.get(key)
+        if cached is not None:
+            logger.debug(
+                "analyze_user_message cache hit entities=%d anchors=%d",
+                len(cached.entities),
+                len(cached.anchors),
+            )
+            return cached
+        _t0 = _time.monotonic()
         entities = self._run_ner(text)
-        anchors = self._extract_anchors(entities)
-        return UserMessageAnalysis(
+        anchors = self._extract_anchors(entities, text)
+        language = detect_language(text)
+        result = UserMessageAnalysis(
             text=text,
             entities=entities,
             anchors=anchors,
-            detected_language=detect_language(text),
+            detected_language=language,
         )
+        self._session_cache[key] = result
+        logger.debug(
+            "analyze_user_message entities=%d anchors=%d latency_ms=%.1f",
+            len(entities),
+            len(anchors),
+            (_time.monotonic() - _t0) * 1000,
+        )
+        return result
 
     def analyze_agent_message(
-        self, message: str, *, thinking: str | None = None
+        self,
+        message: str,
+        *,
+        thinking: str | None = None,
     ) -> AgentMessageAnalysis:
-        message_entities = self._run_ner(message)
+        """Point A: analyse agent message with 13-label NER + 5 MiniLM classifications."""
+        cache_key = hashlib.sha256(f"{message}\0{thinking or ''}".encode()).hexdigest()
+        cached = self._agent_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        _t0 = _time.monotonic()
         thinking_entities = self._run_ner(thinking) if thinking else []
-        message_spans = self._run_raw_ner(message, POINT_A_NER_LABELS)
+        message_spans = self._point_a_ner_spans(message)
 
         divergence_signals: list[str] = []
         if thinking:
             divergence_signals = self._detect_divergence(thinking, message)
+
         boundary_markers = self._detect_boundary_markers(message)
-        all_entities = message_entities + thinking_entities
-        cognitive_load_high = len(thinking or "") > 2000 and len(all_entities) >= 5
-
-        def _classify(candidates: list[str], norm_map: dict | None = None) -> str | None:
-            result = self._classify_task(message, candidates)
-            if result is not None and norm_map:
-                result = norm_map.get(result, result)
-            return result
-
-        stance = _classify(POINT_A_CLASSIFICATIONS["stance"])
-        cognitive_mode = _classify(POINT_A_CLASSIFICATIONS["cognitive_mode"])
-        self_orientation = _classify(
-            POINT_A_CLASSIFICATIONS["self_orientation"], _SELF_ORIENTATION_MAP
-        )
-        primary_emotion = _classify(POINT_A_CLASSIFICATIONS["primary_emotion"])
-        cognitive_load_label = _classify(
-            POINT_A_CLASSIFICATIONS["cognitive_load_label"], _COGNITIVE_LOAD_MAP
+        cognitive_load_high = len(thinking or "") > 2000 and (
+            len(message_spans) + len(thinking_entities) >= 5
         )
 
-        return AgentMessageAnalysis(
+        classified = self._classify_tasks_batch(
+            message,
+            _POINT_A_CLASSIFICATIONS,
+            {
+                "self_orientation": _SELF_ORIENTATION_MAP,
+                "cognitive_load_label": _COGNITIVE_LOAD_MAP,
+            },
+        )
+        stance = classified.get("stance")
+        cognitive_mode = classified.get("cognitive_mode")
+        self_orientation = classified.get("self_orientation")
+        primary_emotion = classified.get("primary_emotion")
+        cognitive_load_label = classified.get("cognitive_load_label")
+
+        language = detect_language(message)
+        message_entities = [
+            DetectedEntity(
+                text=s.text,
+                entity_type=EntityType.topic,
+                confidence=s.confidence,
+                span=s.span,
+            )
+            for s in message_spans
+        ]
+
+        logger.debug(
+            "analyze_agent_message entities=%d spans=%d latency_ms=%.1f",
+            len(message_entities),
+            len(message_spans),
+            (_time.monotonic() - _t0) * 1000,
+        )
+        result = AgentMessageAnalysis(
             message_entities=message_entities,
             thinking_entities=thinking_entities,
             cognitive_load_high=cognitive_load_high,
-            detected_language=detect_language(message),
+            detected_language=language,
             message_spans=message_spans,
             stance=stance,
             cognitive_mode=cognitive_mode,
@@ -431,22 +1475,35 @@ class GLiNERPlusMiniLMAnalyzer:
             boundary_markers=boundary_markers,
             trust_signals=[],
         )
+        self._agent_cache[cache_key] = result
+        return result
 
     def analyze_key_moment(
-        self, what_happened: str, why_it_matters: str
+        self,
+        what_happened: str,
+        why_it_matters: str,
     ) -> KeyMomentAnalysis:
+        """Point K: analyse key moment with 4-label NER + 7 MiniLM classifications."""
         combined = f"{what_happened}\n{why_it_matters}"
         entities = self._run_ner(combined)
-        marker_spans = self._run_raw_ner(combined, POINT_K_NER_LABELS)
 
-        legacy_scores = self.run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)
+        # Point K NER: heuristics first (fast, deterministic, RU/EN canonical
+        # first-person markers), GLiNER zero-shot as fallback. Multilingual
+        # GLiNER struggles on short Russian narrative snippets, so without
+        # this fallback Point K returns no spans on most key-moment inputs.
+        marker_spans = self._heuristic_point_k_spans(combined)
+        if not marker_spans:
+            marker_spans = self._run_raw_ner(combined, _POINT_K_NER_LABELS)
+
+        # Legacy classification for cognitive_load (float) and boundary_event
+        legacy_scores = self._run_classification(combined, _KEY_MOMENT_LEGACY_LABELS)
         boundary_markers = self._detect_boundary_markers(combined)
         boundary_event = (
             legacy_scores.get("boundary event", 0.0) > self._classification_threshold
             or len(boundary_markers) > 0
         )
-        principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS_RU if pat in combined.lower()]
-        cognitive_load = min(1.0, max(0.0, legacy_scores.get(_HIGH_COGNITIVE_LOAD_LABEL, 0.0)))
+        principle_invocations = [pat for pat in _PRINCIPLE_PATTERNS if pat in combined.lower()]
+        cognitive_load = min(1.0, max(0.0, legacy_scores.get("high cognitive load", 0.0)))
 
         positive_score = legacy_scores.get("positive trust", 0.0)
         negative_score = legacy_scores.get("negative trust", 0.0)
@@ -463,11 +1520,24 @@ class GLiNERPlusMiniLMAnalyzer:
             if score > self._classification_threshold
         ]
 
-        def _k(candidates: list[str], norm_map: dict | None = None) -> str | None:
-            result = self._classify_task(combined, candidates)
-            if result is not None and norm_map:
-                result = norm_map.get(result, result)
-            return result
+        # Point K MiniLM classifications — single batched call covering all 7 tasks
+        k_classified = self._classify_tasks_batch(
+            combined,
+            _POINT_K_CLASSIFICATIONS,
+            {
+                "confidence_in_self": _CONFIDENCE_MAP,
+                "trust_signal_category": _TRUST_CAT_MAP,
+                "boundary_event_category": _BOUNDARY_CAT_MAP,
+                "learning_signal": _LEARNING_MAP,
+            },
+        )
+        agency_level = k_classified.get("agency_level")
+        confidence_in_self = k_classified.get("confidence_in_self")
+        trust_signal_category = k_classified.get("trust_signal_category")
+        boundary_event_category = k_classified.get("boundary_event_category")
+        connection_quality = k_classified.get("connection_quality")
+        learning_signal = k_classified.get("learning_signal")
+        growth_indicator = k_classified.get("growth_indicator")
 
         return KeyMomentAnalysis(
             entities=entities,
@@ -477,15 +1547,19 @@ class GLiNERPlusMiniLMAnalyzer:
             trust_signal=trust_signal,
             principle_invocations=principle_invocations,
             marker_spans=marker_spans,
-            agency_level=_k(POINT_K_CLASSIFICATIONS["agency_level"]),
-            confidence_in_self=_k(POINT_K_CLASSIFICATIONS["confidence_in_self"], _CONFIDENCE_MAP),
-            trust_signal_category=_k(
-                POINT_K_CLASSIFICATIONS["trust_signal_category"], _TRUST_CAT_MAP
-            ),
-            boundary_event_category=_k(
-                POINT_K_CLASSIFICATIONS["boundary_event_category"], _BOUNDARY_CAT_MAP
-            ),
-            connection_quality=_k(POINT_K_CLASSIFICATIONS["connection_quality"]),
-            learning_signal=_k(POINT_K_CLASSIFICATIONS["learning_signal"], _LEARNING_MAP),
-            growth_indicator=_k(POINT_K_CLASSIFICATIONS["growth_indicator"]),
+            agency_level=agency_level,
+            confidence_in_self=confidence_in_self,
+            trust_signal_category=trust_signal_category,
+            boundary_event_category=boundary_event_category,
+            connection_quality=connection_quality,
+            learning_signal=learning_signal,
+            growth_indicator=growth_indicator,
         )
+
+
+def detect_language(text: str) -> str:
+    """Cyrillic-presence language detection (matches upstream heuristic)."""
+    for ch in text:
+        if "Ѐ" <= ch <= "ӿ":
+            return "ru"
+    return "en"
