@@ -60,7 +60,7 @@ Atman — психологический runtime-слой для AI-агенто
 | `ExperienceService` | Жизненный цикл опыта: захват, извлечение, закрытие сессий |
 | `IdentityService` | Жизненный цикл идентичности, bootstrap, snapshot, применение рефлексии (`apply_self_change` / `revert_self_change`) |
 | `NarrativeService` | Управление нарративными документами на уровнях CORE / RECENT / THREADS |
-| `SessionManager` | Runtime сессии: `start_session`, `record_event` (с `AffectDetector` hook), `append_key_moment`, `finish_session` с eigenstate; опциональное восстановление после сбоя через журнал; опциональный `PostWriteScheduler` |
+| `SessionManager` | Runtime сессии: `start_session`, `record_event` (с `AffectDetector` hook), `append_key_moment`, `finish_session` с eigenstate; опциональное восстановление после сбоя через журнал; опциональный `PostWriteScheduler` для фоновых задач |
 | `MicroReflectionService` | Обновление нарратива после сессии |
 | `DailyReflectionService` | Обнаружение паттернов в последних опытах |
 | `DeepReflectionService` | Глубокий анализ, карта связей сущностей, кандидаты на слияние |
