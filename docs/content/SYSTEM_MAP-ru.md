@@ -31,7 +31,7 @@
 | `core/models/entity.py` | Доменные модели Entity Registry: типы сущностей, псевдонимы, отношения, позиции и таблицы связей для фактов и ключевых моментов | `Entity`, `EntityAlias`, `EntityRelation`, `EntityStance`, `EntityType`, `FactEntityLink`, `KeyMomentEntityLink`, `ResolutionMethod` |
 | `core/models/validation.py` | Модели наблюдаемости: находки валидации (качество данных) и события расхождения (анализ разрыва thinking↔сообщение) | `ValidationFinding`, `FindingSeverity`, `FindingType`, `DivergenceEvent`, `DivergenceSeverity`, `DivergenceType` |
 | `core/models/maintenance.py` | Модели очереди технического обслуживания для фоновых/cron задач (salience decay, memory guardian) | `MaintenanceJob`, `JobName`, `JobStatus` |
-| `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Йоды), структурированные ответы модели (MODEL-01 / #146), **персистентность рефлексий в PostgreSQL** (E27) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment`, `ReframingNoteOutput`, `PatternDetectionOutput`, `NarrativeUpdateOutput`, `HealthCriterionOutput`, **`ReflectionRecord`** |
+| `core/models/reflection.py` | Процесс рефлексии, паттерны, оценка здоровья (критерии Яходы), структурированные ответы модели (MODEL-01 / #146), **персистентность рефлексий в PostgreSQL** (E27) | `ReflectionLevel`, `PatternCandidate`, `PatternStatus`, `PatternType`, `ReflectionEvent`, `HealthAssessment`, `JahodaCriterion`, `CriterionAssessment`, `ReframingNoteOutput`, `PatternDetectionOutput`, `NarrativeUpdateOutput`, `HealthCriterionOutput`, **`ReflectionRecord`** |
 | `core/models/governance.py` | Решения governance для мутаций ядра нарратива | `GovernanceDecision`, `GovernanceMode` |
 | `core/models/self_applied_change.py` (R11.5) | Аудит-запись об изменении identity/narrative, применённом самой рефлексией (rationale, опорные moment id, snapshot до) | `SelfAppliedChange`, `SelfChangeSource`, `SelfChangeTargetKind`, `SelfChangeActor` |
 | `core/models/pending_human_review.py` (R11.7) | Очередь предложений, в которых рефлексия не уверена и передаёт человеку | `PendingReview`, `PendingReviewDraft`, `PendingReviewKind`, `Priority`, `Resolution` |
@@ -455,7 +455,7 @@ PrincipleRevisionAdvisor — пересмотр принципов
 ### E. Deep reflection + здоровье
 
 1. `DeepReflectionService.reflect_deep(...)`: опыт + паттерны + identity.
-2. Считаются критерии Йоды (autonomy, competence, integration, actualization, aspiration, purpose).
+2. Считаются критерии Яходы (autonomy, competence, integration, actualization, aspiration, purpose).
 3. `ReflectionModel` предлагает правки нарратива (core/recent).
 4. Создаётся `IdentitySnapshot` (идемпотентно по `reflection_run_key`).
 5. Обновляются identity + предложения по нарративу + `HealthAssessment`.
